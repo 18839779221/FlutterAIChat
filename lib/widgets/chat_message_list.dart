@@ -3,7 +3,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import '../models/chat_message.dart';
 import 'code_block_builder.dart';
 
-class ChatMessageList extends StatelessWidget {
+class ChatMessageList extends StatefulWidget {
   final List<ChatMessage> messages;
   final bool isLoading;
 
@@ -14,23 +14,51 @@ class ChatMessageList extends StatelessWidget {
   });
 
   @override
+  State<ChatMessageList> createState() => _ChatMessageListState();
+}
+
+class _ChatMessageListState extends State<ChatMessageList> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    _scrollToBottom();
+    
     return Expanded(
       child: Column(
         children: [
           Expanded(
             child: ListView.builder(
+              controller: _scrollController,
               padding: const EdgeInsets.all(8.0),
-              itemCount: messages.length,
+              itemCount: widget.messages.length,
               itemBuilder: (context, index) {
-                final message = messages[index];
+                final message = widget.messages[index];
                 return Align(
                   alignment: message.isUser 
                       ? Alignment.centerRight 
                       : Alignment.centerLeft,
                   child: Container(
                     constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.8,
+                      maxWidth: MediaQuery.of(context).size.width,
                     ),
                     margin: const EdgeInsets.symmetric(vertical: 4.0),
                     padding: const EdgeInsets.all(12.0),
@@ -40,34 +68,39 @@ class ChatMessageList extends StatelessWidget {
                           : Colors.grey[300],
                       borderRadius: BorderRadius.circular(12.0),
                     ),
-                    child: message.isUser
-                        ? Text(message.text)
-                        : MarkdownBody(
-                            data: message.text,
-                            selectable: true,
-                            styleSheet: MarkdownStyleSheet(
-                              p: TextStyle(fontSize: 16),
-                              code: TextStyle(
-                                backgroundColor: Colors.grey[200],
-                                fontFamily: 'monospace',
-                                fontSize: 14,
-                              ),
-                              codeblockDecoration: BoxDecoration(
-                                color: Colors.grey[200],
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            builders: {
-                              'code': CodeElementBuilder(),
-                              'pre': CodeBlockBuilder(),
-                            },
-                          ),
+                    child: AnimatedBuilder(
+                      animation: ValueNotifier(message.text),
+                      builder: (context, _) {
+                        return message.isUser
+                            ? Text(message.text)
+                            : MarkdownBody(
+                                data: message.text,
+                                selectable: true,
+                                styleSheet: MarkdownStyleSheet(
+                                  p: TextStyle(fontSize: 16),
+                                  code: TextStyle(
+                                    backgroundColor: Colors.grey[200],
+                                    fontFamily: 'monospace',
+                                    fontSize: 14,
+                                  ),
+                                  codeblockDecoration: BoxDecoration(
+                                    color: Colors.grey[200],
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                builders: {
+                                  'code': CodeElementBuilder(),
+                                  'pre': CodeBlockBuilder(),
+                                },
+                              );
+                      },
+                    ),
                   ),
                 );
               },
             ),
           ),
-          if (isLoading)
+          if (widget.isLoading)
             const Padding(
               padding: EdgeInsets.all(8.0),
               child: CircularProgressIndicator(),
