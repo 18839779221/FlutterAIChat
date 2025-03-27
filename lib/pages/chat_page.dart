@@ -17,25 +17,49 @@ class _ChatPageState extends State<ChatPage> {
   final TextEditingController _textController = TextEditingController();
   final ChatService _chatService = ChatService();
   bool _isLoading = false;
+  StreamSubscription? _streamSubscription;
 
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
+    final userMessage = ChatMessage(text: text, isUser: true);
+    final aiMessage = ChatMessage(text: '', isUser: false);
+    
     setState(() {
-      _messages.add(ChatMessage(text: text, isUser: true));
+      _messages.add(userMessage);
+      _messages.add(aiMessage);
       _isLoading = true;
     });
     
     try {
-      final response = await _chatService.sendMessage(text);
-      setState(() {
-        _messages.add(ChatMessage(text: response, isUser: false));
-      });
+      await _streamSubscription?.cancel();
+      
+      _streamSubscription = _chatService
+          .sendMessageStream(text)
+          .listen(
+            (content) {
+              setState(() {
+                aiMessage.appendText(content);
+              });
+            },
+            onError: (error) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('错误: $error')),
+              );
+              setState(() {
+                _isLoading = false;
+              });
+            },
+            onDone: () {
+              setState(() {
+                _isLoading = false;
+              });
+            },
+          );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString())),
       );
-    } finally {
       setState(() {
         _isLoading = false;
       });
@@ -68,6 +92,7 @@ class _ChatPageState extends State<ChatPage> {
   
   @override
   void dispose() {
+    _streamSubscription?.cancel();
     _textController.dispose();
     super.dispose();
   }

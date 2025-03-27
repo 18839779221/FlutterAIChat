@@ -62,9 +62,12 @@ class _ChatPageState extends State<ChatPage> {
     });
     
     try {
-      final response = await _chatService.sendMessage(text);
-      setState(() {
-        _messages.add(ChatMessage(text: response, isUser: false));
+      final response = await _chatService.sendMessageStream(text);
+      _messages.add(ChatMessage(text: "", isUser: false));
+      response.listen((content) {
+        setState(() {
+          _messages.last.appendText(content);
+        });
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
