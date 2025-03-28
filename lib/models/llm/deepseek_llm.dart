@@ -42,6 +42,8 @@ class DeepSeekLLM implements BaseLLM {
         'stream': true,
       });
 
+      Logger.i(_tag, '请求体: ${request.body}');
+
       final response = await http.Client().send(request);
 
       if (response.statusCode == 200) {

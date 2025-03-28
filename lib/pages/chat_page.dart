@@ -9,6 +9,7 @@ import '../database/database_helper.dart';
 import '../utils/logger.dart';
 import '../models/llm/llm_config.dart';
 import '../models/llm/llm_factory.dart';
+import '../models/context/context_strategies.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key, required this.title});
@@ -31,13 +32,25 @@ class _ChatPageState extends State<ChatPage> {
   void initState() {
     super.initState();
     Logger.i(_tag, '初始化聊天页面...');
-    // 创建DeepSeek模型实例
-    final llm = LLMFactory.createLLM(
-      LLMType.deepseek
+    
+    // 创建混合策略
+    final contextStrategy = HybridStrategy(
+      strategies: [
+        TokenBasedStrategy(),
+        SmartSelectionStrategy(),
+      ],
+      weights: [0.7, 0.3], // 70% token基础，30% 智能选择
     );
     
+    // 创建DeepSeek模型实例
+    final llm = LLMFactory.createLLM(LLMType.deepseek);
+    
     // 创建聊天服务
-    _chatService = ChatService(llm);
+    _chatService = ChatService(
+      llm: llm,
+      contextStrategy: contextStrategy,
+      maxTokens: 4000,
+    );
     
     _loadMessages();
   }
