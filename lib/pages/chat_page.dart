@@ -10,6 +10,7 @@ import '../utils/logger.dart';
 import '../models/llm/llm_config.dart';
 import '../models/llm/llm_factory.dart';
 import '../models/context/context_strategies.dart';
+import '../widgets/confirm_dialog.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key, required this.title});
@@ -139,6 +140,21 @@ class _ChatPageState extends State<ChatPage> {
     _textController.clear();
   }
 
+  Future<void> _showClearHistoryDialog() async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return ConfirmDialog(
+          title: '确认清空',
+          content: '确定要清空所有聊天记录吗？此操作不可恢复。',
+          confirmText: '清空',
+          onConfirm: _clearHistory,
+        );
+      },
+    );
+  }
+
   Future<void> _clearHistory() async {
     try {
       Logger.w(_tag, '开始清除历史记录...');
@@ -147,14 +163,26 @@ class _ChatPageState extends State<ChatPage> {
         _messages.clear();
       });
       Logger.i(_tag, '历史记录清除成功');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('历史记录已清除')),
-      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('历史记录已清除'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
     } catch (e) {
       Logger.e(_tag, '清除历史记录失败', e);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('清除历史记录失败: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('清除历史记录失败: $e'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
@@ -166,9 +194,9 @@ class _ChatPageState extends State<ChatPage> {
         title: Text(widget.title),
         actions: [
           IconButton(
-            icon: const Icon(Icons.delete),
-            onPressed: _clearHistory,
-            tooltip: '清除历史记录',
+            icon: const Icon(Icons.delete_outline),
+            tooltip: '清空历史记录',
+            onPressed: _showClearHistoryDialog,
           ),
         ],
       ),
