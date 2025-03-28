@@ -1,36 +1,45 @@
+enum MessageRole {
+  user,
+  assistant,
+  system
+}
 
 class ChatMessage {
-  final int? id;
   String text;
-  final bool isUser;
+  final MessageRole role;
   final DateTime timestamp;
+  final int? id;
 
   ChatMessage({
-    this.id,
     required this.text,
-    required this.isUser,
+    required this.role,
+    this.id,
     DateTime? timestamp,
   }) : timestamp = timestamp ?? DateTime.now();
 
-  void appendText(String newText) {
-    text += newText;
-  }
-
   Map<String, dynamic> toMap() {
     return {
-      'id': id,
       'text': text,
-      'isUser': isUser ? 1 : 0,
+      'role': role.toString().split('.').last,
       'timestamp': timestamp.millisecondsSinceEpoch,
+      if (id != null) 'id': id,
     };
+  }
+
+  void appendText(String newText) {
+    text += newText;
   }
 
   factory ChatMessage.fromMap(Map<String, dynamic> map) {
     return ChatMessage(
       id: map['id'],
       text: map['text'],
-      isUser: map['isUser'] == 1,
+      role: MessageRole.values.firstWhere(
+        (e) => e.toString().split('.').last == map['role'],
+      ),
       timestamp: DateTime.fromMillisecondsSinceEpoch(map['timestamp']),
     );
   }
+
+  bool get isUser => role == MessageRole.user;
 } 

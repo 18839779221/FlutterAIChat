@@ -7,6 +7,8 @@ import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../database/database_helper.dart';
 import '../utils/logger.dart';
+import '../models/llm/llm_config.dart';
+import '../models/llm/llm_factory.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key, required this.title});
@@ -20,7 +22,7 @@ class _ChatPageState extends State<ChatPage> {
   static const String _tag = 'ChatPage';
   final List<ChatMessage> _messages = [];
   final TextEditingController _textController = TextEditingController();
-  final ChatService _chatService = ChatService();
+  late final ChatService _chatService;
   final DatabaseHelper _dbHelper = DatabaseHelper();
   bool _isLoading = false;
   StreamSubscription? _streamSubscription;
@@ -29,6 +31,14 @@ class _ChatPageState extends State<ChatPage> {
   void initState() {
     super.initState();
     Logger.i(_tag, '初始化聊天页面...');
+    // 创建DeepSeek模型实例
+    final llm = LLMFactory.createLLM(
+      LLMType.deepseek
+    );
+    
+    // 创建聊天服务
+    _chatService = ChatService(llm);
+    
     _loadMessages();
   }
 
@@ -54,8 +64,8 @@ class _ChatPageState extends State<ChatPage> {
 
     Logger.d(_tag, '准备发送新消息: ${text.substring(0, text.length.clamp(0, 50))}...');
     
-    final userMessage = ChatMessage(text: text, isUser: true);
-    final aiMessage = ChatMessage(text: '', isUser: false);
+    final userMessage = ChatMessage(text: text, role: MessageRole.user);
+    final aiMessage = ChatMessage(text: '', role: MessageRole.assistant);
     
     try {
       Logger.d(_tag, '保存用户消息到数据库...');
