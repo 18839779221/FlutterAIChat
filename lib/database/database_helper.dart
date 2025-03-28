@@ -33,7 +33,7 @@ class DatabaseHelper {
             CREATE TABLE messages (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               text TEXT NOT NULL,
-              isUser INTEGER NOT NULL,
+              role TEXT NOT NULL,
               timestamp INTEGER NOT NULL
             )
           ''');
@@ -54,11 +54,7 @@ class DatabaseHelper {
       
       final id = await db.insert(
         'messages',
-        {
-          'text': message.text,
-          'isUser': message.isUser ? 1 : 0,
-          'timestamp': DateTime.now().millisecondsSinceEpoch,
-        },
+        message.toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
       
@@ -82,12 +78,7 @@ class DatabaseHelper {
 
       Logger.i(_tag, '成功加载 ${maps.length} 条历史消息');
       return List.generate(maps.length, (i) {
-        return ChatMessage(
-          id: maps[i]['id'],
-          text: maps[i]['text'],
-          isUser: maps[i]['isUser'] == 1,
-          timestamp: DateTime.fromMillisecondsSinceEpoch(maps[i]['timestamp']),
-        );
+        return ChatMessage.fromMap(maps[i]);
       });
     } catch (e, stackTrace) {
       Logger.e(_tag, '加载历史消息失败', e);
