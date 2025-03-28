@@ -1,11 +1,12 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../models/chat_message.dart';
 
 class ChatService {
   static const String _apiUrl = 'https://api.deepseek.com/v1/chat/completions';  // 替换为实际的DeepSeek API地址
   static const String _apiKey = 'sk-a2a16fa6b87b40bd8f6a88e253790474';  // 替换为你的API密钥
 
-  Stream<String> sendMessageStream(String message) async* {
+  Stream<String> sendMessageStream(String message, List<ChatMessage> historyMessage) async* {
     try {
       final request = http.Request('POST', Uri.parse(_apiUrl));
       request.headers.addAll({

@@ -1,11 +1,31 @@
 import 'package:flutter/material.dart';
-import 'models/chat_message.dart';
-import 'services/chat_service.dart';
-import 'widgets/chat_message_list.dart';
-import 'widgets/chat_input.dart';
+import 'pages/chat_page.dart';
+import 'database/database_helper.dart';
+import 'utils/logger.dart';
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  // 确保 Flutter 绑定初始化
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  try {
+    // 初始化数据库工厂
+    final dbHelper = DatabaseHelper();
+    await dbHelper.testDatabaseConnection();
+    
+    runApp(const MyApp());
+  } catch (e) {
+    Logger.e('Main', '应用启动失败', e);
+    // 在这里可以显示一个错误界面或者进行其他错误处理
+    runApp(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Text('应用初始化失败: $e'),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -39,79 +59,3 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class ChatPage extends StatefulWidget {
-  const ChatPage({super.key, required this.title});
-  final String title;
-
-  @override
-  State<ChatPage> createState() => _ChatPageState();
-}
-
-class _ChatPageState extends State<ChatPage> {
-  final List<ChatMessage> _messages = [];
-  final TextEditingController _textController = TextEditingController();
-  final ChatService _chatService = ChatService();
-  bool _isLoading = false;
-
-  Future<void> _sendMessage(String text) async {
-    if (text.trim().isEmpty) return;
-
-    setState(() {
-      _messages.add(ChatMessage(text: text, isUser: true));
-      _isLoading = true;
-    });
-    
-    try {
-      final response = await _chatService.sendMessageStream(text);
-      _messages.add(ChatMessage(text: "", isUser: false));
-      response.listen((content) {
-        setState(() {
-          _messages.last.appendText(content);
-        });
-      });
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-    
-    _textController.clear();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Column(
-        children: [
-          ChatMessageList(
-            messages: _messages,
-            isLoading: _isLoading,
-          ),
-          ChatInput(
-            controller: _textController,
-            onSendMessage: _sendMessage,
-          ),
-        ],
-      ),
-    );
-  }
-  
-  @override
-  void dispose() {
-    _textController.dispose();
-    super.dispose();
-  }
-}
