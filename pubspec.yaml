@@ -37,6 +37,8 @@ dependencies:
   http: ^1.1.0
   flutter_markdown: ^0.6.18
   flutter_highlight: ^0.7.0
+  sqflite: ^2.3.0
+  path: ^1.8.3
 
 dev_dependencies:
   flutter_test:
