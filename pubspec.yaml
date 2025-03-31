@@ -39,6 +39,7 @@ dependencies:
   flutter_highlight: ^0.7.0
   sqflite: ^2.3.0
   path: ^1.8.3
+  permission_handler: ^11.3.0
 
 dev_dependencies:
   flutter_test:
