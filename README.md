@@ -1,4 +1,4 @@
-# test_flutter_app
+# ai_chat
 
 A new Flutter project.
 
