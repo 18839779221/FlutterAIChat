@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 
 class ChatInput extends StatelessWidget {
 
+  final FocusNode focusNode;
   final TextEditingController controller;
   final Function(String) onSendMessage;
 
   const ChatInput({
     super.key,
+    required this.focusNode,
     required this.controller,
     required this.onSendMessage,
   });
@@ -26,6 +28,7 @@ class ChatInput extends StatelessWidget {
         children: [
           Expanded(
             child: TextField(
+              focusNode: focusNode,
               controller: controller,
               decoration: const InputDecoration(
                 hintText: '输入消息...',

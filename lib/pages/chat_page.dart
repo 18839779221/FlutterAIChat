@@ -24,6 +24,7 @@ class _ChatPageState extends State<ChatPage> {
   static const String _tag = 'ChatPage';
   final List<ChatMessage> _messages = [];
   final TextEditingController _textController = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
   late final ChatService _chatService;
   final DatabaseHelper _dbHelper = DatabaseHelper();
   bool _isLoading = false;
@@ -33,7 +34,16 @@ class _ChatPageState extends State<ChatPage> {
   void initState() {
     super.initState();
     Logger.i(_tag, '初始化聊天页面...');
-    
+
+    // 页面初始化时调起软键盘
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusNode.requestFocus();
+    });
+    _initChatService();
+    _loadMessages();
+  }
+
+  void _initChatService() {
     // 创建混合策略
     final contextStrategy = HybridStrategy(
       strategies: [
@@ -42,18 +52,17 @@ class _ChatPageState extends State<ChatPage> {
       ],
       weights: [0.7, 0.3], // 70% token基础，30% 智能选择
     );
-    
+
     // 创建DeepSeek模型实例
     final llm = LLMFactory.createLLM(LLMType.deepseek);
-    
+
     // 创建聊天服务
     _chatService = ChatService(
       llm: llm,
       contextStrategy: contextStrategy,
       maxTokens: 4000,
     );
-    
-    _loadMessages();
+
   }
 
   Future<void> _loadMessages() async {
@@ -207,6 +216,7 @@ class _ChatPageState extends State<ChatPage> {
             isLoading: _isLoading,
           ),
           ChatInput(
+            focusNode: _focusNode,
             controller: _textController,
             onSendMessage: _sendMessage,
           ),
