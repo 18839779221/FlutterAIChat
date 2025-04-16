@@ -1,6 +1,8 @@
+import 'package:ai_chat/constants/RouteConstant.dart';
 import 'package:flutter/material.dart';
 import 'pages/chat_page.dart';
 import 'database/database_helper.dart';
+import 'pages/settings_page.dart';
 import 'utils/logger.dart';
 
 void main() async {
@@ -35,6 +37,8 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      routes: getRouteMap(),
+      initialRoute: RouteConstant.chatPage,
       title: 'AI Chat',
       theme: ThemeData(
         // This is the theme of your application.
@@ -54,8 +58,14 @@ class MyApp extends StatelessWidget {
         // tested with just a hot reload.
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
       ),
-      home: const ChatPage(title: 'AI Chat'),
     );
+  }
+
+  Map<String, WidgetBuilder> getRouteMap() {
+    return {
+      RouteConstant.chatPage: (context) => const ChatPage(title: 'AI Chat'),
+      RouteConstant.settingsPage: (context) => const SettingsPage(),
+    };
   }
 }
 

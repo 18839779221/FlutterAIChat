@@ -7,10 +7,10 @@ import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../database/database_helper.dart';
 import '../utils/logger.dart';
-import '../models/llm/llm_config.dart';
 import '../models/llm/llm_factory.dart';
 import '../models/context/context_strategies.dart';
 import '../widgets/confirm_dialog.dart';
+import '../widgets/chat_drawer.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key, required this.title});
@@ -29,6 +29,8 @@ class _ChatPageState extends State<ChatPage> {
   final DatabaseHelper _dbHelper = DatabaseHelper();
   bool _isLoading = false;
   StreamSubscription? _streamSubscription;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  bool _isInitializing = true;
 
   @override
   void initState() {
@@ -62,7 +64,6 @@ class _ChatPageState extends State<ChatPage> {
       contextStrategy: contextStrategy,
       maxTokens: 4000,
     );
-
   }
 
   Future<void> _loadMessages() async {
@@ -72,6 +73,7 @@ class _ChatPageState extends State<ChatPage> {
       setState(() {
         _messages.clear();
         _messages.addAll(messages);
+        _isInitializing = false;
       });
       Logger.i(_tag, '成功加载 ${messages.length} 条历史消息');
     } catch (e) {
@@ -85,56 +87,57 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
-    Logger.d(_tag, '准备发送新消息: ${text.substring(0, text.length.clamp(0, 50))}...');
-    
+    Logger.d(
+        _tag, '准备发送新消息: ${text.substring(0, text.length.clamp(0, 50))}...');
+
     final userMessage = ChatMessage(text: text, role: MessageRole.user);
     final aiMessage = ChatMessage(text: '', role: MessageRole.assistant);
-    
+
     try {
       Logger.d(_tag, '保存用户消息到数据库...');
       await _dbHelper.insertMessage(userMessage);
-      
+
       Logger.d(_tag, '创建AI消息占位...');
       final aiMessageId = await _dbHelper.insertMessage(aiMessage);
-      
+
       // 获取当前消息之前的历史消息
       final historyMessages = List<ChatMessage>.from(_messages);
-      
+
       setState(() {
         _messages.add(userMessage);
         _messages.add(aiMessage);
         _isLoading = true;
       });
-      
+
       Logger.d(_tag, '开始接收AI响应流，历史消息数量: ${historyMessages.length}');
       await _streamSubscription?.cancel();
-      
+
       _streamSubscription = _chatService
           .sendMessageStream(text, historyMessages) // 传入历史消息
           .listen(
-            (content) async {
-              Logger.d(_tag, '收到AI响应片段: $content');
-              setState(() {
-                aiMessage.appendText(content);
-              });
-              await _dbHelper.updateMessage(aiMessageId, aiMessage.text);
-            },
-            onError: (error) {
-              Logger.e(_tag, 'AI响应出错', error);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('错误: $error')),
-              );
-              setState(() {
-                _isLoading = false;
-              });
-            },
-            onDone: () {
-              Logger.i(_tag, 'AI响应完成');
-              setState(() {
-                _isLoading = false;
-              });
-            },
+        (content) async {
+          Logger.d(_tag, '收到AI响应片段: $content');
+          setState(() {
+            aiMessage.appendText(content);
+          });
+          await _dbHelper.updateMessage(aiMessageId, aiMessage.text);
+        },
+        onError: (error) {
+          Logger.e(_tag, 'AI响应出错', error);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('错误: $error')),
           );
+          setState(() {
+            _isLoading = false;
+          });
+        },
+        onDone: () {
+          Logger.i(_tag, 'AI响应完成');
+          setState(() {
+            _isLoading = false;
+          });
+        },
+      );
     } catch (e, stackTrace) {
       Logger.e(_tag, '发送消息过程中出错', e);
       Logger.e(_tag, '堆栈跟踪', stackTrace);
@@ -145,7 +148,7 @@ class _ChatPageState extends State<ChatPage> {
         _isLoading = false;
       });
     }
-    
+
     _textController.clear();
   }
 
@@ -172,7 +175,7 @@ class _ChatPageState extends State<ChatPage> {
         _messages.clear();
       });
       Logger.i(_tag, '历史记录清除成功');
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -198,8 +201,16 @@ class _ChatPageState extends State<ChatPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
+      drawer: const ChatDrawer(),
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        leading: IconButton(
+          icon: const Icon(Icons.menu),
+          onPressed: () {
+            _scaffoldKey.currentState?.openDrawer();
+          },
+        ),
         title: Text(widget.title),
         actions: [
           IconButton(
@@ -209,22 +220,29 @@ class _ChatPageState extends State<ChatPage> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          ChatMessageList(
-            messages: _messages,
-            isLoading: _isLoading,
-          ),
-          ChatInput(
-            focusNode: _focusNode,
-            controller: _textController,
-            onSendMessage: _sendMessage,
-          ),
-        ],
+      body: GestureDetector(
+        onHorizontalDragEnd: (details) {
+          if (details.primaryVelocity! > 0) {
+            _scaffoldKey.currentState?.openDrawer();
+          }
+        },
+        child: Column(
+          children: [
+            ChatMessageList(
+              messages: _messages,
+              isLoading: _isLoading,
+            ),
+            ChatInput(
+              focusNode: _focusNode,
+              controller: _textController,
+              onSendMessage: _sendMessage,
+            ),
+          ],
+        ),
       ),
     );
   }
-  
+
   @override
   void dispose() {
     Logger.i(_tag, '清理聊天页面资源...');
@@ -232,4 +250,4 @@ class _ChatPageState extends State<ChatPage> {
     _textController.dispose();
     super.dispose();
   }
-} 
+}
