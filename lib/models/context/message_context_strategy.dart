@@ -7,6 +7,7 @@ abstract class MessageContextStrategy {
   /// 估算消息的token数量（粗略估计）
   int estimateTokens(ChatMessage message) {
     // 简单估算：中文字符按2个token，其他字符按1个token计算
+    if (message.text.length <= 1) return message.text.length;
     return message.text.split('')
         .map((char) => char.codeUnitAt(0) > 127 ? 2 : 1)
         .reduce((a, b) => a + b);
