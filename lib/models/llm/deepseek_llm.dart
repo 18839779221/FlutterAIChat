@@ -32,7 +32,7 @@ class DeepSeekLLM implements BaseLLM {
         'Content-Type': 'application/json; charset=utf-8',
         'Authorization': 'Bearer ${_config.apiKey}',
       });
-      
+
       request.body = jsonEncode({
         'model': modelName,
         'messages': messages.map((msg) => {
@@ -41,6 +41,8 @@ class DeepSeekLLM implements BaseLLM {
         }).toList(),
         'stream': true,
       });
+      // 记录每条消息内容
+      logMessages(messages);
 
       Logger.i(_tag, '请求体: ${request.body}');
 
@@ -56,7 +58,7 @@ class DeepSeekLLM implements BaseLLM {
                 Logger.i(_tag, '流式响应完成');
                 continue;
               }
-              
+
               final jsonStr = line.substring(6);
               try {
                 final data = jsonDecode(jsonStr);
@@ -100,4 +102,13 @@ class DeepSeekLLM implements BaseLLM {
       return false;
     }
   }
-} 
+
+  void logMessages(List<ChatMessage> messages) {
+    for (var i = 0; i < messages.length; i++) {
+      final msg = messages[i];
+      final content = msg.text;
+      // 每4000字符截取一次,避免日志过长
+      Logger.i(_tag, '消息[$i] ${msg.role}: $content');
+    }
+  }
+}

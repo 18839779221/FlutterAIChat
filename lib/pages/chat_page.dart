@@ -87,8 +87,11 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
-    Logger.d(
-        _tag, '准备发送新消息: ${text.substring(0, text.length.clamp(0, 50))}...');
+    Logger.d(_tag, '准备发送新消息: ${text.substring(0, text.length.clamp(0, 50))}...');
+
+    // 取消当前正在进行的响应
+    await _streamSubscription?.cancel();
+    _streamSubscription = null;
 
     final userMessage = ChatMessage(text: text, role: MessageRole.user);
     final aiMessage = ChatMessage(text: '', role: MessageRole.assistant);
@@ -110,12 +113,12 @@ class _ChatPageState extends State<ChatPage> {
       });
 
       Logger.d(_tag, '开始接收AI响应流，历史消息数量: ${historyMessages.length}');
-      await _streamSubscription?.cancel();
 
       _streamSubscription = _chatService
-          .sendMessageStream(text, historyMessages) // 传入历史消息
+          .sendMessageStream(text, historyMessages)
           .listen(
         (content) async {
+          if (!mounted) return;
           Logger.d(_tag, '收到AI响应片段: $content');
           setState(() {
             aiMessage.appendText(content);
@@ -124,6 +127,7 @@ class _ChatPageState extends State<ChatPage> {
         },
         onError: (error) {
           Logger.e(_tag, 'AI响应出错', error);
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('错误: $error')),
           );
@@ -133,14 +137,17 @@ class _ChatPageState extends State<ChatPage> {
         },
         onDone: () {
           Logger.i(_tag, 'AI响应完成');
+          if (!mounted) return;
           setState(() {
             _isLoading = false;
           });
         },
+        cancelOnError: true,
       );
     } catch (e, stackTrace) {
       Logger.e(_tag, '发送消息过程中出错', e);
       Logger.e(_tag, '堆栈跟踪', stackTrace);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString())),
       );
@@ -248,6 +255,7 @@ class _ChatPageState extends State<ChatPage> {
     Logger.i(_tag, '清理聊天页面资源...');
     _streamSubscription?.cancel();
     _textController.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 }
