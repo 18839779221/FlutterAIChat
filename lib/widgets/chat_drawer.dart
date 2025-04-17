@@ -1,4 +1,4 @@
-import 'package:ai_chat/constants/RouteConstant.dart';
+import 'package:ai_chat/constants/route_constant.dart';
 import 'package:ai_chat/widgets/about_dialog.dart';
 import 'package:flutter/material.dart';
 

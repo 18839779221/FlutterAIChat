@@ -38,6 +38,48 @@ class _ChatMessageListState extends State<ChatMessageList> {
     });
   }
 
+  Widget _buildMessageStatus(MessageStatus status) {
+    IconData icon;
+    Color color;
+    String tooltip;
+
+    switch (status) {
+      case MessageStatus.generating:
+        icon = Icons.sync;
+        color = Colors.blue;
+        tooltip = '正在生成';
+        break;
+      case MessageStatus.completed:
+        icon = Icons.check_circle_outline;
+        color = Colors.green;
+        tooltip = '生成完成';
+        break;
+      case MessageStatus.interrupted:
+        icon = Icons.pause_circle_outline;
+        color = Colors.orange;
+        tooltip = '生成中断';
+        break;
+      case MessageStatus.failed:
+        icon = Icons.error_outline;
+        color = Colors.red;
+        tooltip = '生成失败';
+        break;
+      default:
+        icon = Icons.circle_outlined;
+        color = Colors.grey;
+        tooltip = '初始状态';
+    }
+
+    return Tooltip(
+      message: tooltip,
+      child: Icon(
+        icon,
+        size: 16,
+        color: color,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     _scrollToBottom();
@@ -68,10 +110,11 @@ class _ChatMessageListState extends State<ChatMessageList> {
                           : Colors.grey[300],
                       borderRadius: BorderRadius.circular(12.0),
                     ),
-                    child: AnimatedBuilder(
-                      animation: ValueNotifier(message.text),
-                      builder: (context, _) {
-                        return message.isUser
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: message.isUser
                             ? Text(message.text)
                             : MarkdownBody(
                                 data: message.text,
@@ -92,8 +135,14 @@ class _ChatMessageListState extends State<ChatMessageList> {
                                   'code': CodeElementBuilder(),
                                   'pre': CodeBlockBuilder(),
                                 },
-                              );
-                      },
+                              ),
+                        ),
+                        if (!message.isUser)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: _buildMessageStatus(message.status),
+                          ),
+                      ],
                     ),
                   ),
                 );

@@ -1,4 +1,4 @@
-import 'package:ai_chat/constants/RouteConstant.dart';
+import 'package:ai_chat/constants/route_constant.dart';
 import 'package:flutter/material.dart';
 import 'pages/chat_page.dart';
 import 'database/database_helper.dart';
