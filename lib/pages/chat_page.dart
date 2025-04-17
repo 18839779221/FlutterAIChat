@@ -90,11 +90,19 @@ class _ChatPageState extends State<ChatPage> {
     Logger.d(_tag, '准备发送新消息: ${text.substring(0, text.length.clamp(0, 50))}...');
 
     // 取消当前正在进行的响应
-    await _streamSubscription?.cancel();
-    _streamSubscription = null;
+    cancelStreamSubscription();
 
-    final userMessage = ChatMessage(text: text, role: MessageRole.user);
-    final aiMessage = ChatMessage(text: '', role: MessageRole.assistant);
+    final userMessage = ChatMessage(
+      text: text,
+      role: MessageRole.user,
+      status: MessageStatus.completed, // 用户消息直接标记为完成
+    );
+    
+    final aiMessage = ChatMessage(
+      text: '',
+      role: MessageRole.assistant,
+      status: MessageStatus.generating, // AI 消息初始状态为生成中
+    );
 
     try {
       Logger.d(_tag, '保存用户消息到数据库...');
@@ -102,6 +110,7 @@ class _ChatPageState extends State<ChatPage> {
 
       Logger.d(_tag, '创建AI消息占位...');
       final aiMessageId = await _dbHelper.insertMessage(aiMessage);
+      aiMessage.id = aiMessageId;
 
       // 获取当前消息之前的历史消息
       final historyMessages = List<ChatMessage>.from(_messages);
@@ -128,19 +137,25 @@ class _ChatPageState extends State<ChatPage> {
         onError: (error) {
           Logger.e(_tag, 'AI响应出错', error);
           if (!mounted) return;
+          setState(() {
+            aiMessage.status = MessageStatus.failed;
+            _isLoading = false;
+          });
+          _dbHelper.updateMessageStatus(aiMessageId, MessageStatus.failed);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('错误: $error')),
           );
-          setState(() {
-            _isLoading = false;
-          });
         },
         onDone: () {
           Logger.i(_tag, 'AI响应完成');
           if (!mounted) return;
-          setState(() {
-            _isLoading = false;
-          });
+          if (aiMessage.status != MessageStatus.interrupted) {
+            setState(() {
+              aiMessage.status = MessageStatus.completed;
+              _isLoading = false;
+            });
+            _dbHelper.updateMessageStatus(aiMessageId, MessageStatus.completed);
+          }
         },
         cancelOnError: true,
       );
@@ -148,15 +163,34 @@ class _ChatPageState extends State<ChatPage> {
       Logger.e(_tag, '发送消息过程中出错', e);
       Logger.e(_tag, '堆栈跟踪', stackTrace);
       if (!mounted) return;
+      setState(() {
+        aiMessage.status = MessageStatus.failed;
+        _isLoading = false;
+      });
+      if (aiMessage.id != null) {
+        _dbHelper.updateMessageStatus(aiMessage.id!, MessageStatus.failed);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString())),
       );
-      setState(() {
-        _isLoading = false;
-      });
     }
 
     _textController.clear();
+  }
+
+  void cancelStreamSubscription() {
+    _streamSubscription?.cancel();
+    _streamSubscription = null;
+    final aiMessage = _messages.lastWhere((message) => message.role == MessageRole.assistant);
+    // 如果是主动取消（例如发送新消息），则标记为中断状态
+    if (aiMessage.status == MessageStatus.generating) {
+      setState(() {
+        aiMessage.status = MessageStatus.interrupted;
+      });
+      if (aiMessage.id != null) {
+        Future(() => _dbHelper.updateMessageStatus(aiMessage.id!, MessageStatus.interrupted));
+      }
+    }
   }
 
   Future<void> _showClearHistoryDialog() async {

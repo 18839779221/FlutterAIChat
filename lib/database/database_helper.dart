@@ -26,7 +26,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 1,
+        version: 2,
         onCreate: (Database db, int version) async {
           Logger.i(_tag, '创建数据库表...');
           await db.execute('''
@@ -34,10 +34,19 @@ class DatabaseHelper {
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               text TEXT NOT NULL,
               role TEXT NOT NULL,
-              timestamp INTEGER NOT NULL
+              timestamp INTEGER NOT NULL,
+              status TEXT NOT NULL DEFAULT 'initial'
             )
           ''');
           Logger.i(_tag, '数据库表创建成功');
+        },
+        onUpgrade: (Database db, int oldVersion, int newVersion) async {
+          if (oldVersion < 2) {
+            await db.execute('''
+              ALTER TABLE messages 
+              ADD COLUMN status TEXT NOT NULL DEFAULT 'initial'
+            ''');
+          }
         },
       );
     } catch (e, stackTrace) {
@@ -130,6 +139,26 @@ class DatabaseHelper {
     } catch (e) {
       Logger.e(_tag, '数据库连接测试失败', e);
       return false;
+    }
+  }
+
+  Future<void> updateMessageStatus(int id, MessageStatus status) async {
+    try {
+      final db = await database;
+      Logger.d(_tag, '更新消息状态: ID=$id, 状态=$status');
+      
+      await db.update(
+        'messages',
+        {'status': status.toString().split('.').last},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      
+      Logger.i(_tag, '消息状态更新成功');
+    } catch (e, stackTrace) {
+      Logger.e(_tag, '更新消息状态失败', e);
+      Logger.e(_tag, '堆栈跟踪', stackTrace);
+      rethrow;
     }
   }
 } 
