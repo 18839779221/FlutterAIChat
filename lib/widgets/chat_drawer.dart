@@ -48,7 +48,7 @@ class ChatDrawer extends StatelessWidget {
                   onTap: () {
                     Navigator.pop(context); // 关闭抽屉
                     // 导航到设置页面
-                    Navigator.pushNamed(context, RouteConstant.chatPage);
+                    Navigator.pushNamed(context, RouteConstant.settingsPage);
                   },
                 ),
                 ListTile(
