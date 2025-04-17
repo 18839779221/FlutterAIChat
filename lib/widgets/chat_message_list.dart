@@ -38,46 +38,20 @@ class _ChatMessageListState extends State<ChatMessageList> {
     });
   }
 
-  Widget _buildMessageStatus(MessageStatus status) {
-    IconData icon;
-    Color color;
-    String tooltip;
-
+  // 获取状态指示器颜色
+  Color _getStatusColor(MessageStatus status) {
     switch (status) {
       case MessageStatus.generating:
-        icon = Icons.sync;
-        color = Colors.blue;
-        tooltip = '正在生成';
-        break;
+        return Colors.blue.withOpacity(0.5);
       case MessageStatus.completed:
-        icon = Icons.check_circle_outline;
-        color = Colors.green;
-        tooltip = '生成完成';
-        break;
+        return Colors.green.withOpacity(0.3);
       case MessageStatus.interrupted:
-        icon = Icons.pause_circle_outline;
-        color = Colors.orange;
-        tooltip = '生成中断';
-        break;
+        return Colors.orange.withOpacity(0.3);
       case MessageStatus.failed:
-        icon = Icons.error_outline;
-        color = Colors.red;
-        tooltip = '生成失败';
-        break;
+        return Colors.red.withOpacity(0.3);
       default:
-        icon = Icons.circle_outlined;
-        color = Colors.grey;
-        tooltip = '初始状态';
+        return Colors.grey.withOpacity(0.3);
     }
-
-    return Tooltip(
-      message: tooltip,
-      child: Icon(
-        icon,
-        size: 16,
-        color: color,
-      ),
-    );
   }
 
   @override
@@ -103,45 +77,75 @@ class _ChatMessageListState extends State<ChatMessageList> {
                       maxWidth: MediaQuery.of(context).size.width,
                     ),
                     margin: const EdgeInsets.symmetric(vertical: 4.0),
-                    padding: const EdgeInsets.all(12.0),
-                    decoration: BoxDecoration(
-                      color: message.isUser 
-                          ? Colors.blue[100] 
-                          : Colors.grey[300],
-                      borderRadius: BorderRadius.circular(12.0),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+                    child: Stack(
                       children: [
-                        Flexible(
-                          child: message.isUser
-                            ? Text(message.text)
-                            : MarkdownBody(
-                                data: message.text,
-                                selectable: true,
-                                styleSheet: MarkdownStyleSheet(
-                                  p: TextStyle(fontSize: 16),
-                                  code: TextStyle(
-                                    backgroundColor: Colors.grey[200],
-                                    fontFamily: 'monospace',
-                                    fontSize: 14,
-                                  ),
-                                  codeblockDecoration: BoxDecoration(
-                                    color: Colors.grey[200],
-                                    borderRadius: BorderRadius.circular(8),
+                        // 状态背景指示器
+                        if (!message.isUser && message.status != MessageStatus.completed)
+                          Positioned.fill(
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              decoration: BoxDecoration(
+                                color: _getStatusColor(message.status),
+                                borderRadius: BorderRadius.circular(12.0),
+                              ),
+                            ),
+                          ),
+                        // 消息内容
+                        Container(
+                          padding: const EdgeInsets.all(12.0),
+                          decoration: BoxDecoration(
+                            color: message.isUser 
+                                ? Colors.blue[100] 
+                                : Colors.grey[300],
+                            borderRadius: BorderRadius.circular(12.0),
+                            border: !message.isUser && message.status != MessageStatus.completed
+                                ? Border.all(
+                                    color: _getStatusColor(message.status),
+                                    width: 1.0,
+                                  )
+                                : null,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // 消息内容
+                              message.isUser
+                                  ? Text(message.text)
+                                  : MarkdownBody(
+                                      data: message.text,
+                                      selectable: true,
+                                      styleSheet: MarkdownStyleSheet(
+                                        p: const TextStyle(fontSize: 16),
+                                        code: TextStyle(
+                                          backgroundColor: Colors.grey[200],
+                                          fontFamily: 'monospace',
+                                          fontSize: 14,
+                                        ),
+                                        codeblockDecoration: BoxDecoration(
+                                          color: Colors.grey[200],
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                      builders: {
+                                        'code': CodeElementBuilder(),
+                                        'pre': CodeBlockBuilder(),
+                                      },
+                                    ),
+                              // 状态提示文本（仅在非完成状态下显示）
+                              if (!message.isUser && message.status != MessageStatus.completed)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    _getStatusText(message.status),
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: _getStatusColor(message.status).withOpacity(0.8),
+                                    ),
                                   ),
                                 ),
-                                builders: {
-                                  'code': CodeElementBuilder(),
-                                  'pre': CodeBlockBuilder(),
-                                },
-                              ),
-                        ),
-                        if (!message.isUser)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 8),
-                            child: _buildMessageStatus(message.status),
+                            ],
                           ),
+                        ),
                       ],
                     ),
                   ),
@@ -157,6 +161,19 @@ class _ChatMessageListState extends State<ChatMessageList> {
         ],
       ),
     );
+  }
+
+  String _getStatusText(MessageStatus status) {
+    switch (status) {
+      case MessageStatus.generating:
+        return '正在生成...';
+      case MessageStatus.interrupted:
+        return '生成已中断';
+      case MessageStatus.failed:
+        return '生成失败';
+      default:
+        return '';
+    }
   }
 }
 
