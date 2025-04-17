@@ -88,6 +88,8 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
+    _focusNode.unfocus();
+
     Logger.d(
         _tag, '准备发送新消息: ${text.substring(0, text.length.clamp(0, 50))}...');
 
