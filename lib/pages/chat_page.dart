@@ -14,6 +14,7 @@ import '../widgets/chat_drawer.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key, required this.title});
+
   final String title;
 
   @override
@@ -87,7 +88,8 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
-    Logger.d(_tag, '准备发送新消息: ${text.substring(0, text.length.clamp(0, 50))}...');
+    Logger.d(
+        _tag, '准备发送新消息: ${text.substring(0, text.length.clamp(0, 50))}...');
 
     // 取消当前正在进行的响应
     cancelStreamSubscription();
@@ -97,7 +99,7 @@ class _ChatPageState extends State<ChatPage> {
       role: MessageRole.user,
       status: MessageStatus.completed, // 用户消息直接标记为完成
     );
-    
+
     final aiMessage = ChatMessage(
       text: '',
       role: MessageRole.assistant,
@@ -123,9 +125,8 @@ class _ChatPageState extends State<ChatPage> {
 
       Logger.d(_tag, '开始接收AI响应流，历史消息数量: ${historyMessages.length}');
 
-      _streamSubscription = _chatService
-          .sendMessageStream(text, historyMessages)
-          .listen(
+      _streamSubscription =
+          _chatService.sendMessageStream(text, historyMessages).listen(
         (content) async {
           if (!mounted) return;
           Logger.d(_tag, '收到AI响应片段: $content');
@@ -181,14 +182,16 @@ class _ChatPageState extends State<ChatPage> {
   void cancelStreamSubscription() {
     _streamSubscription?.cancel();
     _streamSubscription = null;
-    final aiMessage = _messages.lastWhere((message) => message.role == MessageRole.assistant);
+    final aiMessage =
+        _messages.lastWhere((message) => message.role == MessageRole.assistant);
     // 如果是主动取消（例如发送新消息），则标记为中断状态
     if (aiMessage.status == MessageStatus.generating) {
       setState(() {
         aiMessage.status = MessageStatus.interrupted;
       });
       if (aiMessage.id != null) {
-        Future(() => _dbHelper.updateMessageStatus(aiMessage.id!, MessageStatus.interrupted));
+        Future(() => _dbHelper.updateMessageStatus(
+            aiMessage.id!, MessageStatus.interrupted));
       }
     }
   }
@@ -273,11 +276,23 @@ class _ChatPageState extends State<ChatPage> {
               messages: _messages,
               isLoading: _isLoading,
             ),
-            ChatInput(
-              focusNode: _focusNode,
-              controller: _textController,
-              onSendMessage: _sendMessage,
-            ),
+            // 输入区域固定在底部
+            Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 4,
+                      offset: const Offset(0, -1),
+                    ),
+                  ],
+                ),
+                child: ChatInput(
+                  controller: _textController,
+                  focusNode: _focusNode,
+                  onSendMessage: _sendMessage,
+                )),
           ],
         ),
       ),
