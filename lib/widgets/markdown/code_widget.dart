@@ -45,7 +45,7 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
         children: [
           // 代码块头部
           Container(
-            padding: const EdgeInsets.fromLTRB(12, 0, 0, 0),
+            padding: const EdgeInsets.fromLTRB(12, 0, 8, 0),
             decoration: const BoxDecoration(
               color: Color(0xFF2D2D2D),
               borderRadius: BorderRadius.only(
@@ -61,7 +61,7 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
                   widget.language.toUpperCase(),
                   style: const TextStyle(
                     color: Color(0xFFAAAAAA),
-                    fontSize: 12,
+                    fontSize: 10,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -69,31 +69,36 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
                 Row(
                   children: [
                     // 自动换行按钮
-                    IconButton(
-                      icon: Icon(
-                        widget.codeConfig.autoLineBreak
-                            ? Icons.wrap_text
-                            : Icons.wrap_text_outlined,
-                        size: 16,
-                        color: widget.codeConfig.autoLineBreak
-                            ? Colors.blue
-                            : Colors.grey[400],
-                      ),
-                      tooltip: widget.codeConfig.autoLineBreak ? '关闭自动换行' : '开启自动换行',
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 24,
-                        minHeight: 24,
-                      ),
-                      splashRadius: 16,
-                      onPressed: () {
-                        setState(() {
-                          widget.codeConfig.autoLineBreak =
-                              !widget.codeConfig.autoLineBreak;
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 8),
+                    SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: IconButton(
+                          iconSize: 16,
+                          icon: Icon(
+                            widget.codeConfig.autoLineBreak
+                                ? Icons.wrap_text
+                                : Icons.wrap_text_outlined,
+                            color: widget.codeConfig.autoLineBreak
+                                ? Colors.blue
+                                : Colors.grey[400],
+                          ),
+                          tooltip: widget.codeConfig.autoLineBreak
+                              ? '关闭自动换行'
+                              : '开启自动换行',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 20,
+                            minHeight: 20,
+                          ),
+                          splashRadius: 6,
+                          onPressed: () {
+                            setState(() {
+                              widget.codeConfig.autoLineBreak =
+                                  !widget.codeConfig.autoLineBreak;
+                            });
+                          },
+                        )),
+                    const SizedBox(width: 4),
                     // 复制按钮
                     _CopyButton(code: widget.code),
                   ],
@@ -108,9 +113,9 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
                 child: widget.codeConfig.autoLineBreak
                     ? highLightWidget(widget.code, widget.language)
                     : SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: highLightWidget(widget.code, widget.language),
-                ),
+                        scrollDirection: Axis.horizontal,
+                        child: highLightWidget(widget.code, widget.language),
+                      ),
               ),
             ],
           ),
@@ -128,7 +133,6 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
       textStyle: CodeConfig.codeTextStyle,
     );
   }
-
 }
 
 // 复制按钮组件
@@ -155,25 +159,28 @@ class _CopyButtonState extends State<_CopyButton> {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      icon: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 200),
-        child: Icon(
-          _isCopied ? Icons.check : Icons.copy_outlined,
-          key: ValueKey(_isCopied),
-          size: 16,
-          color: _isCopied ? Colors.green : Colors.grey[400],
-        ),
-      ),
-      tooltip: _isCopied ? '已复制' : '复制代码',
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(
-        minWidth: 24,
-        minHeight: 24,
-      ),
-      splashRadius: 16,
-      onPressed: _copyCode,
-    );
+    return SizedBox(
+        width: 36,
+        height: 36,
+        child: IconButton(
+          iconSize: 16,
+          icon: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: Icon(
+              _isCopied ? Icons.check : Icons.copy_outlined,
+              key: ValueKey(_isCopied),
+              color: _isCopied ? Colors.green : Colors.grey[400],
+            ),
+          ),
+          tooltip: _isCopied ? '已复制' : '复制代码',
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(
+            minWidth: 20,
+            minHeight: 20,
+          ),
+          splashRadius: 6,
+          onPressed: _copyCode,
+        ));
   }
 }
 

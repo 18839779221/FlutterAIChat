@@ -32,7 +32,25 @@ class TestPage extends StatelessWidget {
                         decoration: BoxDecoration(color: Colors.red),
                         child: Text("Hello world")))
               ],
+            ),
+            Container(
+              decoration: BoxDecoration(color: Colors.red),
+              width: 32,
+              height: 32,
+              child: IconButton(
+                icon: Icon(
+                  Icons.wrap_text,
+                  color: Colors.grey[400],
+                ),
+                padding: EdgeInsets.zero, onPressed: () {  },
+                // constraints: const BoxConstraints(
+                //   minWidth: 20,
+                //   minHeight: 20,
+                // ),
+                // splashRadius: 16,
+              ),
             )
+
           ],
         ));
   }
