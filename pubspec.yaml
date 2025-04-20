@@ -40,6 +40,7 @@ dependencies:
   sqflite: ^2.3.0
   path: ^1.8.3
   permission_handler: ^11.3.0
+  markdown_widget: ^2.3.2+6
 
 dev_dependencies:
   flutter_test:
@@ -93,3 +94,9 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+  fonts:
+    - family: JetBrainsMono
+      fonts:
+        - asset: fonts/JetBrainsMono-Regular.ttf
+

@@ -184,8 +184,11 @@ class _ChatPageState extends State<ChatPage> {
   void cancelStreamSubscription() {
     _streamSubscription?.cancel();
     _streamSubscription = null;
-    final aiMessage =
-        _messages.lastWhere((message) => message.role == MessageRole.assistant);
+    if (_messages.isEmpty) return;
+    final lastIndex =
+        _messages.lastIndexWhere((message) => message.role == MessageRole.assistant);
+    if (lastIndex == -1) return;
+    final aiMessage = _messages[lastIndex];
     // 如果是主动取消（例如发送新消息），则标记为中断状态
     if (aiMessage.status == MessageStatus.generating) {
       setState(() {
