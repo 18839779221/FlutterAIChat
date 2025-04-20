@@ -281,28 +281,27 @@ class _ChatPageState extends State<ChatPage> {
             ChatMessageList(
               messages: _messages,
               isLoading: _isLoading,
+              inputFocusNode: _focusNode,
             ),
-            // 输入区域固定在底部
             Container(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 4,
-                      offset: const Offset(0, -1),
-                    ),
-                  ],
-                ),
-                child: ChatInput(
-                  controller: _textController,
-                  focusNode: _focusNode,
-                  onSendMessage: _sendMessage,
-                  isGenerating: _isLoading,
-                  onCancel: () {
-                    cancelStreamSubscription();
-                  },
-                )),
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, -1),
+                  ),
+                ],
+              ),
+              child: ChatInput(
+                controller: _textController,
+                focusNode: _focusNode,
+                onSendMessage: _sendMessage,
+                isGenerating: _isLoading,
+                onCancel: cancelStreamSubscription,
+              ),
+            ),
           ],
         ),
       ),
