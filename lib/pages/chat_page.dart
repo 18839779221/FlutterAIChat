@@ -184,6 +184,7 @@ class _ChatPageState extends State<ChatPage> {
   void cancelStreamSubscription() {
     _streamSubscription?.cancel();
     _streamSubscription = null;
+    _isLoading = false;
     if (_messages.isEmpty) return;
     final lastIndex =
         _messages.lastIndexWhere((message) => message.role == MessageRole.assistant);
@@ -297,6 +298,10 @@ class _ChatPageState extends State<ChatPage> {
                   controller: _textController,
                   focusNode: _focusNode,
                   onSendMessage: _sendMessage,
+                  isGenerating: _isLoading,
+                  onCancel: () {
+                    cancelStreamSubscription();
+                  },
                 )),
           ],
         ),
