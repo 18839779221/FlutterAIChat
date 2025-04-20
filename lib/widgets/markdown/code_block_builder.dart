@@ -22,7 +22,7 @@ class CodeElementBuilder extends MarkdownElementBuilder {
   Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
     if (element.tag != 'code') return null;
     if (element.footnoteLabel == CodeBlockBuilder.labelCodeBlock) {
-      String language = 'javascript';
+      String language = 'text';
       // 获取代码块的语言
       if (element.attributes['class'] != null) {
         String lg = element.attributes['class'] as String;
