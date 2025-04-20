@@ -136,11 +136,6 @@ class _ChatMessageListState extends State<ChatMessageList> {
               },
             ),
           ),
-          if (widget.isLoading)
-            const Padding(
-              padding: EdgeInsets.all(8.0),
-              child: CircularProgressIndicator(),
-            ),
         ],
       ),
     );
