@@ -121,6 +121,7 @@ class ChatDrawer extends StatelessWidget {
                   onTap: () {
                     Navigator.pop(context);
                     // TODO: 导航到历史记录页面
+                    Navigator.pushNamed(context, RouteConstant.testPage);
                   },
                 ),
                 _buildMenuItem(

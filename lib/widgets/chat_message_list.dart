@@ -1,7 +1,7 @@
+import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
+import 'package:ai_chat/widgets/markdown/markdown_widget_impl.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import '../models/chat_message.dart';
-import 'code_block_builder.dart';
 
 class ChatMessageList extends StatefulWidget {
   final List<ChatMessage> messages;
@@ -110,28 +110,10 @@ class _ChatMessageListState extends State<ChatMessageList> {
                             children: [
                               // 消息内容
                               message.isUser
-                                  ? Text(message.text)
-                                  : MarkdownBody(
-                                      data: message.text,
-                                      selectable: true,
-                                      styleSheet: MarkdownStyleSheet(
-                                        p: const TextStyle(fontSize: 16),
-                                        code: TextStyle(
-                                          backgroundColor: Colors.grey[200],
-                                          fontFamily: 'monospace',
-                                          fontSize: 14,
-                                        ),
-                                        codeblockDecoration: BoxDecoration(
-                                          color: Colors.grey[200],
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                      ),
-                                      builders: {
-                                        'code': CodeElementBuilder(),
-                                        'pre': CodeBlockBuilder(),
-                                      },
-                                    ),
-                              // 状态提示文本（仅在非完成状态下显示）
+                                  ? SelectableText(message.text)
+                                  // : MarkdownWidgetImpl(data: message.text),
+                                  : FlutterMarkdownImpl(data: message.text),
+                              // 状态提示文本
                               if (!message.isUser && message.status != MessageStatus.completed)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 4),
@@ -139,7 +121,8 @@ class _ChatMessageListState extends State<ChatMessageList> {
                                     _getStatusText(message.status),
                                     style: TextStyle(
                                       fontSize: 10,
-                                      color: _getStatusColor(message.status).withOpacity(0.8),
+                                      color: _getStatusColor(message.status)
+                                          .withOpacity(0.8),
                                     ),
                                   ),
                                 ),

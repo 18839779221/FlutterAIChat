@@ -1,4 +1,5 @@
 import 'package:ai_chat/constants/route_constant.dart';
+import 'package:ai_chat/pages/test_page.dart';
 import 'package:flutter/material.dart';
 import 'pages/chat_page.dart';
 import 'database/database_helper.dart';
@@ -65,6 +66,7 @@ class MyApp extends StatelessWidget {
     return {
       RouteConstant.chatPage: (context) => const ChatPage(title: 'AI Chat'),
       RouteConstant.settingsPage: (context) => const SettingsPage(),
+      RouteConstant.testPage: (context) => const TestPage()
     };
   }
 }
