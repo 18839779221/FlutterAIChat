@@ -49,8 +49,7 @@ class ChatInput extends StatelessWidget {
               ),
               child:
                   // 输入框
-                  Expanded(
-                    child: TextField(
+                   TextField(
                       focusNode: focusNode,
                       controller: controller,
                       maxLines: null, // 允许多行输入
@@ -69,7 +68,6 @@ class ChatInput extends StatelessWidget {
                           onSendMessage(text);
                         }
                       },
-                    ),
               ),
             ),
           ),
