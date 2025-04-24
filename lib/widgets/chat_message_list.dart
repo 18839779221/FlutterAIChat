@@ -6,14 +6,20 @@ import '../models/chat_message.dart';
 
 class ChatMessageList extends StatefulWidget {
   final List<ChatMessage> messages;
-  final bool isLoading;
+  final bool isGenerating;
+  final bool isLoadingMore;
+  final bool hasMoreMessages;
   final FocusNode inputFocusNode;
+  final ScrollController scrollController;
 
   const ChatMessageList({
     super.key,
     required this.messages,
-    required this.isLoading,
+    required this.isGenerating,
     required this.inputFocusNode,
+    required this.scrollController,
+    this.isLoadingMore = false,
+    this.hasMoreMessages = true,
   });
 
   @override
@@ -21,45 +27,43 @@ class ChatMessageList extends StatefulWidget {
 }
 
 class _ChatMessageListState extends State<ChatMessageList> {
-  final ScrollController _scrollController = ScrollController();
   // 是否快滑到了底部
   bool _isNearBottom = true;
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_scrollListener);
+    widget.scrollController.addListener(_scrollListener);
   }
 
   @override
   void dispose() {
-    _scrollController.removeListener(_scrollListener);
-    _scrollController.dispose();
+    widget.scrollController.removeListener(_scrollListener);
     super.dispose();
   }
 
   void _scrollListener() {
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    final currentScroll = _scrollController.offset;
+    final maxScroll = widget.scrollController.position.maxScrollExtent;
+    final currentScroll = widget.scrollController.offset;
     final isNearBottom = (maxScroll - currentScroll) <= 100;
-    
+
     if (_isNearBottom != isNearBottom) {
       setState(() {
         _isNearBottom = isNearBottom;
       });
     }
 
-    final scrollingPosition = _scrollController.position;
+    final scrollingPosition = widget.scrollController.position;
     // 用户向下滑动，且不是惯性滑动时收起输入框
-    if (scrollingPosition.userScrollDirection == ScrollDirection.reverse
-    && scrollingPosition.activity is DragScrollActivity) {
+    if (scrollingPosition.userScrollDirection == ScrollDirection.reverse &&
+        scrollingPosition.activity is DragScrollActivity) {
       widget.inputFocusNode.unfocus();
     }
   }
 
   void _scrollToBottom() {
-    _scrollController.animateTo(
-      _scrollController.position.maxScrollExtent,
+    widget.scrollController.animateTo(
+      widget.scrollController.position.maxScrollExtent,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOut,
     );
@@ -83,10 +87,10 @@ class _ChatMessageListState extends State<ChatMessageList> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.isLoading) {
+    if (widget.isGenerating) {
       _scrollToBottom();
     }
-    
+
     return Expanded(
       child: Stack(
         children: [
@@ -106,14 +110,25 @@ class _ChatMessageListState extends State<ChatMessageList> {
             },
             blendMode: BlendMode.dstIn,
             child: ListView.builder(
-              controller: _scrollController,
+              controller: widget.scrollController,
               padding: const EdgeInsets.all(8.0),
-              itemCount: widget.messages.length,
+              itemCount:
+                  widget.messages.length + (widget.hasMoreMessages ? 1 : 0),
               itemBuilder: (context, index) {
-                final message = widget.messages[index];
+                if (index == 0 && widget.hasMoreMessages) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                }
+
+                final messageIndex = index - (widget.hasMoreMessages ? 1 : 0);
+                final message = widget.messages[messageIndex];
                 return Align(
-                  alignment: message.isUser 
-                      ? Alignment.centerRight 
+                  alignment: message.isUser
+                      ? Alignment.centerRight
                       : Alignment.centerLeft,
                   child: _buildMessageItem(message),
                 );
@@ -126,7 +141,8 @@ class _ChatMessageListState extends State<ChatMessageList> {
               bottom: 16,
               child: FloatingActionButton(
                 mini: true,
-                backgroundColor: Theme.of(context).primaryColor.withOpacity(0.9),
+                backgroundColor:
+                    Theme.of(context).primaryColor.withOpacity(0.9),
                 onPressed: _scrollToBottom,
                 child: const Icon(
                   Icons.keyboard_arrow_down,
@@ -162,35 +178,34 @@ class _ChatMessageListState extends State<ChatMessageList> {
           Container(
             padding: const EdgeInsets.all(12.0),
             decoration: BoxDecoration(
-              color: message.isUser 
-                  ? Colors.blue[100] 
-                  : Colors.grey[300],
+              color: message.isUser ? Colors.blue[100] : Colors.grey[180],
               borderRadius: BorderRadius.circular(12.0),
-              border: !message.isUser && message.status != MessageStatus.completed
-                  ? Border.all(
-                      color: _getStatusColor(message.status),
-                      width: 1.0,
-                    )
-                  : null,
+              border:
+                  !message.isUser && message.status != MessageStatus.completed
+                      ? Border.all(
+                          color: _getStatusColor(message.status),
+                          width: 1.0,
+                        )
+                      : null,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // 消息内容
                 message.isUser
-                    ? SelectableText(message.text)
+                    ? SelectableText(message.text, style: const TextStyle(fontSize: 16))
                     // : MarkdownWidgetImpl(data: message.text),
                     : FlutterMarkdownImpl(data: message.text),
                 // 状态提示文本
-                if (!message.isUser && message.status != MessageStatus.completed)
+                if (!message.isUser &&
+                    message.status != MessageStatus.completed)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
                       _getStatusText(message.status),
                       style: TextStyle(
                         fontSize: 10,
-                        color: _getStatusColor(message.status)
-                            .withOpacity(0.8),
+                        color: _getStatusColor(message.status).withOpacity(0.8),
                       ),
                     ),
                   ),
@@ -215,4 +230,3 @@ class _ChatMessageListState extends State<ChatMessageList> {
     }
   }
 }
-
