@@ -82,7 +82,33 @@ class DatabaseHelper {
       final db = await database;
       final List<Map<String, dynamic>> maps = await db.query(
         'messages',
-        orderBy: 'timestamp ASC',
+        orderBy: 'timestamp DESC',
+        limit: 20, // 默认加载最新的20条消息
+      );
+
+      Logger.i(_tag, '成功加载 ${maps.length} 条历史消息');
+      return List.generate(maps.length, (i) {
+        return ChatMessage.fromMap(maps[i]);
+      }).reversed.toList(); // 反转列表以保持时间顺序
+    } catch (e, stackTrace) {
+      Logger.e(_tag, '加载历史消息失败', e);
+      Logger.e(_tag, '堆栈跟踪', stackTrace);
+      rethrow;
+    }
+  }
+
+  Future<List<ChatMessage>> getMessagesWithPagination({
+    required int limit,
+    required int offset,
+  }) async {
+    try {
+      Logger.d(_tag, '开始分页加载历史消息...');
+      final db = await database;
+      final List<Map<String, dynamic>> maps = await db.query(
+        'messages',
+        orderBy: 'timestamp DESC',
+        limit: limit,
+        offset: offset,
       );
 
       Logger.i(_tag, '成功加载 ${maps.length} 条历史消息');
@@ -90,8 +116,19 @@ class DatabaseHelper {
         return ChatMessage.fromMap(maps[i]);
       });
     } catch (e, stackTrace) {
-      Logger.e(_tag, '加载历史消息失败', e);
+      Logger.e(_tag, '分页加载历史消息失败', e);
       Logger.e(_tag, '堆栈跟踪', stackTrace);
+      rethrow;
+    }
+  }
+
+  Future<int> getTotalMessageCount() async {
+    try {
+      final db = await database;
+      final result = await db.rawQuery('SELECT COUNT(*) as count FROM messages');
+      return Sqflite.firstIntValue(result) ?? 0;
+    } catch (e) {
+      Logger.e(_tag, '获取消息总数失败', e);
       rethrow;
     }
   }

@@ -28,10 +28,14 @@ class _ChatPageState extends State<ChatPage> {
   final FocusNode _focusNode = FocusNode();
   late final ChatService _chatService;
   final DatabaseHelper _dbHelper = DatabaseHelper();
-  bool _isLoading = false;
+  bool _isGenerating = false;
+  bool _isLoadingMore = false;
+  bool _hasMoreMessages = true;
   StreamSubscription? _streamSubscription;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isInitializing = true;
+  final ScrollController _scrollController = ScrollController();
+  static const int _pageSize = 20;
 
   @override
   void initState() {
@@ -44,6 +48,14 @@ class _ChatPageState extends State<ChatPage> {
     });
     _initChatService();
     _loadMessages();
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels <=
+        _scrollController.position.minScrollExtent + 100) {
+      _loadMoreMessages();
+    }
   }
 
   void _initChatService() {
@@ -67,13 +79,54 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  Future<void> _loadMoreMessages() async {
+    if (_isLoadingMore || !_hasMoreMessages) return;
+
+    setState(() {
+      _isLoadingMore = true;
+    });
+
+    try {
+      final currentCount = _messages.length;
+      final newMessages = await _dbHelper.getMessagesWithPagination(
+        limit: _pageSize,
+        offset: currentCount,
+      );
+
+      if (newMessages.isEmpty) {
+        setState(() {
+          _hasMoreMessages = false;
+        });
+        return;
+      }
+
+      setState(() {
+        _messages.insertAll(0, newMessages);
+      });
+    } catch (e) {
+      Logger.e(_tag, '加载更多消息失败', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载更多消息失败: $e')),
+        );
+      }
+    } finally {
+      setState(() {
+        _isLoadingMore = false;
+      });
+    }
+  }
+
   Future<void> _loadMessages() async {
     try {
       Logger.d(_tag, '开始加载历史消息...');
       final messages = await _dbHelper.getMessages();
+      final totalCount = await _dbHelper.getTotalMessageCount();
+
       setState(() {
         _messages.clear();
         _messages.addAll(messages);
+        _hasMoreMessages = totalCount > messages.length;
         _isInitializing = false;
       });
       Logger.i(_tag, '成功加载 ${messages.length} 条历史消息');
@@ -122,7 +175,7 @@ class _ChatPageState extends State<ChatPage> {
       setState(() {
         _messages.add(userMessage);
         _messages.add(aiMessage);
-        _isLoading = true;
+        _isGenerating = true;
       });
 
       Logger.d(_tag, '开始接收AI响应流，历史消息数量: ${historyMessages.length}');
@@ -142,7 +195,7 @@ class _ChatPageState extends State<ChatPage> {
           if (!mounted) return;
           setState(() {
             aiMessage.status = MessageStatus.failed;
-            _isLoading = false;
+            _isGenerating = false;
           });
           _dbHelper.updateMessageStatus(aiMessageId, MessageStatus.failed);
           ScaffoldMessenger.of(context).showSnackBar(
@@ -155,7 +208,7 @@ class _ChatPageState extends State<ChatPage> {
           if (aiMessage.status != MessageStatus.interrupted) {
             setState(() {
               aiMessage.status = MessageStatus.completed;
-              _isLoading = false;
+              _isGenerating = false;
             });
             _dbHelper.updateMessageStatus(aiMessageId, MessageStatus.completed);
           }
@@ -168,7 +221,7 @@ class _ChatPageState extends State<ChatPage> {
       if (!mounted) return;
       setState(() {
         aiMessage.status = MessageStatus.failed;
-        _isLoading = false;
+        _isGenerating = false;
       });
       if (aiMessage.id != null) {
         _dbHelper.updateMessageStatus(aiMessage.id!, MessageStatus.failed);
@@ -184,10 +237,10 @@ class _ChatPageState extends State<ChatPage> {
   void cancelStreamSubscription() {
     _streamSubscription?.cancel();
     _streamSubscription = null;
-    _isLoading = false;
+    _isGenerating = false;
     if (_messages.isEmpty) return;
-    final lastIndex =
-        _messages.lastIndexWhere((message) => message.role == MessageRole.assistant);
+    final lastIndex = _messages
+        .lastIndexWhere((message) => message.role == MessageRole.assistant);
     if (lastIndex == -1) return;
     final aiMessage = _messages[lastIndex];
     // 如果是主动取消（例如发送新消息），则标记为中断状态
@@ -276,32 +329,51 @@ class _ChatPageState extends State<ChatPage> {
             _scaffoldKey.currentState?.openDrawer();
           }
         },
-        child: Column(
+        child: Stack(
           children: [
-            ChatMessageList(
-              messages: _messages,
-              isLoading: _isLoading,
-              inputFocusNode: _focusNode,
-            ),
-            Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 4,
-                    offset: const Offset(0, -1),
+            Column(children: [
+              Expanded(
+                child: ChatMessageList(
+                  messages: _messages,
+                  isGenerating: _isGenerating,
+                  inputFocusNode: _focusNode,
+                  scrollController: _scrollController,
+                  isLoadingMore: _isLoadingMore,
+                  hasMoreMessages: _hasMoreMessages,
+                ),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 4,
+                      offset: const Offset(0, -1),
+                    ),
+                  ],
+                ),
+                child: ChatInput(
+                  controller: _textController,
+                  focusNode: _focusNode,
+                  onSendMessage: _sendMessage,
+                  isGenerating: _isGenerating,
+                  onCancel: cancelStreamSubscription,
+                ),
+              ),
+            ]),
+            if (_isLoadingMore)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: LinearProgressIndicator(
+                  backgroundColor: Colors.transparent,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    Theme.of(context).primaryColor,
                   ),
-                ],
+                ),
               ),
-              child: ChatInput(
-                controller: _textController,
-                focusNode: _focusNode,
-                onSendMessage: _sendMessage,
-                isGenerating: _isLoading,
-                onCancel: cancelStreamSubscription,
-              ),
-            ),
           ],
         ),
       ),
@@ -314,6 +386,7 @@ class _ChatPageState extends State<ChatPage> {
     _streamSubscription?.cancel();
     _textController.dispose();
     _focusNode.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 }
