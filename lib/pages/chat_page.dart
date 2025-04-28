@@ -52,8 +52,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels <=
-        _scrollController.position.minScrollExtent + 100) {
+    if (_scrollController.position.pixels <= 100 && !_isLoadingMore) {
       _loadMoreMessages();
     }
   }
@@ -100,6 +99,7 @@ class _ChatPageState extends State<ChatPage> {
         return;
       }
 
+      // 将新消息插入到列表开头
       setState(() {
         _messages.insertAll(0, newMessages);
       });

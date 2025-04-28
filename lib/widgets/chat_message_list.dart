@@ -43,9 +43,8 @@ class _ChatMessageListState extends State<ChatMessageList> {
   }
 
   void _scrollListener() {
-    final maxScroll = widget.scrollController.position.maxScrollExtent;
     final currentScroll = widget.scrollController.offset;
-    final isNearBottom = (maxScroll - currentScroll) <= 100;
+    final isNearBottom = currentScroll <= 100;
 
     if (_isNearBottom != isNearBottom) {
       setState(() {
@@ -63,7 +62,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
 
   void _scrollToBottom() {
     widget.scrollController.animateTo(
-      widget.scrollController.position.maxScrollExtent,
+      0,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOut,
     );
@@ -112,10 +111,10 @@ class _ChatMessageListState extends State<ChatMessageList> {
             child: ListView.builder(
               controller: widget.scrollController,
               padding: const EdgeInsets.all(8.0),
-              itemCount:
-                  widget.messages.length + (widget.hasMoreMessages ? 1 : 0),
+              reverse: true,
+              itemCount: widget.messages.length + (widget.hasMoreMessages ? 1 : 0),
               itemBuilder: (context, index) {
-                if (index == 0 && widget.hasMoreMessages) {
+                if (widget.hasMoreMessages && index >= widget.messages.length) {
                   return const Center(
                     child: Padding(
                       padding: EdgeInsets.all(8.0),
@@ -124,11 +123,10 @@ class _ChatMessageListState extends State<ChatMessageList> {
                   );
                 }
 
-                final messageIndex = index - (widget.hasMoreMessages ? 1 : 0);
-                final message = widget.messages[messageIndex];
+                final message = widget.messages[index];
                 return Align(
-                  alignment: message.isUser
-                      ? Alignment.centerRight
+                  alignment: message.isUser 
+                      ? Alignment.centerRight 
                       : Alignment.centerLeft,
                   child: _buildMessageItem(message),
                 );
@@ -141,8 +139,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
               bottom: 16,
               child: FloatingActionButton(
                 mini: true,
-                backgroundColor:
-                    Theme.of(context).primaryColor.withOpacity(0.9),
+                backgroundColor: Theme.of(context).primaryColor.withOpacity(0.9),
                 onPressed: _scrollToBottom,
                 child: const Icon(
                   Icons.keyboard_arrow_down,
