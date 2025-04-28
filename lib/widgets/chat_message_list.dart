@@ -90,8 +90,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
       _scrollToBottom();
     }
 
-    return Expanded(
-      child: Stack(
+    return Stack(
         children: [
           ShaderMask(
             shaderCallback: (Rect bounds) {
@@ -148,7 +147,6 @@ class _ChatMessageListState extends State<ChatMessageList> {
               ),
             ),
         ],
-      ),
     );
   }
 
