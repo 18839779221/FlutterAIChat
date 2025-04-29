@@ -204,7 +204,8 @@ class _ChatPageState extends State<ChatPage> {
               setState(() {
                 aiMessage.appendReasoning(data['content']);
               });
-              await _dbHelper.updateMessage(aiMessageId, aiMessage.text);
+              // 更新数据库中的推理内容
+              await _dbHelper.updateMessageReasoning(aiMessageId, aiMessage.reasoningContent);
             }
           } catch (e) {
             Logger.e(_tag, '处理响应数据失败', e);
