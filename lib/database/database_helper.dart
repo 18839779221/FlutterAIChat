@@ -89,7 +89,7 @@ class DatabaseHelper {
       Logger.i(_tag, '成功加载 ${maps.length} 条历史消息');
       return List.generate(maps.length, (i) {
         return ChatMessage.fromMap(maps[i]);
-      }); // 反转列表以保持时间顺序
+      });
     } catch (e, stackTrace) {
       Logger.e(_tag, '加载历史消息失败', e);
       Logger.e(_tag, '堆栈跟踪', stackTrace);

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import '../models/chat_message.dart';
@@ -52,7 +53,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels <= 100 && !_isLoadingMore) {
+    if (_scrollController.position.pixels <= _scrollController.position.minScrollExtent + 100 && !_isLoadingMore) {
       _loadMoreMessages();
     }
   }
@@ -101,7 +102,7 @@ class _ChatPageState extends State<ChatPage> {
 
       // 将新消息插入到列表开头
       setState(() {
-        _messages.insertAll(0, newMessages);
+        _messages.addAll(newMessages);
       });
     } catch (e) {
       Logger.e(_tag, '加载更多消息失败', e);
@@ -155,6 +156,9 @@ class _ChatPageState extends State<ChatPage> {
       status: MessageStatus.completed, // 用户消息直接标记为完成
     );
 
+    // 避免消息时间戳一致，延迟1毫秒
+    sleep(Duration(milliseconds: 1));
+
     final aiMessage = ChatMessage(
       text: '',
       role: MessageRole.assistant,
@@ -173,8 +177,8 @@ class _ChatPageState extends State<ChatPage> {
       final historyMessages = List<ChatMessage>.from(_messages);
 
       setState(() {
-        _messages.add(userMessage);
-        _messages.add(aiMessage);
+        _messages.insert(0, userMessage);
+        _messages.insert(0, aiMessage);
         _isGenerating = true;
       });
 
