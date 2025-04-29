@@ -4,6 +4,14 @@ import '../utils/logger.dart';
 import '../models/context/message_context_strategy.dart';
 import '../models/context/context_strategies.dart';
 
+class ChatConfig {
+  bool useReasoning = false;
+
+  ChatConfig({
+    required this.useReasoning,
+  });
+}
+
 class ChatService {
   static const String _tag = 'ChatService';
   final BaseLLM _llm;
@@ -17,7 +25,7 @@ class ChatService {
   }) : _llm = llm,
        _contextStrategy = contextStrategy ?? TokenBasedStrategy();
 
-  Stream<String> sendMessageStream(String message, List<ChatMessage> history) async* {
+  Stream<String> sendMessageStream(String message, List<ChatMessage> history, ChatConfig config) async* {
     try {
       Logger.i(_tag, '准备发送消息，历史消息数: ${history.length}');
       
@@ -34,7 +42,7 @@ class ChatService {
         ),
       ];
 
-      await for (final content in _llm.chatStream(messages)) {
+      await for (final content in _llm.chatStream(messages, config)) {
         yield content;
       }
     } catch (e, stackTrace) {

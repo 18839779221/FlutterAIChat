@@ -23,6 +23,7 @@ class ChatMessage {
   final DateTime timestamp;
   int? id;
   MessageStatus status;
+  String? reasoningContent; // 推理过程
 
   ChatMessage({
     required this.text,
@@ -30,6 +31,7 @@ class ChatMessage {
     this.id,
     DateTime? timestamp,
     this.status = MessageStatus.initial,
+    this.reasoningContent,
   }) : timestamp = timestamp ?? DateTime.now();
 
   Map<String, dynamic> toMap() {
@@ -38,12 +40,17 @@ class ChatMessage {
       'role': role.toString().split('.').last,
       'timestamp': timestamp.millisecondsSinceEpoch,
       'status': status.toString().split('.').last,
+      'reasoning_content': reasoningContent,
       if (id != null) 'id': id,
     };
   }
 
   void appendText(String newText) {
     text += newText;
+  }
+
+  void appendReasoning(String newReasoningContent) {
+    reasoningContent = (reasoningContent ?? '') + newReasoningContent;
   }
 
   factory ChatMessage.fromMap(Map<String, dynamic> map) {
@@ -58,6 +65,7 @@ class ChatMessage {
         (e) => e.toString().split('.').last == (map['status'] ?? 'initial'),
         orElse: () => MessageStatus.initial,
       ),
+      reasoningContent: map['reasoning_content'],
     );
   }
 
