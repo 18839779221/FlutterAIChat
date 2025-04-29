@@ -26,7 +26,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 2,
+        version: 3,
         onCreate: (Database db, int version) async {
           Logger.i(_tag, '创建数据库表...');
           await db.execute('''
@@ -35,7 +35,8 @@ class DatabaseHelper {
               text TEXT NOT NULL,
               role TEXT NOT NULL,
               timestamp INTEGER NOT NULL,
-              status TEXT NOT NULL DEFAULT 'initial'
+              status TEXT NOT NULL DEFAULT 'initial',
+              reasoning_content TEXT
             )
           ''');
           Logger.i(_tag, '数据库表创建成功');
@@ -45,6 +46,12 @@ class DatabaseHelper {
             await db.execute('''
               ALTER TABLE messages 
               ADD COLUMN status TEXT NOT NULL DEFAULT 'initial'
+            ''');
+          }
+          if (oldVersion < 3) {
+            await db.execute('''
+              ALTER TABLE messages 
+              ADD COLUMN reasoning_content TEXT
             ''');
           }
         },

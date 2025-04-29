@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import '../models/chat_message.dart';
@@ -37,6 +38,7 @@ class _ChatPageState extends State<ChatPage> {
   bool _isInitializing = true;
   final ScrollController _scrollController = ScrollController();
   static const int _pageSize = 20;
+  bool _useReasoning = false; // 是否使用推理模式
 
   @override
   void initState() {
@@ -153,7 +155,7 @@ class _ChatPageState extends State<ChatPage> {
     final userMessage = ChatMessage(
       text: text,
       role: MessageRole.user,
-      status: MessageStatus.completed, // 用户消息直接标记为完成
+      status: MessageStatus.completed,
     );
 
     // 避免消息时间戳一致，延迟1毫秒
@@ -162,7 +164,7 @@ class _ChatPageState extends State<ChatPage> {
     final aiMessage = ChatMessage(
       text: '',
       role: MessageRole.assistant,
-      status: MessageStatus.generating, // AI 消息初始状态为生成中
+      status: MessageStatus.generating,
     );
 
     try {
@@ -185,14 +187,28 @@ class _ChatPageState extends State<ChatPage> {
       Logger.d(_tag, '开始接收AI响应流，历史消息数量: ${historyMessages.length}');
 
       _streamSubscription =
-          _chatService.sendMessageStream(text, historyMessages).listen(
+          _chatService.sendMessageStream(text, historyMessages, ChatConfig(useReasoning: _useReasoning)).listen(
         (content) async {
           if (!mounted) return;
-          Logger.d(_tag, '收到AI响应片段: $content');
-          setState(() {
-            aiMessage.appendText(content);
-          });
-          await _dbHelper.updateMessage(aiMessageId, aiMessage.text);
+          
+          try {
+            final data = jsonDecode(content);
+            if (data['type'] == 'content') {
+              Logger.d(_tag, '收到AI响应片段: ${data['content']}');
+              setState(() {
+                aiMessage.appendText(data['content']);
+              });
+              await _dbHelper.updateMessage(aiMessageId, aiMessage.text);
+            } else if (data['type'] == 'reasoning') {
+              Logger.d(_tag, '收到推理内容: ${data['content']}');
+              setState(() {
+                aiMessage.appendReasoning(data['content']);
+              });
+              await _dbHelper.updateMessage(aiMessageId, aiMessage.text);
+            }
+          } catch (e) {
+            Logger.e(_tag, '处理响应数据失败', e);
+          }
         },
         onError: (error) {
           Logger.e(_tag, 'AI响应出错', error);
@@ -320,6 +336,15 @@ class _ChatPageState extends State<ChatPage> {
         ),
         title: Text(widget.title),
         actions: [
+          // 推理模式开关
+          Switch(
+            value: _useReasoning,
+            onChanged: (value) {
+              setState(() {
+                _useReasoning = value;
+              });
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             tooltip: '清空历史记录',

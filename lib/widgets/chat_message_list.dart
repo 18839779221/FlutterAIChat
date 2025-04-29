@@ -173,19 +173,45 @@ class _ChatMessageListState extends State<ChatMessageList> {
           Container(
             padding: const EdgeInsets.all(12.0),
             decoration: BoxDecoration(
-              color: message.isUser ? Colors.blue[100] : Colors.grey[180],
+              color: message.isUser ? Colors.blue[50] : Colors.grey[180],
               borderRadius: BorderRadius.circular(12.0),
-              border:
-                  !message.isUser && message.status != MessageStatus.completed
-                      ? Border.all(
-                          color: _getStatusColor(message.status),
-                          width: 1.0,
-                        )
-                      : null,
+              border: !message.isUser && message.status != MessageStatus.completed
+                  ? Border.all(
+                      color: _getStatusColor(message.status),
+                      width: 1.0,
+                    )
+                  : null,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // 推理内容
+                if (!message.isUser && message.reasoningContent != null && message.reasoningContent!.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8.0),
+                    padding: const EdgeInsets.all(8.0),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.7),
+                      borderRadius: BorderRadius.circular(8.0),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '推理过程',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          message.reasoningContent!,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
                 // 消息内容
                 message.isUser
                     ? SelectableText(message.text, style: const TextStyle(fontSize: 16))

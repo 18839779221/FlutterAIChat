@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:ai_chat/services/chat_service.dart';
 import 'package:http/http.dart' as http;
 import '../../utils/logger.dart';
 import '../chat_message.dart';
@@ -13,7 +14,13 @@ class DeepSeekLLM implements BaseLLM {
   );
 
   @override
-  String get modelName => 'deepseek-chat';
+  String getModelName(ChatConfig config) {
+    if (config.useReasoning) {
+      return "deepseek-reasoner";
+    } else {
+      return 'deepseek-chat';
+    }
+  }
 
   @override
   Map<String, dynamic> get config => {
@@ -23,7 +30,7 @@ class DeepSeekLLM implements BaseLLM {
   };
 
   @override
-  Stream<String> chatStream(List<ChatMessage> messages) async* {
+  Stream<String> chatStream(List<ChatMessage> messages, ChatConfig config) async* {
     try {
       Logger.i(_tag, '准备发送消息，消息数量: ${messages.length}');
 
@@ -34,7 +41,7 @@ class DeepSeekLLM implements BaseLLM {
       });
 
       request.body = jsonEncode({
-        'model': modelName,
+        'model': getModelName(config),
         'messages': messages.map((msg) => {
           'role': msg.role.toString().split('.').last,
           'content': msg.text,
@@ -63,9 +70,21 @@ class DeepSeekLLM implements BaseLLM {
               try {
                 final data = jsonDecode(jsonStr);
                 final content = data['choices'][0]['delta']['content'];
+                final reasoning = data['choices'][0]['delta']['reasoning_content'];
+                
+                if (reasoning != null) {
+                  yield jsonEncode({
+                    'type': 'reasoning',
+                    'content': reasoning,
+                  });
+                }
+                
                 if (content != null) {
                   Logger.d(_tag, '收到内容片段: $content');
-                  yield content;
+                  yield jsonEncode({
+                    'type': 'content',
+                    'content': content,
+                  });
                 }
               } catch (e) {
                 Logger.e(_tag, 'JSON解析错误: $e');
@@ -84,7 +103,7 @@ class DeepSeekLLM implements BaseLLM {
   }
 
   @override
-  Future<bool> validateApiKey() async {
+  Future<bool> validateApiKey(ChatConfig config) async {
     try {
       final response = await http.post(
         Uri.parse(_config.apiUrl),
@@ -92,7 +111,7 @@ class DeepSeekLLM implements BaseLLM {
           'Authorization': 'Bearer ${_config.apiKey}',
         },
         body: jsonEncode({
-          'model': modelName,
+          'model': getModelName(config),
           'messages': [{'role': 'user', 'content': 'test'}],
           'max_tokens': 1,
         }),
