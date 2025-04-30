@@ -72,15 +72,15 @@ class _ChatMessageListState extends State<ChatMessageList> {
   Color _getStatusColor(MessageStatus status) {
     switch (status) {
       case MessageStatus.generating:
-        return Colors.blue.withOpacity(0.5);
+        return Colors.blue.withOpacity(0.1);
       case MessageStatus.completed:
-        return Colors.green.withOpacity(0.3);
+        return Colors.green.withOpacity(0.2);
       case MessageStatus.interrupted:
-        return Colors.orange.withOpacity(0.3);
+        return Colors.orange.withOpacity(0.2);
       case MessageStatus.failed:
-        return Colors.red.withOpacity(0.3);
+        return Colors.red.withOpacity(0.2);
       default:
-        return Colors.grey.withOpacity(0.3);
+        return Colors.grey.withOpacity(0.2);
     }
   }
 
@@ -205,7 +205,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        Text(
+                        SelectableText(
                           message.reasoningContent!,
                           style: const TextStyle(fontSize: 12),
                         ),
@@ -214,7 +214,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
                   ),
                 // 消息内容
                 message.isUser
-                    ? SelectableText(message.text, style: const TextStyle(fontSize: 16))
+                    ? Text(message.text, style: const TextStyle(fontSize: 16))
                     // : MarkdownWidgetImpl(data: message.text),
                     : FlutterMarkdownImpl(data: message.text),
                 // 状态提示文本
