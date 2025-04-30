@@ -226,4 +226,21 @@ class DatabaseHelper {
       rethrow;
     }
   }
+
+  Future<void> deleteMessage(int id) async {
+    try {
+      Logger.w(_tag, '删除消息 ID: $id');
+      final db = await database;
+      await db.delete(
+        'messages',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      Logger.i(_tag, '消息删除成功');
+    } catch (e, stackTrace) {
+      Logger.e(_tag, '删除消息失败', e);
+      Logger.e(_tag, '堆栈跟踪', stackTrace);
+      rethrow;
+    }
+  }
 } 

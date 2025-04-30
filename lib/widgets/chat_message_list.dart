@@ -1,7 +1,9 @@
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
 import 'package:ai_chat/widgets/markdown/markdown_widget_impl.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import '../models/chat_message.dart';
 
 class ChatMessageList extends StatefulWidget {
@@ -11,6 +13,7 @@ class ChatMessageList extends StatefulWidget {
   final bool hasMoreMessages;
   final FocusNode inputFocusNode;
   final ScrollController scrollController;
+  final Function(int index) onDeleteMessage;
 
   const ChatMessageList({
     super.key,
@@ -18,6 +21,7 @@ class ChatMessageList extends StatefulWidget {
     required this.isGenerating,
     required this.inputFocusNode,
     required this.scrollController,
+    required this.onDeleteMessage,
     this.isLoadingMore = false,
     this.hasMoreMessages = true,
   });
@@ -156,85 +160,123 @@ class _ChatMessageListState extends State<ChatMessageList> {
         maxWidth: MediaQuery.of(context).size.width,
       ),
       margin: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Stack(
-        children: [
-          // 状态背景指示器
-          if (!message.isUser && message.status != MessageStatus.completed)
-            Positioned.fill(
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                decoration: BoxDecoration(
-                  color: _getStatusColor(message.status),
-                  borderRadius: BorderRadius.circular(12.0),
+      child: GestureDetector(
+        onLongPress: () {
+          _showMessageOptionMenu(message);
+        },
+        child: Stack(
+          children: [
+            // 状态背景指示器
+            if (!message.isUser && message.status != MessageStatus.completed)
+              Positioned.fill(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  decoration: BoxDecoration(
+                    color: _getStatusColor(message.status),
+                    borderRadius: BorderRadius.circular(12.0),
+                  ),
                 ),
               ),
-            ),
-          // 消息内容
-          Container(
-            padding: const EdgeInsets.all(12.0),
-            decoration: BoxDecoration(
-              color: message.isUser ? Colors.blue[50] : Colors.grey[180],
-              borderRadius: BorderRadius.circular(12.0),
-              border: !message.isUser && message.status != MessageStatus.completed
-                  ? Border.all(
-                      color: _getStatusColor(message.status),
-                      width: 1.0,
-                    )
-                  : null,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 推理内容
-                if (!message.isUser && message.reasoningContent != null && message.reasoningContent!.isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 8.0),
-                    padding: const EdgeInsets.all(8.0),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.7),
-                      borderRadius: BorderRadius.circular(8.0),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          '推理过程',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
+            // 消息内容
+            Container(
+              padding: const EdgeInsets.all(12.0),
+              decoration: BoxDecoration(
+                color: message.isUser ? Colors.blue[50] : Colors.grey[180],
+                borderRadius: BorderRadius.circular(12.0),
+                border: !message.isUser && message.status != MessageStatus.completed
+                    ? Border.all(
+                        color: _getStatusColor(message.status),
+                        width: 1.0,
+                      )
+                    : null,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 推理内容
+                  if (!message.isUser && message.reasoningContent != null && message.reasoningContent!.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8.0),
+                      padding: const EdgeInsets.all(8.0),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(8.0),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '推理过程',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        SelectableText(
-                          message.reasoningContent!,
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                // 消息内容
-                message.isUser
-                    ? Text(message.text, style: const TextStyle(fontSize: 16))
-                    // : MarkdownWidgetImpl(data: message.text),
-                    : FlutterMarkdownImpl(data: message.text),
-                // 状态提示文本
-                if (!message.isUser &&
-                    message.status != MessageStatus.completed)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      _getStatusText(message.status),
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: _getStatusColor(message.status).withOpacity(0.8),
+                          const SizedBox(height: 4),
+                          SelectableText(
+                            message.reasoningContent!,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-              ],
+                  // 消息内容
+                  message.isUser
+                      ? Text(message.text, style: const TextStyle(fontSize: 16))
+                      : FlutterMarkdownImpl(data: message.text),
+                  // 状态提示文本
+                  if (!message.isUser && message.status != MessageStatus.completed)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        _getStatusText(message.status),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: _getStatusColor(message.status).withOpacity(0.8),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
+    );
+  }
+
+  _showMessageOptionMenu(ChatMessage message) {
+    showCupertinoModalPopup(
+        context: context,
+        builder: (context) => CupertinoActionSheet(
+          actions: [
+            CupertinoActionSheetAction(
+              child: Text('复制'),
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: message.text));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('已复制到剪贴板')),
+                );
+                Navigator.pop(context); // 关闭菜单
+              },
+            ),
+            CupertinoActionSheetAction(
+              child: Text('删除'),
+              onPressed: () {
+                // 找到消息在列表中的索引
+                final index = widget.messages.indexOf(message);
+                if (index != -1) {
+                  widget.onDeleteMessage(index);
+                }
+                Navigator.pop(context);
+              },
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            child: Text('取消'),
+            onPressed: () => Navigator.pop(context),
+          ),
+        )
     );
   }
 

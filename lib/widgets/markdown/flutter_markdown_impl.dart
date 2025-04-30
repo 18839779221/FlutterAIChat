@@ -22,7 +22,7 @@ class _FlutterMarkdownImplState extends State<FlutterMarkdownImpl> {
   Widget build(BuildContext context) {
     return MarkdownBody(
       data: widget.data,
-      selectable: true,
+      selectable: false,
       fitContent: false,
       onTapLink: (text, href, title) => _launchUrl(text, href),
       styleSheet: MarkdownStyleSheet(

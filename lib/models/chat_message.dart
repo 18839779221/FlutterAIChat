@@ -70,4 +70,6 @@ class ChatMessage {
   }
 
   bool get isUser => role == MessageRole.user;
+
+  bool get isAssistant => role == MessageRole.assistant;
 } 
