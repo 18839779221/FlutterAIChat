@@ -169,7 +169,8 @@ class _ChatPageState extends State<ChatPage> {
 
     try {
       Logger.d(_tag, '保存用户消息到数据库...');
-      await _dbHelper.insertMessage(userMessage);
+      final userMessageId = await _dbHelper.insertMessage(userMessage);
+      userMessage.id = userMessageId;
 
       Logger.d(_tag, '创建AI消息占位...');
       final aiMessageId = await _dbHelper.insertMessage(aiMessage);
@@ -322,6 +323,57 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  Future<void> _deleteMessagePair(int index) async {
+    try {
+      final indexMessage = _messages[index];
+      ChatMessage? userMessage, aiMessage;
+      if (indexMessage.isUser) {
+        userMessage = _messages[index];
+        if (index > 0) {
+          aiMessage = _messages[index - 1];
+        }
+      } else {
+        aiMessage = _messages[index];
+        if (index < _messages.length - 1) {
+          userMessage = _messages[index + 1];
+        }
+      }
+
+      // 找到对应的AI消息
+      if (!(userMessage != null && aiMessage != null && userMessage.isUser && userMessage.id != null && aiMessage.isAssistant && aiMessage.id != null)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('待删除消息未找到')),
+        );
+        return;
+      }
+
+      // 从数据库中删除消息对
+      await Future(() {
+        _dbHelper.deleteMessage(userMessage!.id!);
+        _dbHelper.deleteMessage(aiMessage!.id!);
+      });
+
+      // 从内存中删除消息
+      setState(() {
+        _messages.remove(aiMessage);
+        _messages.remove(userMessage);
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('消息已删除')),
+        );
+      }
+    } catch (e) {
+      Logger.e(_tag, '删除消息失败', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('删除消息失败: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -359,51 +411,54 @@ class _ChatPageState extends State<ChatPage> {
             _scaffoldKey.currentState?.openDrawer();
           }
         },
-        child: Stack(
+        child: Column(
           children: [
-            Column(children: [
-              Expanded(
-                child: ChatMessageList(
-                  messages: _messages,
-                  isGenerating: _isGenerating,
-                  inputFocusNode: _focusNode,
-                  scrollController: _scrollController,
-                  isLoadingMore: _isLoadingMore,
-                  hasMoreMessages: _hasMoreMessages,
-                ),
-              ),
-              Container(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 4,
-                      offset: const Offset(0, -1),
-                    ),
-                  ],
-                ),
-                child: ChatInput(
-                  controller: _textController,
-                  focusNode: _focusNode,
-                  onSendMessage: _sendMessage,
-                  isGenerating: _isGenerating,
-                  onCancel: cancelStreamSubscription,
-                ),
-              ),
-            ]),
-            if (_isLoadingMore)
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: LinearProgressIndicator(
-                  backgroundColor: Colors.transparent,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    Theme.of(context).primaryColor,
+            Expanded(
+              child: Stack(
+                children: [
+                  ChatMessageList(
+                    messages: _messages,
+                    isGenerating: _isGenerating,
+                    inputFocusNode: _focusNode,
+                    scrollController: _scrollController,
+                    isLoadingMore: _isLoadingMore,
+                    hasMoreMessages: _hasMoreMessages,
+                    onDeleteMessage: _deleteMessagePair,
                   ),
-                ),
+                  if (_isLoadingMore)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: LinearProgressIndicator(
+                        backgroundColor: Colors.transparent,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Theme.of(context).primaryColor,
+                        ),
+                      ),
+                    ),
+                ],
               ),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, -1),
+                  ),
+                ],
+              ),
+              child: ChatInput(
+                controller: _textController,
+                focusNode: _focusNode,
+                onSendMessage: _sendMessage,
+                isGenerating: _isGenerating,
+                onCancel: cancelStreamSubscription,
+              ),
+            ),
           ],
         ),
       ),

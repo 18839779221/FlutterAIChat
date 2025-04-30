@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/idea.dart';
@@ -49,7 +50,29 @@ class TestPage extends StatelessWidget {
                 // ),
                 // splashRadius: 16,
               ),
-            )
+            ),
+            CupertinoContextMenu(
+              actions: [
+                CupertinoContextMenuAction(
+                  child: Text('收藏'),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                CupertinoContextMenuAction(
+                  isDestructiveAction: true,
+                  child: Text('删除'),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+              child: Container(
+                width: 300,
+                height: 150,
+                decoration: BoxDecoration(
+                  color: CupertinoColors.systemGrey6,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(CupertinoIcons.star, size: 50),
+              ),
+            ),
 
           ],
         ));
