@@ -389,15 +389,6 @@ class _ChatPageState extends State<ChatPage> {
         ),
         title: Text(widget.title),
         actions: [
-          // 推理模式开关
-          Switch(
-            value: _useReasoning,
-            onChanged: (value) {
-              setState(() {
-                _useReasoning = value;
-              });
-            },
-          ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             tooltip: '清空历史记录',
@@ -457,6 +448,12 @@ class _ChatPageState extends State<ChatPage> {
                 onSendMessage: _sendMessage,
                 isGenerating: _isGenerating,
                 onCancel: cancelStreamSubscription,
+                useReasoning: _useReasoning,
+                onReasoningChanged: (value) {
+                  setState(() {
+                    _useReasoning = value;
+                  });
+                },
               ),
             ),
           ],
