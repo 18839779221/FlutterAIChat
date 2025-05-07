@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../models/chat_message.dart';
 import '../services/chat_service.dart';
@@ -39,6 +40,7 @@ class _ChatPageState extends State<ChatPage> {
   final ScrollController _scrollController = ScrollController();
   static const int _pageSize = 20;
   bool _useReasoning = false; // 是否使用推理模式
+  String? _systemPrompt; // 添加系统提示词
 
   @override
   void initState() {
@@ -141,6 +143,40 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  void _showSystemPromptDialog() {
+    showCupertinoDialog(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('系统提示词'),
+        content: Padding(
+          padding: const EdgeInsets.only(top: 16.0),
+          child: CupertinoTextField(
+            controller: TextEditingController(text: _systemPrompt),
+            placeholder: '输入系统提示词...',
+            maxLines: 5,
+            minLines: 3,
+            onChanged: (value) {
+              _systemPrompt = value;
+            },
+          ),
+        ),
+        actions: [
+          CupertinoDialogAction(
+            child: const Text('取消'),
+            onPressed: () => Navigator.pop(context),
+          ),
+          CupertinoDialogAction(
+            child: const Text('确定'),
+            onPressed: () {
+              setState(() {});
+              Navigator.pop(context);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
@@ -151,6 +187,16 @@ class _ChatPageState extends State<ChatPage> {
 
     // 取消当前正在进行的响应
     cancelStreamSubscription();
+
+    // 如果有系统提示词，先发送系统消息
+    if (_systemPrompt != null && _systemPrompt!.isNotEmpty) {
+      final systemMessage = ChatMessage(
+        text: _systemPrompt!,
+        role: MessageRole.system,
+        status: MessageStatus.completed,
+      );
+      await _dbHelper.insertMessage(systemMessage);
+    }
 
     final userMessage = ChatMessage(
       text: text,
@@ -387,7 +433,47 @@ class _ChatPageState extends State<ChatPage> {
             _scaffoldKey.currentState?.openDrawer();
           },
         ),
-        title: Text(widget.title),
+        title: GestureDetector(
+          onTap: () {
+            showCupertinoModalPopup(
+              context: context,
+              builder: (context) => CupertinoActionSheet(
+                title: const Text('AI Chat'),
+                message: const Text('选择操作'),
+                actions: [
+                  CupertinoActionSheetAction(
+                    child: Text(_systemPrompt != null && _systemPrompt!.isNotEmpty 
+                      ? '修改系统提示词' 
+                      : '设置系统提示词'),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _showSystemPromptDialog();
+                    },
+                  ),
+                  CupertinoActionSheetAction(
+                    child: const Text('清空历史记录'),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _showClearHistoryDialog();
+                    },
+                  ),
+                ],
+                cancelButton: CupertinoActionSheetAction(
+                  child: const Text('取消'),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            );
+          },
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(widget.title),
+              const SizedBox(width: 4),
+              const Icon(Icons.arrow_drop_down, size: 20),
+            ],
+          ),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_outline),
