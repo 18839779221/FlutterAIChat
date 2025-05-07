@@ -38,7 +38,7 @@ class ChatInput extends StatelessWidget {
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom; // 键盘高度
 
     return Container(
-      padding: const EdgeInsets.all(8.0),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       margin: EdgeInsets.only(bottom: keyboardHeight > 0 ? 0 : bottomHomeHeight),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -47,11 +47,11 @@ class ChatInput extends StatelessWidget {
           Align(
             alignment: Alignment.centerLeft,
             child: Padding(
-              padding: const EdgeInsets.only(bottom: 8.0, left: 4.0),
+              padding: const EdgeInsets.only(left: 4.0),
               child: TextButton(
                 onPressed: () => onReasoningChanged(!useReasoning),
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                     side: BorderSide(
@@ -98,7 +98,7 @@ class ChatInput extends StatelessWidget {
                             border: InputBorder.none,
                             contentPadding: EdgeInsets.symmetric(
                               horizontal: 8,
-                              vertical: 8,
+                              vertical: 0,
                             ),
                           ),
                           onSubmitted: (text) {
