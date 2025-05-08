@@ -6,9 +6,11 @@ import '../models/context/context_strategies.dart';
 
 class ChatConfig {
   bool useReasoning = false;
+  String systemPrompt = "";
 
   ChatConfig({
     required this.useReasoning,
+    required this.systemPrompt,
   });
 }
 
@@ -41,6 +43,13 @@ class ChatService {
           role: MessageRole.user,
         ),
       ];
+
+      if (config.systemPrompt.isNotEmpty) {
+        messages.insert(0, ChatMessage(
+          text: config.systemPrompt,
+          role: MessageRole.system,
+        ));
+      }
 
       await for (final content in _llm.chatStream(messages, config)) {
         yield content;
