@@ -1,6 +1,7 @@
 import 'package:ai_chat/constants/route_constant.dart';
 import 'package:ai_chat/widgets/about_dialog.dart';
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 class ChatDrawer extends StatelessWidget {
@@ -8,6 +9,7 @@ class ChatDrawer extends StatelessWidget {
   final ChatGroup? currentGroup;
   final Function(ChatGroup) onGroupSelected;
   final Function() onNewGroup;
+  final Function(ChatGroup) onDeleteGroup;
 
   const ChatDrawer({
     super.key,
@@ -15,6 +17,7 @@ class ChatDrawer extends StatelessWidget {
     this.currentGroup,
     required this.onGroupSelected,
     required this.onNewGroup,
+    required this.onDeleteGroup,
   });
 
   @override
@@ -121,8 +124,34 @@ class ChatDrawer extends StatelessWidget {
           Expanded(
             child: ListView.builder(
               padding: EdgeInsets.zero,
-              itemCount: groups.length,
+              itemCount: groups.length + (currentGroup?.id == null ? 1 : 0),
               itemBuilder: (context, index) {
+                // 如果是最后一个位置且当前分组没有ID，显示当前分组
+                if (index == groups.length && currentGroup?.id == null) {
+                  return ListTile(
+                    leading: Icon(
+                      Icons.chat_bubble_outline,
+                      color: theme.primaryColor,
+                    ),
+                    title: Text(
+                      currentGroup!.title,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: theme.primaryColor,
+                      ),
+                    ),
+                    subtitle: const Text(
+                      '新对话',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                      ),
+                    ),
+                    selected: true,
+                    onTap: () {},
+                  );
+                }
+
                 final group = groups[index];
                 final isSelected = currentGroup?.id == group.id;
                 
@@ -147,6 +176,29 @@ class ChatDrawer extends StatelessWidget {
                   ),
                   selected: isSelected,
                   onTap: () => onGroupSelected(group),
+                  onLongPress: () {
+                    showCupertinoDialog(
+                      context: context,
+                      builder: (context) => CupertinoAlertDialog(
+                        title: const Text('删除对话'),
+                        content: Text('确定要删除"${group.title}"吗？此操作不可恢复。'),
+                        actions: [
+                          CupertinoDialogAction(
+                            child: const Text('取消'),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                          CupertinoDialogAction(
+                            isDestructiveAction: true,
+                            child: const Text('删除'),
+                            onPressed: () {
+                              Navigator.pop(context);
+                              onDeleteGroup(group);
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 );
               },
             ),

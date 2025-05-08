@@ -144,8 +144,6 @@ class _ChatPageState extends State<ChatPage> {
         title: '新对话 ${_groups.length + 1}',
         systemPrompt: _systemPrompt,
       );
-      final groupId = await _dbHelper.insertGroup(newGroup);
-      newGroup.id = groupId;
       
       setState(() {
         _currentGroup = newGroup;
@@ -234,6 +232,24 @@ class _ChatPageState extends State<ChatPage> {
     Logger.d(_tag, '准备发送新消息: ${text.substring(0, text.length.clamp(0, 50))}...');
 
     cancelStreamSubscription();
+
+    // 如果当前分组没有ID，说明是新建的分组，需要先保存到数据库
+    if (_currentGroup!.id == null) {
+      try {
+        final groupId = await _dbHelper.insertGroup(_currentGroup!);
+        _currentGroup = _currentGroup!.copyWith(id: groupId);
+        // 更新分组列表
+        await _loadGroups();
+      } catch (e) {
+        Logger.e(_tag, '保存新分组失败', e);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('保存新分组失败: $e')),
+          );
+        }
+        return;
+      }
+    }
 
     final userMessage = ChatMessage(
       text: text,
@@ -496,6 +512,55 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  Future<void> _deleteGroup(ChatGroup group) async {
+    try {
+      Logger.w(_tag, '开始删除分组: ${group.title}');
+      
+      // 删除分组及其所有消息
+      await _dbHelper.deleteGroup(group.id!);
+      
+      // 如果删除的是当前分组，需要切换到其他分组
+      if (_currentGroup?.id == group.id) {
+        final latestGroup = await _dbHelper.getLatestGroup();
+        if (latestGroup != null) {
+          setState(() {
+            _currentGroup = latestGroup;
+            _systemPrompt = latestGroup.systemPrompt;
+          });
+          await _loadMessages();
+        } else {
+          // 如果没有其他分组，创建新分组
+          await _createNewGroup();
+        }
+      }
+      
+      // 重新加载分组列表
+      await _loadGroups();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('分组已删除'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      
+      Logger.i(_tag, '分组删除成功');
+    } catch (e) {
+      Logger.e(_tag, '删除分组失败', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('删除分组失败: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -519,6 +584,7 @@ class _ChatPageState extends State<ChatPage> {
             Navigator.pop(context);
           }
         },
+        onDeleteGroup: _deleteGroup,
       ),
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
