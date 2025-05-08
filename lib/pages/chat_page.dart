@@ -291,7 +291,7 @@ class _ChatPageState extends State<ChatPage> {
       _streamSubscription = _chatService.sendMessageStream(
         text, 
         historyMessages,
-        ChatConfig(useReasoning: _useReasoning),
+        ChatConfig(useReasoning: _useReasoning, systemPrompt: _systemPrompt ?? ""),
       ).listen(
         (content) async {
           if (!mounted) return;
