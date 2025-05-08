@@ -236,8 +236,10 @@ class _ChatPageState extends State<ChatPage> {
     // 如果当前分组没有ID，说明是新建的分组，需要先保存到数据库
     if (_currentGroup!.id == null) {
       try {
-        final groupId = await _dbHelper.insertGroup(_currentGroup!);
-        _currentGroup = _currentGroup!.copyWith(id: groupId);
+        // 使用第一条消息作为分组标题
+        final newGroup = _currentGroup!.copyWith(title: text);
+        final groupId = await _dbHelper.insertGroup(newGroup);
+        _currentGroup = newGroup.copyWith(id: groupId);
         // 更新分组列表
         await _loadGroups();
       } catch (e) {
@@ -585,6 +587,7 @@ class _ChatPageState extends State<ChatPage> {
           }
         },
         onDeleteGroup: _deleteGroup,
+        isGenerating: _isGenerating,
       ),
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
@@ -632,7 +635,7 @@ class _ChatPageState extends State<ChatPage> {
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: '新建对话',
-            onPressed: _createNewGroup,
+            onPressed: !_isGenerating ? _createNewGroup : null,
           ),
         ],
       ),

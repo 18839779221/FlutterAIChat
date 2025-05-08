@@ -10,6 +10,7 @@ class ChatDrawer extends StatelessWidget {
   final Function(ChatGroup) onGroupSelected;
   final Function() onNewGroup;
   final Function(ChatGroup) onDeleteGroup;
+  final bool isGenerating;
 
   const ChatDrawer({
     super.key,
@@ -18,6 +19,7 @@ class ChatDrawer extends StatelessWidget {
     required this.onGroupSelected,
     required this.onNewGroup,
     required this.onDeleteGroup,
+    this.isGenerating = false,
   });
 
   @override
@@ -111,7 +113,7 @@ class ChatDrawer extends StatelessWidget {
             child: SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: onNewGroup,
+                onPressed: isGenerating ? null : onNewGroup,
                 icon: const Icon(Icons.add),
                 label: const Text('新建对话'),
                 style: ElevatedButton.styleFrom(
@@ -126,8 +128,8 @@ class ChatDrawer extends StatelessWidget {
               padding: EdgeInsets.zero,
               itemCount: groups.length + (currentGroup?.id == null ? 1 : 0),
               itemBuilder: (context, index) {
-                // 如果是最后一个位置且当前分组没有ID，显示当前分组
-                if (index == groups.length && currentGroup?.id == null) {
+                // 如果是第一个位置且当前分组没有ID，显示当前分组
+                if (index == 0 && currentGroup?.id == null) {
                   return ListTile(
                     leading: Icon(
                       Icons.chat_bubble_outline,
@@ -148,11 +150,13 @@ class ChatDrawer extends StatelessWidget {
                       ),
                     ),
                     selected: true,
-                    onTap: () {},
+                    onTap: null,
                   );
                 }
 
-                final group = groups[index];
+                // 调整索引以跳过临时分组
+                final adjustedIndex = currentGroup?.id == null ? index - 1 : index;
+                final group = groups[adjustedIndex];
                 final isSelected = currentGroup?.id == group.id;
                 
                 return ListTile(
@@ -166,6 +170,8 @@ class ChatDrawer extends StatelessWidget {
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                       color: isSelected ? theme.primaryColor : null,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   subtitle: Text(
                     '最后消息：${_formatDateTime(group.lastMessageAt)}',
@@ -175,8 +181,9 @@ class ChatDrawer extends StatelessWidget {
                     ),
                   ),
                   selected: isSelected,
-                  onTap: () => onGroupSelected(group),
-                  onLongPress: () {
+                  enabled: !isGenerating,
+                  onTap: isGenerating ? null : () => onGroupSelected(group),
+                  onLongPress: isGenerating ? null : () {
                     showCupertinoDialog(
                       context: context,
                       builder: (context) => CupertinoAlertDialog(
