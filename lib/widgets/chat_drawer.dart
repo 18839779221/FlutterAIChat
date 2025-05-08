@@ -1,9 +1,21 @@
 import 'package:ai_chat/constants/route_constant.dart';
 import 'package:ai_chat/widgets/about_dialog.dart';
+import 'package:ai_chat/models/chat_group.dart';
 import 'package:flutter/material.dart';
 
 class ChatDrawer extends StatelessWidget {
-  const ChatDrawer({super.key});
+  final List<ChatGroup> groups;
+  final ChatGroup? currentGroup;
+  final Function(ChatGroup) onGroupSelected;
+  final Function() onNewGroup;
+
+  const ChatDrawer({
+    super.key,
+    required this.groups,
+    this.currentGroup,
+    required this.onGroupSelected,
+    required this.onNewGroup,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -90,61 +102,53 @@ class ChatDrawer extends StatelessWidget {
               ),
             ),
           ),
-          // 菜单项列表
+          // 新建分组按钮
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: onNewGroup,
+                icon: const Icon(Icons.add),
+                label: const Text('新建对话'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ),
+          // 分组列表
           Expanded(
-            child: ListView(
+            child: ListView.builder(
               padding: EdgeInsets.zero,
-              children: [
-                _buildMenuItem(
-                  context,
-                  icon: Icons.home_outlined,
-                  title: '主页',
-                  onTap: () {
-                    Navigator.pop(context);
-                    // TODO: 导航到主页
-                  },
-                ),
-                _buildMenuItem(
-                  context,
-                  icon: Icons.settings_outlined,
-                  title: '设置',
-                  onTap: () {
-                    Navigator.pop(context);
-                    // 导航到设置页面
-                    Navigator.pushNamed(context, RouteConstant.settingsPage);
-                  },
-                ),
-                _buildMenuItem(
-                  context,
-                  icon: Icons.history_outlined,
-                  title: '历史记录',
-                  onTap: () {
-                    Navigator.pop(context);
-                    // TODO: 导航到历史记录页面
-                    Navigator.pushNamed(context, RouteConstant.testPage);
-                  },
-                ),
-                _buildMenuItem(
-                  context,
-                  icon: Icons.color_lens_outlined,
-                  title: '主题设置',
-                  onTap: () {
-                    Navigator.pop(context);
-                    // TODO: 打开主题设置
-                  },
-                ),
-                const Divider(height: 1),
-                _buildMenuItem(
-                  context,
-                  icon: Icons.info_outline,
-                  title: '关于',
-                  onTap: () {
-                    Navigator.pop(context);
-                    // 显示关于对话框
-                    showAboutAppDialog(context);
-                  },
-                ),
-              ],
+              itemCount: groups.length,
+              itemBuilder: (context, index) {
+                final group = groups[index];
+                final isSelected = currentGroup?.id == group.id;
+                
+                return ListTile(
+                  leading: Icon(
+                    Icons.chat_bubble_outline,
+                    color: isSelected ? theme.primaryColor : Colors.grey[600],
+                  ),
+                  title: Text(
+                    group.title,
+                    style: TextStyle(
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: isSelected ? theme.primaryColor : null,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '最后消息：${_formatDateTime(group.lastMessageAt)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  selected: isSelected,
+                  onTap: () => onGroupSelected(group),
+                );
+              },
             ),
           ),
           // 底部版本信息
@@ -179,34 +183,18 @@ class ChatDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildMenuItem(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    VoidCallback? onTap,
-    bool showTrailing = true,
-  }) {
-    return ListTile(
-      leading: Icon(
-        icon,
-        size: 22,
-        color: Theme.of(context).primaryColor.withOpacity(0.8),
-      ),
-      title: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      trailing: showTrailing
-          ? Icon(
-              Icons.chevron_right,
-              size: 20,
-              color: Colors.grey[400],
-            )
-          : null,
-      onTap: onTap,
-    );
+  String _formatDateTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays}天前';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}小时前';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}分钟前';
+    } else {
+      return '刚刚';
+    }
   }
 } 

@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/chat_message.dart';
+import '../models/chat_group.dart';
 import '../utils/logger.dart';
 
 class DatabaseHelper {
@@ -26,17 +27,31 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 3,
+        version: 4,
         onCreate: (Database db, int version) async {
           Logger.i(_tag, '创建数据库表...');
+          // 创建分组表
+          await db.execute('''
+            CREATE TABLE chat_groups (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              title TEXT NOT NULL,
+              created_at INTEGER NOT NULL,
+              last_message_at INTEGER NOT NULL,
+              system_prompt TEXT
+            )
+          ''');
+
+          // 创建消息表，添加group_id字段
           await db.execute('''
             CREATE TABLE messages (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
+              group_id INTEGER NOT NULL,
               text TEXT NOT NULL,
               role TEXT NOT NULL,
               timestamp INTEGER NOT NULL,
               status TEXT NOT NULL DEFAULT 'initial',
-              reasoning_content TEXT
+              reasoning_content TEXT,
+              FOREIGN KEY (group_id) REFERENCES chat_groups (id) ON DELETE CASCADE
             )
           ''');
           Logger.i(_tag, '数据库表创建成功');
@@ -54,6 +69,51 @@ class DatabaseHelper {
               ADD COLUMN reasoning_content TEXT
             ''');
           }
+          if (oldVersion < 4) {
+            // 创建新表
+            await db.execute('''
+              CREATE TABLE chat_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                last_message_at INTEGER NOT NULL,
+                system_prompt TEXT
+              )
+            ''');
+
+            // 创建临时消息表
+            await db.execute('''
+              CREATE TABLE messages_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                role TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'initial',
+                reasoning_content TEXT,
+                FOREIGN KEY (group_id) REFERENCES chat_groups (id) ON DELETE CASCADE
+              )
+            ''');
+
+            // 创建默认分组
+            final defaultGroupId = await db.insert('chat_groups', {
+              'title': '默认对话',
+              'created_at': DateTime.now().millisecondsSinceEpoch,
+              'last_message_at': DateTime.now().millisecondsSinceEpoch,
+            });
+
+            // 迁移现有消息到新表
+            await db.execute('''
+              INSERT INTO messages_new (group_id, text, role, timestamp, status, reasoning_content)
+              SELECT ?, text, role, timestamp, status, reasoning_content FROM messages
+            ''', [defaultGroupId]);
+
+            // 删除旧表
+            await db.execute('DROP TABLE messages');
+
+            // 重命名新表
+            await db.execute('ALTER TABLE messages_new RENAME TO messages');
+          }
         },
       );
     } catch (e, stackTrace) {
@@ -63,22 +123,177 @@ class DatabaseHelper {
     }
   }
 
-  Future<int> insertMessage(ChatMessage message) async {
+  // 分组相关操作
+  Future<int> insertGroup(ChatGroup group) async {
     try {
       final db = await database;
-      Logger.d(_tag, '插入消息: ${message.text.substring(0, message.text.length.clamp(0, 50))}...');
+      return await db.insert('chat_groups', group.toMap());
+    } catch (e) {
+      Logger.e(_tag, '插入分组失败', e);
+      rethrow;
+    }
+  }
+
+  Future<List<ChatGroup>> getAllGroups() async {
+    try {
+      final db = await database;
+      final List<Map<String, dynamic>> maps = await db.query(
+        'chat_groups',
+        orderBy: 'last_message_at DESC',
+      );
+      return List.generate(maps.length, (i) => ChatGroup.fromMap(maps[i]));
+    } catch (e) {
+      Logger.e(_tag, '获取所有分组失败', e);
+      rethrow;
+    }
+  }
+
+  Future<ChatGroup?> getLatestGroup() async {
+    try {
+      final db = await database;
+      final List<Map<String, dynamic>> maps = await db.query(
+        'chat_groups',
+        orderBy: 'last_message_at DESC',
+        limit: 1,
+      );
+      if (maps.isEmpty) return null;
+      return ChatGroup.fromMap(maps.first);
+    } catch (e) {
+      Logger.e(_tag, '获取最新分组失败', e);
+      rethrow;
+    }
+  }
+
+  Future<void> updateGroupLastMessageTime(int groupId) async {
+    try {
+      final db = await database;
+      await db.update(
+        'chat_groups',
+        {'last_message_at': DateTime.now().millisecondsSinceEpoch},
+        where: 'id = ?',
+        whereArgs: [groupId],
+      );
+    } catch (e) {
+      Logger.e(_tag, '更新分组最后消息时间失败', e);
+      rethrow;
+    }
+  }
+
+  Future<void> updateGroupSystemPrompt(int groupId, String? systemPrompt) async {
+    try {
+      final db = await database;
+      await db.update(
+        'chat_groups',
+        {'system_prompt': systemPrompt},
+        where: 'id = ?',
+        whereArgs: [groupId],
+      );
+    } catch (e) {
+      Logger.e(_tag, '更新分组系统提示词失败', e);
+      rethrow;
+    }
+  }
+
+  Future<void> deleteGroup(int groupId) async {
+    try {
+      final db = await database;
+      await db.delete(
+        'chat_groups',
+        where: 'id = ?',
+        whereArgs: [groupId],
+      );
+    } catch (e) {
+      Logger.e(_tag, '删除分组失败', e);
+      rethrow;
+    }
+  }
+
+  // 消息相关操作（更新为支持分组）
+  Future<int> insertMessage(ChatMessage message, int groupId) async {
+    try {
+      final db = await database;
+      final map = message.toMap();
+      map['group_id'] = groupId;
       
       final id = await db.insert(
         'messages',
-        message.toMap(),
+        map,
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
       
-      Logger.i(_tag, '消息插入成功，ID: $id');
+      // 更新分组的最后消息时间
+      await updateGroupLastMessageTime(groupId);
+      
       return id;
-    } catch (e, stackTrace) {
+    } catch (e) {
       Logger.e(_tag, '插入消息失败', e);
-      Logger.e(_tag, '堆栈跟踪', stackTrace);
+      rethrow;
+    }
+  }
+
+  Future<List<ChatMessage>> getMessagesByGroup(int groupId) async {
+    try {
+      final db = await database;
+      final List<Map<String, dynamic>> maps = await db.query(
+        'messages',
+        where: 'group_id = ?',
+        whereArgs: [groupId],
+        orderBy: 'timestamp DESC',
+        limit: 20,
+      );
+      return List.generate(maps.length, (i) => ChatMessage.fromMap(maps[i]));
+    } catch (e) {
+      Logger.e(_tag, '获取分组消息失败', e);
+      rethrow;
+    }
+  }
+
+  Future<List<ChatMessage>> getMessagesByGroupWithPagination({
+    required int groupId,
+    required int limit,
+    required int offset,
+  }) async {
+    try {
+      final db = await database;
+      final List<Map<String, dynamic>> maps = await db.query(
+        'messages',
+        where: 'group_id = ?',
+        whereArgs: [groupId],
+        orderBy: 'timestamp DESC',
+        limit: limit,
+        offset: offset,
+      );
+      return List.generate(maps.length, (i) => ChatMessage.fromMap(maps[i]));
+    } catch (e) {
+      Logger.e(_tag, '分页获取分组消息失败', e);
+      rethrow;
+    }
+  }
+
+  Future<int> getGroupMessageCount(int groupId) async {
+    try {
+      final db = await database;
+      final result = await db.rawQuery(
+        'SELECT COUNT(*) as count FROM messages WHERE group_id = ?',
+        [groupId],
+      );
+      return Sqflite.firstIntValue(result) ?? 0;
+    } catch (e) {
+      Logger.e(_tag, '获取分组消息数量失败', e);
+      rethrow;
+    }
+  }
+
+  Future<void> deleteGroupMessages(int groupId) async {
+    try {
+      final db = await database;
+      await db.delete(
+        'messages',
+        where: 'group_id = ?',
+        whereArgs: [groupId],
+      );
+    } catch (e) {
+      Logger.e(_tag, '删除分组消息失败', e);
       rethrow;
     }
   }

@@ -4,6 +4,7 @@ import 'dart:convert';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import '../models/chat_group.dart';
 import '../models/chat_message.dart';
 import '../services/chat_service.dart';
 import '../widgets/chat_message_list.dart';
@@ -39,20 +40,21 @@ class _ChatPageState extends State<ChatPage> {
   bool _isInitializing = true;
   final ScrollController _scrollController = ScrollController();
   static const int _pageSize = 20;
-  bool _useReasoning = false; // 是否使用推理模式
-  String? _systemPrompt; // 添加系统提示词
+  bool _useReasoning = false;
+  String? _systemPrompt;
+  List<ChatGroup> _groups = [];
+  ChatGroup? _currentGroup;
 
   @override
   void initState() {
     super.initState();
     Logger.i(_tag, '初始化聊天页面...');
 
-    // 页面初始化时调起软键盘
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
     });
     _initChatService();
-    _loadMessages();
+    _loadGroups();
     _scrollController.addListener(_onScroll);
   }
 
@@ -83,8 +85,110 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  Future<void> _loadGroups() async {
+    try {
+      final groups = await _dbHelper.getAllGroups();
+      setState(() {
+        _groups = groups;
+      });
+      await _loadCurrentGroup();
+    } catch (e) {
+      Logger.e(_tag, '加载分组失败', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载分组失败: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadCurrentGroup() async {
+    try {
+      final latestGroup = await _dbHelper.getLatestGroup();
+      if (latestGroup != null) {
+        final now = DateTime.now();
+        final lastMessageTime = latestGroup.lastMessageAt;
+        final isSameDay = now.year == lastMessageTime.year &&
+            now.month == lastMessageTime.month &&
+            now.day == lastMessageTime.day;
+        final timeDiff = now.difference(lastMessageTime);
+
+        if (!isSameDay && timeDiff.inHours >= 5) {
+          // 创建新分组
+          await _createNewGroup();
+        } else {
+          // 使用现有分组
+          setState(() {
+            _currentGroup = latestGroup;
+            _systemPrompt = latestGroup.systemPrompt;
+          });
+          await _loadMessages();
+        }
+      } else {
+        // 没有分组，创建新分组
+        await _createNewGroup();
+      }
+    } catch (e) {
+      Logger.e(_tag, '加载当前分组失败', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载当前分组失败: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _createNewGroup() async {
+    try {
+      final newGroup = ChatGroup(
+        title: '新对话 ${_groups.length + 1}',
+        systemPrompt: _systemPrompt,
+      );
+      final groupId = await _dbHelper.insertGroup(newGroup);
+      newGroup.id = groupId;
+      
+      setState(() {
+        _currentGroup = newGroup;
+        _messages.clear();
+        _hasMoreMessages = false;
+      });
+    } catch (e) {
+      Logger.e(_tag, '创建新分组失败', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('创建新分组失败: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadMessages() async {
+    if (_currentGroup == null) return;
+    
+    try {
+      Logger.d(_tag, '开始加载历史消息...');
+      final messages = await _dbHelper.getMessagesByGroup(_currentGroup!.id!);
+      final totalCount = await _dbHelper.getGroupMessageCount(_currentGroup!.id!);
+
+      setState(() {
+        _messages.clear();
+        _messages.addAll(messages);
+        _hasMoreMessages = totalCount > messages.length;
+        _isInitializing = false;
+      });
+      Logger.i(_tag, '成功加载 ${messages.length} 条历史消息');
+    } catch (e) {
+      Logger.e(_tag, '加载历史消息失败', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载历史消息失败: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _loadMoreMessages() async {
-    if (_isLoadingMore || !_hasMoreMessages) return;
+    if (_isLoadingMore || !_hasMoreMessages || _currentGroup == null) return;
 
     setState(() {
       _isLoadingMore = true;
@@ -92,7 +196,8 @@ class _ChatPageState extends State<ChatPage> {
 
     try {
       final currentCount = _messages.length;
-      final newMessages = await _dbHelper.getMessagesWithPagination(
+      final newMessages = await _dbHelper.getMessagesByGroupWithPagination(
+        groupId: _currentGroup!.id!,
         limit: _pageSize,
         offset: currentCount,
       );
@@ -104,7 +209,6 @@ class _ChatPageState extends State<ChatPage> {
         return;
       }
 
-      // 将新消息插入到列表开头
       setState(() {
         _messages.addAll(newMessages);
       });
@@ -122,81 +226,14 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  Future<void> _loadMessages() async {
-    try {
-      Logger.d(_tag, '开始加载历史消息...');
-      final messages = await _dbHelper.getMessages();
-      final totalCount = await _dbHelper.getTotalMessageCount();
-
-      setState(() {
-        _messages.clear();
-        _messages.addAll(messages);
-        _hasMoreMessages = totalCount > messages.length;
-        _isInitializing = false;
-      });
-      Logger.i(_tag, '成功加载 ${messages.length} 条历史消息');
-    } catch (e) {
-      Logger.e(_tag, '加载历史消息失败', e);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('加载历史消息失败: $e')),
-      );
-    }
-  }
-
-  void _showSystemPromptDialog() {
-    showCupertinoDialog(
-      context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text('系统提示词'),
-        content: Padding(
-          padding: const EdgeInsets.only(top: 16.0),
-          child: CupertinoTextField(
-            controller: TextEditingController(text: _systemPrompt),
-            placeholder: '输入系统提示词...',
-            maxLines: 5,
-            minLines: 3,
-            onChanged: (value) {
-              _systemPrompt = value;
-            },
-          ),
-        ),
-        actions: [
-          CupertinoDialogAction(
-            child: const Text('取消'),
-            onPressed: () => Navigator.pop(context),
-          ),
-          CupertinoDialogAction(
-            child: const Text('确定'),
-            onPressed: () {
-              setState(() {});
-              Navigator.pop(context);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _sendMessage(String text) async {
-    if (text.trim().isEmpty) return;
+    if (text.trim().isEmpty || _currentGroup == null) return;
 
     _focusNode.unfocus();
 
-    Logger.d(
-        _tag, '准备发送新消息: ${text.substring(0, text.length.clamp(0, 50))}...');
+    Logger.d(_tag, '准备发送新消息: ${text.substring(0, text.length.clamp(0, 50))}...');
 
-    // 取消当前正在进行的响应
     cancelStreamSubscription();
-
-    // 如果有系统提示词，先发送系统消息
-    if (_systemPrompt != null && _systemPrompt!.isNotEmpty) {
-      final systemMessage = ChatMessage(
-        text: _systemPrompt!,
-        role: MessageRole.system,
-        status: MessageStatus.completed,
-      );
-      await _dbHelper.insertMessage(systemMessage);
-    }
 
     final userMessage = ChatMessage(
       text: text,
@@ -215,11 +252,11 @@ class _ChatPageState extends State<ChatPage> {
 
     try {
       Logger.d(_tag, '保存用户消息到数据库...');
-      final userMessageId = await _dbHelper.insertMessage(userMessage);
+      final userMessageId = await _dbHelper.insertMessage(userMessage, _currentGroup!.id!);
       userMessage.id = userMessageId;
 
       Logger.d(_tag, '创建AI消息占位...');
-      final aiMessageId = await _dbHelper.insertMessage(aiMessage);
+      final aiMessageId = await _dbHelper.insertMessage(aiMessage, _currentGroup!.id!);
       aiMessage.id = aiMessageId;
 
       // 获取当前消息之前的历史消息
@@ -233,8 +270,11 @@ class _ChatPageState extends State<ChatPage> {
 
       Logger.d(_tag, '开始接收AI响应流，历史消息数量: ${historyMessages.length}');
 
-      _streamSubscription =
-          _chatService.sendMessageStream(text, historyMessages, ChatConfig(useReasoning: _useReasoning)).listen(
+      _streamSubscription = _chatService.sendMessageStream(
+        text, 
+        historyMessages,
+        ChatConfig(useReasoning: _useReasoning),
+      ).listen(
         (content) async {
           if (!mounted) return;
           
@@ -251,7 +291,6 @@ class _ChatPageState extends State<ChatPage> {
               setState(() {
                 aiMessage.appendReasoning(data['content']);
               });
-              // 更新数据库中的推理内容
               await _dbHelper.updateMessageReasoning(aiMessageId, aiMessage.reasoningContent);
             }
           } catch (e) {
@@ -300,6 +339,43 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     _textController.clear();
+  }
+
+  void _showSystemPromptDialog() {
+    showCupertinoDialog(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('系统提示词'),
+        content: Padding(
+          padding: const EdgeInsets.only(top: 16.0),
+          child: CupertinoTextField(
+            controller: TextEditingController(text: _systemPrompt),
+            placeholder: '输入系统提示词...',
+            maxLines: 5,
+            minLines: 3,
+            onChanged: (value) {
+              _systemPrompt = value;
+            },
+          ),
+        ),
+        actions: [
+          CupertinoDialogAction(
+            child: const Text('取消'),
+            onPressed: () => Navigator.pop(context),
+          ),
+          CupertinoDialogAction(
+            child: const Text('确定'),
+            onPressed: () async {
+              if (_currentGroup != null) {
+                await _dbHelper.updateGroupSystemPrompt(_currentGroup!.id!, _systemPrompt);
+              }
+              setState(() {});
+              Navigator.pop(context);
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   void cancelStreamSubscription() {
@@ -424,7 +500,26 @@ class _ChatPageState extends State<ChatPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      drawer: const ChatDrawer(),
+      drawer: ChatDrawer(
+        groups: _groups,
+        currentGroup: _currentGroup,
+        onGroupSelected: (group) async {
+          setState(() {
+            _currentGroup = group;
+            _systemPrompt = group.systemPrompt;
+          });
+          await _loadMessages();
+          if (mounted) {
+            Navigator.pop(context);
+          }
+        },
+        onNewGroup: () async {
+          await _createNewGroup();
+          if (mounted) {
+            Navigator.pop(context);
+          }
+        },
+      ),
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         leading: IconButton(
@@ -450,13 +545,6 @@ class _ChatPageState extends State<ChatPage> {
                       _showSystemPromptDialog();
                     },
                   ),
-                  CupertinoActionSheetAction(
-                    child: const Text('清空历史记录'),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _showClearHistoryDialog();
-                    },
-                  ),
                 ],
                 cancelButton: CupertinoActionSheetAction(
                   child: const Text('取消'),
@@ -476,9 +564,9 @@ class _ChatPageState extends State<ChatPage> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.delete_outline),
-            tooltip: '清空历史记录',
-            onPressed: _showClearHistoryDialog,
+            icon: const Icon(Icons.add),
+            tooltip: '新建对话',
+            onPressed: _createNewGroup,
           ),
         ],
       ),
