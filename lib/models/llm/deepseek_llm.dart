@@ -93,7 +93,7 @@ class DeepSeekLLM implements BaseLLM {
           }
         }
       } else {
-        throw Exception('API请求失败: ${response.statusCode}');
+        throw Exception('API请求失败: ${response.statusCode} ${response.reasonPhrase}');
       }
     } catch (e, stackTrace) {
       Logger.e(_tag, '发送消息失败', e);
