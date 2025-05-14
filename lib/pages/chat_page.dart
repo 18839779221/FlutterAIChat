@@ -297,16 +297,32 @@ class _ChatPageState extends State<ChatPage> {
       final aiMessageId = await _dbHelper.insertMessage(aiMessage, _currentGroup!.id!);
       aiMessage.id = aiMessageId;
 
-      // 获取当前消息之前的历史消息
-      final historyMessages = List<ChatMessage>.from(_messages);
+      // 获取有效的历史消息（成对的用户消息和已完成的AI回复）
+      final List<ChatMessage> historyMessages = [];
+      final List<ChatMessage> messagesCopy = List<ChatMessage>.from(_messages);
+      
+      // 跳过奇数长度的情况下的最后一条消息
+      int i = 0;
+      while (i < messagesCopy.length - 1) {
+        final message1 = messagesCopy[i];
+        final message2 = messagesCopy[i + 1];
+        
+        // 确保是一对AI回复和用户消息，且AI回复已完成
+        if (message1.isAssistant && message2.isUser && message1.status == MessageStatus.completed) {
+          historyMessages.add(message2); // 先添加用户消息（旧的在前）
+          historyMessages.add(message1); // 再添加AI回复
+        }
+        
+        i += 2; // 每次处理一对消息
+      }
+
+      Logger.d(_tag, '开始接收AI响应流，有效对话对数量: ${historyMessages.length / 2}');
 
       setState(() {
         _messages.insert(0, userMessage);
         _messages.insert(0, aiMessage);
         _isGenerating = true;
       });
-
-      Logger.d(_tag, '开始接收AI响应流，历史消息数量: ${historyMessages.length}');
 
       _streamSubscription = _chatService.sendMessageStream(
         text, 
