@@ -14,6 +14,7 @@ class ChatMessageList extends StatefulWidget {
   final FocusNode inputFocusNode;
   final ScrollController scrollController;
   final Function(int index) onDeleteMessage;
+  final bool autoScrollToBottom;
 
   const ChatMessageList({
     super.key,
@@ -24,6 +25,7 @@ class ChatMessageList extends StatefulWidget {
     required this.onDeleteMessage,
     this.isLoadingMore = false,
     this.hasMoreMessages = true,
+    this.autoScrollToBottom = true,
   });
 
   @override
@@ -90,8 +92,16 @@ class _ChatMessageListState extends State<ChatMessageList> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.isGenerating) {
-      _scrollToBottom();
+    if (widget.isGenerating && widget.autoScrollToBottom) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (widget.scrollController.hasClients) {
+          widget.scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
     }
 
     return Stack(

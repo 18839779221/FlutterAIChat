@@ -4,6 +4,7 @@ import 'dart:convert';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import '../models/chat_group.dart';
 import '../models/chat_message.dart';
 import '../services/chat_service.dart';
@@ -44,6 +45,7 @@ class _ChatPageState extends State<ChatPage> {
   String? _systemPrompt;
   List<ChatGroup> _groups = [];
   ChatGroup? _currentGroup;
+  bool _autoScrollToBottom = true;
 
   @override
   void initState() {
@@ -61,6 +63,20 @@ class _ChatPageState extends State<ChatPage> {
   void _onScroll() {
     if (_scrollController.position.pixels <= _scrollController.position.minScrollExtent + 100 && !_isLoadingMore) {
       _loadMoreMessages();
+    }
+    
+    if (_isGenerating) {
+      if (_scrollController.position.userScrollDirection == ScrollDirection.reverse) {
+        setState(() {
+          _autoScrollToBottom = false;
+        });
+      }
+      
+      if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 10) {
+        setState(() {
+          _autoScrollToBottom = true;
+        });
+      }
     }
   }
 
@@ -232,6 +248,10 @@ class _ChatPageState extends State<ChatPage> {
     Logger.d(_tag, '准备发送新消息: ${text.substring(0, text.length.clamp(0, 50))}...');
 
     cancelStreamSubscription();
+    
+    setState(() {
+      _autoScrollToBottom = true;
+    });
 
     // 如果当前分组没有ID，说明是新建的分组，需要先保存到数据库
     if (_currentGroup!.id == null) {
@@ -658,6 +678,7 @@ class _ChatPageState extends State<ChatPage> {
                     isLoadingMore: _isLoadingMore,
                     hasMoreMessages: _hasMoreMessages,
                     onDeleteMessage: _deleteMessagePair,
+                    autoScrollToBottom: _autoScrollToBottom,
                   ),
                   if (_isLoadingMore)
                     Positioned(
