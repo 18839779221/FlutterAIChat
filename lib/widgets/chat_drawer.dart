@@ -3,27 +3,15 @@ import 'package:ai_chat/widgets/about_dialog.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/chat_state_provider.dart';
 
 class ChatDrawer extends StatelessWidget {
-  final List<ChatGroup> groups;
-  final ChatGroup? currentGroup;
-  final Function(ChatGroup) onGroupSelected;
-  final Function() onNewGroup;
-  final Function(ChatGroup) onDeleteGroup;
-  final bool isGenerating;
-
-  const ChatDrawer({
-    super.key,
-    required this.groups,
-    this.currentGroup,
-    required this.onGroupSelected,
-    required this.onNewGroup,
-    required this.onDeleteGroup,
-    this.isGenerating = false,
-  });
+  const ChatDrawer({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final chatState = Provider.of<ChatStateProvider>(context);
     final ThemeData theme = Theme.of(context);
     
     return Drawer(
@@ -113,7 +101,7 @@ class ChatDrawer extends StatelessWidget {
             child: SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: isGenerating ? null : onNewGroup,
+                onPressed: chatState.isGenerating ? null : chatState.createNewGroup,
                 icon: const Icon(Icons.add),
                 label: const Text('新建对话'),
                 style: ElevatedButton.styleFrom(
@@ -126,17 +114,17 @@ class ChatDrawer extends StatelessWidget {
           Expanded(
             child: ListView.builder(
               padding: EdgeInsets.zero,
-              itemCount: groups.length + (currentGroup?.id == null ? 1 : 0),
+              itemCount: chatState.groups.length + (chatState.currentGroup?.id == null ? 1 : 0),
               itemBuilder: (context, index) {
                 // 如果是第一个位置且当前分组没有ID，显示当前分组
-                if (index == 0 && currentGroup?.id == null) {
+                if (index == 0 && chatState.currentGroup?.id == null) {
                   return ListTile(
                     leading: Icon(
                       Icons.chat_bubble_outline,
                       color: theme.primaryColor,
                     ),
                     title: Text(
-                      currentGroup!.title,
+                      chatState.currentGroup!.title,
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: theme.primaryColor,
@@ -155,9 +143,9 @@ class ChatDrawer extends StatelessWidget {
                 }
 
                 // 调整索引以跳过临时分组
-                final adjustedIndex = currentGroup?.id == null ? index - 1 : index;
-                final group = groups[adjustedIndex];
-                final isSelected = currentGroup?.id == group.id;
+                final adjustedIndex = chatState.currentGroup?.id == null ? index - 1 : index;
+                final group = chatState.groups[adjustedIndex];
+                final isSelected = chatState.currentGroup?.id == group.id;
                 
                 return ListTile(
                   leading: Icon(
@@ -181,9 +169,9 @@ class ChatDrawer extends StatelessWidget {
                     ),
                   ),
                   selected: isSelected,
-                  enabled: !isGenerating,
-                  onTap: isGenerating ? null : () => onGroupSelected(group),
-                  onLongPress: isGenerating ? null : () {
+                  enabled: !chatState.isGenerating,
+                  onTap: chatState.isGenerating ? null : () => chatState.selectGroup(group),
+                  onLongPress: chatState.isGenerating ? null : () {
                     showCupertinoDialog(
                       context: context,
                       builder: (context) => CupertinoAlertDialog(
@@ -199,7 +187,7 @@ class ChatDrawer extends StatelessWidget {
                             child: const Text('删除'),
                             onPressed: () {
                               Navigator.pop(context);
-                              onDeleteGroup(group);
+                              chatState.deleteGroup(group);
                             },
                           ),
                         ],

@@ -1,7 +1,5 @@
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
 import '../providers/chat_state_provider.dart';
 import '../widgets/chat_message_list.dart';
@@ -18,7 +16,6 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
-
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
@@ -27,14 +24,7 @@ class _ChatPageState extends State<ChatPage> {
       builder: (context, chatState, _) {
         return Scaffold(
           key: _scaffoldKey,
-          drawer: ChatDrawer(
-            groups: chatState.groups,
-            currentGroup: chatState.currentGroup,
-            onGroupSelected: chatState.selectGroup,
-            onNewGroup: chatState.createNewGroup,
-            onDeleteGroup: chatState.deleteGroup,
-            isGenerating: chatState.isGenerating,
-          ),
+          drawer: const ChatDrawer(),
           appBar: AppBar(
             backgroundColor: Theme.of(context).colorScheme.inversePrimary,
             leading: IconButton(
@@ -57,7 +47,7 @@ class _ChatPageState extends State<ChatPage> {
                           : '设置系统提示词'),
                         onPressed: () {
                           Navigator.pop(context);
-                          _showSystemPromptDialog(context, chatState);
+                          _showSystemPromptDialog(context);
                         },
                       ),
                     ],
@@ -96,16 +86,7 @@ class _ChatPageState extends State<ChatPage> {
                 Expanded(
                   child: Stack(
                     children: [
-                      ChatMessageList(
-                        messages: chatState.messages,
-                        isGenerating: chatState.isGenerating,
-                        inputFocusNode: chatState.focusNode,
-                        scrollController: chatState.scrollController,
-                        isLoadingMore: chatState.isLoadingMore,
-                        hasMoreMessages: chatState.hasMoreMessages,
-                        onDeleteMessage: chatState.deleteMessagePair,
-                        autoScrollToBottom: chatState.autoScrollToBottom,
-                      ),
+                      const ChatMessageList(),
                       if (chatState.isLoadingMore)
                         Positioned(
                           top: 0,
@@ -132,15 +113,7 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                     ],
                   ),
-                  child: ChatInput(
-                    controller: chatState.textController,
-                    focusNode: chatState.focusNode,
-                    onSendMessage: chatState.sendMessage,
-                    isGenerating: chatState.isGenerating,
-                    onCancel: chatState.cancelStreamSubscription,
-                    useReasoning: chatState.useReasoning,
-                    onReasoningChanged: chatState.setUseReasoning,
-                  ),
+                  child: const ChatInput(),
                 ),
               ],
             ),
@@ -150,7 +123,9 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  void _showSystemPromptDialog(BuildContext context, ChatStateProvider state) {
+  void _showSystemPromptDialog(BuildContext context) {
+    final chatState = Provider.of<ChatStateProvider>(context, listen: false);
+    
     showCupertinoDialog(
       context: context,
       builder: (context) => CupertinoAlertDialog(
@@ -158,12 +133,12 @@ class _ChatPageState extends State<ChatPage> {
         content: Padding(
           padding: const EdgeInsets.only(top: 16.0),
           child: CupertinoTextField(
-            controller: TextEditingController(text: state.systemPrompt),
+            controller: TextEditingController(text: chatState.systemPrompt),
             placeholder: '输入系统提示词...',
             maxLines: 5,
             minLines: 3,
             onChanged: (value) {
-              state.setSystemPrompt(value);
+              chatState.setSystemPrompt(value);
             },
           ),
         ),
