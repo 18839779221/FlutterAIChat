@@ -1,26 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../providers/chat_state_provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/chat_providers.dart';
 
-class ChatInput extends StatelessWidget {
+class ChatInput extends ConsumerWidget {
   const ChatInput({super.key});
 
-  void _handleSubmit(BuildContext context) {
-    final chatState = Provider.of<ChatStateProvider>(context, listen: false);
-    
-    if (chatState.isGenerating) {
-      chatState.cancelStreamSubscription();
-    } else {
-      final text = chatState.textController.text;
-      if (text.trim().isNotEmpty) {
-        chatState.sendMessage(text);
-      }
-    }
-  }
-
   @override
-  Widget build(BuildContext context) {
-    final chatState = Provider.of<ChatStateProvider>(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 只监听需要的状态
+    final isGenerating = ref.watch(isGeneratingProvider);
+    final useReasoning = ref.watch(useReasoningProvider);
+    final textController = ref.watch(textControllerProvider);
+    final focusNode = ref.watch(focusNodeProvider);
+    
+    final chatController = ref.read(chatControllerProvider);
     final bottomHomeHeight = MediaQuery.of(context).padding.bottom; // Home 栏高度
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom; // 键盘高度
 
@@ -36,29 +29,29 @@ class ChatInput extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.only(left: 4.0),
               child: TextButton(
-                onPressed: () => chatState.setUseReasoning(!chatState.useReasoning),
+                onPressed: () => chatController.setUseReasoning(!useReasoning),
                 style: TextButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                     side: BorderSide(
-                      color: chatState.useReasoning 
+                      color: useReasoning 
                           ? Theme.of(context).primaryColor 
                           : Colors.grey[300]!,
                       width: 1,
                     ),
                   ),
-                  backgroundColor: chatState.useReasoning 
+                  backgroundColor: useReasoning 
                       ? Theme.of(context).primaryColor.withOpacity(0.1) 
                       : Colors.transparent,
                 ),
                 child: Text(
                   '深度思考',
                   style: TextStyle(
-                    color: chatState.useReasoning 
+                    color: useReasoning 
                         ? Theme.of(context).primaryColor 
                         : Colors.grey[600],
-                    fontWeight: chatState.useReasoning ? FontWeight.bold : FontWeight.normal,
+                    fontWeight: useReasoning ? FontWeight.bold : FontWeight.normal,
                   ),
                 ),
               ),
@@ -73,8 +66,8 @@ class ChatInput extends StatelessWidget {
                     maxHeight: 140, // 限制最大高度
                   ),
                   child: TextField(
-                    focusNode: chatState.focusNode,
-                    controller: chatState.textController,
+                    focusNode: focusNode,
+                    controller: textController,
                     maxLines: null, // 允许多行输入
                     textInputAction: TextInputAction.newline, // 回车键变为换行
                     keyboardType: TextInputType.multiline, // 多行输入键盘
@@ -88,7 +81,7 @@ class ChatInput extends StatelessWidget {
                     ),
                     onSubmitted: (text) {
                       if (text.trim().isNotEmpty) {
-                        chatState.sendMessage(text);
+                        chatController.sendMessage(text);
                       }
                     },
                   ),
@@ -103,10 +96,19 @@ class ChatInput extends StatelessWidget {
                   padding: EdgeInsets.zero,
                   shape: const CircleBorder(),
                   color: Theme.of(context).primaryColor,
-                  onPressed: () => _handleSubmit(context),
+                  onPressed: () {
+                    if (isGenerating) {
+                      chatController.cancelStreamSubscription();
+                    } else {
+                      final text = textController.text;
+                      if (text.trim().isNotEmpty) {
+                        chatController.sendMessage(text);
+                      }
+                    }
+                  },
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 200),
-                    child: chatState.isGenerating
+                    child: isGenerating
                         ? const SizedBox(
                             width: 20,
                             height: 20,
