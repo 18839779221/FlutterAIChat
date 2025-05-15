@@ -15,12 +15,12 @@ class ChatDrawer extends ConsumerWidget {
     final groups = ref.watch(groupsProvider);
     final currentGroup = ref.watch(currentGroupProvider);
     final isGenerating = ref.watch(isGeneratingProvider);
-    
+
     // 获取控制器
     final chatController = ref.read(chatControllerProvider);
-    
+
     final ThemeData theme = Theme.of(context);
-    
+
     return Drawer(
       child: Column(
         children: [
@@ -153,7 +153,7 @@ class ChatDrawer extends ConsumerWidget {
                 final adjustedIndex = currentGroup?.id == null ? index - 1 : index;
                 final group = groups[adjustedIndex];
                 final isSelected = currentGroup?.id == group.id;
-                
+
                 return ListTile(
                   leading: Icon(
                     Icons.chat_bubble_outline,
@@ -177,7 +177,10 @@ class ChatDrawer extends ConsumerWidget {
                   ),
                   selected: isSelected,
                   enabled: !isGenerating,
-                  onTap: isGenerating ? null : () => chatController.selectGroup(group),
+                  onTap: isGenerating ? null : () {
+                    chatController.selectGroup(group);
+                    Navigator.pop(context);
+                  },
                   onLongPress: isGenerating ? null : () {
                     showCupertinoDialog(
                       context: context,
@@ -251,4 +254,4 @@ class ChatDrawer extends ConsumerWidget {
       return '刚刚';
     }
   }
-} 
+}
