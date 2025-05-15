@@ -72,4 +72,23 @@ class ChatMessage {
   bool get isUser => role == MessageRole.user;
 
   bool get isAssistant => role == MessageRole.assistant;
+  
+  // 添加copyWith方法以支持状态更新
+  ChatMessage copyWith({
+    String? text,
+    MessageRole? role,
+    DateTime? timestamp,
+    int? id,
+    MessageStatus? status,
+    String? reasoningContent,
+  }) {
+    return ChatMessage(
+      text: text ?? this.text,
+      role: role ?? this.role,
+      id: id ?? this.id,
+      timestamp: timestamp ?? this.timestamp,
+      status: status ?? this.status,
+      reasoningContent: reasoningContent ?? this.reasoningContent,
+    );
+  }
 } 

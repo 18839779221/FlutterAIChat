@@ -4,29 +4,96 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/chat_message.dart';
-import '../providers/chat_state_provider.dart';
+import '../providers/chat_providers.dart';
 
-class ChatMessageList extends StatefulWidget {
+class ChatMessageList extends ConsumerStatefulWidget {
   const ChatMessageList({super.key});
 
   @override
-  State<ChatMessageList> createState() => _ChatMessageListState();
+  ConsumerState<ChatMessageList> createState() => _ChatMessageListState();
 }
 
-class _ChatMessageListState extends State<ChatMessageList> {
+class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   // 是否快滑到了底部
   bool _isNearBottom = true;
 
   @override
+  void initState() {
+    super.initState();
+    // 初始化时监听滚动控制器
+    final scrollController = ref.read(scrollControllerProvider);
+    scrollController.addListener(_scrollListener);
+  }
+
+  @override
+  void dispose() {
+    // 销毁时移除监听
+    final scrollController = ref.read(scrollControllerProvider);
+    scrollController.removeListener(_scrollListener);
+    super.dispose();
+  }
+
+  void _scrollListener() {
+    // 获取滚动控制器
+    final scrollController = ref.read(scrollControllerProvider);
+    final currentScroll = scrollController.offset;
+    final isNearBottom = currentScroll <= 100;
+
+    if (_isNearBottom != isNearBottom) {
+      setState(() {
+        _isNearBottom = isNearBottom;
+      });
+    }
+
+    final scrollingPosition = scrollController.position;
+    // 用户向下滑动，且不是惯性滑动时收起输入框
+    if (scrollingPosition.userScrollDirection == ScrollDirection.reverse &&
+        scrollingPosition.activity is DragScrollActivity) {
+      ref.read(focusNodeProvider).unfocus();
+    }
+  }
+
+  void _scrollToBottom() {
+    final scrollController = ref.read(scrollControllerProvider);
+    scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+  }
+
+  // 获取状态指示器颜色
+  Color _getStatusColor(MessageStatus status) {
+    switch (status) {
+      case MessageStatus.generating:
+        return Colors.blue.withOpacity(0.1);
+      case MessageStatus.completed:
+        return Colors.green.withOpacity(0.2);
+      case MessageStatus.interrupted:
+        return Colors.orange.withOpacity(0.2);
+      case MessageStatus.failed:
+        return Colors.red.withOpacity(0.2);
+      default:
+        return Colors.grey.withOpacity(0.2);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final chatState = Provider.of<ChatStateProvider>(context);
+    // 获取所需状态
+    final messages = ref.watch(messagesProvider);
+    final isGenerating = ref.watch(isGeneratingProvider);
+    final autoScrollToBottom = ref.watch(autoScrollToBottomProvider);
+    final hasMoreMessages = ref.watch(hasMoreMessagesProvider);
+    final scrollController = ref.watch(scrollControllerProvider);
     
-    if (chatState.isGenerating && chatState.autoScrollToBottom) {
+    // 如果正在生成且允许自动滚动，则滚动到底部
+    if (isGenerating && autoScrollToBottom) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (chatState.scrollController.hasClients) {
-          chatState.scrollController.animateTo(
+        if (scrollController.hasClients) {
+          scrollController.animateTo(
             0,
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeOut,
@@ -53,12 +120,12 @@ class _ChatMessageListState extends State<ChatMessageList> {
           },
           blendMode: BlendMode.dstIn,
           child: ListView.builder(
-            controller: chatState.scrollController,
+            controller: scrollController,
             padding: const EdgeInsets.all(8.0),
             reverse: true,
-            itemCount: chatState.messages.length + (chatState.hasMoreMessages ? 1 : 0),
+            itemCount: messages.length + (hasMoreMessages ? 1 : 0),
             itemBuilder: (context, index) {
-              if (chatState.hasMoreMessages && index >= chatState.messages.length) {
+              if (hasMoreMessages && index >= messages.length) {
                 return const Center(
                   child: Padding(
                     padding: EdgeInsets.all(8.0),
@@ -67,12 +134,12 @@ class _ChatMessageListState extends State<ChatMessageList> {
                 );
               }
 
-              final message = chatState.messages[index];
+              final message = messages[index];
               return Align(
                 alignment: message.isUser 
                     ? Alignment.centerRight 
                     : Alignment.centerLeft,
-                child: _buildMessageItem(message, context),
+                child: _buildMessageItem(message),
               );
             },
           ),
@@ -95,67 +162,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
     );
   }
 
-  @override
-  void initState() {
-    super.initState();
-    final chatState = Provider.of<ChatStateProvider>(context, listen: false);
-    chatState.scrollController.addListener(_scrollListener);
-  }
-
-  @override
-  void dispose() {
-    final chatState = Provider.of<ChatStateProvider>(context, listen: false);
-    chatState.scrollController.removeListener(_scrollListener);
-    super.dispose();
-  }
-
-  void _scrollListener() {
-    final chatState = Provider.of<ChatStateProvider>(context, listen: false);
-    final currentScroll = chatState.scrollController.offset;
-    final isNearBottom = currentScroll <= 100;
-
-    if (_isNearBottom != isNearBottom) {
-      setState(() {
-        _isNearBottom = isNearBottom;
-      });
-    }
-
-    final scrollingPosition = chatState.scrollController.position;
-    // 用户向下滑动，且不是惯性滑动时收起输入框
-    if (scrollingPosition.userScrollDirection == ScrollDirection.reverse &&
-        scrollingPosition.activity is DragScrollActivity) {
-      chatState.focusNode.unfocus();
-    }
-  }
-
-  void _scrollToBottom() {
-    final chatState = Provider.of<ChatStateProvider>(context, listen: false);
-    chatState.scrollController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-    );
-  }
-
-  // 获取状态指示器颜色
-  Color _getStatusColor(MessageStatus status) {
-    switch (status) {
-      case MessageStatus.generating:
-        return Colors.blue.withOpacity(0.1);
-      case MessageStatus.completed:
-        return Colors.green.withOpacity(0.2);
-      case MessageStatus.interrupted:
-        return Colors.orange.withOpacity(0.2);
-      case MessageStatus.failed:
-        return Colors.red.withOpacity(0.2);
-      default:
-        return Colors.grey.withOpacity(0.2);
-    }
-  }
-
-  Widget _buildMessageItem(ChatMessage message, BuildContext context) {
-    final chatState = Provider.of<ChatStateProvider>(context, listen: false);
-    
+  Widget _buildMessageItem(ChatMessage message) {
     return Container(
       constraints: BoxConstraints(
         maxWidth: MediaQuery.of(context).size.width,
@@ -163,7 +170,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
       margin: const EdgeInsets.symmetric(vertical: 4.0),
       child: GestureDetector(
         onLongPress: () {
-          _showMessageOptionMenu(message, context);
+          _showMessageOptionMenu(message);
         },
         child: Stack(
           children: [
@@ -246,8 +253,8 @@ class _ChatMessageListState extends State<ChatMessageList> {
     );
   }
 
-  void _showMessageOptionMenu(ChatMessage message, BuildContext context) {
-    final chatState = Provider.of<ChatStateProvider>(context, listen: false);
+  void _showMessageOptionMenu(ChatMessage message) {
+    final messagesNotifier = ref.read(messagesProvider.notifier);
     
     showCupertinoModalPopup(
       context: context,
@@ -267,9 +274,10 @@ class _ChatMessageListState extends State<ChatMessageList> {
             child: const Text('删除'),
             onPressed: () {
               // 找到消息在列表中的索引
-              final index = chatState.messages.indexOf(message);
+              final messages = ref.read(messagesProvider);
+              final index = messages.indexOf(message);
               if (index != -1) {
-                chatState.deleteMessagePair(index);
+                messagesNotifier.deleteMessagePair(index);
               }
               Navigator.pop(context);
             },
