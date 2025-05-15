@@ -4,29 +4,12 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../models/chat_message.dart';
+import '../providers/chat_state_provider.dart';
 
 class ChatMessageList extends StatefulWidget {
-  final List<ChatMessage> messages;
-  final bool isGenerating;
-  final bool isLoadingMore;
-  final bool hasMoreMessages;
-  final FocusNode inputFocusNode;
-  final ScrollController scrollController;
-  final Function(int index) onDeleteMessage;
-  final bool autoScrollToBottom;
-
-  const ChatMessageList({
-    super.key,
-    required this.messages,
-    required this.isGenerating,
-    required this.inputFocusNode,
-    required this.scrollController,
-    required this.onDeleteMessage,
-    this.isLoadingMore = false,
-    this.hasMoreMessages = true,
-    this.autoScrollToBottom = true,
-  });
+  const ChatMessageList({super.key});
 
   @override
   State<ChatMessageList> createState() => _ChatMessageListState();
@@ -37,19 +20,98 @@ class _ChatMessageListState extends State<ChatMessageList> {
   bool _isNearBottom = true;
 
   @override
+  Widget build(BuildContext context) {
+    final chatState = Provider.of<ChatStateProvider>(context);
+    
+    if (chatState.isGenerating && chatState.autoScrollToBottom) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (chatState.scrollController.hasClients) {
+          chatState.scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
+
+    return Stack(
+      children: [
+        ShaderMask(
+          shaderCallback: (Rect bounds) {
+            return LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.white,
+                Colors.white,
+                Colors.white,
+                _isNearBottom ? Colors.white : Colors.white.withOpacity(0.0),
+              ],
+              stops: const [0.0, 0.7, 0.9, 1.0],
+            ).createShader(bounds);
+          },
+          blendMode: BlendMode.dstIn,
+          child: ListView.builder(
+            controller: chatState.scrollController,
+            padding: const EdgeInsets.all(8.0),
+            reverse: true,
+            itemCount: chatState.messages.length + (chatState.hasMoreMessages ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (chatState.hasMoreMessages && index >= chatState.messages.length) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: CircularProgressIndicator(),
+                  ),
+                );
+              }
+
+              final message = chatState.messages[index];
+              return Align(
+                alignment: message.isUser 
+                    ? Alignment.centerRight 
+                    : Alignment.centerLeft,
+                child: _buildMessageItem(message, context),
+              );
+            },
+          ),
+        ),
+        if (!_isNearBottom)
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: FloatingActionButton(
+              mini: true,
+              backgroundColor: Theme.of(context).primaryColor.withOpacity(0.9),
+              onPressed: _scrollToBottom,
+              child: const Icon(
+                Icons.keyboard_arrow_down,
+                color: Colors.white,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  @override
   void initState() {
     super.initState();
-    widget.scrollController.addListener(_scrollListener);
+    final chatState = Provider.of<ChatStateProvider>(context, listen: false);
+    chatState.scrollController.addListener(_scrollListener);
   }
 
   @override
   void dispose() {
-    widget.scrollController.removeListener(_scrollListener);
+    final chatState = Provider.of<ChatStateProvider>(context, listen: false);
+    chatState.scrollController.removeListener(_scrollListener);
     super.dispose();
   }
 
   void _scrollListener() {
-    final currentScroll = widget.scrollController.offset;
+    final chatState = Provider.of<ChatStateProvider>(context, listen: false);
+    final currentScroll = chatState.scrollController.offset;
     final isNearBottom = currentScroll <= 100;
 
     if (_isNearBottom != isNearBottom) {
@@ -58,16 +120,17 @@ class _ChatMessageListState extends State<ChatMessageList> {
       });
     }
 
-    final scrollingPosition = widget.scrollController.position;
+    final scrollingPosition = chatState.scrollController.position;
     // 用户向下滑动，且不是惯性滑动时收起输入框
     if (scrollingPosition.userScrollDirection == ScrollDirection.reverse &&
         scrollingPosition.activity is DragScrollActivity) {
-      widget.inputFocusNode.unfocus();
+      chatState.focusNode.unfocus();
     }
   }
 
   void _scrollToBottom() {
-    widget.scrollController.animateTo(
+    final chatState = Provider.of<ChatStateProvider>(context, listen: false);
+    chatState.scrollController.animateTo(
       0,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOut,
@@ -90,81 +153,9 @@ class _ChatMessageListState extends State<ChatMessageList> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (widget.isGenerating && widget.autoScrollToBottom) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (widget.scrollController.hasClients) {
-          widget.scrollController.animateTo(
-            0,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-          );
-        }
-      });
-    }
-
-    return Stack(
-        children: [
-          ShaderMask(
-            shaderCallback: (Rect bounds) {
-              return LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.white,
-                  Colors.white,
-                  Colors.white,
-                  _isNearBottom ? Colors.white : Colors.white.withOpacity(0.0),
-                ],
-                stops: const [0.0, 0.7, 0.9, 1.0],
-              ).createShader(bounds);
-            },
-            blendMode: BlendMode.dstIn,
-            child: ListView.builder(
-              controller: widget.scrollController,
-              padding: const EdgeInsets.all(8.0),
-              reverse: true,
-              itemCount: widget.messages.length + (widget.hasMoreMessages ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (widget.hasMoreMessages && index >= widget.messages.length) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: CircularProgressIndicator(),
-                    ),
-                  );
-                }
-
-                final message = widget.messages[index];
-                return Align(
-                  alignment: message.isUser 
-                      ? Alignment.centerRight 
-                      : Alignment.centerLeft,
-                  child: _buildMessageItem(message),
-                );
-              },
-            ),
-          ),
-          if (!_isNearBottom)
-            Positioned(
-              right: 16,
-              bottom: 16,
-              child: FloatingActionButton(
-                mini: true,
-                backgroundColor: Theme.of(context).primaryColor.withOpacity(0.9),
-                onPressed: _scrollToBottom,
-                child: const Icon(
-                  Icons.keyboard_arrow_down,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-        ],
-    );
-  }
-
-  Widget _buildMessageItem(ChatMessage message) {
+  Widget _buildMessageItem(ChatMessage message, BuildContext context) {
+    final chatState = Provider.of<ChatStateProvider>(context, listen: false);
+    
     return Container(
       constraints: BoxConstraints(
         maxWidth: MediaQuery.of(context).size.width,
@@ -172,7 +163,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
       margin: const EdgeInsets.symmetric(vertical: 4.0),
       child: GestureDetector(
         onLongPress: () {
-          _showMessageOptionMenu(message);
+          _showMessageOptionMenu(message, context);
         },
         child: Stack(
           children: [
@@ -255,38 +246,40 @@ class _ChatMessageListState extends State<ChatMessageList> {
     );
   }
 
-  _showMessageOptionMenu(ChatMessage message) {
+  void _showMessageOptionMenu(ChatMessage message, BuildContext context) {
+    final chatState = Provider.of<ChatStateProvider>(context, listen: false);
+    
     showCupertinoModalPopup(
-        context: context,
-        builder: (context) => CupertinoActionSheet(
-          actions: [
-            CupertinoActionSheetAction(
-              child: Text('复制'),
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: message.text));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('已复制到剪贴板')),
-                );
-                Navigator.pop(context); // 关闭菜单
-              },
-            ),
-            CupertinoActionSheetAction(
-              child: Text('删除'),
-              onPressed: () {
-                // 找到消息在列表中的索引
-                final index = widget.messages.indexOf(message);
-                if (index != -1) {
-                  widget.onDeleteMessage(index);
-                }
-                Navigator.pop(context);
-              },
-            ),
-          ],
-          cancelButton: CupertinoActionSheetAction(
-            child: Text('取消'),
-            onPressed: () => Navigator.pop(context),
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        actions: [
+          CupertinoActionSheetAction(
+            child: const Text('复制'),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: message.text));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('已复制到剪贴板')),
+              );
+              Navigator.pop(context); // 关闭菜单
+            },
           ),
-        )
+          CupertinoActionSheetAction(
+            child: const Text('删除'),
+            onPressed: () {
+              // 找到消息在列表中的索引
+              final index = chatState.messages.indexOf(message);
+              if (index != -1) {
+                chatState.deleteMessagePair(index);
+              }
+              Navigator.pop(context);
+            },
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          child: const Text('取消'),
+          onPressed: () => Navigator.pop(context),
+        ),
+      )
     );
   }
 
