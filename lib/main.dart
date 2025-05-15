@@ -6,6 +6,11 @@ import 'pages/chat_page.dart';
 import 'database/database_helper.dart';
 import 'pages/settings_page.dart';
 import 'utils/logger.dart';
+import 'package:provider/provider.dart';
+import 'models/llm/llm_factory.dart';
+import 'models/context/context_strategies.dart';
+import 'services/chat_service.dart';
+import 'providers/chat_state_provider.dart';
 
 void main() async {
   // 确保 Flutter 绑定初始化
@@ -35,30 +40,62 @@ void main() async {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      routes: getRouteMap(),
-      initialRoute: RouteConstant.chatPage,
-      title: 'AI Chat',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+    return MultiProvider(
+      providers: [
+        Provider<ChatService>(
+          create: (_) {
+            // 创建混合策略
+            final contextStrategy = HybridStrategy(
+              strategies: [
+                TokenBasedStrategy(),
+                SmartSelectionStrategy(),
+              ],
+              weights: [0.7, 0.3], // 70% token基础，30% 智能选择
+            );
+
+            // 创建LLM模型实例
+            final llm = LLMFactory.createLLM(LLMType.deepseek);
+
+            // 创建聊天服务
+            return ChatService(
+              llm: llm,
+              contextStrategy: contextStrategy,
+              maxTokens: 4000,
+            );
+          },
+          // dispose: (_, chatService) => chatService.dispose(),
+        ),
+        ChangeNotifierProxyProvider<ChatService, ChatStateProvider>(
+          create: (context) => ChatStateProvider(
+            Provider.of<ChatService>(context, listen: false),
+          ),
+          update: (context, chatService, previous) => previous!,
+        ),
+      ],
+      child: MaterialApp(
+        routes: getRouteMap(),
+        initialRoute: RouteConstant.chatPage,
+        title: 'AI Chat',
+        theme: ThemeData(
+          // This is the theme of your application.
+          //
+          // TRY THIS: Try running your application with "flutter run". You'll see
+          // the application has a purple toolbar. Then, without quitting the app,
+          // try changing the seedColor in the colorScheme below to Colors.green
+          // and then invoke "hot reload" (save your changes or press the "hot
+          // reload" button in a Flutter-supported IDE, or press "r" if you used
+          // the command line to start the app).
+          //
+          // Notice that the counter didn't reset back to zero; the application
+          // state is not lost during the reload. To reset the state, use hot
+          // restart instead.
+          //
+          // This works for code too, not just values: Most code changes can be
+          // tested with just a hot reload.
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        ),
       ),
     );
   }
