@@ -183,6 +183,12 @@ final autoScrollToBottomProvider = StateProvider<bool>((ref) => true);
 // 推理模式提供者
 final useReasoningProvider = StateProvider<bool>((ref) => false);
 
+// 简洁模式提供者
+final useConciseModeProvider = StateProvider<bool>((ref) => false);
+
+// 暂存的系统提示词提供者
+final cachedSystemPromptProvider = StateProvider<String?>((ref) => null);
+
 // 初始化状态提供者
 final isInitializingProvider = StateProvider<bool>((ref) => true);
 
@@ -553,6 +559,28 @@ class ChatController {
   // 设置推理模式
   void setUseReasoning(bool value) {
     _ref.read(useReasoningProvider.notifier).state = value;
+  }
+  
+  // 设置简洁模式
+  void setUseConciseMode(bool value) {
+    final currentPrompt = _ref.read(systemPromptProvider);
+    final cachedPrompt = _ref.read(cachedSystemPromptProvider);
+    
+    if (value) {
+      // 开启简洁模式
+      if (cachedPrompt == null) {
+        // 暂存当前prompt
+        _ref.read(cachedSystemPromptProvider.notifier).state = currentPrompt;
+      }
+      // 设置简洁模式prompt
+      setSystemPrompt("极简模式，只回答问题本身，无需任何解释背景和扩展，尽量控制在30字之内(特殊情况下允许超出)");
+    } else {
+      // 关闭简洁模式，恢复之前的prompt
+      setSystemPrompt(cachedPrompt);
+      _ref.read(cachedSystemPromptProvider.notifier).state = null;
+    }
+    
+    _ref.read(useConciseModeProvider.notifier).state = value;
   }
   
   // 选择分组
