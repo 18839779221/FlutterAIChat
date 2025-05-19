@@ -10,6 +10,7 @@ class ChatInput extends ConsumerWidget {
     // 只监听需要的状态
     final isGenerating = ref.watch(isGeneratingProvider);
     final useReasoning = ref.watch(useReasoningProvider);
+    final useConciseMode = ref.watch(useConciseModeProvider);
     final textController = ref.watch(textControllerProvider);
     final focusNode = ref.watch(focusNodeProvider);
     
@@ -23,12 +24,11 @@ class ChatInput extends ConsumerWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 推理模式按钮
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Padding(
-              padding: const EdgeInsets.only(left: 4.0),
-              child: TextButton(
+          // 模式按钮行
+          Row(
+            children: [
+              // 推理模式按钮
+              TextButton(
                 onPressed: () => chatController.setUseReasoning(!useReasoning),
                 style: TextButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
@@ -55,7 +55,36 @@ class ChatInput extends ConsumerWidget {
                   ),
                 ),
               ),
-            ),
+              const SizedBox(width: 8),
+              // 简洁模式按钮
+              TextButton(
+                onPressed: () => chatController.setUseConciseMode(!useConciseMode),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(
+                      color: useConciseMode 
+                          ? Theme.of(context).primaryColor 
+                          : Colors.grey[300]!,
+                      width: 1,
+                    ),
+                  ),
+                  backgroundColor: useConciseMode 
+                      ? Theme.of(context).primaryColor.withOpacity(0.1) 
+                      : Colors.transparent,
+                ),
+                child: Text(
+                  '简洁模式',
+                  style: TextStyle(
+                    color: useConciseMode 
+                        ? Theme.of(context).primaryColor 
+                        : Colors.grey[600],
+                    fontWeight: useConciseMode ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+              ),
+            ],
           ),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
