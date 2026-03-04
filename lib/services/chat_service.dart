@@ -27,6 +27,9 @@ class ChatService {
   }) : _llm = llm,
        _contextStrategy = contextStrategy ?? TokenBasedStrategy();
 
+  // 暴露LLM实例供外部使用
+  BaseLLM get llm => _llm;
+
   Stream<String> sendMessageStream(String message, List<ChatMessage> history, ChatConfig config) async* {
     try {
       Logger.i(_tag, '准备发送消息，历史消息数: ${history.length}');

@@ -27,7 +27,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 4,
+        version: 5,
         onCreate: (Database db, int version) async {
           Logger.i(_tag, '创建数据库表...');
           // 创建分组表
@@ -37,7 +37,8 @@ class DatabaseHelper {
               title TEXT NOT NULL,
               created_at INTEGER NOT NULL,
               last_message_at INTEGER NOT NULL,
-              system_prompt TEXT
+              system_prompt TEXT,
+              is_summarized INTEGER NOT NULL DEFAULT 0
             )
           ''');
 
@@ -77,7 +78,8 @@ class DatabaseHelper {
                 title TEXT NOT NULL,
                 created_at INTEGER NOT NULL,
                 last_message_at INTEGER NOT NULL,
-                system_prompt TEXT
+                system_prompt TEXT,
+                is_summarized INTEGER NOT NULL DEFAULT 0
               )
             ''');
 
@@ -113,6 +115,13 @@ class DatabaseHelper {
 
             // 重命名新表
             await db.execute('ALTER TABLE messages_new RENAME TO messages');
+          }
+          if (oldVersion < 5) {
+            // 添加 is_summarized 字段
+            await db.execute('''
+              ALTER TABLE chat_groups
+              ADD COLUMN is_summarized INTEGER NOT NULL DEFAULT 0
+            ''');
           }
         },
       );
@@ -190,6 +199,25 @@ class DatabaseHelper {
       );
     } catch (e) {
       Logger.e(_tag, '更新分组系统提示词失败', e);
+      rethrow;
+    }
+  }
+
+  Future<void> updateGroupTitle(int groupId, String title, {bool isSummarized = true}) async {
+    try {
+      final db = await database;
+      await db.update(
+        'chat_groups',
+        {
+          'title': title,
+          'is_summarized': isSummarized ? 1 : 0,
+        },
+        where: 'id = ?',
+        whereArgs: [groupId],
+      );
+      Logger.i(_tag, '更新分组标题成功: $title');
+    } catch (e) {
+      Logger.e(_tag, '更新分组标题失败', e);
       rethrow;
     }
   }

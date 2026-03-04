@@ -171,6 +171,9 @@ final systemPromptProvider = StateProvider<String?>((ref) => null);
 // 正在生成状态提供者
 final isGeneratingProvider = StateProvider<bool>((ref) => false);
 
+// 正在自动摘要状态提供者
+final isAutoSummarizingProvider = StateProvider<bool>((ref) => false);
+
 // 加载更多状态提供者
 final isLoadingMoreProvider = StateProvider<bool>((ref) => false);
 
@@ -222,9 +225,14 @@ final chatControllerProvider = Provider<ChatController>((ref) => ChatController(
 class ChatController {
   static const String _tag = 'ChatController';
   static const int _pageSize = 20;
-  
+
+  // 自动摘要配置
+  static const int _minMessagesForSummary = 6; // 最少6条消息（3对）
+  static const int _inactivitySeconds = 30; // 30秒无活动
+
   final Ref _ref;
-  
+  Timer? _autoSummaryTimer;
+
   ChatController(this._ref) {
     _initScrollListener();
   }
@@ -495,6 +503,9 @@ class ChatController {
             _ref.read(messagesProvider.notifier).updateMessageStatus(aiMessageId, MessageStatus.completed);
             _ref.read(isGeneratingProvider.notifier).state = false;
             dbHelper.updateMessageStatus(aiMessageId, MessageStatus.completed);
+
+            // 启动自动摘要定时器
+            _scheduleAutoSummary();
           }
         },
         cancelOnError: true,
@@ -588,5 +599,114 @@ class ChatController {
     _ref.read(currentGroupProvider.notifier).state = group;
     _ref.read(systemPromptProvider.notifier).state = group.systemPrompt;
     await loadMessages();
+  }
+
+  // 生成对话摘要并更新分组标题
+  Future<String?> summarizeAndUpdateTitle() async {
+    final currentGroup = _ref.read(currentGroupProvider);
+    if (currentGroup?.id == null) return null;
+
+    final messages = _ref.read(messagesProvider);
+    if (messages.isEmpty) return null;
+
+    try {
+      Logger.i(_tag, '开始生成对话摘要...');
+
+      // 只选择已完成的消息用于摘要
+      final completedMessages = messages
+          .where((msg) => msg.status == MessageStatus.completed)
+          .toList()
+          .reversed
+          .toList();
+
+      if (completedMessages.isEmpty) return null;
+
+      final chatService = _ref.read(chatServiceProvider);
+      final summary = await chatService.llm.summarizeConversation(completedMessages);
+
+      // 更新数据库中的分组标题
+      final dbHelper = _ref.read(databaseProvider);
+      await dbHelper.updateGroupTitle(currentGroup!.id!, summary, isSummarized: true);
+
+      // 更新当前分组状态
+      _ref.read(currentGroupProvider.notifier).state =
+          currentGroup.copyWith(title: summary, isSummarized: true);
+
+      // 重新加载分组列表
+      await loadGroups();
+
+      Logger.i(_tag, '对话摘要生成成功: $summary');
+      return summary;
+    } catch (e) {
+      Logger.e(_tag, '生成对话摘要失败', e);
+      return null;
+    }
+  }
+
+  // 调度自动摘要
+  void _scheduleAutoSummary() {
+    // 取消之前的定时器
+    _autoSummaryTimer?.cancel();
+
+    // 设置新的定时器
+    _autoSummaryTimer = Timer(Duration(seconds: _inactivitySeconds), () {
+      _checkAndTriggerAutoSummary();
+    });
+  }
+
+  // 检查并触发自动摘要
+  Future<void> _checkAndTriggerAutoSummary() async {
+    final currentGroup = _ref.read(currentGroupProvider);
+    if (currentGroup?.id == null) return;
+
+    // 检查是否已经摘要过
+    if (currentGroup!.isSummarized) {
+      Logger.d(_tag, '分组已经生成过摘要，跳过自动摘要');
+      return;
+    }
+
+    // 检查是否正在生成或正在摘要
+    if (_ref.read(isGeneratingProvider) || _ref.read(isAutoSummarizingProvider)) {
+      Logger.d(_tag, '正在生成消息或摘要中，跳过自动摘要');
+      return;
+    }
+
+    // 检查标题是否为默认标题
+    if (!_isDefaultTitle(currentGroup.title)) {
+      Logger.d(_tag, '标题已自定义，跳过自动摘要');
+      return;
+    }
+
+    final messages = _ref.read(messagesProvider);
+    final completedMessages = messages
+        .where((msg) => msg.status == MessageStatus.completed)
+        .toList();
+
+    // 检查消息数量是否足够
+    if (completedMessages.length < _minMessagesForSummary) {
+      Logger.d(_tag, '消息数量不足（${completedMessages.length}/$_minMessagesForSummary），跳过自动摘要');
+      return;
+    }
+
+    // 触发自动摘要
+    Logger.i(_tag, '触发自动摘要...');
+    _ref.read(isAutoSummarizingProvider.notifier).state = true;
+
+    try {
+      await summarizeAndUpdateTitle();
+    } finally {
+      _ref.read(isAutoSummarizingProvider.notifier).state = false;
+    }
+  }
+
+  // 判断是否为默认标题
+  bool _isDefaultTitle(String title) {
+    return title.startsWith('新对话') || title == 'AI Chat' || title == '默认对话';
+  }
+
+  // 取消自动摘要定时器
+  void cancelAutoSummaryTimer() {
+    _autoSummaryTimer?.cancel();
+    _autoSummaryTimer = null;
   }
 } 
