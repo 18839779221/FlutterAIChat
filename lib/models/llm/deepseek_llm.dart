@@ -130,4 +130,50 @@ class DeepSeekLLM implements BaseLLM {
       Logger.i(_tag, '消息[$i] ${msg.role}: $content');
     }
   }
+
+  @override
+  Future<String> summarizeConversation(List<ChatMessage> messages) async {
+    try {
+      Logger.i(_tag, '开始生成对话摘要，消息数量: ${messages.length}');
+
+      // 构建摘要请求的消息
+      final summaryMessages = [
+        ChatMessage(
+          text: '请用简短的一句话（10-20字）总结以下对话的主题，只返回总结内容，不要有任何其他说明：',
+          role: MessageRole.system,
+        ),
+        ...messages,
+      ];
+
+      final response = await http.post(
+        Uri.parse(_config.apiUrl),
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Authorization': 'Bearer ${_config.apiKey}',
+        },
+        body: jsonEncode({
+          'model': 'deepseek-chat',
+          'messages': summaryMessages.map((msg) => {
+            'role': msg.role.toString().split('.').last,
+            'content': msg.text,
+          }).toList(),
+          'stream': false,
+          'max_tokens': 50,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        final summary = data['choices'][0]['message']['content'].toString().trim();
+        Logger.i(_tag, '生成摘要成功: $summary');
+        return summary;
+      } else {
+        throw Exception('摘要生成失败: ${response.statusCode}');
+      }
+    } catch (e, stackTrace) {
+      Logger.e(_tag, '生成摘要失败', e);
+      Logger.e(_tag, '堆栈跟踪', stackTrace);
+      throw Exception('生成摘要失败: $e');
+    }
+  }
 }

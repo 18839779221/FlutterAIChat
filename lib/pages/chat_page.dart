@@ -53,8 +53,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 message: const Text('选择操作'),
                 actions: [
                   CupertinoActionSheetAction(
-                    child: Text(systemPrompt != null && systemPrompt.isNotEmpty 
-                      ? '修改系统提示词' 
+                    child: Text(systemPrompt != null && systemPrompt.isNotEmpty
+                      ? '修改系统提示词'
                       : '设置系统提示词'),
                     onPressed: () {
                       Navigator.pop(context);
@@ -165,4 +165,5 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       ),
     );
   }
+
 }

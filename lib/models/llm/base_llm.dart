@@ -14,4 +14,7 @@ abstract class BaseLLM {
   
   /// 验证API密钥
   Future<bool> validateApiKey(ChatConfig config);
+
+  /// 生成对话摘要
+  Future<String> summarizeConversation(List<ChatMessage> messages);
 } 

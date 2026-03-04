@@ -4,6 +4,7 @@ class ChatGroup {
   final DateTime createdAt;
   final DateTime lastMessageAt;
   final String? systemPrompt;
+  final bool isSummarized;
 
   ChatGroup({
     this.id,
@@ -11,6 +12,7 @@ class ChatGroup {
     DateTime? createdAt,
     DateTime? lastMessageAt,
     this.systemPrompt,
+    this.isSummarized = false,
   }) : createdAt = createdAt ?? DateTime.now(),
        lastMessageAt = lastMessageAt ?? DateTime.now();
 
@@ -21,6 +23,7 @@ class ChatGroup {
       'created_at': createdAt.millisecondsSinceEpoch,
       'last_message_at': lastMessageAt.millisecondsSinceEpoch,
       'system_prompt': systemPrompt,
+      'is_summarized': isSummarized ? 1 : 0,
     };
   }
 
@@ -31,6 +34,7 @@ class ChatGroup {
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at']),
       lastMessageAt: DateTime.fromMillisecondsSinceEpoch(map['last_message_at']),
       systemPrompt: map['system_prompt'],
+      isSummarized: map['is_summarized'] == 1,
     );
   }
 
@@ -40,6 +44,7 @@ class ChatGroup {
     DateTime? createdAt,
     DateTime? lastMessageAt,
     String? systemPrompt,
+    bool? isSummarized,
   }) {
     return ChatGroup(
       id: id ?? this.id,
@@ -47,6 +52,7 @@ class ChatGroup {
       createdAt: createdAt ?? this.createdAt,
       lastMessageAt: lastMessageAt ?? this.lastMessageAt,
       systemPrompt: systemPrompt ?? this.systemPrompt,
+      isSummarized: isSummarized ?? this.isSummarized,
     );
   }
 } 
