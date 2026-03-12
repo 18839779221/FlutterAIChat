@@ -701,7 +701,11 @@ class ChatController {
 
   // 判断是否为默认标题
   bool _isDefaultTitle(String title) {
-    return title.startsWith('新对话') || title == 'AI Chat' || title == '默认对话';
+    // 兼容历史默认标题（AI Chat）与当前默认标题（小晨AI助手）
+    return title.startsWith('新对话') ||
+        title == 'AI Chat' ||
+        title == '小晨AI助手' ||
+        title == '默认对话';
   }
 
   // 取消自动摘要定时器

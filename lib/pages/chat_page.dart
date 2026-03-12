@@ -49,7 +49,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             showCupertinoModalPopup(
               context: context,
               builder: (context) => CupertinoActionSheet(
-                title: const Text('AI Chat'),
+                title: const Text('小晨AI助手'),
                 message: const Text('选择操作'),
                 actions: [
                   CupertinoActionSheetAction(

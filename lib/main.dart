@@ -77,7 +77,7 @@ class MyApp extends ConsumerWidget {
     return MaterialApp(
       routes: getRouteMap(),
       initialRoute: RouteConstant.chatPage,
-      title: 'AI Chat',
+      title: '小晨AI助手',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
@@ -87,10 +87,9 @@ class MyApp extends ConsumerWidget {
 
   Map<String, WidgetBuilder> getRouteMap() {
     return {
-      RouteConstant.chatPage: (context) => const ChatPage(title: 'AI Chat'),
+      RouteConstant.chatPage: (context) => const ChatPage(title: '小晨AI助手'),
       RouteConstant.settingsPage: (context) => const SettingsPage(),
       RouteConstant.testPage: (context) => const TestPage()
     };
   }
 }
-
