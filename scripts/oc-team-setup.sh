@@ -71,6 +71,23 @@ add_allowlist_if_exists() {
   echo "[ok] allowlist ${agent} -> ${bin_path}"
 }
 
+sync_lead_skill() {
+  local skill_name="lead-feishu-flow"
+  local src="${REPO_ROOT}/skills/${skill_name}"
+  local lead_dst="${REPO_ROOT}/.openclaw/lead/skills/${skill_name}"
+  local managed_dst="${HOME}/.openclaw/skills/${skill_name}"
+
+  if [[ ! -f "${src}/SKILL.md" ]]; then
+    echo "[warn] lead skill source missing: ${src}/SKILL.md"
+    return 0
+  fi
+
+  mkdir -p "${lead_dst}" "${managed_dst}"
+  cp -R "${src}/." "${lead_dst}/"
+  cp -R "${src}/." "${managed_dst}/"
+  echo "[ok] synced skill '${skill_name}' to lead workspace + managed skills"
+}
+
 main() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -112,6 +129,7 @@ main() {
   ensure_agent "lead" "${REPO_ROOT}/.openclaw/lead" "${LEAD_MODEL}"
   ensure_agent "flutter-dev" "${REPO_ROOT}/.openclaw/flutter-dev" "${DEV_MODEL}"
   ensure_agent "qa" "${REPO_ROOT}/.openclaw/qa" "${QA_MODEL}"
+  sync_lead_skill
 
   if [[ "${FULL_TEAM}" -eq 1 ]]; then
     ensure_agent "pm" "${REPO_ROOT}/.openclaw/pm" "${LEAD_MODEL}"
@@ -120,6 +138,8 @@ main() {
   fi
 
   add_allowlist_if_exists "lead" "git"
+  add_allowlist_if_exists "lead" "bash"
+  add_allowlist_if_exists "lead" "openclaw"
   if [[ "${BIND_FEISHU_LEAD}" -eq 1 ]]; then
     openclaw agents bind --agent lead --bind feishu >/dev/null 2>&1 || true
     echo "[ok] route feishu -> lead"
