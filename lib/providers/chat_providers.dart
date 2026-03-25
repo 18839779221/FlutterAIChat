@@ -7,12 +7,18 @@ import '../models/chat_message.dart';
 import '../models/chat_group.dart';
 import '../models/response/message_content_type.dart';
 import '../database/database_helper.dart';
+import '../repositories/app_settings_repository.dart';
 import '../services/chat_service.dart';
+import '../storage/chat_storage.dart';
 import '../utils/logger.dart';
 
 // 数据库提供者
-final databaseProvider = Provider<DatabaseHelper>((ref) {
+final databaseProvider = Provider<ChatStorage>((ref) {
   return DatabaseHelper();
+});
+
+final appSettingsRepositoryProvider = Provider<AppSettingsRepository>((ref) {
+  throw UnimplementedError('需要在 main.dart 中覆盖 AppSettingsRepository');
 });
 
 // 聊天服务提供者
@@ -22,9 +28,7 @@ final chatServiceProvider = Provider<ChatService>((ref) {
 
 // 聊天服务工厂提供者
 final chatServiceFactoryProvider = Provider<ChatService>((ref) {
-  // 创建混合策略和LLM实例的代码保持不变
-  // ...
-  throw UnimplementedError("需要实现创建ChatService的代码");
+  throw UnimplementedError("需要在 main.dart 中覆盖创建 ChatService 的代码");
 });
 
 // 消息列表提供者
