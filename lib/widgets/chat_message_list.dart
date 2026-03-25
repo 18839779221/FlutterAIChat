@@ -1,5 +1,5 @@
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
-import 'package:ai_chat/widgets/markdown/markdown_widget_impl.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -7,7 +7,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/chat_message.dart';
 import '../models/response/message_content_type.dart';
+import '../models/response/structured_summary_card.dart';
 import '../providers/chat_providers.dart';
+import 'structured_message/structured_summary_card_widget.dart';
 
 class ChatMessageList extends ConsumerStatefulWidget {
   const ChatMessageList({super.key});
@@ -259,6 +261,17 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       case MessageContentType.plainText:
         return FlutterMarkdownImpl(data: message.text);
       case MessageContentType.structuredCard:
+        final payload = message.payloadJson;
+        if (payload == null) {
+          return Text(message.text, style: const TextStyle(fontSize: 16));
+        }
+
+        try {
+          final card = StructuredSummaryCard.fromJson(payload);
+          return StructuredSummaryCardWidget(card: card);
+        } catch (_) {
+          return Text(message.text, style: const TextStyle(fontSize: 16));
+        }
       case MessageContentType.toolResult:
         return Text(message.text, style: const TextStyle(fontSize: 16));
     }
@@ -266,11 +279,24 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
 
   void _showMessageOptionMenu(ChatMessage message) {
     final messagesNotifier = ref.read(messagesProvider.notifier);
+    final shouldShowStructuredDebugAction =
+        kDebugMode &&
+        message.isAssistant &&
+        message.status == MessageStatus.completed &&
+        message.contentType == MessageContentType.plainText;
     
     showCupertinoModalPopup(
       context: context,
       builder: (context) => CupertinoActionSheet(
         actions: [
+          if (shouldShowStructuredDebugAction)
+            CupertinoActionSheetAction(
+              child: const Text('结构化整理（调试）'),
+              onPressed: () async {
+                Navigator.pop(context);
+                await ref.read(chatControllerProvider).structureMessageForDebug(message);
+              },
+            ),
           CupertinoActionSheetAction(
             child: const Text('复制'),
             onPressed: () {
