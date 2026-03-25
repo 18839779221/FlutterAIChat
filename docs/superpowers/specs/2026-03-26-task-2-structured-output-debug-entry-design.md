@@ -91,6 +91,17 @@
 - 结构化整理不需要复用现有流式 token 处理协议
 - 分离后可以在不影响现有聊天的前提下独立测试和扩展
 
+`ChatService` 同时负责调用 `ResponseParserService`。也就是说，控制器不会直接接触模型原始输出，更不会自行解析 JSON。`ChatService` 的返回值必须已经是“可直接写入消息系统的结果对象”，只有两种可能：
+
+- 成功：结构化卡片结果
+- 失败：普通文本回退结果
+
+这样可以确保类边界清晰：
+
+- `ChatController` 只负责编排和状态更新
+- `ChatService` 负责“请求模型 + 调解析器 + 产出最终结果”
+- `ResponseParserService` 只负责解析与校验，不负责持久化或 UI
+
 ### 4. LLM 抽象层
 
 `BaseLLM` 增加一个非流式结构化输出方法，由 `DeepSeekLLM` 实现。
@@ -114,6 +125,8 @@
 
 解析层必须是唯一负责“JSON 是否合法、字段是否完整”的组件，避免控制器和 UI 分散处理容错逻辑。
 
+任务 2 不新增一套平行的消息包装模型。结构化成功时，`StructuredSummaryCard` 序列化后写入现有 `ChatMessage.payloadJson`，并使用任务 1 已存在的 `MessageContentType.structuredCard`。
+
 ### 6. 渲染层
 
 新增 `StructuredSummaryCardWidget`，专门渲染 `StructuredSummaryCard`。
@@ -130,9 +143,9 @@ Widget 负责布局与展示，不直接接触模型输出原始文本，也不�
 4. `ChatController` 调用 `ChatService` 的结构化整理方法
 5. `ChatService` 调用 `BaseLLM` 的非流式结构化方法
 6. `DeepSeekLLM` 返回模型原始输出
-7. `ResponseParserService` 解析并校验输出
-8. 成功时生成 `StructuredSummaryCard`，写入 `payloadJson`
-9. 失败时生成普通文本回退消息
+7. `ChatService` 调用 `ResponseParserService` 解析并校验输出
+8. 成功时，`ChatService` 返回结构化卡片结果，控制器将其写入 `payloadJson`
+9. 失败时，`ChatService` 返回普通文本回退结果，控制器将其写为 `contentType = plainText`
 10. `ChatMessageList` 根据 `contentType` 渲染卡片或普通文本
 
 ## 失败处理
@@ -148,7 +161,9 @@ Widget 负责布局与展示，不直接接触模型输出原始文本，也不�
 
 ### 模型请求失败
 
-- 新增的目标消息标记为失败或回退为普通文本提示
+- 新增的目标消息统一回退为普通文本消息
+- 该回退消息使用 `contentType = plainText` 且 `status = completed`
+- 回退文案使用固定的用户可读文本，例如 `结构化整理失败，请重试。`
 - 不影响原始助手消息
 - 不抛出会中断整个聊天页的未处理异常
 
@@ -156,7 +171,8 @@ Widget 负责布局与展示，不直接接触模型输出原始文本，也不�
 
 - 不展示原始 JSON
 - 不把半合法结果拼成卡片
-- 回退为普通文本消息
+- 统一回退为 `contentType = plainText` 且 `status = completed` 的普通文本消息
+- 回退文案同样使用固定的用户可读文本，不复用模型返回的原始 JSON 片段
 
 ### 渲染失败
 
