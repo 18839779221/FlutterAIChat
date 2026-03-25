@@ -1,7 +1,12 @@
 import 'package:ai_chat/constants/route_constant.dart';
 import 'package:ai_chat/pages/test_page.dart';
+import 'package:ai_chat/repositories/app_settings_repository.dart';
+import 'package:ai_chat/storage/chat_storage.dart';
+import 'package:ai_chat/storage/web_chat_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'pages/chat_page.dart';
 import 'database/database_helper.dart';
 import 'pages/settings_page.dart';
@@ -16,15 +21,20 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   try {
-    // 初始化数据库工厂
-    final dbHelper = DatabaseHelper();
-    await dbHelper.testDatabaseConnection();
+    final preferences = await SharedPreferences.getInstance();
+    final settingsRepository = AppSettingsRepository(preferences);
+    final storage = _createChatStorage(preferences);
+    await storage.testDatabaseConnection();
     
     // 创建一个自定义的ProviderContainer来添加覆盖
     final container = ProviderContainer(
       overrides: [
         // 覆盖聊天服务工厂提供者
-        chatServiceFactoryProvider.overrideWithValue(_createChatService()),
+        appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
+        databaseProvider.overrideWithValue(storage),
+        chatServiceFactoryProvider.overrideWithValue(
+          _createChatService(settingsRepository),
+        ),
       ],
     );
     
@@ -48,7 +58,7 @@ void main() async {
 }
 
 // 创建聊天服务的函数
-ChatService _createChatService() {
+ChatService _createChatService(AppSettingsRepository settingsRepository) {
   // 创建混合策略
   final contextStrategy = HybridStrategy(
     strategies: [
@@ -58,8 +68,11 @@ ChatService _createChatService() {
     weights: [0.7, 0.3], // 70% token基础，30% 智能选择
   );
 
-  // 创建LLM模型实例
-  final llm = LLMFactory.createLLM(LLMType.deepseek);
+  // 创建可配置的 HTTP LLM 实例
+  final llm = LLMFactory.createLLM(
+    LLMType.configurable,
+    settingsRepository: settingsRepository,
+  );
 
   // 创建聊天服务
   return ChatService(
@@ -67,6 +80,14 @@ ChatService _createChatService() {
     contextStrategy: contextStrategy,
     maxTokens: 4000,
   );
+}
+
+ChatStorage _createChatStorage(SharedPreferences preferences) {
+  if (kIsWeb) {
+    return WebChatStorage(preferences);
+  }
+
+  return DatabaseHelper();
 }
 
 class MyApp extends ConsumerWidget {
@@ -93,4 +114,3 @@ class MyApp extends ConsumerWidget {
     };
   }
 }
-
