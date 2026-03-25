@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/chat_message.dart';
+import '../models/response/message_content_type.dart';
 import '../providers/chat_providers.dart';
 
 class ChatMessageList extends ConsumerStatefulWidget {
@@ -18,20 +19,20 @@ class ChatMessageList extends ConsumerStatefulWidget {
 class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   // 是否快滑到了底部
   bool _isNearBottom = true;
+  late final ScrollController _scrollController;
 
   @override
   void initState() {
     super.initState();
     // 初始化时监听滚动控制器
-    final scrollController = ref.read(scrollControllerProvider);
-    scrollController.addListener(_scrollListener);
+    _scrollController = ref.read(scrollControllerProvider);
+    _scrollController.addListener(_scrollListener);
   }
 
   @override
   void dispose() {
     // 销毁时移除监听
-    final scrollController = ref.read(scrollControllerProvider);
-    scrollController.removeListener(_scrollListener);
+    _scrollController.removeListener(_scrollListener);
     super.dispose();
   }
 
@@ -231,7 +232,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
                   // 消息内容
                   message.isUser
                       ? Text(message.text, style: const TextStyle(fontSize: 16))
-                      : FlutterMarkdownImpl(data: message.text),
+                      : _buildAssistantMessageContent(message),
                   // 状态提示文本
                   if (!message.isUser && message.status != MessageStatus.completed)
                     Padding(
@@ -251,6 +252,16 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
         ),
       ),
     );
+  }
+
+  Widget _buildAssistantMessageContent(ChatMessage message) {
+    switch (message.contentType) {
+      case MessageContentType.plainText:
+        return FlutterMarkdownImpl(data: message.text);
+      case MessageContentType.structuredCard:
+      case MessageContentType.toolResult:
+        return Text(message.text, style: const TextStyle(fontSize: 16));
+    }
   }
 
   void _showMessageOptionMenu(ChatMessage message) {
