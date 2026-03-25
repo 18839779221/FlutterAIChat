@@ -27,7 +27,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 5,
+        version: 6,
         onCreate: (Database db, int version) async {
           Logger.i(_tag, '创建数据库表...');
           // 创建分组表
@@ -52,6 +52,9 @@ class DatabaseHelper {
               timestamp INTEGER NOT NULL,
               status TEXT NOT NULL DEFAULT 'initial',
               reasoning_content TEXT,
+              content_type TEXT NOT NULL DEFAULT 'plainText',
+              payload_json TEXT,
+              reference_json TEXT,
               FOREIGN KEY (group_id) REFERENCES chat_groups (id) ON DELETE CASCADE
             )
           ''');
@@ -121,6 +124,20 @@ class DatabaseHelper {
             await db.execute('''
               ALTER TABLE chat_groups
               ADD COLUMN is_summarized INTEGER NOT NULL DEFAULT 0
+            ''');
+          }
+          if (oldVersion < 6) {
+            await db.execute('''
+              ALTER TABLE messages 
+              ADD COLUMN content_type TEXT NOT NULL DEFAULT 'plainText'
+            ''');
+            await db.execute('''
+              ALTER TABLE messages 
+              ADD COLUMN payload_json TEXT
+            ''');
+            await db.execute('''
+              ALTER TABLE messages 
+              ADD COLUMN reference_json TEXT
             ''');
           }
         },
