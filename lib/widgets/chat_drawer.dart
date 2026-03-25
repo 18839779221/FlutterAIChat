@@ -1,6 +1,4 @@
 import 'package:ai_chat/constants/route_constant.dart';
-import 'package:ai_chat/widgets/about_dialog.dart';
-import 'package:ai_chat/models/chat_group.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -207,6 +205,17 @@ class ChatDrawer extends ConsumerWidget {
                 );
               },
             ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.settings_outlined),
+            title: const Text('设置'),
+            enabled: !isGenerating,
+            onTap: isGenerating
+                ? null
+                : () {
+                    Navigator.pop(context);
+                    Navigator.pushNamed(context, RouteConstant.settingsPage);
+                  },
           ),
           // 底部版本信息
           Padding(

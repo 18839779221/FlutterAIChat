@@ -3,9 +3,10 @@ import 'package:path/path.dart';
 import '../models/chat_message.dart';
 import '../models/response/message_content_type.dart';
 import '../models/chat_group.dart';
+import '../storage/chat_storage.dart';
 import '../utils/logger.dart';
 
-class DatabaseHelper {
+class DatabaseHelper implements ChatStorage {
   static const String _tag = 'DatabaseHelper';
   static final DatabaseHelper _instance = DatabaseHelper._internal();
   static Database? _database;
