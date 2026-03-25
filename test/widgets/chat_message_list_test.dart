@@ -3,6 +3,7 @@ import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/widgets/chat_message_list.dart';
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
+import 'package:ai_chat/widgets/structured_message/structured_summary_card_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -28,7 +29,7 @@ void main() {
     });
 
     testWidgets(
-      'structuredCard assistant messages fall back to plain text without a dedicated renderer',
+      'structuredCard assistant messages render the dedicated summary widget',
       (tester) async {
         await _pumpMessageList(
           tester,
@@ -37,12 +38,20 @@ void main() {
               text: 'Structured fallback text',
               role: MessageRole.assistant,
               contentType: MessageContentType.structuredCard,
+              payloadJson: {
+                'title': 'Weekly Summary',
+                'summary': 'A short summary',
+                'keyPoints': ['Point A'],
+                'actionItems': ['Action B'],
+                'risks': ['Risk C'],
+              },
             ),
           ],
         );
 
         expect(find.byType(FlutterMarkdownImpl), findsNothing);
-        expect(find.text('Structured fallback text'), findsOneWidget);
+        expect(find.byType(StructuredSummaryCardWidget), findsOneWidget);
+        expect(find.text('Weekly Summary'), findsOneWidget);
       },
     );
 
@@ -79,6 +88,46 @@ void main() {
 
       expect(find.byType(FlutterMarkdownImpl), findsNothing);
       expect(find.text('User message'), findsOneWidget);
+    });
+
+    testWidgets('debug mode exposes structured output action for completed assistant plain text messages', (
+      tester,
+    ) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: 'Assistant message',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+      );
+
+      await tester.longPress(find.text('Assistant message'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('结构化整理（调试）'), findsOneWidget);
+    });
+
+    testWidgets('unsupported messages do not expose structured output action', (
+      tester,
+    ) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: 'User message',
+            role: MessageRole.user,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+      );
+
+      await tester.longPress(find.text('User message'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('结构化整理（调试）'), findsNothing);
     });
   });
 }
@@ -117,11 +166,13 @@ ChatMessage _buildMessage({
   required String text,
   required MessageRole role,
   required MessageContentType contentType,
+  Map<String, dynamic>? payloadJson,
 }) {
   return ChatMessage(
     text: text,
     role: role,
     status: MessageStatus.completed,
     contentType: contentType,
+    payloadJson: payloadJson,
   );
 }

@@ -17,4 +17,7 @@ abstract class BaseLLM {
 
   /// 生成对话摘要
   Future<String> summarizeConversation(List<ChatMessage> messages);
-} 
+
+  /// 非流式结构化整理调试入口
+  Future<String> structureSummaryCard(String sourceText);
+}
