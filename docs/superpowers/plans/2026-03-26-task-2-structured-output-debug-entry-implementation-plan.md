@@ -1,95 +1,95 @@
-# Task 2 Structured Output Debug Entry Implementation Plan
+# FlutterAIChat 任务 2：结构化输出调试入口实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **给执行型 Agent 的说明：** 实施本计划时，必须使用 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans` 子技能，并按任务逐项推进。步骤统一使用复选框语法 `- [ ]` 进行跟踪。
 
-**Goal:** Add a debug-only structured-output entry point that lets developers long-press a completed assistant plain-text message, generate a structured summary card for it, and safely fall back to plain text on any failure.
+**目标：** 增加一个仅限调试环境使用的结构化输出入口，让开发者可以长按一条已完成的助手纯文本消息，对其生成结构化摘要卡片，并在任意失败场景下安全回退为普通文本。
 
-**Architecture:** Keep the normal streaming chat flow unchanged. Add a separate non-streaming structured-output path where `ChatController` orchestrates the action, `ChatService` owns the LLM call plus parser invocation, `ResponseParserService` validates the raw model output, and `ChatMessageList` exposes a `kDebugMode`-only long-press menu entry plus structured-card rendering.
+**架构思路：** 保持现有流式聊天主链路不变，新增一条独立的非流式结构化整理链路。`ChatController` 负责编排动作，`ChatService` 负责调用 LLM 并串联解析器，`ResponseParserService` 负责校验原始模型输出，`ChatMessageList` 负责暴露 `kDebugMode` 下的长按调试入口以及 `structuredCard` 的真实渲染。
 
-**Tech Stack:** Flutter, Dart, flutter_test, Riverpod, existing typed-message infrastructure from task 1, DeepSeek-compatible LLM abstraction, TDD.
+**技术栈：** Flutter、Dart、flutter_test、Riverpod、任务 1 已完成的类型化消息基础设施、DeepSeek 兼容 LLM 抽象、TDD。
 
 ---
 
-## File Responsibility Map
+## 文件职责映射
 
-### Create
+### 新建文件
 
 - `lib/models/response/structured_summary_card.dart`
-  Defines the single schema used in task 2 and its JSON serialization helpers.
+  定义任务 2 唯一使用的结构化摘要卡片 schema，以及对应的 JSON 序列化方法。
 - `lib/services/response_parser_service.dart`
-  Parses raw model output into either a valid `StructuredSummaryCard` result or a plain-text fallback result.
+  负责把模型原始输出解析成合法的 `StructuredSummaryCard`，或在失败时产出普通文本回退结果。
 - `test/services/chat_service_structured_output_test.dart`
-  Covers the structured-output service path, including request-level failure fallback.
+  负责覆盖结构化整理服务链路，包括“请求级失败统一回退”的行为。
 - `lib/widgets/structured_message/structured_summary_card_widget.dart`
-  Renders a `StructuredSummaryCard` without parsing logic.
+  负责渲染 `StructuredSummaryCard`，不包含任何解析逻辑。
 - `test/services/response_parser_service_test.dart`
-  Covers parser success and failure behavior.
+  负责覆盖解析器的成功和失败路径。
 - `test/widgets/structured_summary_card_widget_test.dart`
-  Covers structured card rendering.
+  负责覆盖结构化卡片组件渲染。
 - `test/providers/chat_controller_structured_output_test.dart`
-  Covers at least one happy-path and one fallback-path orchestration test for the debug action.
+  负责覆盖调试入口动作的至少一条成功路径和一条回退路径。
 
-### Modify
+### 修改文件
 
 - `lib/models/llm/base_llm.dart`
-  Adds the non-streaming structured-output contract.
+  增加非流式结构化输出契约。
 - `lib/models/llm/deepseek_llm.dart`
-  Implements the new contract with a fixed prompt for the summary-card schema.
+  实现任务 2 所需的固定 schema 结构化输出请求。
 - `lib/database/database_helper.dart`
-  Adds or extends a message update API so finalized structured-output messages persist `text`, `status`, `contentType`, and `payloadJson`.
+  增加或扩展消息更新 API，使结构化整理完成后的 `text`、`status`、`contentType`、`payloadJson` 能持久化到 SQLite。
 - `lib/services/chat_service.dart`
-  Adds the dedicated debug structured-output method and delegates parsing to `ResponseParserService`.
+  增加调试用结构化整理方法，并在内部调用 `ResponseParserService`。
 - `lib/providers/chat_providers.dart`
-  Adds controller orchestration for the debug action and provider wiring for the parser service.
+  增加调试整理动作的控制器编排，以及必要的 provider 接线。
 - `lib/widgets/chat_message_list.dart`
-  Adds the debug-only long-press action and real `structuredCard` rendering dispatch.
+  增加仅调试模式可见的长按菜单项，并真正渲染 `structuredCard`。
 - `test/database/database_helper_test.dart`
-  Extends database coverage for structured-output message persistence.
+  补充结构化消息完成态写回数据库的测试覆盖。
 
-### Reuse As-Is
+### 直接复用，不新增抽象
 
 - `lib/models/chat_message.dart`
-  Already carries `contentType` and `payloadJson` from task 1; do not add new message-envelope abstractions.
+  任务 1 已支持 `contentType` 和 `payloadJson`，本任务不再新建第二套消息信封模型。
 - `lib/models/response/message_content_type.dart`
-  Already defines `plainText` and `structuredCard`.
+  已定义 `plainText` 和 `structuredCard`，直接复用。
 
-## Verification Commands
+## 验证命令
 
-- Parser tests:
+- 解析器测试：
   `flutter test test/services/response_parser_service_test.dart`
-- Service tests:
+- 服务层测试：
   `flutter test test/services/chat_service_structured_output_test.dart`
-- Database tests:
+- 数据库测试：
   `flutter test test/database/database_helper_test.dart`
-- Widget tests:
+- Widget 测试：
   `flutter test test/widgets/structured_summary_card_widget_test.dart`
-- Controller orchestration tests:
+- 控制器编排测试：
   `flutter test test/providers/chat_controller_structured_output_test.dart`
-- Focused task-2 suite:
+- 任务 2 聚焦测试集：
   `flutter test test/services/response_parser_service_test.dart test/services/chat_service_structured_output_test.dart test/database/database_helper_test.dart test/widgets/structured_summary_card_widget_test.dart test/providers/chat_controller_structured_output_test.dart`
-- Static analysis:
+- 静态检查：
   `flutter analyze`
 
-## Task 1: Define the Structured Summary Schema and Parser Result Contract
+## 任务 1：定义结构化摘要卡片模型与解析结果契约
 
-**Files:**
-- Create: `lib/models/response/structured_summary_card.dart`
-- Create: `lib/services/response_parser_service.dart`
-- Test: `test/services/response_parser_service_test.dart`
+**涉及文件：**
+- 新建：`lib/models/response/structured_summary_card.dart`
+- 新建：`lib/services/response_parser_service.dart`
+- 测试：`test/services/response_parser_service_test.dart`
 
-- [ ] **Step 1: Write the failing parser tests**
+- [ ] **步骤 1：先写失败测试**
 
-Create `test/services/response_parser_service_test.dart` and add tests for:
+创建 `test/services/response_parser_service_test.dart`，至少覆盖以下场景：
 
-- valid JSON with all required fields returns a structured-card success result
-- invalid JSON returns a plain-text fallback result
-- missing required fields returns a plain-text fallback result
-- wrong field types return a plain-text fallback result
+- 合法 JSON 且字段齐全时，返回结构化卡片成功结果
+- 非法 JSON 时，返回普通文本回退结果
+- 缺失必填字段时，返回普通文本回退结果
+- 字段类型错误时，返回普通文本回退结果
 
-Example seed test:
+示例测试起点：
 
 ```dart
-test('returns structured card when json is valid', () {
+test('合法 json 时返回结构化卡片', () {
   final service = ResponseParserService();
 
   final result = service.parseStructuredSummaryCard(
@@ -101,145 +101,145 @@ test('returns structured card when json is valid', () {
 });
 ```
 
-- [ ] **Step 2: Run the parser tests and confirm they fail**
+- [ ] **步骤 2：运行测试，确认先失败**
 
-Run: `flutter test test/services/response_parser_service_test.dart`
+运行：`flutter test test/services/response_parser_service_test.dart`
 
-Expected: FAIL because neither the schema model nor parser service exists yet.
+预期：FAIL，因为此时结构化卡片模型和解析服务都还不存在。
 
-- [ ] **Step 3: Implement the schema model**
+- [ ] **步骤 3：实现结构化卡片模型**
 
-Create `lib/models/response/structured_summary_card.dart` with:
+创建 `lib/models/response/structured_summary_card.dart`，包含：
 
-- immutable fields: `title`, `summary`, `keyPoints`, `actionItems`, `risks`
+- 不可变字段：`title`、`summary`、`keyPoints`、`actionItems`、`risks`
 - `fromJson(Map<String, dynamic>)`
 - `toJson()`
 
-Keep field names exactly aligned with the spec and payload JSON keys.
+字段命名必须与 spec 和最终 `payloadJson` 中的 key 一致。
 
-- [ ] **Step 4: Implement the parser service with a minimal result type**
+- [ ] **步骤 4：实现解析服务与最小结果类型**
 
-Create `lib/services/response_parser_service.dart` with:
+创建 `lib/services/response_parser_service.dart`，包含：
 
-- a parser method dedicated to task 2, for example `parseStructuredSummaryCard(String rawOutput)`
-- a small result contract that exposes either:
-  - a `StructuredSummaryCard`, or
-  - a fixed fallback text such as `结构化整理失败，请重试。`
+- 一个专用于任务 2 的解析方法，例如 `parseStructuredSummaryCard(String rawOutput)`
+- 一个最小结果契约，只暴露两种情况：
+  - 成功：携带 `StructuredSummaryCard`
+  - 失败：携带固定回退文案，例如 `结构化整理失败，请重试。`
 
-Do not leak raw JSON back to the caller on failure.
+失败时不要把原始 JSON 回传给调用方。
 
-- [ ] **Step 5: Re-run the parser tests and confirm they pass**
+- [ ] **步骤 5：重新运行解析器测试，确认通过**
 
-Run: `flutter test test/services/response_parser_service_test.dart`
+运行：`flutter test test/services/response_parser_service_test.dart`
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 6: Commit**
+- [ ] **步骤 6：提交**
 
 ```bash
 git add lib/models/response/structured_summary_card.dart lib/services/response_parser_service.dart test/services/response_parser_service_test.dart
 git commit -m "feat: add structured summary parser"
 ```
 
-## Task 2: Add the Non-Streaming Structured Output Contract and Service-Level Fallbacks
+## 任务 2：增加非流式结构化输出契约与服务层统一回退
 
-**Files:**
-- Modify: `lib/models/llm/base_llm.dart`
-- Modify: `lib/models/llm/deepseek_llm.dart`
-- Modify: `lib/services/chat_service.dart`
-- Create: `test/services/chat_service_structured_output_test.dart`
+**涉及文件：**
+- 修改：`lib/models/llm/base_llm.dart`
+- 修改：`lib/models/llm/deepseek_llm.dart`
+- 修改：`lib/services/chat_service.dart`
+- 新建：`test/services/chat_service_structured_output_test.dart`
 
-- [ ] **Step 1: Write the failing service tests**
+- [ ] **步骤 1：先写服务层失败测试**
 
-Create `test/services/chat_service_structured_output_test.dart` and cover:
+创建 `test/services/chat_service_structured_output_test.dart`，覆盖：
 
-- success path: `ChatService` returns a parsed structured-card result, not raw model JSON
-- request failure path: if the LLM throws, `ChatService` returns the same fixed plain-text fallback result required by the spec
+- 成功路径：`ChatService` 返回已解析的结构化卡片结果，而不是原始 JSON
+- 请求失败路径：当 LLM 抛异常时，`ChatService` 仍返回与解析失败相同的固定普通文本回退结果
 
-The important contract is that `ChatService` never leaks raw JSON and never propagates request failures for this debug feature.
+这里的关键契约是：对于这个调试功能，`ChatService` 不能泄露原始 JSON，也不能把请求异常继续抛给控制器。
 
-- [ ] **Step 2: Run the service tests and confirm they fail**
+- [ ] **步骤 2：运行服务层测试，确认先失败**
 
-Run: `flutter test test/services/chat_service_structured_output_test.dart`
+运行：`flutter test test/services/chat_service_structured_output_test.dart`
 
-Expected: FAIL because the LLM and service contract do not yet expose the structured-output path or uniform fallback handling.
+预期：FAIL，因为当前还没有结构化整理服务契约，也没有统一回退逻辑。
 
-- [ ] **Step 3: Update the base LLM contract**
+- [ ] **步骤 3：更新 BaseLLM 契约**
 
-Modify `lib/models/llm/base_llm.dart` to add a dedicated non-streaming method, for example:
+修改 `lib/models/llm/base_llm.dart`，增加一个专用的非流式方法，例如：
 
 ```dart
 Future<String> structureSummaryCard(String sourceText);
 ```
 
-Do not reuse `chatStream()` for this path.
+不要复用 `chatStream()`。
 
-- [ ] **Step 4: Implement the DeepSeek method**
+- [ ] **步骤 4：实现 DeepSeek 结构化整理方法**
 
-Modify `lib/models/llm/deepseek_llm.dart` to:
+修改 `lib/models/llm/deepseek_llm.dart`：
 
-- send a non-streaming request
-- use a fixed prompt that requests only the task-2 schema
-- return raw response text for the parser service
+- 发送非流式请求
+- 使用固定 prompt，请模型只返回任务 2 所需 schema
+- 返回原始文本结果给解析器
 
-Keep it intentionally narrow: one schema, one method, one response shape.
+保持范围尽量小：一个 schema、一个方法、一种响应形态。
 
-- [ ] **Step 5: Add the dedicated ChatService method**
+- [ ] **步骤 5：增加 ChatService 的专用结构化整理方法**
 
-Modify `lib/services/chat_service.dart` to add a method such as:
+修改 `lib/services/chat_service.dart`，增加一个方法，例如：
 
 ```dart
 Future<StructuredSummaryParseResult> structureMessageForDebug(String sourceText)
 ```
 
-This method must:
+这个方法必须：
 
-- call the new LLM method
-- pass raw output to `ResponseParserService`
-- return only the parsed success-or-fallback result
-- catch request-level failures from the LLM and convert them into the same fixed plain-text fallback result
+- 调用新的 LLM 方法
+- 将原始输出交给 `ResponseParserService`
+- 只返回“结构化成功”或“普通文本回退”两种结果
+- 捕获请求级异常，并统一转换成相同的固定回退结果
 
-Inject or construct `ResponseParserService` in a way consistent with the current codebase, but keep ownership in `ChatService`, not `ChatController`.
+可以用当前代码风格注入或构造 `ResponseParserService`，但调用归属必须在 `ChatService` 内，不要放到 `ChatController`。
 
-- [ ] **Step 6: Re-run the service tests**
+- [ ] **步骤 6：重新运行服务层测试，确认通过**
 
-Run: `flutter test test/services/chat_service_structured_output_test.dart`
+运行：`flutter test test/services/chat_service_structured_output_test.dart`
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 7: Commit**
+- [ ] **步骤 7：提交**
 
 ```bash
 git add lib/models/llm/base_llm.dart lib/models/llm/deepseek_llm.dart lib/services/chat_service.dart test/services/chat_service_structured_output_test.dart
 git commit -m "feat: add structured output service contract"
 ```
 
-## Task 3: Add Persistence Support for Finalized Structured Output Messages
+## 任务 3：补齐结构化整理完成态的数据库持久化
 
-**Files:**
-- Modify: `lib/database/database_helper.dart`
-- Modify: `test/database/database_helper_test.dart`
+**涉及文件：**
+- 修改：`lib/database/database_helper.dart`
+- 修改：`test/database/database_helper_test.dart`
 
-- [ ] **Step 1: Write the failing database test**
+- [ ] **步骤 1：先写数据库失败测试**
 
-Extend `test/database/database_helper_test.dart` to verify that a previously inserted assistant message can be updated to persist:
+扩展 `test/database/database_helper_test.dart`，验证一条已插入的助手消息后续可以被更新并持久化以下字段：
 
-- final `text`
-- final `status`
-- final `contentType`
-- final `payloadJson`
+- 最终 `text`
+- 最终 `status`
+- 最终 `contentType`
+- 最终 `payloadJson`
 
-Use the task-1 message schema as the base.
+基于任务 1 已有的 schema 做补充，不要新建第二套存储结构。
 
-- [ ] **Step 2: Run the database test and confirm it fails**
+- [ ] **步骤 2：运行数据库测试，确认先失败**
 
-Run: `flutter test test/database/database_helper_test.dart`
+运行：`flutter test test/database/database_helper_test.dart`
 
-Expected: FAIL because the current helper does not expose an API to update typed payload fields after placeholder creation.
+预期：FAIL，因为当前 `DatabaseHelper` 还没有一个专门用于“结构化整理完成态写回”的更新方法。
 
-- [ ] **Step 3: Add the database helper update method**
+- [ ] **步骤 3：增加数据库更新方法**
 
-Modify `lib/database/database_helper.dart` to add a focused update API for structured-output completion, for example:
+修改 `lib/database/database_helper.dart`，增加一个聚焦的更新 API，例如：
 
 ```dart
 Future<void> updateStructuredMessage(
@@ -251,45 +251,45 @@ Future<void> updateStructuredMessage(
 });
 ```
 
-Keep it narrow and reuse the existing columns from task 1.
+命名可以再优化，但要保证这个方法既能用于结构化成功，也能用于普通文本回退完成态。
 
-- [ ] **Step 4: Re-run the database test and confirm it passes**
+- [ ] **步骤 4：重新运行数据库测试，确认通过**
 
-Run: `flutter test test/database/database_helper_test.dart`
+运行：`flutter test test/database/database_helper_test.dart`
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add lib/database/database_helper.dart test/database/database_helper_test.dart
 git commit -m "feat: persist structured output message updates"
 ```
 
-## Task 4: Add Controller Orchestration for the Debug Action
+## 任务 4：增加控制器层调试整理编排
 
-**Files:**
-- Modify: `lib/providers/chat_providers.dart`
-- Test: `test/providers/chat_controller_structured_output_test.dart`
+**涉及文件：**
+- 修改：`lib/providers/chat_providers.dart`
+- 测试：`test/providers/chat_controller_structured_output_test.dart`
 
-- [ ] **Step 1: Write the failing controller orchestration tests**
+- [ ] **步骤 1：先写控制器编排失败测试**
 
-Create `test/providers/chat_controller_structured_output_test.dart` and cover:
+创建 `test/providers/chat_controller_structured_output_test.dart`，至少覆盖：
 
-- happy path: a completed assistant plain-text message creates a new structured-card assistant message
-- fallback path: a parsing failure creates a new completed plain-text fallback assistant message
-- guard path: unsupported messages are ignored
+- 成功路径：一条已完成的助手纯文本消息会生成一条新的结构化卡片助手消息
+- 回退路径：解析失败时会生成一条新的普通文本回退助手消息
+- 守卫路径：不支持的消息类型不会触发整理动作
 
-Use fake or stub services instead of hitting the real network.
+使用 fake 或 stub 服务，不要在测试里访问真实网络。
 
-Example assertions to include:
+建议至少包含这样的断言：
 
 ```dart
 expect(newMessage.contentType, MessageContentType.structuredCard);
 expect(newMessage.payloadJson, isNotNull);
 ```
 
-and
+以及：
 
 ```dart
 expect(newMessage.contentType, MessageContentType.plainText);
@@ -297,93 +297,93 @@ expect(newMessage.status, MessageStatus.completed);
 expect(newMessage.text, '结构化整理失败，请重试。');
 ```
 
-- [ ] **Step 2: Run the controller tests and confirm they fail**
+- [ ] **步骤 2：运行控制器测试，确认先失败**
 
-Run: `flutter test test/providers/chat_controller_structured_output_test.dart`
+运行：`flutter test test/providers/chat_controller_structured_output_test.dart`
 
-Expected: FAIL because the controller action and wiring do not exist yet.
+预期：FAIL，因为当前还没有控制器动作和相关接线。
 
-- [ ] **Step 3: Add parser-service wiring if needed**
+- [ ] **步骤 3：必要时增加轻量 provider 接线**
 
-If the codebase benefits from a provider for the parser service, add it in `lib/providers/chat_providers.dart`, but keep it lightweight and task-specific.
+如果当前代码结构更适合给 `ResponseParserService` 或结构化整理服务增加 provider，就在 `lib/providers/chat_providers.dart` 中补一个轻量接线，但不要借机做大规模 provider 重构。
 
-- [ ] **Step 4: Implement the controller action**
+- [ ] **步骤 4：实现控制器动作**
 
-Modify `lib/providers/chat_providers.dart` to add a method such as:
+修改 `lib/providers/chat_providers.dart`，增加一个方法，例如：
 
 ```dart
 Future<void> structureMessageForDebug(ChatMessage message)
 ```
 
-The action should:
+这个动作必须：
 
-- return immediately for unsupported messages
-- create a new assistant placeholder message
-- call `ChatService.structureMessageForDebug(...)`
-- use the new `DatabaseHelper` update method to persist the finalized placeholder message
-- on success:
-  - set `contentType = structuredCard`
-  - serialize the card into `payloadJson`
-  - set `status = completed`
-- on fallback:
-  - set `contentType = plainText`
-  - set fixed fallback text
-  - set `status = completed`
+- 对不支持的消息直接返回
+- 创建一条新的助手占位消息
+- 调用 `ChatService.structureMessageForDebug(...)`
+- 使用新的 `DatabaseHelper` 更新方法把最终结果写回数据库
+- 成功时：
+  - 设置 `contentType = structuredCard`
+  - 将卡片序列化写入 `payloadJson`
+  - 设置 `status = completed`
+- 回退时：
+  - 设置 `contentType = plainText`
+  - 写入固定回退文案
+  - 设置 `status = completed`
 
-Do not mutate the original message.
+不要修改原始消息。
 
-- [ ] **Step 5: Re-run the controller tests and confirm they pass**
+- [ ] **步骤 5：重新运行控制器测试，确认通过**
 
-Run: `flutter test test/providers/chat_controller_structured_output_test.dart`
+运行：`flutter test test/providers/chat_controller_structured_output_test.dart`
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 6: Commit**
+- [ ] **步骤 6：提交**
 
 ```bash
 git add lib/providers/chat_providers.dart test/providers/chat_controller_structured_output_test.dart
 git commit -m "feat: orchestrate debug structured output flow"
 ```
 
-## Task 5: Add the Debug-Only UI Entry and Real Structured Card Rendering
+## 任务 5：增加调试入口 UI 与真实结构化卡片渲染
 
-**Files:**
-- Modify: `lib/widgets/chat_message_list.dart`
-- Create: `lib/widgets/structured_message/structured_summary_card_widget.dart`
-- Test: `test/widgets/structured_summary_card_widget_test.dart`
-- Modify: `test/widgets/chat_message_list_test.dart`
+**涉及文件：**
+- 修改：`lib/widgets/chat_message_list.dart`
+- 新建：`lib/widgets/structured_message/structured_summary_card_widget.dart`
+- 测试：`test/widgets/structured_summary_card_widget_test.dart`
+- 修改：`test/widgets/chat_message_list_test.dart`
 
-- [ ] **Step 1: Write the failing widget tests for the card component**
+- [ ] **步骤 1：先写卡片组件失败测试**
 
-Create `test/widgets/structured_summary_card_widget_test.dart` to verify:
+创建 `test/widgets/structured_summary_card_widget_test.dart`，验证：
 
-- title renders
-- summary renders
-- list sections render their items
-- empty lists do not crash the widget
+- 标题能渲染
+- 摘要能渲染
+- 列表区块能渲染各自内容
+- 空列表字段不会导致组件崩溃
 
-- [ ] **Step 2: Write the failing ChatMessageList tests for task-2 behavior**
+- [ ] **步骤 2：先写 ChatMessageList 的任务 2 行为测试**
 
-Extend `test/widgets/chat_message_list_test.dart` to cover:
+扩展 `test/widgets/chat_message_list_test.dart`，覆盖：
 
-- `structuredCard` messages render the dedicated widget instead of plain fallback text
-- in debug mode, eligible assistant messages expose the `结构化整理（调试）` menu item
-- unsupported messages do not expose that menu item
+- `structuredCard` 消息会渲染专用 widget，而不是继续回退为普通文本
+- 在 debug 模式下，符合条件的助手消息会暴露 `结构化整理（调试）` 菜单项
+- 不支持的消息不会暴露该菜单项
 
-Keep the existing task-1 tests intact.
+保留任务 1 的现有测试，不要覆盖或删除。
 
-- [ ] **Step 3: Run the widget tests and confirm they fail**
+- [ ] **步骤 3：运行 Widget 测试，确认先失败**
 
-Run:
+运行：
 
 - `flutter test test/widgets/structured_summary_card_widget_test.dart`
 - `flutter test test/widgets/chat_message_list_test.dart`
 
-Expected: FAIL because the widget and debug action are not implemented yet.
+预期：FAIL，因为当前既没有结构化卡片组件，也没有调试入口 UI。
 
-- [ ] **Step 4: Implement the structured card widget**
+- [ ] **步骤 4：实现结构化卡片组件**
 
-Create `lib/widgets/structured_message/structured_summary_card_widget.dart` with a simple, readable layout:
+创建 `lib/widgets/structured_message/structured_summary_card_widget.dart`，提供一个简单但可读的布局，至少包括：
 
 - title
 - summary
@@ -391,86 +391,86 @@ Create `lib/widgets/structured_message/structured_summary_card_widget.dart` with
 - action items
 - risks
 
-Keep it intentionally plain; this is a debug-validation feature, not a polished product surface.
+保持克制，这只是调试验证能力，不是正式产品精修界面。
 
-- [ ] **Step 5: Update ChatMessageList rendering**
+- [ ] **步骤 5：更新 ChatMessageList 的渲染分发**
 
-Modify `lib/widgets/chat_message_list.dart` to:
+修改 `lib/widgets/chat_message_list.dart`：
 
-- render `StructuredSummaryCardWidget` for assistant messages whose `contentType` is `structuredCard`
-- deserialize `payloadJson` into `StructuredSummaryCard`
-- fall back to `Text(message.text)` if payload parsing fails
+- 对 `contentType = structuredCard` 的助手消息渲染 `StructuredSummaryCardWidget`
+- 将 `payloadJson` 反序列化为 `StructuredSummaryCard`
+- 如果载荷解析失败，回退到 `Text(message.text)`
 
-- [ ] **Step 6: Add the debug-only long-press action**
+- [ ] **步骤 6：增加 debug-only 长按入口**
 
-Still in `lib/widgets/chat_message_list.dart`:
+继续修改 `lib/widgets/chat_message_list.dart`：
 
-- gate the menu item behind `kDebugMode`
-- only show it for completed assistant `plainText` messages
-- route the action to `ChatController.structureMessageForDebug(message)`
+- 用 `kDebugMode` 包住菜单项
+- 只对“已完成的助手 `plainText` 消息”显示 `结构化整理（调试）`
+- 菜单项点击后调用 `ChatController.structureMessageForDebug(message)`
 
-Do not expose the entry in release builds.
+不要在 release build 中暴露该入口。
 
-- [ ] **Step 7: Re-run the widget tests and confirm they pass**
+- [ ] **步骤 7：重新运行 Widget 测试，确认通过**
 
-Run:
+运行：
 
 - `flutter test test/widgets/structured_summary_card_widget_test.dart`
 - `flutter test test/widgets/chat_message_list_test.dart`
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 8: Commit**
+- [ ] **步骤 8：提交**
 
 ```bash
 git add lib/widgets/chat_message_list.dart lib/widgets/structured_message/structured_summary_card_widget.dart test/widgets/chat_message_list_test.dart test/widgets/structured_summary_card_widget_test.dart
 git commit -m "feat: add debug structured summary ui"
 ```
 
-## Task 6: Full Task-2 Verification and Manual Debug Validation
+## 任务 6：任务 2 最终验证与手动调试验证
 
-**Files:**
-- Modify: `docs/superpowers/plans/2026-03-26-task-2-structured-output-debug-entry-implementation-plan.md`
+**涉及文件：**
+- 修改：`docs/superpowers/plans/2026-03-26-task-2-structured-output-debug-entry-implementation-plan.md`
 
-- [ ] **Step 1: Run the focused automated suite**
+- [ ] **步骤 1：运行任务 2 聚焦自动化测试集**
 
-Run:
+运行：
 
 ```bash
 flutter test test/services/response_parser_service_test.dart test/services/chat_service_structured_output_test.dart test/database/database_helper_test.dart test/widgets/structured_summary_card_widget_test.dart test/providers/chat_controller_structured_output_test.dart test/widgets/chat_message_list_test.dart
 ```
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 2: Run static analysis**
+- [ ] **步骤 2：运行静态检查**
 
-Run: `flutter analyze`
+运行：`flutter analyze`
 
-Expected: PASS, or only pre-existing warnings that are clearly unrelated and documented.
+预期：PASS，或者只剩下明确记录过的既有无关 warning。
 
-- [ ] **Step 3: Perform manual debug validation**
+- [ ] **步骤 3：执行手动调试验证**
 
-In a debug build:
+在 debug build 中验证：
 
-- send or load a completed assistant plain-text message
-- long-press it and confirm `结构化整理（调试）` is visible
-- trigger the action and verify a new structured-card message appears
-- force a failure path (for example via invalid mocked response or temporary parser stub) and verify a new plain-text fallback message appears
-- verify normal streaming chat still works exactly as before
+- 发送或加载一条已完成的助手纯文本消息
+- 长按后能看到 `结构化整理（调试）`
+- 触发后会新增一条结构化卡片消息
+- 强制制造失败路径（例如 mock 一个非法响应，或临时让解析器返回失败）后，会新增一条普通文本回退消息
+- 正常流式聊天主流程仍与改动前一致
 
-- [ ] **Step 4: Update the checkboxes in this plan**
+- [ ] **步骤 4：把本计划中的复选框更新完整**
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add docs/superpowers/plans/2026-03-26-task-2-structured-output-debug-entry-implementation-plan.md
 git commit -m "docs: mark task 2 implementation plan progress"
 ```
 
-## Execution Notes
+## 执行注意事项
 
-- Do not turn this into a production feature. Keep the entry debug-only.
-- Do not refactor the whole chat architecture while doing task 2.
-- Do not leak raw model JSON into UI on any failure path.
-- Use the existing typed-message fields from task 1; do not invent a second message envelope.
-- Prefer fixed fallback text over clever partial recovery.
+- 不要把这个功能做成正式产品能力，入口必须保持 debug-only。
+- 不要借任务 2 顺手重构整条聊天架构。
+- 任意失败路径都不能把原始模型 JSON 泄露到 UI。
+- 继续复用任务 1 的类型化消息字段，不要发明第二套消息封装。
+- 普通文本回退文案要固定，不要做“半解析半展示”的聪明恢复。
