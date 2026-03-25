@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/chat_message.dart';
+import '../models/response/message_content_type.dart';
 import '../models/chat_group.dart';
 import '../utils/logger.dart';
 
@@ -482,6 +483,33 @@ class DatabaseHelper {
       Logger.i(_tag, '消息状态更新成功');
     } catch (e, stackTrace) {
       Logger.e(_tag, '更新消息状态失败', e);
+      Logger.e(_tag, '堆栈跟踪', stackTrace);
+      rethrow;
+    }
+  }
+
+  Future<void> updateStructuredMessage(
+    int id, {
+    required String text,
+    required MessageStatus status,
+    required MessageContentType contentType,
+    String? payloadJson,
+  }) async {
+    try {
+      final db = await database;
+      await db.update(
+        'messages',
+        {
+          'text': text,
+          'status': status.toString().split('.').last,
+          'content_type': contentType.wireName,
+          'payload_json': payloadJson,
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    } catch (e, stackTrace) {
+      Logger.e(_tag, '更新结构化消息失败', e);
       Logger.e(_tag, '堆栈跟踪', stackTrace);
       rethrow;
     }

@@ -5,6 +5,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/chat_message.dart';
 import '../models/chat_group.dart';
+import '../models/response/message_content_type.dart';
 import '../database/database_helper.dart';
 import '../services/chat_service.dart';
 import '../utils/logger.dart';
@@ -85,6 +86,17 @@ class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
       newList[index] = message;
       state = newList;
     }
+  }
+
+  void replaceMessage(ChatMessage updatedMessage) {
+    final index = state.indexWhere((message) => message.id == updatedMessage.id);
+    if (index == -1) {
+      return;
+    }
+
+    final newList = [...state];
+    newList[index] = updatedMessage;
+    state = newList;
   }
   
   void deleteMessagePair(int index) {
@@ -350,8 +362,10 @@ class ChatController {
     final currentGroup = _ref.read(currentGroupProvider);
     if (currentGroup?.id == null) return;
     
-    if (_ref.read(isLoadingMoreProvider) || 
-        !_ref.read(hasMoreMessagesProvider)) return;
+    if (_ref.read(isLoadingMoreProvider) ||
+        !_ref.read(hasMoreMessagesProvider)) {
+      return;
+    }
 
     _ref.read(isLoadingMoreProvider.notifier).state = true;
 
@@ -526,6 +540,58 @@ class ChatController {
 
     _ref.read(textControllerProvider).clear();
   }
+
+  Future<void> structureMessageForDebug(ChatMessage message) async {
+    final currentGroup = _ref.read(currentGroupProvider);
+    if (currentGroup?.id == null) {
+      return;
+    }
+
+    final isSupportedMessage =
+        message.isAssistant &&
+        message.status == MessageStatus.completed &&
+        message.contentType == MessageContentType.plainText;
+    if (!isSupportedMessage) {
+      return;
+    }
+
+    final dbHelper = _ref.read(databaseProvider);
+    final placeholderMessage = ChatMessage(
+      text: '',
+      role: MessageRole.assistant,
+      status: MessageStatus.generating,
+    );
+
+    final placeholderId = await dbHelper.insertMessage(placeholderMessage, currentGroup!.id!);
+    placeholderMessage.id = placeholderId;
+    _ref.read(messagesProvider.notifier).addMessage(placeholderMessage);
+
+    final result = await _ref.read(chatServiceProvider).structureMessageForDebug(message.text);
+    final completedMessage = result.isStructuredCard
+        ? placeholderMessage.copyWith(
+            text: result.card!.summary,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.structuredCard,
+            payloadJson: result.card!.toJson(),
+          )
+        : placeholderMessage.copyWith(
+            text: result.fallbackText!,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.plainText,
+            payloadJson: null,
+          );
+
+    await dbHelper.updateStructuredMessage(
+      placeholderId,
+      text: completedMessage.text,
+      status: completedMessage.status,
+      contentType: completedMessage.contentType,
+      payloadJson: completedMessage.payloadJson == null
+          ? null
+          : jsonEncode(completedMessage.payloadJson),
+    );
+    _ref.read(messagesProvider.notifier).replaceMessage(completedMessage);
+  }
   
   // 取消流订阅
   void cancelStreamSubscription() {
@@ -649,7 +715,7 @@ class ChatController {
     _autoSummaryTimer?.cancel();
 
     // 设置新的定时器
-    _autoSummaryTimer = Timer(Duration(seconds: _inactivitySeconds), () {
+    _autoSummaryTimer = Timer(const Duration(seconds: _inactivitySeconds), () {
       _checkAndTriggerAutoSummary();
     });
   }

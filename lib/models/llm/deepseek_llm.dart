@@ -176,4 +176,43 @@ class DeepSeekLLM implements BaseLLM {
       throw Exception('生成摘要失败: $e');
     }
   }
+
+  @override
+  Future<String> structureSummaryCard(String sourceText) async {
+    try {
+      final response = await http.post(
+        Uri.parse(_config.apiUrl),
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Authorization': 'Bearer ${_config.apiKey}',
+        },
+        body: jsonEncode({
+          'model': 'deepseek-chat',
+          'messages': [
+            {
+              'role': 'system',
+              'content':
+                  '请将用户提供的文本整理为固定 JSON，对象中必须只包含 title、summary、keyPoints、actionItems、risks 这 5 个字段；其中 title 和 summary 是字符串，其余 3 个字段是字符串数组。不要输出 Markdown，不要输出解释，不要输出代码块。',
+            },
+            {
+              'role': 'user',
+              'content': sourceText,
+            },
+          ],
+          'stream': false,
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('结构化整理失败: ${response.statusCode}');
+      }
+
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      return data['choices'][0]['message']['content'].toString().trim();
+    } catch (e, stackTrace) {
+      Logger.e(_tag, '结构化整理失败', e);
+      Logger.e(_tag, '堆栈跟踪', stackTrace);
+      throw Exception('结构化整理失败: $e');
+    }
+  }
 }
