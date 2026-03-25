@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:ai_chat/models/response/message_content_type.dart';
+
 enum MessageRole {
   user,
   assistant,
@@ -24,6 +28,9 @@ class ChatMessage {
   int? id;
   MessageStatus status;
   String? reasoningContent; // 推理过程
+  MessageContentType contentType;
+  Map<String, dynamic>? payloadJson;
+  Map<String, dynamic>? referenceJson;
 
   ChatMessage({
     required this.text,
@@ -32,6 +39,9 @@ class ChatMessage {
     DateTime? timestamp,
     this.status = MessageStatus.initial,
     this.reasoningContent,
+    this.contentType = MessageContentType.plainText,
+    this.payloadJson,
+    this.referenceJson,
   }) : timestamp = timestamp ?? DateTime.now();
 
   Map<String, dynamic> toMap() {
@@ -41,6 +51,9 @@ class ChatMessage {
       'timestamp': timestamp.millisecondsSinceEpoch,
       'status': status.toString().split('.').last,
       'reasoning_content': reasoningContent,
+      'content_type': contentType.wireName,
+      'payload_json': _encodeJsonField(payloadJson),
+      'reference_json': _encodeJsonField(referenceJson),
       if (id != null) 'id': id,
     };
   }
@@ -66,6 +79,9 @@ class ChatMessage {
         orElse: () => MessageStatus.initial,
       ),
       reasoningContent: map['reasoning_content'],
+      contentType: MessageContentTypeParsing.fromString(map['content_type']),
+      payloadJson: _coerceJsonField(map['payload_json']),
+      referenceJson: _coerceJsonField(map['reference_json']),
     );
   }
 
@@ -81,6 +97,9 @@ class ChatMessage {
     int? id,
     MessageStatus? status,
     String? reasoningContent,
+    MessageContentType? contentType,
+    Map<String, dynamic>? payloadJson,
+    Map<String, dynamic>? referenceJson,
   }) {
     return ChatMessage(
       text: text ?? this.text,
@@ -89,6 +108,44 @@ class ChatMessage {
       timestamp: timestamp ?? this.timestamp,
       status: status ?? this.status,
       reasoningContent: reasoningContent ?? this.reasoningContent,
+      contentType: contentType ?? this.contentType,
+      payloadJson: payloadJson ?? this.payloadJson,
+      referenceJson: referenceJson ?? this.referenceJson,
     );
   }
-} 
+
+  static Map<String, dynamic>? _coerceJsonField(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+
+    if (value is Map) {
+      return value.cast<String, dynamic>();
+    }
+
+    if (value is String && value.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is Map) {
+          return decoded.cast<String, dynamic>();
+        }
+      } catch (_) {
+        // Ignore invalid JSON and fall through to null.
+      }
+    }
+
+    return null;
+  }
+
+  static String? _encodeJsonField(Map<String, dynamic>? value) {
+    if (value == null) {
+      return null;
+    }
+
+    try {
+      return jsonEncode(value);
+    } catch (_) {
+      return null;
+    }
+  }
+}
