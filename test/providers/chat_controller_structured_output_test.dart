@@ -4,6 +4,7 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/response/structured_summary_card.dart';
+import 'package:ai_chat/models/tool/tool_definition.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/response_parser_service.dart';
@@ -39,7 +40,8 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final groupId = await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       final sourceMessage = ChatMessage(
         id: -10,
         text: 'source text',
@@ -48,15 +50,20 @@ void main() {
         contentType: MessageContentType.plainText,
       );
 
-      container.read(currentGroupProvider.notifier).state = ChatGroup(id: groupId, title: 'group');
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
       container.read(messagesProvider.notifier).setMessages([sourceMessage]);
 
-      await container.read(chatControllerProvider).structureMessageForDebug(sourceMessage);
+      await container
+          .read(chatControllerProvider)
+          .structureMessageForDebug(sourceMessage);
 
       final messages = container.read(messagesProvider);
-      final newMessage = messages.firstWhere((message) => message.id != sourceMessage.id);
+      final newMessage =
+          messages.firstWhere((message) => message.id != sourceMessage.id);
       final persisted = await databaseHelper.getMessagesByGroup(groupId);
-      final persistedMessage = persisted.singleWhere((message) => message.id == newMessage.id);
+      final persistedMessage =
+          persisted.singleWhere((message) => message.id == newMessage.id);
 
       expect(newMessage.contentType, MessageContentType.structuredCard);
       expect(newMessage.status, MessageStatus.completed);
@@ -78,7 +85,8 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final groupId = await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       final sourceMessage = ChatMessage(
         id: -11,
         text: 'source text',
@@ -87,15 +95,20 @@ void main() {
         contentType: MessageContentType.plainText,
       );
 
-      container.read(currentGroupProvider.notifier).state = ChatGroup(id: groupId, title: 'group');
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
       container.read(messagesProvider.notifier).setMessages([sourceMessage]);
 
-      await container.read(chatControllerProvider).structureMessageForDebug(sourceMessage);
+      await container
+          .read(chatControllerProvider)
+          .structureMessageForDebug(sourceMessage);
 
       final messages = container.read(messagesProvider);
-      final newMessage = messages.firstWhere((message) => message.id != sourceMessage.id);
+      final newMessage =
+          messages.firstWhere((message) => message.id != sourceMessage.id);
       final persisted = await databaseHelper.getMessagesByGroup(groupId);
-      final persistedMessage = persisted.singleWhere((message) => message.id == newMessage.id);
+      final persistedMessage =
+          persisted.singleWhere((message) => message.id == newMessage.id);
 
       expect(newMessage.contentType, MessageContentType.plainText);
       expect(newMessage.status, MessageStatus.completed);
@@ -117,7 +130,8 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final groupId = await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       final unsupportedMessage = ChatMessage(
         id: -12,
         text: 'user text',
@@ -125,10 +139,15 @@ void main() {
         status: MessageStatus.completed,
       );
 
-      container.read(currentGroupProvider.notifier).state = ChatGroup(id: groupId, title: 'group');
-      container.read(messagesProvider.notifier).setMessages([unsupportedMessage]);
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+      container
+          .read(messagesProvider.notifier)
+          .setMessages([unsupportedMessage]);
 
-      await container.read(chatControllerProvider).structureMessageForDebug(unsupportedMessage);
+      await container
+          .read(chatControllerProvider)
+          .structureMessageForDebug(unsupportedMessage);
 
       expect(container.read(messagesProvider), [unsupportedMessage]);
       expect(await databaseHelper.getMessagesByGroup(groupId), isEmpty);
@@ -145,7 +164,8 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final groupId = await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       final sourceMessage = ChatMessage(
         id: -13,
         text:
@@ -155,15 +175,20 @@ void main() {
         contentType: MessageContentType.plainText,
       );
 
-      container.read(currentGroupProvider.notifier).state = ChatGroup(id: groupId, title: 'group');
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
       container.read(messagesProvider.notifier).setMessages([sourceMessage]);
 
-      await container.read(chatControllerProvider).structureMessageForDebug(sourceMessage);
+      await container
+          .read(chatControllerProvider)
+          .structureMessageForDebug(sourceMessage);
 
       final messages = container.read(messagesProvider);
-      final newMessage = messages.firstWhere((message) => message.id != sourceMessage.id);
+      final newMessage =
+          messages.firstWhere((message) => message.id != sourceMessage.id);
       final persisted = await databaseHelper.getMessagesByGroup(groupId);
-      final persistedMessage = persisted.singleWhere((message) => message.id == newMessage.id);
+      final persistedMessage =
+          persisted.singleWhere((message) => message.id == newMessage.id);
 
       expect(newMessage.contentType, MessageContentType.structuredCard);
       expect(newMessage.status, MessageStatus.completed);
@@ -199,7 +224,8 @@ class _FakeChatService extends ChatService {
   _FakeChatService({required this.result}) : super(llm: _NoopBaseLLM());
 
   @override
-  Future<StructuredSummaryParseResult> structureMessageForDebug(String sourceText) async {
+  Future<StructuredSummaryParseResult> structureMessageForDebug(
+      String sourceText) async {
     requestedSourceTexts.add(sourceText);
     return result;
   }
@@ -210,7 +236,17 @@ class _NoopBaseLLM implements BaseLLM {
   Map<String, dynamic> get config => const {};
 
   @override
-  Stream<String> chatStream(List<ChatMessage> messages, ChatConfig config) => const Stream.empty();
+  Stream<String> chatStream(List<ChatMessage> messages, ChatConfig config) =>
+      const Stream.empty();
+
+  @override
+  Future<String> decideToolCall({
+    required String userMessage,
+    required List<ChatMessage> history,
+    required List<ToolDefinition> tools,
+  }) {
+    throw UnimplementedError();
+  }
 
   @override
   String getModelName(ChatConfig config) => 'noop';
