@@ -55,7 +55,7 @@ void main() {
         ),
         toolRegistry: ToolRegistry(),
         toolExecutor: ToolExecutor(
-          chatStorage: _FakeChatStorage(messages: const []),
+          chatStorage: const _FakeChatStorage(messages: []),
         ),
       );
 
@@ -76,7 +76,7 @@ void main() {
         ),
         toolRegistry: ToolRegistry(),
         toolExecutor: ToolExecutor(
-          chatStorage: _FakeChatStorage(messages: const []),
+          chatStorage: const _FakeChatStorage(messages: []),
         ),
       );
 
@@ -98,7 +98,7 @@ void main() {
         ),
         toolRegistry: ToolRegistry(),
         toolExecutor: ToolExecutor(
-          chatStorage: _FakeChatStorage(messages: const []),
+          chatStorage: const _FakeChatStorage(messages: []),
         ),
       );
 

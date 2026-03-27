@@ -2,7 +2,6 @@ import '../models/chat_message.dart';
 import '../models/llm/base_llm.dart';
 import '../models/tool/tool_call.dart';
 import '../models/tool/tool_definition.dart';
-import '../models/tool/tool_result.dart';
 import 'tool_executor.dart';
 import 'tool_registry.dart';
 

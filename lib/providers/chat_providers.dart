@@ -31,29 +31,30 @@ final chatServiceFactoryProvider = Provider<ChatService>((ref) {
 });
 
 // 消息列表提供者
-final messagesProvider = StateNotifierProvider<MessagesNotifier, List<ChatMessage>>((ref) {
+final messagesProvider =
+    StateNotifierProvider<MessagesNotifier, List<ChatMessage>>((ref) {
   return MessagesNotifier(ref);
 });
 
 class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
   final Ref _ref;
-  
+
   MessagesNotifier(this._ref) : super([]);
-  
+
   void setMessages(List<ChatMessage> messages) {
     state = messages;
   }
-  
+
   void addMessage(ChatMessage message) {
     state = [message, ...state];
   }
-  
+
   void insertMessages(int index, List<ChatMessage> messages) {
     final newList = [...state];
     newList.insertAll(index, messages);
     state = newList;
   }
-  
+
   void updateMessage(int id, String text) {
     final index = state.indexWhere((message) => message.id == id);
     if (index != -1) {
@@ -62,7 +63,7 @@ class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
       state = [...state];
     }
   }
-  
+
   void appendToMessage(int id, String text) {
     final index = state.indexWhere((message) => message.id == id);
     if (index != -1) {
@@ -71,7 +72,7 @@ class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
       state = [...state]; // 触发状态更新
     }
   }
-  
+
   void appendReasoningToMessage(int id, String reasoning) {
     final index = state.indexWhere((message) => message.id == id);
     if (index != -1) {
@@ -80,7 +81,7 @@ class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
       state = [...state]; // 触发状态更新
     }
   }
-  
+
   void updateMessageStatus(int id, MessageStatus status) {
     final index = state.indexWhere((message) => message.id == id);
     if (index != -1) {
@@ -92,7 +93,8 @@ class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
   }
 
   void replaceMessage(ChatMessage updatedMessage) {
-    final index = state.indexWhere((message) => message.id == updatedMessage.id);
+    final index =
+        state.indexWhere((message) => message.id == updatedMessage.id);
     if (index == -1) {
       return;
     }
@@ -101,12 +103,12 @@ class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
     newList[index] = updatedMessage;
     state = newList;
   }
-  
+
   void deleteMessagePair(int index) {
     final newList = [...state];
     final indexMessage = newList[index];
     ChatMessage? userMessage, aiMessage;
-    
+
     if (indexMessage.isUser) {
       userMessage = newList[index];
       if (index > 0) {
@@ -118,12 +120,12 @@ class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
         userMessage = newList[index + 1];
       }
     }
-    
+
     if (userMessage != null && aiMessage != null) {
       newList.remove(aiMessage);
       newList.remove(userMessage);
       state = newList;
-      
+
       // 从数据库中删除
       final dbHelper = _ref.read(databaseProvider);
       if (userMessage.id != null) {
@@ -134,35 +136,36 @@ class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
       }
     }
   }
-  
+
   void clearMessages() {
     state = [];
   }
 }
 
 // 聊天分组提供者
-final groupsProvider = StateNotifierProvider<GroupsNotifier, List<ChatGroup>>((ref) {
+final groupsProvider =
+    StateNotifierProvider<GroupsNotifier, List<ChatGroup>>((ref) {
   return GroupsNotifier(ref);
 });
 
 class GroupsNotifier extends StateNotifier<List<ChatGroup>> {
   final Ref _ref;
-  
+
   GroupsNotifier(this._ref) : super([]);
-  
+
   void setGroups(List<ChatGroup> groups) {
     state = groups;
   }
-  
+
   void addGroup(ChatGroup group) {
     state = [...state, group];
   }
-  
+
   Future<void> deleteGroup(int id) async {
     final dbHelper = _ref.read(databaseProvider);
     await dbHelper.deleteGroup(id);
     state = state.where((group) => group.id != id).toList();
-    
+
     // 如果删除的是当前分组，需要加载新的当前分组
     final currentGroup = _ref.read(currentGroupProvider);
     if (currentGroup?.id == id) {
@@ -232,10 +235,12 @@ final focusNodeProvider = Provider<FocusNode>((ref) {
 });
 
 // 流订阅提供者
-final streamSubscriptionProvider = StateProvider<StreamSubscription?>((ref) => null);
+final streamSubscriptionProvider =
+    StateProvider<StreamSubscription?>((ref) => null);
 
 // 聊天控制器提供者 - 集中处理业务逻辑
-final chatControllerProvider = Provider<ChatController>((ref) => ChatController(ref));
+final chatControllerProvider =
+    Provider<ChatController>((ref) => ChatController(ref));
 
 class ChatController {
   static const String _tag = 'ChatController';
@@ -251,30 +256,33 @@ class ChatController {
   ChatController(this._ref) {
     _initScrollListener();
   }
-  
+
   void _initScrollListener() {
     final scrollController = _ref.read(scrollControllerProvider);
-    
+
     scrollController.addListener(() {
       // 加载更多逻辑
-      if (scrollController.position.pixels <= scrollController.position.minScrollExtent + 100 && 
+      if (scrollController.position.pixels <=
+              scrollController.position.minScrollExtent + 100 &&
           !_ref.read(isLoadingMoreProvider)) {
         loadMoreMessages();
       }
-      
+
       // 自动滚动逻辑
       if (_ref.read(isGeneratingProvider)) {
-        if (scrollController.position.userScrollDirection == ScrollDirection.reverse) {
+        if (scrollController.position.userScrollDirection ==
+            ScrollDirection.reverse) {
           _ref.read(autoScrollToBottomProvider.notifier).state = false;
         }
-        
-        if (scrollController.position.pixels >= scrollController.position.maxScrollExtent - 10) {
+
+        if (scrollController.position.pixels >=
+            scrollController.position.maxScrollExtent - 10) {
           _ref.read(autoScrollToBottomProvider.notifier).state = true;
         }
       }
     });
   }
-  
+
   // 加载分组
   Future<void> loadGroups() async {
     try {
@@ -286,13 +294,13 @@ class ChatController {
       Logger.e(_tag, '加载分组失败', e);
     }
   }
-  
+
   // 加载当前分组
   Future<void> loadCurrentGroup() async {
     try {
       final dbHelper = _ref.read(databaseProvider);
       final latestGroup = await dbHelper.getLatestGroup();
-      
+
       if (latestGroup != null) {
         final now = DateTime.now();
         final lastMessageTime = latestGroup.lastMessageAt;
@@ -307,7 +315,8 @@ class ChatController {
         } else {
           // 使用现有分组
           _ref.read(currentGroupProvider.notifier).state = latestGroup;
-          _ref.read(systemPromptProvider.notifier).state = latestGroup.systemPrompt;
+          _ref.read(systemPromptProvider.notifier).state =
+              latestGroup.systemPrompt;
           await loadMessages();
         }
       } else {
@@ -318,18 +327,18 @@ class ChatController {
       Logger.e(_tag, '加载当前分组失败', e);
     }
   }
-  
+
   // 创建新分组
   Future<void> createNewGroup() async {
     try {
       final groups = _ref.read(groupsProvider);
       final systemPrompt = _ref.read(systemPromptProvider);
-      
+
       final newGroup = ChatGroup(
         title: '新对话 ${groups.length + 1}',
         systemPrompt: systemPrompt,
       );
-      
+
       _ref.read(currentGroupProvider.notifier).state = newGroup;
       _ref.read(messagesProvider.notifier).clearMessages();
       _ref.read(hasMoreMessagesProvider.notifier).state = false;
@@ -338,12 +347,12 @@ class ChatController {
       Logger.e(_tag, '创建新分组失败', e);
     }
   }
-  
+
   // 加载消息
   Future<void> loadMessages() async {
     final currentGroup = _ref.read(currentGroupProvider);
     if (currentGroup?.id == null) return;
-    
+
     try {
       Logger.d(_tag, '开始加载历史消息...');
       final dbHelper = _ref.read(databaseProvider);
@@ -351,20 +360,21 @@ class ChatController {
       final totalCount = await dbHelper.getGroupMessageCount(currentGroup.id!);
 
       _ref.read(messagesProvider.notifier).setMessages(messages);
-      _ref.read(hasMoreMessagesProvider.notifier).state = totalCount > messages.length;
+      _ref.read(hasMoreMessagesProvider.notifier).state =
+          totalCount > messages.length;
       _ref.read(isInitializingProvider.notifier).state = false;
-      
+
       Logger.i(_tag, '成功加载 ${messages.length} 条历史消息');
     } catch (e) {
       Logger.e(_tag, '加载历史消息失败', e);
     }
   }
-  
+
   // 加载更多消息
   Future<void> loadMoreMessages() async {
     final currentGroup = _ref.read(currentGroupProvider);
     if (currentGroup?.id == null) return;
-    
+
     if (_ref.read(isLoadingMoreProvider) ||
         !_ref.read(hasMoreMessagesProvider)) {
       return;
@@ -386,26 +396,29 @@ class ChatController {
         return;
       }
 
-      _ref.read(messagesProvider.notifier).insertMessages(currentCount, newMessages);
+      _ref
+          .read(messagesProvider.notifier)
+          .insertMessages(currentCount, newMessages);
     } catch (e) {
       Logger.e(_tag, '加载更多消息失败', e);
     } finally {
       _ref.read(isLoadingMoreProvider.notifier).state = false;
     }
   }
-  
+
   // 发送消息
   Future<void> sendMessage(String text) async {
     if (text.trim().isEmpty) return;
-    
+
     final currentGroup = _ref.read(currentGroupProvider);
     if (currentGroup == null) return;
 
     _ref.read(focusNodeProvider).unfocus();
-    Logger.d(_tag, '准备发送新消息: ${text.substring(0, text.length.clamp(0, 50))}...');
-    
+    Logger.d(
+        _tag, '准备发送新消息: ${text.substring(0, text.length.clamp(0, 50))}...');
+
     cancelStreamSubscription();
-    
+
     _ref.read(autoScrollToBottomProvider.notifier).state = true;
 
     // 如果当前分组没有ID，说明是新建的分组，需要先保存到数据库
@@ -415,7 +428,8 @@ class ChatController {
         // 使用第一条消息作为分组标题
         final newGroup = currentGroup.copyWith(title: text);
         final groupId = await dbHelper.insertGroup(newGroup);
-        _ref.read(currentGroupProvider.notifier).state = newGroup.copyWith(id: groupId);
+        _ref.read(currentGroupProvider.notifier).state =
+            newGroup.copyWith(id: groupId);
         // 更新分组列表
         await loadGroups();
       } catch (e) {
@@ -442,67 +456,101 @@ class ChatController {
     try {
       final dbHelper = _ref.read(databaseProvider);
       final currentGroupId = _ref.read(currentGroupProvider)!.id!;
-      
-      Logger.d(_tag, '保存用户消息到数据库...');
-      final userMessageId = await dbHelper.insertMessage(userMessage, currentGroupId);
-      userMessage.id = userMessageId;
 
-      Logger.d(_tag, '创建AI消息占位...');
-      final aiMessageId = await dbHelper.insertMessage(aiMessage, currentGroupId);
-      aiMessage.id = aiMessageId;
+      Logger.d(_tag, '保存用户消息到数据库...');
+      final userMessageId =
+          await dbHelper.insertMessage(userMessage, currentGroupId);
+      userMessage.id = userMessageId;
 
       // 获取有效的历史消息（成对的用户消息和已完成的AI回复）
       final List<ChatMessage> historyMessages = [];
-      final List<ChatMessage> messagesCopy = List<ChatMessage>.from(_ref.read(messagesProvider));
-      
+      final List<ChatMessage> messagesCopy =
+          List<ChatMessage>.from(_ref.read(messagesProvider));
+
       // 跳过奇数长度的情况下的最后一条消息
       int i = 0;
       while (i < messagesCopy.length - 1) {
         final message1 = messagesCopy[i];
         final message2 = messagesCopy[i + 1];
-        
+
         // 确保是一对AI回复和用户消息，且AI回复已完成
-        if (message1.isAssistant && message2.isUser && message1.status == MessageStatus.completed) {
+        if (message1.isAssistant &&
+            message2.isUser &&
+            message1.status == MessageStatus.completed) {
           historyMessages.add(message2); // 先添加用户消息（旧的在前）
           historyMessages.add(message1); // 再添加AI回复
         }
-        
+
         i += 2; // 每次处理一对消息
       }
 
       Logger.d(_tag, '开始接收AI响应流，有效对话对数量: ${historyMessages.length / 2}');
 
+      final chatService = _ref.read(chatServiceProvider);
+      final toolPreparationResult = await chatService.prepareToolAssistance(
+        groupId: currentGroupId,
+        userMessage: text,
+        history: historyMessages,
+      );
+      final toolContextHistory = [
+        ...historyMessages,
+        ...toolPreparationResult.additionalContextMessages,
+      ];
+
       // 添加消息到UI
       _ref.read(messagesProvider.notifier).addMessage(userMessage);
+
+      if (toolPreparationResult.toolResult != null) {
+        final toolMessage = ChatMessage(
+          text: toolPreparationResult.toolResult!.displayText,
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.toolResult,
+          payloadJson: toolPreparationResult.toolResult!.toJson(),
+        );
+        final toolMessageId =
+            await dbHelper.insertMessage(toolMessage, currentGroupId);
+        toolMessage.id = toolMessageId;
+        _ref.read(messagesProvider.notifier).addMessage(toolMessage);
+      }
+
+      Logger.d(_tag, '创建AI消息占位...');
+      final aiMessageId =
+          await dbHelper.insertMessage(aiMessage, currentGroupId);
+      aiMessage.id = aiMessageId;
       _ref.read(messagesProvider.notifier).addMessage(aiMessage);
-      
+
       // 设置生成状态
       _ref.read(isGeneratingProvider.notifier).state = true;
 
-      // 获取聊天服务
-      final chatService = _ref.read(chatServiceProvider);
-      
       // 获取系统提示词和推理模式设置
       final systemPrompt = _ref.read(systemPromptProvider) ?? "";
       final useReasoning = _ref.read(useReasoningProvider);
-      
+
       // 设置流订阅
-      final subscription = chatService.sendMessageStream(
-        text, 
-        historyMessages,
+      final subscription = chatService
+          .sendMessageStream(
+        text,
+        toolContextHistory,
         ChatConfig(useReasoning: useReasoning, systemPrompt: systemPrompt),
-      ).listen(
+      )
+          .listen(
         (content) async {
           try {
             final data = jsonDecode(content);
             if (data['type'] == 'content') {
               Logger.d(_tag, '收到AI响应片段: ${data['content']}');
-              _ref.read(messagesProvider.notifier).appendToMessage(aiMessageId, data['content']);
+              _ref
+                  .read(messagesProvider.notifier)
+                  .appendToMessage(aiMessageId, data['content']);
               await dbHelper.updateMessage(aiMessageId, aiMessage.text);
             } else if (data['type'] == 'reasoning') {
               Logger.d(_tag, '收到推理内容: ${data['content']}');
-              _ref.read(messagesProvider.notifier).appendReasoningToMessage(aiMessageId, data['content']);
-              await dbHelper.updateMessageReasoning(aiMessageId, aiMessage.reasoningContent);
+              _ref
+                  .read(messagesProvider.notifier)
+                  .appendReasoningToMessage(aiMessageId, data['content']);
+              await dbHelper.updateMessageReasoning(
+                  aiMessageId, aiMessage.reasoningContent);
             }
           } catch (e) {
             Logger.e(_tag, '处理响应数据失败', e);
@@ -510,14 +558,18 @@ class ChatController {
         },
         onError: (error) {
           Logger.e(_tag, 'AI响应出错', error);
-          _ref.read(messagesProvider.notifier).updateMessageStatus(aiMessageId, MessageStatus.failed);
+          _ref
+              .read(messagesProvider.notifier)
+              .updateMessageStatus(aiMessageId, MessageStatus.failed);
           _ref.read(isGeneratingProvider.notifier).state = false;
           dbHelper.updateMessageStatus(aiMessageId, MessageStatus.failed);
         },
         onDone: () {
           Logger.i(_tag, 'AI响应完成');
           if (aiMessage.status != MessageStatus.interrupted) {
-            _ref.read(messagesProvider.notifier).updateMessageStatus(aiMessageId, MessageStatus.completed);
+            _ref
+                .read(messagesProvider.notifier)
+                .updateMessageStatus(aiMessageId, MessageStatus.completed);
             _ref.read(isGeneratingProvider.notifier).state = false;
             dbHelper.updateMessageStatus(aiMessageId, MessageStatus.completed);
 
@@ -527,14 +579,16 @@ class ChatController {
         },
         cancelOnError: true,
       );
-      
+
       _ref.read(streamSubscriptionProvider.notifier).state = subscription;
     } catch (e, stackTrace) {
       Logger.e(_tag, '发送消息过程中出错', e);
       Logger.e(_tag, '堆栈跟踪', stackTrace);
-      _ref.read(messagesProvider.notifier).updateMessageStatus(aiMessage.id!, MessageStatus.failed);
+      _ref
+          .read(messagesProvider.notifier)
+          .updateMessageStatus(aiMessage.id!, MessageStatus.failed);
       _ref.read(isGeneratingProvider.notifier).state = false;
-      
+
       final dbHelper = _ref.read(databaseProvider);
       if (aiMessage.id != null) {
         dbHelper.updateMessageStatus(aiMessage.id!, MessageStatus.failed);
@@ -550,8 +604,7 @@ class ChatController {
       return;
     }
 
-    final isSupportedMessage =
-        message.isAssistant &&
+    final isSupportedMessage = message.isAssistant &&
         message.status == MessageStatus.completed &&
         message.contentType == MessageContentType.plainText;
     if (!isSupportedMessage) {
@@ -565,11 +618,14 @@ class ChatController {
       status: MessageStatus.generating,
     );
 
-    final placeholderId = await dbHelper.insertMessage(placeholderMessage, currentGroup!.id!);
+    final placeholderId =
+        await dbHelper.insertMessage(placeholderMessage, currentGroup!.id!);
     placeholderMessage.id = placeholderId;
     _ref.read(messagesProvider.notifier).addMessage(placeholderMessage);
 
-    final result = await _ref.read(chatServiceProvider).structureMessageForDebug(message.text);
+    final result = await _ref
+        .read(chatServiceProvider)
+        .structureMessageForDebug(message.text);
     final completedMessage = result.isStructuredCard
         ? placeholderMessage.copyWith(
             text: result.card!.summary,
@@ -595,7 +651,7 @@ class ChatController {
     );
     _ref.read(messagesProvider.notifier).replaceMessage(completedMessage);
   }
-  
+
   // 取消流订阅
   void cancelStreamSubscription() {
     final subscription = _ref.read(streamSubscriptionProvider);
@@ -603,49 +659,52 @@ class ChatController {
       subscription.cancel();
       _ref.read(streamSubscriptionProvider.notifier).state = null;
     }
-    
+
     if (!_ref.read(isGeneratingProvider)) return;
     _ref.read(isGeneratingProvider.notifier).state = false;
-    
+
     final messages = _ref.read(messagesProvider);
     if (messages.isEmpty) return;
-    
-    final lastIndex = messages.indexWhere((message) => message.role == MessageRole.assistant);
+
+    final lastIndex =
+        messages.indexWhere((message) => message.role == MessageRole.assistant);
     if (lastIndex == -1) return;
-    
+
     final aiMessage = messages[lastIndex];
     // 如果是主动取消（例如发送新消息），则标记为中断状态
     if (aiMessage.status == MessageStatus.generating) {
-      _ref.read(messagesProvider.notifier).updateMessageStatus(aiMessage.id!, MessageStatus.interrupted);
-      
+      _ref
+          .read(messagesProvider.notifier)
+          .updateMessageStatus(aiMessage.id!, MessageStatus.interrupted);
+
       final dbHelper = _ref.read(databaseProvider);
       if (aiMessage.id != null) {
         dbHelper.updateMessageStatus(aiMessage.id!, MessageStatus.interrupted);
       }
     }
   }
-  
+
   // 设置系统提示词
   Future<void> setSystemPrompt(String? prompt) async {
     _ref.read(systemPromptProvider.notifier).state = prompt;
-    
+
     final currentGroup = _ref.read(currentGroupProvider);
     if (currentGroup != null && currentGroup.id != null) {
       final dbHelper = _ref.read(databaseProvider);
       await dbHelper.updateGroupSystemPrompt(currentGroup.id!, prompt);
     }
   }
-  
+
   // 设置推理模式
   void setUseReasoning(bool value) {
     _ref.read(useReasoningProvider.notifier).state = value;
   }
-  
+
   // 设置简洁模式
   void setUseConciseMode(bool value) {
     final currentPrompt = _ref.read(systemPromptProvider);
     final cachedPrompt = _ref.read(cachedSystemPromptProvider);
-    
+
     if (value) {
       // 开启简洁模式
       if (cachedPrompt == null) {
@@ -659,10 +718,10 @@ class ChatController {
       setSystemPrompt(cachedPrompt);
       _ref.read(cachedSystemPromptProvider.notifier).state = null;
     }
-    
+
     _ref.read(useConciseModeProvider.notifier).state = value;
   }
-  
+
   // 选择分组
   Future<void> selectGroup(ChatGroup group) async {
     _ref.read(currentGroupProvider.notifier).state = group;
@@ -691,11 +750,13 @@ class ChatController {
       if (completedMessages.isEmpty) return null;
 
       final chatService = _ref.read(chatServiceProvider);
-      final summary = await chatService.llm.summarizeConversation(completedMessages);
+      final summary =
+          await chatService.llm.summarizeConversation(completedMessages);
 
       // 更新数据库中的分组标题
       final dbHelper = _ref.read(databaseProvider);
-      await dbHelper.updateGroupTitle(currentGroup!.id!, summary, isSummarized: true);
+      await dbHelper.updateGroupTitle(currentGroup!.id!, summary,
+          isSummarized: true);
 
       // 更新当前分组状态
       _ref.read(currentGroupProvider.notifier).state =
@@ -735,7 +796,8 @@ class ChatController {
     }
 
     // 检查是否正在生成或正在摘要
-    if (_ref.read(isGeneratingProvider) || _ref.read(isAutoSummarizingProvider)) {
+    if (_ref.read(isGeneratingProvider) ||
+        _ref.read(isAutoSummarizingProvider)) {
       Logger.d(_tag, '正在生成消息或摘要中，跳过自动摘要');
       return;
     }
@@ -747,13 +809,13 @@ class ChatController {
     }
 
     final messages = _ref.read(messagesProvider);
-    final completedMessages = messages
-        .where((msg) => msg.status == MessageStatus.completed)
-        .toList();
+    final completedMessages =
+        messages.where((msg) => msg.status == MessageStatus.completed).toList();
 
     // 检查消息数量是否足够
     if (completedMessages.length < _minMessagesForSummary) {
-      Logger.d(_tag, '消息数量不足（${completedMessages.length}/$_minMessagesForSummary），跳过自动摘要');
+      Logger.d(_tag,
+          '消息数量不足（${completedMessages.length}/$_minMessagesForSummary），跳过自动摘要');
       return;
     }
 
@@ -778,4 +840,4 @@ class ChatController {
     _autoSummaryTimer?.cancel();
     _autoSummaryTimer = null;
   }
-} 
+}

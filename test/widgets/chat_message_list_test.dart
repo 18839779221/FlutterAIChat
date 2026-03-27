@@ -1,5 +1,6 @@
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
+import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/widgets/chat_message_list.dart';
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
@@ -56,7 +57,7 @@ void main() {
     );
 
     testWidgets(
-      'toolResult assistant messages fall back to plain text without a dedicated renderer',
+      'toolResult assistant messages render the minimal execution status',
       (tester) async {
         await _pumpMessageList(
           tester,
@@ -65,6 +66,37 @@ void main() {
               text: 'Tool fallback text',
               role: MessageRole.assistant,
               contentType: MessageContentType.toolResult,
+              payloadJson: const ToolResult(
+                toolName: 'search_chat_history',
+                status: ToolExecutionStatus.success,
+                displayText: '已执行：搜索历史记录',
+                payload: {
+                  'matchCount': 2,
+                },
+              ).toJson(),
+            ),
+          ],
+        );
+
+        expect(find.byType(FlutterMarkdownImpl), findsNothing);
+        expect(find.text('已执行：搜索历史记录'), findsOneWidget);
+        expect(find.text('找到 2 条历史消息'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'toolResult assistant messages fall back to plain text when payload is invalid',
+      (tester) async {
+        await _pumpMessageList(
+          tester,
+          messages: [
+            _buildMessage(
+              text: 'Tool fallback text',
+              role: MessageRole.assistant,
+              contentType: MessageContentType.toolResult,
+              payloadJson: {
+                'unexpected': true,
+              },
             ),
           ],
         );
@@ -90,7 +122,9 @@ void main() {
       expect(find.text('User message'), findsOneWidget);
     });
 
-    testWidgets('debug mode exposes structured output action for completed assistant plain text messages', (
+    testWidgets(
+        'debug mode exposes structured output action for completed assistant plain text messages',
+        (
       tester,
     ) async {
       await _pumpMessageList(
