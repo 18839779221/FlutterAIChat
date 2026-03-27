@@ -2,13 +2,11 @@ import 'package:ai_chat/constants/route_constant.dart';
 import 'package:ai_chat/pages/test_page.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
-import 'package:ai_chat/storage/web_chat_storage.dart';
-import 'package:flutter/foundation.dart';
+import 'package:ai_chat/storage/chat_storage_factory.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'pages/chat_page.dart';
-import 'database/database_helper.dart';
 import 'pages/settings_page.dart';
 import 'utils/logger.dart';
 import 'providers/chat_providers.dart';
@@ -83,11 +81,7 @@ ChatService _createChatService(AppSettingsRepository settingsRepository) {
 }
 
 ChatStorage _createChatStorage(SharedPreferences preferences) {
-  if (kIsWeb) {
-    return WebChatStorage(preferences);
-  }
-
-  return DatabaseHelper();
+  return ChatStorageFactory.create(preferences);
 }
 
 class MyApp extends ConsumerWidget {

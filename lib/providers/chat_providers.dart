@@ -6,15 +6,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/chat_message.dart';
 import '../models/chat_group.dart';
 import '../models/response/message_content_type.dart';
-import '../database/database_helper.dart';
 import '../repositories/app_settings_repository.dart';
 import '../services/chat_service.dart';
 import '../storage/chat_storage.dart';
 import '../utils/logger.dart';
 
-// 数据库提供者
+// 数据库提供者（实际实现在 main.dart 中通过 override 注入）
 final databaseProvider = Provider<ChatStorage>((ref) {
-  return DatabaseHelper();
+  throw UnimplementedError('需要在 main.dart 中覆盖 databaseProvider');
 });
 
 final appSettingsRepositoryProvider = Provider<AppSettingsRepository>((ref) {
