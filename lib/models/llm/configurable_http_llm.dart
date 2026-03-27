@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../../repositories/app_settings_repository.dart';
 import '../../utils/logger.dart';
 import '../chat_message.dart';
+import '../tool/tool_definition.dart';
 import 'api_protocol_resolver.dart';
 import 'api_stream_parser.dart';
 import 'base_llm.dart';
@@ -23,9 +24,9 @@ class ConfigurableHttpLLM implements BaseLLM {
     required AppSettingsRepository settingsRepository,
     ApiProtocolResolver? protocolResolver,
     ApiStreamParser? streamParser,
-  }) : _settingsRepository = settingsRepository,
-       _protocolResolver = protocolResolver ?? const ApiProtocolResolver(),
-       _streamParser = streamParser ?? const ApiStreamParser();
+  })  : _settingsRepository = settingsRepository,
+        _protocolResolver = protocolResolver ?? const ApiProtocolResolver(),
+        _streamParser = streamParser ?? const ApiStreamParser();
 
   @override
   String getModelName(ChatConfig config) {
@@ -34,13 +35,14 @@ class ConfigurableHttpLLM implements BaseLLM {
 
   @override
   Map<String, dynamic> get config => {
-    'apiKey': '<runtime>',
-    'apiUrl': '<runtime>',
-    'model': '<runtime>',
-  };
+        'apiKey': '<runtime>',
+        'apiUrl': '<runtime>',
+        'model': '<runtime>',
+      };
 
   @override
-  Stream<String> chatStream(List<ChatMessage> messages, ChatConfig config) async* {
+  Stream<String> chatStream(
+      List<ChatMessage> messages, ChatConfig config) async* {
     try {
       Logger.i(_tag, '准备发送消息，消息数量: ${messages.length}');
       final runtimeConfig = await _settingsRepository.getLlmConfig();
@@ -57,7 +59,8 @@ class ConfigurableHttpLLM implements BaseLLM {
       request.body = jsonEncode(
         apiStyle == ApiStyle.responses
             ? _buildResponsesPayload(messages, config, modelName, stream: true)
-            : _buildChatCompletionsPayload(messages, config, modelName, stream: true),
+            : _buildChatCompletionsPayload(messages, config, modelName,
+                stream: true),
       );
 
       Logger.i(_tag, '请求体: ${request.body}');
@@ -151,17 +154,69 @@ class ConfigurableHttpLLM implements BaseLLM {
         ),
         ChatMessage(text: sourceText, role: MessageRole.user),
       ];
-      return (
-        await _sendTextRequest(
-          runtimeConfig,
-          config: ChatConfig(useReasoning: false, systemPrompt: ''),
-          messages: promptMessages,
-        )
-      ).trim();
+      return (await _sendTextRequest(
+        runtimeConfig,
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        messages: promptMessages,
+      ))
+          .trim();
     } catch (e, stackTrace) {
       Logger.e(_tag, '结构化整理失败', e);
       Logger.e(_tag, '堆栈跟踪', stackTrace);
       throw Exception('结构化整理失败: $e');
+    }
+  }
+
+  @override
+  Future<String> decideToolCall({
+    required String userMessage,
+    required List<ChatMessage> history,
+    required List<ToolDefinition> tools,
+  }) async {
+    try {
+      final runtimeConfig = await _settingsRepository.getLlmConfig();
+      _validateRuntimeConfig(runtimeConfig);
+
+      final toolDescriptions = tools
+          .map(
+            (tool) =>
+                '- ${tool.name}: ${tool.description}; parameters: ${tool.parameters}',
+          )
+          .join('\n');
+      final historySummary = history
+          .take(6)
+          .map((message) => '${message.role.name}: ${message.text}')
+          .join('\n');
+
+      final promptMessages = [
+        ChatMessage(
+          text: '你是一个工具决策器。请根据用户当前问题判断是否需要调用工具。'
+              '只允许使用下面提供的工具，不要编造工具名。'
+              '如果需要调用工具，只返回严格 JSON：'
+              '{"toolName":"search_chat_history","arguments":{"query":"...","maxResults":3}}。'
+              '如果不需要工具，只返回严格 JSON：{"toolName":"none"}。'
+              '不要输出 Markdown，不要输出解释，不要输出代码块。\n'
+              '可用工具如下：\n$toolDescriptions',
+          role: MessageRole.system,
+        ),
+        if (historySummary.isNotEmpty)
+          ChatMessage(
+            text: '最近对话历史（仅供决策参考）：\n$historySummary',
+            role: MessageRole.system,
+          ),
+        ChatMessage(text: userMessage, role: MessageRole.user),
+      ];
+
+      return (await _sendTextRequest(
+        runtimeConfig,
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        messages: promptMessages,
+      ))
+          .trim();
+    } catch (e, stackTrace) {
+      Logger.e(_tag, '工具决策失败', e);
+      Logger.e(_tag, '堆栈跟踪', stackTrace);
+      throw Exception('工具决策失败: $e');
     }
   }
 
@@ -206,13 +261,16 @@ class ConfigurableHttpLLM implements BaseLLM {
     String modelName, {
     required bool stream,
   }) {
-    final normalizedMessages = messages.where((msg) => msg.text.trim().isNotEmpty).toList();
+    final normalizedMessages =
+        messages.where((msg) => msg.text.trim().isNotEmpty).toList();
     return {
       'model': modelName,
-      'messages': normalizedMessages.map((msg) => {
-        'role': msg.role.toString().split('.').last,
-        'content': msg.text,
-      }).toList(),
+      'messages': normalizedMessages
+          .map((msg) => {
+                'role': msg.role.toString().split('.').last,
+                'content': msg.text,
+              })
+          .toList(),
       'stream': stream,
     };
   }
@@ -223,18 +281,23 @@ class ConfigurableHttpLLM implements BaseLLM {
     String modelName, {
     required bool stream,
   }) {
-    final normalizedMessages = messages.where((msg) => msg.text.trim().isNotEmpty).toList();
+    final normalizedMessages =
+        messages.where((msg) => msg.text.trim().isNotEmpty).toList();
     return {
       'model': modelName,
-      'input': normalizedMessages.map((msg) => {
-        'role': msg.role.toString().split('.').last,
-        'content': [
-          {
-            'type': msg.role == MessageRole.assistant ? 'output_text' : 'input_text',
-            'text': msg.text,
-          },
-        ],
-      }).toList(),
+      'input': normalizedMessages
+          .map((msg) => {
+                'role': msg.role.toString().split('.').last,
+                'content': [
+                  {
+                    'type': msg.role == MessageRole.assistant
+                        ? 'output_text'
+                        : 'input_text',
+                    'text': msg.text,
+                  },
+                ],
+              })
+          .toList(),
       'stream': stream,
       'store': false,
       if (config.useReasoning) 'reasoning': {'effort': 'medium'},
@@ -261,7 +324,8 @@ class ConfigurableHttpLLM implements BaseLLM {
 
       final response = await http.Client().send(request);
       if (response.statusCode != 200) {
-        throw Exception('请求失败: ${response.statusCode} ${response.reasonPhrase}');
+        throw Exception(
+            '请求失败: ${response.statusCode} ${response.reasonPhrase}');
       }
 
       final buffer = StringBuffer();
@@ -278,7 +342,8 @@ class ConfigurableHttpLLM implements BaseLLM {
       _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
       headers: _buildHeaders(runtimeConfig),
       body: jsonEncode(
-        _buildChatCompletionsPayload(messages, config, modelName, stream: false),
+        _buildChatCompletionsPayload(messages, config, modelName,
+            stream: false),
       ),
     );
 
