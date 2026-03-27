@@ -13,17 +13,20 @@ import 'providers/chat_providers.dart';
 import 'models/llm/llm_factory.dart';
 import 'models/context/context_strategies.dart';
 import 'services/chat_service.dart';
+import 'services/tool_call_service.dart';
+import 'services/tool_executor.dart';
+import 'services/tool_registry.dart';
 
 void main() async {
   // 确保 Flutter 绑定初始化
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   try {
     final preferences = await SharedPreferences.getInstance();
     final settingsRepository = AppSettingsRepository(preferences);
     final storage = _createChatStorage(preferences);
     await storage.testDatabaseConnection();
-    
+
     // 创建一个自定义的ProviderContainer来添加覆盖
     final container = ProviderContainer(
       overrides: [
@@ -31,11 +34,11 @@ void main() async {
         appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
         databaseProvider.overrideWithValue(storage),
         chatServiceFactoryProvider.overrideWithValue(
-          _createChatService(settingsRepository),
+          _createChatService(settingsRepository, storage),
         ),
       ],
     );
-    
+
     runApp(UncontrolledProviderScope(
       container: container,
       child: const MyApp(),
@@ -56,7 +59,10 @@ void main() async {
 }
 
 // 创建聊天服务的函数
-ChatService _createChatService(AppSettingsRepository settingsRepository) {
+ChatService _createChatService(
+  AppSettingsRepository settingsRepository,
+  ChatStorage storage,
+) {
   // 创建混合策略
   final contextStrategy = HybridStrategy(
     strategies: [
@@ -71,11 +77,17 @@ ChatService _createChatService(AppSettingsRepository settingsRepository) {
     LLMType.configurable,
     settingsRepository: settingsRepository,
   );
+  final toolCallService = ToolCallService(
+    llm: llm,
+    toolRegistry: ToolRegistry(),
+    toolExecutor: ToolExecutor(chatStorage: storage),
+  );
 
   // 创建聊天服务
   return ChatService(
     llm: llm,
     contextStrategy: contextStrategy,
+    toolCallService: toolCallService,
     maxTokens: 4000,
   );
 }

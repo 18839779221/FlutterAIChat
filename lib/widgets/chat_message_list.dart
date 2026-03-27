@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/chat_message.dart';
 import '../models/response/message_content_type.dart';
 import '../models/response/structured_summary_card.dart';
+import '../models/tool/tool_result.dart';
 import '../providers/chat_providers.dart';
 import 'structured_message/structured_summary_card_widget.dart';
 
@@ -91,7 +92,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final autoScrollToBottom = ref.watch(autoScrollToBottomProvider);
     final hasMoreMessages = ref.watch(hasMoreMessagesProvider);
     final scrollController = ref.watch(scrollControllerProvider);
-    
+
     // 如果正在生成且允许自动滚动，则滚动到底部
     if (isGenerating && autoScrollToBottom) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -139,8 +140,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
 
               final message = messages[index];
               return Align(
-                alignment: message.isUser 
-                    ? Alignment.centerRight 
+                alignment: message.isUser
+                    ? Alignment.centerRight
                     : Alignment.centerLeft,
                 child: _buildMessageItem(message),
               );
@@ -194,18 +195,21 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
               decoration: BoxDecoration(
                 color: message.isUser ? Colors.blue[50] : Colors.grey[180],
                 borderRadius: BorderRadius.circular(12.0),
-                border: !message.isUser && message.status != MessageStatus.completed
-                    ? Border.all(
-                        color: _getStatusColor(message.status),
-                        width: 1.0,
-                      )
-                    : null,
+                border:
+                    !message.isUser && message.status != MessageStatus.completed
+                        ? Border.all(
+                            color: _getStatusColor(message.status),
+                            width: 1.0,
+                          )
+                        : null,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // 推理内容
-                  if (!message.isUser && message.reasoningContent != null && message.reasoningContent!.isNotEmpty)
+                  if (!message.isUser &&
+                      message.reasoningContent != null &&
+                      message.reasoningContent!.isNotEmpty)
                     Container(
                       margin: const EdgeInsets.only(bottom: 8.0),
                       padding: const EdgeInsets.all(8.0),
@@ -236,14 +240,16 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
                       ? Text(message.text, style: const TextStyle(fontSize: 16))
                       : _buildAssistantMessageContent(message),
                   // 状态提示文本
-                  if (!message.isUser && message.status != MessageStatus.completed)
+                  if (!message.isUser &&
+                      message.status != MessageStatus.completed)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(
                         _getStatusText(message.status),
                         style: TextStyle(
                           fontSize: 10,
-                          color: _getStatusColor(message.status).withOpacity(0.8),
+                          color:
+                              _getStatusColor(message.status).withOpacity(0.8),
                         ),
                       ),
                     ),
@@ -273,59 +279,101 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           return Text(message.text, style: const TextStyle(fontSize: 16));
         }
       case MessageContentType.toolResult:
-        return Text(message.text, style: const TextStyle(fontSize: 16));
+        final payload = message.payloadJson;
+        if (payload == null) {
+          return Text(message.text, style: const TextStyle(fontSize: 16));
+        }
+
+        try {
+          final toolResult = ToolResult.fromJson(payload);
+          if (toolResult.toolName.isEmpty || toolResult.displayText.isEmpty) {
+            return Text(message.text, style: const TextStyle(fontSize: 16));
+          }
+
+          final matchCount = toolResult.payload['matchCount'];
+          final secondaryText = matchCount is int
+              ? '找到 $matchCount 条历史消息'
+              : toolResult.status == ToolExecutionStatus.failure
+                  ? '工具执行失败'
+                  : null;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                toolResult.displayText,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (secondaryText != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  secondaryText,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey[700],
+                  ),
+                ),
+              ],
+            ],
+          );
+        } catch (_) {
+          return Text(message.text, style: const TextStyle(fontSize: 16));
+        }
     }
   }
 
   void _showMessageOptionMenu(ChatMessage message) {
     final messagesNotifier = ref.read(messagesProvider.notifier);
-    final shouldShowStructuredDebugAction =
-        kDebugMode &&
+    final shouldShowStructuredDebugAction = kDebugMode &&
         message.isAssistant &&
         message.status == MessageStatus.completed &&
         message.contentType == MessageContentType.plainText;
-    
+
     showCupertinoModalPopup(
-      context: context,
-      builder: (context) => CupertinoActionSheet(
-        actions: [
-          if (shouldShowStructuredDebugAction)
-            CupertinoActionSheetAction(
-              child: const Text('结构化整理（调试）'),
-              onPressed: () async {
-                Navigator.pop(context);
-                await ref.read(chatControllerProvider).structureMessageForDebug(message);
-              },
-            ),
-          CupertinoActionSheetAction(
-            child: const Text('复制'),
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: message.text));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已复制到剪贴板')),
-              );
-              Navigator.pop(context); // 关闭菜单
-            },
-          ),
-          CupertinoActionSheetAction(
-            child: const Text('删除'),
-            onPressed: () {
-              // 找到消息在列表中的索引
-              final messages = ref.read(messagesProvider);
-              final index = messages.indexOf(message);
-              if (index != -1) {
-                messagesNotifier.deleteMessagePair(index);
-              }
-              Navigator.pop(context);
-            },
-          ),
-        ],
-        cancelButton: CupertinoActionSheetAction(
-          child: const Text('取消'),
-          onPressed: () => Navigator.pop(context),
-        ),
-      )
-    );
+        context: context,
+        builder: (context) => CupertinoActionSheet(
+              actions: [
+                if (shouldShowStructuredDebugAction)
+                  CupertinoActionSheetAction(
+                    child: const Text('结构化整理（调试）'),
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      await ref
+                          .read(chatControllerProvider)
+                          .structureMessageForDebug(message);
+                    },
+                  ),
+                CupertinoActionSheetAction(
+                  child: const Text('复制'),
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: message.text));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('已复制到剪贴板')),
+                    );
+                    Navigator.pop(context); // 关闭菜单
+                  },
+                ),
+                CupertinoActionSheetAction(
+                  child: const Text('删除'),
+                  onPressed: () {
+                    // 找到消息在列表中的索引
+                    final messages = ref.read(messagesProvider);
+                    final index = messages.indexOf(message);
+                    if (index != -1) {
+                      messagesNotifier.deleteMessagePair(index);
+                    }
+                    Navigator.pop(context);
+                  },
+                ),
+              ],
+              cancelButton: CupertinoActionSheetAction(
+                child: const Text('取消'),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ));
   }
 
   String _getStatusText(MessageStatus status) {

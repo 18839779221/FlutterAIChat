@@ -52,7 +52,7 @@ void main() {
 
     test('查询为空时返回失败结果而不是抛异常', () async {
       final executor =
-          ToolExecutor(chatStorage: _FakeChatStorage(messages: const []));
+          ToolExecutor(chatStorage: const _FakeChatStorage(messages: []));
 
       final result = await executor.executeSearchChatHistory(
         groupId: 1,
