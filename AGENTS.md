@@ -8,33 +8,84 @@ This is a Flutter-based AI chat application with multi-group conversations, loca
 
 ## Development Commands
 
+### Flutter Version
+- Prefer Flutter `3.29.2` in this repository
+- If the locally active `flutter` is not `3.29.2`, use `fvm flutter` for all Flutter commands
+- Recommended command forms:
+  - `fvm flutter pub get`
+  - `fvm flutter test`
+  - `fvm flutter analyze`
+  - `fvm flutter run`
+
 ### Running the App
 ```bash
+# If active flutter == 3.29.2
 flutter run
+
+# Otherwise
+fvm flutter run
 ```
 
 ### Installing Dependencies
 ```bash
+# If active flutter == 3.29.2
 flutter pub get
+
+# Otherwise
+fvm flutter pub get
 ```
 
 ### Linting
 ```bash
+# If active flutter == 3.29.2
 flutter analyze
+
+# Otherwise
+fvm flutter analyze
 ```
 
 ### Testing
 ```bash
+# If active flutter == 3.29.2
 flutter test
+
+# Otherwise
+fvm flutter test
 ```
+
+### Web Automation
+- For Flutter Web automation, prefer `fvm flutter run -d web-server` over ad-hoc local servers
+- Keep the host and port stable so browser storage stays reusable:
+  - `fvm flutter run -d web-server --release --web-hostname 127.0.0.1 --web-port 7357`
+- Reuse the same origin for repeated tests:
+  - `http://127.0.0.1:7357`
+  - Do not switch freely between `localhost` and `127.0.0.1`
+  - Do not change ports unless necessary
+- Web persistence depends on browser profile plus origin (`scheme + host + port`)
+  - If the origin changes, `localStorage` / `IndexedDB` / `shared_preferences` may appear empty
+  - If the browser profile changes, saved settings and chat history may also appear empty
+- Chrome standalone app mode can help manual regression testing, but it does not replace fixed origin/profile rules
+  - It does not guarantee a fixed port
+  - It does not by itself preserve data if host/port/profile changes
+  - For browser automation, a normal Chrome page is usually easier to control than a standalone app window
+- When testing real chat flows in Chrome/web, verify whether API settings already exist before assuming network features will work
+  - Required runtime fields are typically `API Key`, `Model`, and `Base URL`
 
 ### Building
 ```bash
 # Android
+# If active flutter == 3.29.2
 flutter build apk
 
+# Otherwise
+fvm flutter build apk
+
 # iOS
+# If active flutter == 3.29.2
 flutter build ios
+
+# Otherwise
+fvm flutter build ios
 ```
 
 ## Architecture Overview
