@@ -47,3 +47,4 @@ app.*.map.json
 # FVM Version Cache
 .fvm/
 .worktrees/
+config/local_defaults.json

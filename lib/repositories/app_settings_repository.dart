@@ -1,28 +1,50 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/llm/llm_config.dart';
+import 'llm_local_defaults.dart';
 
 class AppSettingsRepository {
   static const String _apiKeyKey = 'llm.api_key';
   static const String _baseUrlKey = 'llm.base_url';
   static const String _modelKey = 'llm.model';
-  static const String defaultBaseUrl = 'https://api.deepseek.com/v1/chat/completions';
+  static const String defaultBaseUrl = '';
   static const String defaultModel = 'deepseek-chat';
 
   final SharedPreferences _preferences;
+  final Future<LlmLocalDefaults?> Function()? _localDefaultsLoader;
+  Future<LlmLocalDefaults?>? _cachedLocalDefaults;
 
-  AppSettingsRepository(this._preferences);
+  AppSettingsRepository(
+    this._preferences, {
+    Future<LlmLocalDefaults?> Function()? localDefaultsLoader,
+  }) : _localDefaultsLoader = localDefaultsLoader ?? const AssetLlmLocalDefaultsLoader().load;
+
+  String? _readSavedValue(String key) {
+    final value = _preferences.getString(key)?.trim();
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return value;
+  }
+
+  Future<LlmLocalDefaults?> _getLocalDefaults() {
+    return _cachedLocalDefaults ??= _localDefaultsLoader?.call() ?? Future.value(null);
+  }
 
   Future<String> getApiKey() async {
-    return _preferences.getString(_apiKeyKey) ?? '';
+    return _readSavedValue(_apiKeyKey) ?? (await _getLocalDefaults())?.apiKey?.trim() ?? '';
   }
 
   Future<String> getBaseUrl() async {
-    return _preferences.getString(_baseUrlKey) ?? defaultBaseUrl;
+    return _readSavedValue(_baseUrlKey) ??
+        (await _getLocalDefaults())?.baseUrl?.trim() ??
+        defaultBaseUrl;
   }
 
   Future<String> getModel() async {
-    return _preferences.getString(_modelKey) ?? defaultModel;
+    return _readSavedValue(_modelKey) ??
+        (await _getLocalDefaults())?.model?.trim() ??
+        defaultModel;
   }
 
   Future<LLMConfig> getLlmConfig() async {

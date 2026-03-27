@@ -50,6 +50,8 @@ class ApiStreamParser {
   }
 
   Stream<String> _parseResponsesStream(http.StreamedResponse response) async* {
+    final emittedReasoningChunks = <String>{};
+
     await for (final line in response.stream.transform(utf8.decoder).transform(const LineSplitter())) {
       if (!line.startsWith('data: ')) {
         continue;
@@ -70,10 +72,46 @@ class ApiStreamParser {
             delta is String &&
             delta.isNotEmpty) {
           yield jsonEncode({'type': 'reasoning', 'content': delta});
+          continue;
+        }
+
+        if (type == 'response.output_item.added' || type == 'response.output_item.done') {
+          final item = data['item'];
+          if (item is Map<String, dynamic>) {
+            final reasoningChunks = _extractReasoningSummaries(item);
+            for (final chunk in reasoningChunks) {
+              final dedupeKey = '${item['id'] ?? ''}:$chunk';
+              if (emittedReasoningChunks.add(dedupeKey)) {
+                yield jsonEncode({'type': 'reasoning', 'content': chunk});
+              }
+            }
+          }
         }
       } catch (e) {
         Logger.e(_tag, 'Responses JSON解析错误: $e');
       }
     }
+  }
+
+  List<String> _extractReasoningSummaries(Map<String, dynamic> item) {
+    if (item['type'] != 'reasoning') {
+      return const [];
+    }
+
+    final summary = item['summary'];
+    if (summary is! List) {
+      return const [];
+    }
+
+    final chunks = <String>[];
+    for (final entry in summary) {
+      if (entry is Map<String, dynamic> &&
+          entry['type'] == 'summary_text' &&
+          entry['text'] is String &&
+          (entry['text'] as String).isNotEmpty) {
+        chunks.add(entry['text'] as String);
+      }
+    }
+    return chunks;
   }
 }
