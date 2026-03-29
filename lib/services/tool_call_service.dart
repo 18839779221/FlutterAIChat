@@ -60,4 +60,16 @@ class ToolCallService {
       history: history,
     );
   }
+
+  Future<ToolPreparationResult> executeToolInvocation({
+    required int groupId,
+    required ToolInvocation invocation,
+    bool trustTool = false,
+  }) {
+    return _orchestrator.executeToolInvocation(
+      groupId: groupId,
+      invocation: invocation,
+      trustTool: trustTool,
+    );
+  }
 }

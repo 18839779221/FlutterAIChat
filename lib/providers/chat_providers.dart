@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/chat_message.dart';
 import '../models/chat_group.dart';
 import '../models/response/message_content_type.dart';
+import '../models/tool/tool_invocation.dart';
 import '../repositories/app_settings_repository.dart';
 import '../services/chat_service.dart';
 import '../storage/chat_storage.dart';
@@ -500,6 +501,23 @@ class ChatController {
       // 添加消息到UI
       _ref.read(messagesProvider.notifier).addMessage(userMessage);
 
+      if (toolPreparationResult.toolInvocation != null &&
+          toolPreparationResult.toolResult == null) {
+        final confirmationMessage = ChatMessage(
+          text: toolPreparationResult.toolInvocation!.summary,
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.actionConfirmation,
+          payloadJson: toolPreparationResult.toolInvocation!.toJson(),
+        );
+        final confirmationMessageId =
+            await dbHelper.insertMessage(confirmationMessage, currentGroupId);
+        confirmationMessage.id = confirmationMessageId;
+        _ref.read(messagesProvider.notifier).addMessage(confirmationMessage);
+        _ref.read(textControllerProvider).clear();
+        return;
+      }
+
       if (toolPreparationResult.toolResult != null) {
         final toolMessage = ChatMessage(
           text: toolPreparationResult.toolResult!.displayText,
@@ -596,6 +614,85 @@ class ChatController {
     }
 
     _ref.read(textControllerProvider).clear();
+  }
+
+  Future<void> cancelToolInvocation(ChatMessage message) async {
+    if (message.id == null) {
+      return;
+    }
+
+    final cancelledMessage = message.copyWith(
+      text: '已取消工具执行',
+      contentType: MessageContentType.plainText,
+      payloadJson: null,
+    );
+    _ref.read(messagesProvider.notifier).replaceMessage(cancelledMessage);
+
+    final dbHelper = _ref.read(databaseProvider);
+    await dbHelper.updateStructuredMessage(
+      message.id!,
+      text: cancelledMessage.text,
+      status: cancelledMessage.status,
+      contentType: cancelledMessage.contentType,
+      payloadJson: null,
+    );
+  }
+
+  Future<void> confirmToolInvocation(
+    ChatMessage message, {
+    bool trustTool = false,
+  }) async {
+    final payload = message.payloadJson;
+    final currentGroup = _ref.read(currentGroupProvider);
+    if (message.id == null || payload == null || currentGroup?.id == null) {
+      return;
+    }
+
+    final invocation = ToolInvocation.fromJson(payload);
+    final executionResult = await _ref.read(chatServiceProvider).executeToolInvocation(
+          groupId: currentGroup!.id!,
+          invocation: invocation,
+          trustTool: trustTool,
+        );
+
+    final runningInvocation = executionResult.toolInvocation ??
+        invocation.copyWith(
+          status: ToolInvocationStatus.running,
+          summary: '正在执行工具：${invocation.toolName}',
+          requiresConfirmation: false,
+        );
+    final runningMessage = message.copyWith(
+      text: runningInvocation.summary,
+      contentType: MessageContentType.toolInvocation,
+      payloadJson: runningInvocation.toJson(),
+    );
+    _ref.read(messagesProvider.notifier).replaceMessage(runningMessage);
+
+    final dbHelper = _ref.read(databaseProvider);
+    await dbHelper.updateStructuredMessage(
+      message.id!,
+      text: runningMessage.text,
+      status: runningMessage.status,
+      contentType: runningMessage.contentType,
+      payloadJson: jsonEncode(runningMessage.payloadJson),
+    );
+
+    final toolResult = executionResult.toolResult;
+    if (toolResult == null) {
+      return;
+    }
+
+    final toolMessage = ChatMessage(
+      text: toolResult.displayText,
+      role: MessageRole.assistant,
+      status: MessageStatus.completed,
+      contentType: MessageContentType.toolResult,
+      payloadJson: toolResult.toJson(),
+    );
+    final toolMessageId =
+        await dbHelper.insertMessage(toolMessage, currentGroup.id!);
+    toolMessage.id = toolMessageId;
+    _ref.read(messagesProvider.notifier).addMessage(toolMessage);
   }
 
   Future<void> structureMessageForDebug(ChatMessage message) async {

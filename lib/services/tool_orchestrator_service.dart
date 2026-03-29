@@ -92,6 +92,43 @@ class ToolOrchestratorService {
     await _toolPolicyService?.untrustTool(toolName);
   }
 
+  Future<ToolPreparationResult> executeToolInvocation({
+    required int groupId,
+    required ToolInvocation invocation,
+    bool trustTool = false,
+  }) async {
+    if (trustTool) {
+      await _toolPolicyService?.trustTool(invocation.toolName);
+    }
+
+    final toolDefinition = _toolRegistry.findByName(invocation.toolName);
+    if (toolDefinition == null) {
+      return const ToolPreparationResult.noTool();
+    }
+
+    final toolResult = await _executeTool(
+      toolDefinition: toolDefinition,
+      arguments: invocation.arguments,
+      groupId: groupId,
+    );
+
+    return ToolPreparationResult(
+      toolInvocation: invocation.copyWith(
+        status: ToolInvocationStatus.running,
+        summary: '正在执行工具：${toolDefinition.title}',
+        requiresConfirmation: false,
+      ),
+      toolResult: toolResult,
+      additionalContextMessages: [
+        ChatMessage(
+          text: _buildContextText(toolResult),
+          role: MessageRole.system,
+          status: MessageStatus.completed,
+        ),
+      ],
+    );
+  }
+
   Future<ToolPolicyDecision> _resolvePolicyDecision(
     ToolDefinition toolDefinition,
   ) async {

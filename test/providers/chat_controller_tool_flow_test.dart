@@ -6,6 +6,7 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
+import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/chat_service.dart';
@@ -82,7 +83,7 @@ void main() {
 
       expect(toolMessage.text, '已执行：搜索历史记录');
       expect(toolMessage.payloadJson?['toolName'], 'search_chat_history');
-      expect(toolMessage.payloadJson?['payload']?['matchCount'], 1);
+      expect(toolMessage.payloadJson?['data']?['matchCount'], 1);
       expect(finalAssistantMessage.text, '最终回答');
       expect(chatService.preparedUserMessages, ['我刚才提过数据库版本吗？']);
       expect(
@@ -191,6 +192,130 @@ void main() {
 
       await databaseHelper.deleteGroup(groupId);
     });
+
+    test('需要确认的工具会先插入 actionConfirmation 消息', () async {
+      final databaseHelper = DatabaseHelper();
+      final chatService = _FakeChatService(
+        toolPreparationResult: ToolPreparationResult(
+          toolInvocation: const ToolInvocation(
+            toolName: 'create_reminder',
+            arguments: {'title': '交周报'},
+            status: ToolInvocationStatus.awaitingConfirmation,
+            summary: '准备执行工具：创建提醒',
+            requiresConfirmation: true,
+          ),
+          toolResult: null,
+          additionalContextMessages: const [],
+        ),
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: chatService,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      await container.read(chatControllerProvider).sendMessage('提醒我交周报');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final messages = container.read(messagesProvider);
+      final confirmationMessage = messages.firstWhere(
+        (message) => message.contentType == MessageContentType.actionConfirmation,
+      );
+
+      expect(confirmationMessage.text, '准备执行工具：创建提醒');
+      expect(
+        messages.where(
+          (message) => message.contentType == MessageContentType.toolResult,
+        ),
+        isEmpty,
+      );
+      expect(chatService.streamHistories, isEmpty);
+
+      await databaseHelper.deleteGroup(groupId);
+    });
+
+    test('继续并信任会执行挂起工具并追加 toolResult 消息', () async {
+      final databaseHelper = DatabaseHelper();
+      final chatService = _FakeChatService(
+        toolPreparationResult: ToolPreparationResult(
+          toolInvocation: const ToolInvocation(
+            toolName: 'create_reminder',
+            arguments: {'title': '交周报'},
+            status: ToolInvocationStatus.awaitingConfirmation,
+            summary: '准备执行工具：创建提醒',
+            requiresConfirmation: true,
+          ),
+          toolResult: null,
+          additionalContextMessages: const [],
+        ),
+        confirmedToolResult: ToolPreparationResult(
+          toolInvocation: const ToolInvocation(
+            toolName: 'create_reminder',
+            arguments: {'title': '交周报'},
+            status: ToolInvocationStatus.running,
+            summary: '正在执行工具：创建提醒',
+            requiresConfirmation: false,
+          ),
+          toolResult: const ToolResult(
+            toolName: 'create_reminder',
+            status: ToolExecutionStatus.success,
+            summary: '已创建提醒：交周报',
+            data: {'title': '交周报'},
+          ),
+          additionalContextMessages: const [],
+        ),
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: chatService,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      await container.read(chatControllerProvider).sendMessage('提醒我交周报');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final confirmationMessage = container
+          .read(messagesProvider)
+          .firstWhere(
+            (message) =>
+                message.contentType == MessageContentType.actionConfirmation,
+          );
+      await container
+          .read(chatControllerProvider)
+          .confirmToolInvocation(confirmationMessage, trustTool: true);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final messages = container.read(messagesProvider);
+      expect(
+        messages.any(
+          (message) =>
+              message.contentType == MessageContentType.toolInvocation &&
+              message.text == '正在执行工具：创建提醒',
+        ),
+        isTrue,
+      );
+      expect(
+        messages.any(
+          (message) =>
+              message.contentType == MessageContentType.toolResult &&
+              message.text == '已创建提醒：交周报',
+        ),
+        isTrue,
+      );
+      expect(chatService.confirmedTrustFlags, [true]);
+
+      await databaseHelper.deleteGroup(groupId);
+    });
   });
 }
 
@@ -211,10 +336,15 @@ ProviderContainer _createContainer({
 
 class _FakeChatService extends ChatService {
   final ToolPreparationResult toolPreparationResult;
+  final ToolPreparationResult? confirmedToolResult;
   final List<String> preparedUserMessages = [];
   final List<List<ChatMessage>> streamHistories = [];
+  final List<bool> confirmedTrustFlags = [];
 
-  _FakeChatService({required this.toolPreparationResult})
+  _FakeChatService({
+    required this.toolPreparationResult,
+    this.confirmedToolResult,
+  })
       : super(llm: _NoopBaseLLM());
 
   @override
@@ -235,6 +365,16 @@ class _FakeChatService extends ChatService {
   ) async* {
     streamHistories.add(history);
     yield jsonEncode({'type': 'content', 'content': '最终回答'});
+  }
+
+  @override
+  Future<ToolPreparationResult> executeToolInvocation({
+    required int groupId,
+    required ToolInvocation invocation,
+    bool trustTool = false,
+  }) async {
+    confirmedTrustFlags.add(trustTool);
+    return confirmedToolResult ?? const ToolPreparationResult.noTool();
   }
 }
 
