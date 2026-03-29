@@ -190,6 +190,18 @@ final systemPromptProvider = StateProvider<String?>((ref) => null);
 // 正在生成状态提供者
 final isGeneratingProvider = StateProvider<bool>((ref) => false);
 
+enum ChatSendPhase {
+  idle,
+  preparing,
+  awaitingConfirmation,
+  executingTool,
+  streamingResponse,
+}
+
+// 当前消息发送事务阶段提供者
+final sendPhaseProvider =
+    StateProvider<ChatSendPhase>((ref) => ChatSendPhase.idle);
+
 // 正在自动摘要状态提供者
 final isAutoSummarizingProvider = StateProvider<bool>((ref) => false);
 
@@ -419,6 +431,7 @@ class ChatController {
         _tag, '准备发送新消息: ${text.substring(0, text.length.clamp(0, 50))}...');
 
     cancelStreamSubscription();
+    _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.preparing;
 
     _ref.read(autoScrollToBottomProvider.notifier).state = true;
 
@@ -444,6 +457,9 @@ class ChatController {
       role: MessageRole.user,
       status: MessageStatus.completed,
     );
+
+    // 用户消息必须先进入消息列表，再做后续异步准备，避免发送反馈滞后。
+    _ref.read(messagesProvider.notifier).addMessage(userMessage);
 
     // 避免消息时间戳一致，延迟1毫秒
     await Future.delayed(const Duration(milliseconds: 1));
@@ -498,11 +514,10 @@ class ChatController {
         ...toolPreparationResult.additionalContextMessages,
       ];
 
-      // 添加消息到UI
-      _ref.read(messagesProvider.notifier).addMessage(userMessage);
-
       if (toolPreparationResult.toolInvocation != null &&
           toolPreparationResult.toolResult == null) {
+        _ref.read(sendPhaseProvider.notifier).state =
+            ChatSendPhase.awaitingConfirmation;
         final confirmationMessage = ChatMessage(
           text: toolPreparationResult.toolInvocation!.summary,
           role: MessageRole.assistant,
@@ -514,7 +529,6 @@ class ChatController {
             await dbHelper.insertMessage(confirmationMessage, currentGroupId);
         confirmationMessage.id = confirmationMessageId;
         _ref.read(messagesProvider.notifier).addMessage(confirmationMessage);
-        _ref.read(textControllerProvider).clear();
         return;
       }
 
@@ -540,6 +554,8 @@ class ChatController {
 
       // 设置生成状态
       _ref.read(isGeneratingProvider.notifier).state = true;
+      _ref.read(sendPhaseProvider.notifier).state =
+          ChatSendPhase.streamingResponse;
 
       // 获取系统提示词和推理模式设置
       final systemPrompt = _ref.read(systemPromptProvider) ?? "";
@@ -580,6 +596,7 @@ class ChatController {
               .read(messagesProvider.notifier)
               .updateMessageStatus(aiMessageId, MessageStatus.failed);
           _ref.read(isGeneratingProvider.notifier).state = false;
+          _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
           dbHelper.updateMessageStatus(aiMessageId, MessageStatus.failed);
         },
         onDone: () {
@@ -589,6 +606,7 @@ class ChatController {
                 .read(messagesProvider.notifier)
                 .updateMessageStatus(aiMessageId, MessageStatus.completed);
             _ref.read(isGeneratingProvider.notifier).state = false;
+            _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
             dbHelper.updateMessageStatus(aiMessageId, MessageStatus.completed);
 
             // 启动自动摘要定时器
@@ -602,10 +620,13 @@ class ChatController {
     } catch (e, stackTrace) {
       Logger.e(_tag, '发送消息过程中出错', e);
       Logger.e(_tag, '堆栈跟踪', stackTrace);
-      _ref
-          .read(messagesProvider.notifier)
-          .updateMessageStatus(aiMessage.id!, MessageStatus.failed);
+      if (aiMessage.id != null) {
+        _ref
+            .read(messagesProvider.notifier)
+            .updateMessageStatus(aiMessage.id!, MessageStatus.failed);
+      }
       _ref.read(isGeneratingProvider.notifier).state = false;
+      _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
 
       final dbHelper = _ref.read(databaseProvider);
       if (aiMessage.id != null) {
@@ -613,7 +634,6 @@ class ChatController {
       }
     }
 
-    _ref.read(textControllerProvider).clear();
   }
 
   Future<void> cancelToolInvocation(ChatMessage message) async {
@@ -626,6 +646,7 @@ class ChatController {
       contentType: MessageContentType.plainText,
       payloadJson: null,
     );
+    _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
     _ref.read(messagesProvider.notifier).replaceMessage(cancelledMessage);
 
     final dbHelper = _ref.read(databaseProvider);
@@ -648,6 +669,7 @@ class ChatController {
       return;
     }
 
+    _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.executingTool;
     final invocation = ToolInvocation.fromJson(payload);
     final executionResult = await _ref.read(chatServiceProvider).executeToolInvocation(
           groupId: currentGroup!.id!,
@@ -679,6 +701,7 @@ class ChatController {
 
     final toolResult = executionResult.toolResult;
     if (toolResult == null) {
+      _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
       return;
     }
 
@@ -693,6 +716,7 @@ class ChatController {
         await dbHelper.insertMessage(toolMessage, currentGroup.id!);
     toolMessage.id = toolMessageId;
     _ref.read(messagesProvider.notifier).addMessage(toolMessage);
+    _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
   }
 
   Future<void> structureMessageForDebug(ChatMessage message) async {
@@ -759,6 +783,7 @@ class ChatController {
 
     if (!_ref.read(isGeneratingProvider)) return;
     _ref.read(isGeneratingProvider.notifier).state = false;
+    _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
 
     final messages = _ref.read(messagesProvider);
     if (messages.isEmpty) return;

@@ -39,6 +39,59 @@
 - 使用策略模式实现上下文管理
 - 实现了混合策略的上下文选择
 
+## 消息发送链路
+
+消息发送入口在 `ChatInput`，业务编排在 `ChatController`，模型请求与工具预处理在 `ChatService`。
+
+### 主流程
+
+```mermaid
+flowchart TD
+    A["点击发送"] --> B["立即清空输入框"]
+    B --> C["sendMessage(text)"]
+    C --> D["取消旧流"]
+    D --> E["sendPhase = preparing"]
+    E --> F["立即插入用户消息"]
+    F --> G["保存消息并整理历史上下文"]
+    G --> H["prepareToolAssistance()"]
+    H --> I{"是否需要工具"}
+    I -->|否| J["创建 AI 占位消息并开始流式回复"]
+    I -->|需要确认| K["插入确认卡"]
+    I -->|直接执行| L["插入 toolResult 后继续回复"]
+    L --> J
+    J --> M["sendPhase = streamingResponse"]
+    M --> N["完成 / 失败 / 取消后回到 idle"]
+    K --> O["sendPhase = awaitingConfirmation"]
+```
+
+### 发送状态
+
+发送事务使用 `ChatSendPhase`：
+
+- `idle`：空闲状态，可输入、可发送、可切换会话
+- `preparing`：正在准备上下文和工具决策
+- `awaitingConfirmation`：已展示工具确认卡，等待用户操作
+- `executingTool`：正在执行已确认的工具
+- `streamingResponse`：正在流式接收 assistant 回复
+
+### 状态职责
+
+- `messagesProvider`
+  负责消息列表本身，包括用户消息、assistant 占位消息、确认卡和 toolResult 卡片
+
+- `sendPhaseProvider`
+  负责当前发送事务阶段，输入框是否锁定、发送按钮 loading、是否允许切换会话都基于它判断
+
+- `isGeneratingProvider`
+  只表示 assistant 是否正在流式输出，主要用于自动滚动和中断当前流
+
+### 交互规则
+
+- 点击发送后，输入框会立即清空，用户消息会立即上屏
+- `preparing`、`executingTool`、`streamingResponse` 阶段发送按钮显示 loading
+- `awaitingConfirmation` 阶段输入区保持锁定，避免在待确认事务未结束时发送新消息
+- `streamingResponse` 阶段点击发送按钮会中断当前流式回复
+
 ## 项目结构
 
 ```

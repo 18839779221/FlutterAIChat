@@ -8,15 +8,38 @@ class ChatInput extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // 只监听需要的状态
-    final isGenerating = ref.watch(isGeneratingProvider);
     final useReasoning = ref.watch(useReasoningProvider);
     final useConciseMode = ref.watch(useConciseModeProvider);
+    final sendPhase = ref.watch(sendPhaseProvider);
     final textController = ref.watch(textControllerProvider);
     final focusNode = ref.watch(focusNodeProvider);
-    
+
     final chatController = ref.read(chatControllerProvider);
     final bottomHomeHeight = MediaQuery.of(context).padding.bottom; // Home 栏高度
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom; // 键盘高度
+    final isStreamingResponse = sendPhase == ChatSendPhase.streamingResponse;
+    final isAwaitingConfirmation =
+        sendPhase == ChatSendPhase.awaitingConfirmation;
+    final isBlockingPhase = sendPhase == ChatSendPhase.preparing ||
+        sendPhase == ChatSendPhase.executingTool ||
+        sendPhase == ChatSendPhase.streamingResponse;
+    final isComposerLocked = sendPhase != ChatSendPhase.idle;
+
+    void submitCurrentInput() {
+      if (isComposerLocked) {
+        return;
+      }
+
+      final pendingText = textController.text;
+      if (pendingText.trim().isEmpty) {
+        return;
+      }
+
+      // 在点击发送的同一帧里先清空输入框，避免 Web 文本框在异步发送期间
+      // 继续显示旧内容，造成“消息没有发出去”的错觉。
+      textController.clear();
+      chatController.sendMessage(pendingText);
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -97,6 +120,7 @@ class ChatInput extends ConsumerWidget {
                   child: TextField(
                     focusNode: focusNode,
                     controller: textController,
+                    enabled: !isComposerLocked,
                     maxLines: null, // 允许多行输入
                     textInputAction: TextInputAction.newline, // 回车键变为换行
                     keyboardType: TextInputType.multiline, // 多行输入键盘
@@ -109,9 +133,7 @@ class ChatInput extends ConsumerWidget {
                       ),
                     ),
                     onSubmitted: (text) {
-                      if (text.trim().isNotEmpty) {
-                        chatController.sendMessage(text);
-                      }
+                      submitCurrentInput();
                     },
                   ),
                 ),
@@ -126,18 +148,20 @@ class ChatInput extends ConsumerWidget {
                   shape: const CircleBorder(),
                   color: Theme.of(context).primaryColor,
                   onPressed: () {
-                    if (isGenerating) {
+                    if (isStreamingResponse) {
                       chatController.cancelStreamSubscription();
-                    } else {
-                      final text = textController.text;
-                      if (text.trim().isNotEmpty) {
-                        chatController.sendMessage(text);
-                      }
+                      return;
                     }
+
+                    if (isBlockingPhase || isAwaitingConfirmation) {
+                      return;
+                    }
+
+                    submitCurrentInput();
                   },
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 200),
-                    child: isGenerating
+                    child: isBlockingPhase
                         ? const SizedBox(
                             width: 20,
                             height: 20,
@@ -146,8 +170,10 @@ class ChatInput extends ConsumerWidget {
                               valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           )
-                        : const Icon(
-                            Icons.send,
+                        : Icon(
+                            isAwaitingConfirmation
+                                ? Icons.pending_actions
+                                : Icons.send,
                             color: Colors.white,
                             size: 20,
                           ),
