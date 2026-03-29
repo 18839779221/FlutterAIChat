@@ -17,6 +17,7 @@ import 'services/tool_call_service.dart';
 import 'services/tool_executor.dart';
 import 'services/tool_policy_service.dart';
 import 'services/tool_registry.dart';
+import 'theme/app_theme.dart';
 
 void main() async {
   // 确保 Flutter 绑定初始化
@@ -111,10 +112,7 @@ class MyApp extends ConsumerWidget {
       routes: getRouteMap(),
       initialRoute: RouteConstant.chatPage,
       title: 'AI Chat',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.light(),
     );
   }
 
