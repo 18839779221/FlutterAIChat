@@ -260,11 +260,26 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           widgets.add(ToolResultSummaryRow(result: ToolResult.fromJson(payload)));
           break;
         case AssistantTurnBlockType.toolWorkflow:
+          final steps = _extractWorkflowSteps(block);
+          final manualExpandedStepId =
+              ref.watch(toolWorkflowExpansionProvider)[block.turnId];
           widgets.add(
             ToolWorkflowCard(
               title: block.title ?? 'Tool Workflow',
-              steps: _extractWorkflowSteps(block),
-              expandedStepId: _resolveExpandedStepId(block),
+              steps: steps,
+              expandedStepId: resolveWorkflowExpandedStepId(
+                turnId: block.turnId,
+                steps: steps,
+                manualExpandedStepId: manualExpandedStepId,
+              ),
+              onStepTapped: (stepId) {
+                ref
+                    .read(toolWorkflowExpansionProvider.notifier)
+                    .toggleExpandedStep(
+                      turnId: block.turnId,
+                      stepId: stepId,
+                    );
+              },
               onContinue: sourceMessage == null
                   ? null
                   : () => ref
@@ -350,18 +365,6 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
             : const {},
       );
     }).toList();
-  }
-
-  String? _resolveExpandedStepId(AssistantTurnBlock block) {
-    final steps = _extractWorkflowSteps(block);
-    for (final step in steps) {
-      if (step.status == ToolWorkflowStepStatus.awaitingConfirmation ||
-          step.status == ToolWorkflowStepStatus.running ||
-          step.status == ToolWorkflowStepStatus.failed) {
-        return step.stepId;
-      }
-    }
-    return null;
   }
 
   void _showMessageOptionMenu(ChatMessage message) {

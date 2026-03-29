@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/chat_message.dart';
+import '../models/chat/tool_workflow_step.dart';
 import '../models/chat_group.dart';
 import '../models/response/message_content_type.dart';
 import '../models/tool/tool_invocation.dart';
@@ -203,6 +204,70 @@ enum ChatSendPhase {
 // 当前消息发送事务阶段提供者
 final sendPhaseProvider =
     StateProvider<ChatSendPhase>((ref) => ChatSendPhase.idle);
+
+final toolWorkflowExpansionProvider = StateNotifierProvider<
+    ToolWorkflowExpansionNotifier, Map<String, String>>((ref) {
+  return ToolWorkflowExpansionNotifier();
+});
+
+class ToolWorkflowExpansionNotifier extends StateNotifier<Map<String, String>> {
+  ToolWorkflowExpansionNotifier() : super(const {});
+
+  void toggleExpandedStep({
+    required String turnId,
+    required String stepId,
+  }) {
+    final currentStepId = state[turnId];
+    if (currentStepId == stepId) {
+      final nextState = Map<String, String>.from(state)..remove(turnId);
+      state = nextState;
+      return;
+    }
+
+    state = {
+      ...state,
+      turnId: stepId,
+    };
+  }
+
+  void clearTurn(String turnId) {
+    if (!state.containsKey(turnId)) {
+      return;
+    }
+    final nextState = Map<String, String>.from(state)..remove(turnId);
+    state = nextState;
+  }
+}
+
+String? resolveWorkflowExpandedStepId({
+  required String turnId,
+  required List<ToolWorkflowStep> steps,
+  required String? manualExpandedStepId,
+}) {
+  for (final step in steps) {
+    if (step.status == ToolWorkflowStepStatus.failed) {
+      return step.stepId;
+    }
+  }
+
+  for (final step in steps) {
+    if (step.status == ToolWorkflowStepStatus.awaitingConfirmation ||
+        step.status == ToolWorkflowStepStatus.running) {
+      return step.stepId;
+    }
+  }
+
+  if (manualExpandedStepId == null) {
+    return null;
+  }
+
+  final matched = steps.where((step) => step.stepId == manualExpandedStepId);
+  if (matched.isEmpty) {
+    return null;
+  }
+
+  return manualExpandedStepId;
+}
 
 // 正在自动摘要状态提供者
 final isAutoSummarizingProvider = StateProvider<bool>((ref) => false);
