@@ -1,10 +1,14 @@
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
+import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/widgets/chat_message_list.dart';
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
 import 'package:ai_chat/widgets/structured_message/structured_summary_card_widget.dart';
+import 'package:ai_chat/widgets/tool_call/tool_confirmation_card_widget.dart';
+import 'package:ai_chat/widgets/tool_call/tool_invocation_card_widget.dart';
+import 'package:ai_chat/widgets/tool_call/tool_result_card_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -79,8 +83,59 @@ void main() {
         );
 
         expect(find.byType(FlutterMarkdownImpl), findsNothing);
+        expect(find.byType(ToolResultCardWidget), findsOneWidget);
         expect(find.text('已执行：搜索历史记录'), findsOneWidget);
-        expect(find.text('找到 2 条历史消息'), findsOneWidget);
+      },
+    );
+
+    testWidgets('toolInvocation assistant messages render the invocation card', (
+      tester,
+    ) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: 'Invocation fallback text',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const ToolInvocation(
+              toolName: 'fetch_webpage',
+              arguments: {'url': 'https://example.com'},
+              status: ToolInvocationStatus.running,
+              summary: '正在执行工具：读取网页',
+              requiresConfirmation: false,
+            ).toJson(),
+          ),
+        ],
+      );
+
+      expect(find.byType(ToolInvocationCardWidget), findsOneWidget);
+      expect(find.text('正在执行工具：读取网页'), findsOneWidget);
+    });
+
+    testWidgets(
+      'actionConfirmation assistant messages render the confirmation card',
+      (tester) async {
+        await _pumpMessageList(
+          tester,
+          messages: [
+            _buildMessage(
+              text: 'Confirmation fallback text',
+              role: MessageRole.assistant,
+              contentType: MessageContentType.actionConfirmation,
+              payloadJson: const ToolInvocation(
+                toolName: 'create_reminder',
+                arguments: {'title': '交周报'},
+                status: ToolInvocationStatus.awaitingConfirmation,
+                summary: '准备执行工具：创建提醒',
+                requiresConfirmation: true,
+              ).toJson(),
+            ),
+          ],
+        );
+
+        expect(find.byType(ToolConfirmationCardWidget), findsOneWidget);
+        expect(find.text('继续，以后不再确认'), findsOneWidget);
       },
     );
 
