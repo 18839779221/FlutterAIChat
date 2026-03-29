@@ -48,3 +48,4 @@ app.*.map.json
 .fvm/
 .worktrees/
 config/local_defaults.json
+web/config/local_defaults.json

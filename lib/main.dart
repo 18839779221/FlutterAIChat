@@ -15,6 +15,7 @@ import 'models/context/context_strategies.dart';
 import 'services/chat_service.dart';
 import 'services/tool_call_service.dart';
 import 'services/tool_executor.dart';
+import 'services/tool_policy_service.dart';
 import 'services/tool_registry.dart';
 
 void main() async {
@@ -77,10 +78,15 @@ ChatService _createChatService(
     LLMType.configurable,
     settingsRepository: settingsRepository,
   );
+  final toolRegistry = ToolRegistry();
+  final toolPolicyService = ToolPolicyService(
+    repository: settingsRepository,
+  );
   final toolCallService = ToolCallService(
     llm: llm,
-    toolRegistry: ToolRegistry(),
+    toolRegistry: toolRegistry,
     toolExecutor: ToolExecutor(chatStorage: storage),
+    toolPolicyService: toolPolicyService,
   );
 
   // 创建聊天服务
