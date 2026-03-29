@@ -1,20 +1,25 @@
-import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
+import 'package:ai_chat/models/chat/assistant_turn_block.dart';
+import 'package:ai_chat/models/chat/tool_workflow_step.dart';
+import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/response/message_content_type.dart';
+import 'package:ai_chat/models/response/structured_summary_card.dart';
+import 'package:ai_chat/models/tool/tool_result.dart';
+import 'package:ai_chat/providers/chat_providers.dart';
+import 'package:ai_chat/services/chat_block_builder.dart';
+import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_spacing.dart';
+import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/structured_output_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
+import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
+import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../models/chat_message.dart';
-import '../models/response/message_content_type.dart';
-import '../models/response/structured_summary_card.dart';
-import '../models/tool/tool_invocation.dart';
-import '../models/tool/tool_result.dart';
-import '../providers/chat_providers.dart';
-import 'structured_message/structured_summary_card_widget.dart';
-import 'tool_call/tool_confirmation_card_widget.dart';
-import 'tool_call/tool_invocation_card_widget.dart';
-import 'tool_call/tool_result_card_widget.dart';
 
 class ChatMessageList extends ConsumerStatefulWidget {
   const ChatMessageList({super.key});
@@ -24,30 +29,31 @@ class ChatMessageList extends ConsumerStatefulWidget {
 }
 
 class _ChatMessageListState extends ConsumerState<ChatMessageList> {
-  // 是否快滑到了底部
+  final ChatBlockBuilder _blockBuilder = ChatBlockBuilder();
   bool _isNearBottom = true;
   late final ScrollController _scrollController;
 
   @override
   void initState() {
     super.initState();
-    // 初始化时监听滚动控制器
     _scrollController = ref.read(scrollControllerProvider);
     _scrollController.addListener(_scrollListener);
   }
 
   @override
   void dispose() {
-    // 销毁时移除监听
     _scrollController.removeListener(_scrollListener);
     super.dispose();
   }
 
   void _scrollListener() {
-    // 获取滚动控制器
     final scrollController = ref.read(scrollControllerProvider);
-    final currentScroll = scrollController.offset;
-    final isNearBottom = currentScroll <= 100;
+    if (!scrollController.hasClients) {
+      return;
+    }
+
+    final maxScroll = scrollController.position.maxScrollExtent;
+    final isNearBottom = maxScroll - scrollController.offset <= 100;
 
     if (_isNearBottom != isNearBottom) {
       setState(() {
@@ -56,53 +62,42 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     }
 
     final scrollingPosition = scrollController.position;
-    // 用户向下滑动，且不是惯性滑动时收起输入框
-    if (scrollingPosition.userScrollDirection == ScrollDirection.reverse &&
-        scrollingPosition.activity is DragScrollActivity) {
+    if (scrollingPosition.userScrollDirection == ScrollDirection.reverse) {
       ref.read(focusNodeProvider).unfocus();
+      ref.read(autoScrollToBottomProvider.notifier).state = false;
+    } else if (scrollingPosition.userScrollDirection == ScrollDirection.forward &&
+        isNearBottom) {
+      ref.read(autoScrollToBottomProvider.notifier).state = true;
     }
   }
 
   void _scrollToBottom() {
     final scrollController = ref.read(scrollControllerProvider);
+    if (!scrollController.hasClients) {
+      return;
+    }
     scrollController.animateTo(
-      0,
+      scrollController.position.maxScrollExtent,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOut,
     );
   }
 
-  // 获取状态指示器颜色
-  Color _getStatusColor(MessageStatus status) {
-    switch (status) {
-      case MessageStatus.generating:
-        return Colors.blue.withOpacity(0.1);
-      case MessageStatus.completed:
-        return Colors.green.withOpacity(0.2);
-      case MessageStatus.interrupted:
-        return Colors.orange.withOpacity(0.2);
-      case MessageStatus.failed:
-        return Colors.red.withOpacity(0.2);
-      default:
-        return Colors.grey.withOpacity(0.2);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    // 获取所需状态
     final messages = ref.watch(messagesProvider);
     final isGenerating = ref.watch(isGeneratingProvider);
     final autoScrollToBottom = ref.watch(autoScrollToBottomProvider);
     final hasMoreMessages = ref.watch(hasMoreMessagesProvider);
     final scrollController = ref.watch(scrollControllerProvider);
+    final colors = Theme.of(context).extension<AppColors>()!;
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
 
-    // 如果正在生成且允许自动滚动，则滚动到底部
     if (isGenerating && autoScrollToBottom) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (scrollController.hasClients) {
           scrollController.animateTo(
-            0,
+            scrollController.position.maxScrollExtent,
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeOut,
           );
@@ -110,47 +105,36 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       });
     }
 
+    final timelineItems = _buildTimelineItems(messages);
+    final itemCount = timelineItems.length + (hasMoreMessages ? 1 : 0);
+
     return Stack(
       children: [
-        ShaderMask(
-          shaderCallback: (Rect bounds) {
-            return LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.white,
-                Colors.white,
-                Colors.white,
-                _isNearBottom ? Colors.white : Colors.white.withOpacity(0.0),
-              ],
-              stops: const [0.0, 0.7, 0.9, 1.0],
-            ).createShader(bounds);
-          },
-          blendMode: BlendMode.dstIn,
-          child: ListView.builder(
-            controller: scrollController,
-            padding: const EdgeInsets.all(8.0),
-            reverse: true,
-            itemCount: messages.length + (hasMoreMessages ? 1 : 0),
-            itemBuilder: (context, index) {
-              if (hasMoreMessages && index >= messages.length) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: CircularProgressIndicator(),
-                  ),
-                );
-              }
-
-              final message = messages[index];
-              return Align(
-                alignment: message.isUser
-                    ? Alignment.centerRight
-                    : Alignment.centerLeft,
-                child: _buildMessageItem(message),
-              );
-            },
+        ListView.builder(
+          controller: scrollController,
+          padding: EdgeInsets.fromLTRB(
+            spacing.md,
+            spacing.md,
+            spacing.md,
+            spacing.xl * 4,
           ),
+          itemCount: itemCount,
+          itemBuilder: (context, index) {
+            if (hasMoreMessages && index == 0) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: CircularProgressIndicator(),
+                ),
+              );
+            }
+
+            final item = timelineItems[hasMoreMessages ? index - 1 : index];
+            return Padding(
+              padding: EdgeInsets.only(bottom: spacing.sm),
+              child: item,
+            );
+          },
         ),
         if (!_isNearBottom)
           Positioned(
@@ -158,183 +142,226 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
             bottom: 16,
             child: FloatingActionButton(
               mini: true,
-              backgroundColor: Theme.of(context).primaryColor.withOpacity(0.9),
+              backgroundColor: colors.workflowRunning,
               onPressed: _scrollToBottom,
-              child: const Icon(
-                Icons.keyboard_arrow_down,
-                color: Colors.white,
-              ),
+              child: const Icon(Icons.keyboard_arrow_down, color: Colors.white),
             ),
           ),
       ],
     );
   }
 
-  Widget _buildMessageItem(ChatMessage message) {
-    return Container(
-      constraints: BoxConstraints(
-        maxWidth: MediaQuery.of(context).size.width,
-      ),
-      margin: const EdgeInsets.symmetric(vertical: 4.0),
-      child: GestureDetector(
-        onLongPress: () {
-          _showMessageOptionMenu(message);
-        },
-        child: Stack(
-          children: [
-            // 状态背景指示器
-            if (!message.isUser && message.status != MessageStatus.completed)
-              Positioned.fill(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(message.status),
-                    borderRadius: BorderRadius.circular(12.0),
-                  ),
-                ),
-              ),
-            // 消息内容
-            Container(
-              padding: const EdgeInsets.all(12.0),
-              decoration: BoxDecoration(
-                color: message.isUser ? Colors.blue[50] : Colors.grey[180],
-                borderRadius: BorderRadius.circular(12.0),
-                border:
-                    !message.isUser && message.status != MessageStatus.completed
-                        ? Border.all(
-                            color: _getStatusColor(message.status),
-                            width: 1.0,
-                          )
-                        : null,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 推理内容
-                  if (!message.isUser &&
-                      message.reasoningContent != null &&
-                      message.reasoningContent!.isNotEmpty)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 8.0),
-                      padding: const EdgeInsets.all(8.0),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.7),
-                        borderRadius: BorderRadius.circular(8.0),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            '推理过程',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          SelectableText(
-                            message.reasoningContent!,
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ),
-                  // 消息内容
-                  message.isUser
-                      ? Text(message.text, style: const TextStyle(fontSize: 16))
-                      : _buildAssistantMessageContent(message),
-                  // 状态提示文本
-                  if (!message.isUser &&
-                      message.status != MessageStatus.completed)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        _getStatusText(message.status),
-                        style: TextStyle(
-                          fontSize: 10,
-                          color:
-                              _getStatusColor(message.status).withOpacity(0.8),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  List<Widget> _buildTimelineItems(List<ChatMessage> messages) {
+    if (messages.isEmpty) {
+      return const [];
+    }
+
+    final currentGroup = ref.read(currentGroupProvider);
+    final sortedMessages = [...messages]
+      ..sort((left, right) => left.timestamp.compareTo(right.timestamp));
+
+    final widgets = <Widget>[];
+    var cursor = 0;
+
+    while (cursor < sortedMessages.length) {
+      final current = sortedMessages[cursor];
+
+      if (current.isUser) {
+        widgets.add(
+          GestureDetector(
+            onLongPress: () => _showMessageOptionMenu(current),
+            child: UserAnchorBubble(text: current.text),
+          ),
+        );
+
+        final segment = <ChatMessage>[current];
+        var nextCursor = cursor + 1;
+        while (nextCursor < sortedMessages.length &&
+            !sortedMessages[nextCursor].isUser) {
+          segment.add(sortedMessages[nextCursor]);
+          nextCursor += 1;
+        }
+
+        final blocks = _blockBuilder.buildAssistantBlocks(
+          messages: segment,
+          groupId: currentGroup?.id,
+        );
+        widgets.addAll(_buildAssistantBlocks(segment, blocks));
+        cursor = nextCursor;
+        continue;
+      }
+
+      final orphanBlocks = _blockBuilder.buildAssistantBlocks(
+        messages: [current],
+        groupId: currentGroup?.id,
+      );
+      widgets.addAll(_buildAssistantBlocks([current], orphanBlocks));
+      cursor += 1;
+    }
+
+    return widgets;
   }
 
-  Widget _buildAssistantMessageContent(ChatMessage message) {
-    switch (message.contentType) {
-      case MessageContentType.plainText:
-        return FlutterMarkdownImpl(data: message.text);
-      case MessageContentType.structuredCard:
-        final payload = message.payloadJson;
-        if (payload == null) {
-          return Text(message.text, style: const TextStyle(fontSize: 16));
-        }
+  List<Widget> _buildAssistantBlocks(
+    List<ChatMessage> sourceMessages,
+    List<AssistantTurnBlock> blocks,
+  ) {
+    final widgets = <Widget>[];
 
-        try {
-          final card = StructuredSummaryCard.fromJson(payload);
-          return StructuredSummaryCardWidget(card: card);
-        } catch (_) {
-          return Text(message.text, style: const TextStyle(fontSize: 16));
-        }
-      case MessageContentType.toolInvocation:
-        final payload = message.payloadJson;
-        if (payload == null) {
-          return Text(message.text, style: const TextStyle(fontSize: 16));
-        }
+    for (final block in blocks) {
+      final sourceMessage = _resolveSourceMessage(sourceMessages, block);
 
-        try {
-          final invocation = ToolInvocation.fromJson(payload);
-          return ToolInvocationCardWidget(invocation: invocation);
-        } catch (_) {
-          return Text(message.text, style: const TextStyle(fontSize: 16));
-        }
-      case MessageContentType.toolResult:
-        final payload = message.payloadJson;
-        if (payload == null) {
-          return Text(message.text, style: const TextStyle(fontSize: 16));
-        }
-
-        try {
-          final toolResult = ToolResult.fromJson(payload);
-          if (toolResult.toolName.isEmpty || toolResult.displayText.isEmpty) {
-            return Text(message.text, style: const TextStyle(fontSize: 16));
-          }
-          return ToolResultCardWidget(result: toolResult);
-        } catch (_) {
-          return Text(message.text, style: const TextStyle(fontSize: 16));
-        }
-      case MessageContentType.actionConfirmation:
-        final payload = message.payloadJson;
-        if (payload == null) {
-          return Text(message.text, style: const TextStyle(fontSize: 16));
-        }
-
-        try {
-          final invocation = ToolInvocation.fromJson(payload);
-          return ToolConfirmationCardWidget(
-            invocation: invocation,
-            onContinue: () {
-              ref.read(chatControllerProvider).confirmToolInvocation(message);
-            },
-            onCancel: () {
-              ref.read(chatControllerProvider).cancelToolInvocation(message);
-            },
-            onContinueAndTrust: () {
-              ref
-                  .read(chatControllerProvider)
-                  .confirmToolInvocation(message, trustTool: true);
-            },
+      switch (block.type) {
+        case AssistantTurnBlockType.analysis:
+          widgets.add(
+            GestureDetector(
+              onLongPress: sourceMessage == null
+                  ? null
+                  : () => _showMessageOptionMenu(sourceMessage),
+              child: AssistantDocBlock(
+                label: 'Analysis',
+                text: block.text ?? '',
+              ),
+            ),
           );
-        } catch (_) {
-          return Text(message.text, style: const TextStyle(fontSize: 16));
-        }
+          break;
+        case AssistantTurnBlockType.finalResponse:
+          widgets.add(
+            GestureDetector(
+              onLongPress: sourceMessage == null
+                  ? null
+                  : () => _showMessageOptionMenu(sourceMessage),
+              child: FinalResponseBlock(
+                title: block.title ?? 'Final Response',
+                text: block.text ?? '',
+              ),
+            ),
+          );
+          break;
+        case AssistantTurnBlockType.structuredOutput:
+          widgets.add(
+            GestureDetector(
+              onLongPress: sourceMessage == null
+                  ? null
+                  : () => _showMessageOptionMenu(sourceMessage),
+              child: StructuredOutputBlock(
+                title: block.title ?? 'Structured Output',
+                fields: _extractStructuredFields(block),
+              ),
+            ),
+          );
+          break;
+        case AssistantTurnBlockType.toolResultSummary:
+          final payload = block.payload;
+          if (payload == null) {
+            widgets.add(AssistantDocBlock(text: block.text ?? ''));
+            break;
+          }
+          widgets.add(ToolResultSummaryRow(result: ToolResult.fromJson(payload)));
+          break;
+        case AssistantTurnBlockType.toolWorkflow:
+          widgets.add(
+            ToolWorkflowCard(
+              title: block.title ?? 'Tool Workflow',
+              steps: _extractWorkflowSteps(block),
+              expandedStepId: _resolveExpandedStepId(block),
+              onContinue: sourceMessage == null
+                  ? null
+                  : () => ref
+                      .read(chatControllerProvider)
+                      .confirmToolInvocation(sourceMessage),
+              onCancel: sourceMessage == null
+                  ? null
+                  : () => ref
+                      .read(chatControllerProvider)
+                      .cancelToolInvocation(sourceMessage),
+              onContinueAndTrust: sourceMessage == null
+                  ? null
+                  : () => ref
+                      .read(chatControllerProvider)
+                      .confirmToolInvocation(sourceMessage, trustTool: true),
+            ),
+          );
+          break;
+      }
     }
+
+    return widgets;
+  }
+
+  ChatMessage? _resolveSourceMessage(
+    List<ChatMessage> messages,
+    AssistantTurnBlock block,
+  ) {
+    final payload = block.payload;
+    final sourceMessageId = payload?['sourceMessageId'];
+    if (sourceMessageId is int) {
+      return messages.where((message) => message.id == sourceMessageId).firstOrNull;
+    }
+
+    return messages.where((message) => message.timestamp == block.createdAt).firstOrNull;
+  }
+
+  Map<String, String> _extractStructuredFields(AssistantTurnBlock block) {
+    final payload = block.payload;
+    if (payload == null) {
+      return {
+        '内容': block.text ?? '',
+      };
+    }
+
+    try {
+      final card = StructuredSummaryCard.fromJson(payload);
+      return {
+        '摘要': card.summary,
+        if (card.keyPoints.isNotEmpty) '关键点': card.keyPoints.join(' / '),
+        if (card.actionItems.isNotEmpty) '行动项': card.actionItems.join(' / '),
+        if (card.risks.isNotEmpty) '风险': card.risks.join(' / '),
+      };
+    } catch (_) {
+      return payload.map((key, value) => MapEntry(key, '$value'));
+    }
+  }
+
+  List<ToolWorkflowStep> _extractWorkflowSteps(AssistantTurnBlock block) {
+    final rawSteps = block.payload?['steps'];
+    if (rawSteps is! List) {
+      return const [];
+    }
+
+    return rawSteps.whereType<Map>().map((rawStep) {
+      final json = Map<String, dynamic>.from(rawStep.cast<dynamic, dynamic>());
+      final statusName = json['status'] as String? ?? 'proposed';
+      final status = ToolWorkflowStepStatus.values.firstWhere(
+        (value) => value.name == statusName,
+        orElse: () => ToolWorkflowStepStatus.proposed,
+      );
+
+      return ToolWorkflowStep(
+        stepId: json['stepId'] as String? ?? 'unknown-step',
+        turnId: json['turnId'] as String? ?? block.turnId,
+        toolName: json['toolName'] as String? ?? 'unknown_tool',
+        title: json['title'] as String? ?? '',
+        summary: json['summary'] as String? ?? '',
+        status: status,
+        requiresConfirmation: json['requiresConfirmation'] as bool? ?? false,
+        details: json['details'] is Map
+            ? Map<String, dynamic>.from(json['details'] as Map)
+            : const {},
+      );
+    }).toList();
+  }
+
+  String? _resolveExpandedStepId(AssistantTurnBlock block) {
+    final steps = _extractWorkflowSteps(block);
+    for (final step in steps) {
+      if (step.status == ToolWorkflowStepStatus.awaitingConfirmation ||
+          step.status == ToolWorkflowStepStatus.running ||
+          step.status == ToolWorkflowStepStatus.failed) {
+        return step.stepId;
+      }
+    }
+    return null;
   }
 
   void _showMessageOptionMenu(ChatMessage message) {
@@ -345,59 +372,46 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
         message.contentType == MessageContentType.plainText;
 
     showCupertinoModalPopup(
-        context: context,
-        builder: (context) => CupertinoActionSheet(
-              actions: [
-                if (shouldShowStructuredDebugAction)
-                  CupertinoActionSheetAction(
-                    child: const Text('结构化整理（调试）'),
-                    onPressed: () async {
-                      Navigator.pop(context);
-                      await ref
-                          .read(chatControllerProvider)
-                          .structureMessageForDebug(message);
-                    },
-                  ),
-                CupertinoActionSheetAction(
-                  child: const Text('复制'),
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: message.text));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('已复制到剪贴板')),
-                    );
-                    Navigator.pop(context); // 关闭菜单
-                  },
-                ),
-                CupertinoActionSheetAction(
-                  child: const Text('删除'),
-                  onPressed: () {
-                    // 找到消息在列表中的索引
-                    final messages = ref.read(messagesProvider);
-                    final index = messages.indexOf(message);
-                    if (index != -1) {
-                      messagesNotifier.deleteMessagePair(index);
-                    }
-                    Navigator.pop(context);
-                  },
-                ),
-              ],
-              cancelButton: CupertinoActionSheetAction(
-                child: const Text('取消'),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ));
-  }
-
-  String _getStatusText(MessageStatus status) {
-    switch (status) {
-      case MessageStatus.generating:
-        return '正在生成...';
-      case MessageStatus.interrupted:
-        return '生成已中断';
-      case MessageStatus.failed:
-        return '生成失败';
-      default:
-        return '';
-    }
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        actions: [
+          if (shouldShowStructuredDebugAction)
+            CupertinoActionSheetAction(
+              child: const Text('结构化整理（调试）'),
+              onPressed: () async {
+                Navigator.pop(context);
+                await ref
+                    .read(chatControllerProvider)
+                    .structureMessageForDebug(message);
+              },
+            ),
+          CupertinoActionSheetAction(
+            child: const Text('复制'),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: message.text));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('已复制到剪贴板')),
+              );
+              Navigator.pop(context);
+            },
+          ),
+          CupertinoActionSheetAction(
+            child: const Text('删除'),
+            onPressed: () {
+              final messages = ref.read(messagesProvider);
+              final index = messages.indexOf(message);
+              if (index != -1) {
+                messagesNotifier.deleteMessagePair(index);
+              }
+              Navigator.pop(context);
+            },
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          child: const Text('取消'),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+    );
   }
 }

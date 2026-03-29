@@ -82,6 +82,18 @@ class ChatBlockBuilder {
       case MessageContentType.toolInvocation:
       case MessageContentType.actionConfirmation:
         final invocation = _readToolInvocation(message);
+        if (invocation.toolName.isEmpty) {
+          return AssistantTurnBlock(
+            id: '$turnId-analysis-$sequence',
+            turnId: turnId,
+            type: AssistantTurnBlockType.analysis,
+            sequence: sequence,
+            createdAt: message.timestamp,
+            updatedAt: message.timestamp,
+            text: message.text,
+            payload: message.payloadJson,
+          );
+        }
         final step = ToolWorkflowStep(
           stepId: '$turnId-step-$sequence',
           turnId: turnId,
@@ -103,11 +115,24 @@ class ChatBlockBuilder {
           title: step.title,
           text: step.summary,
           payload: {
+            'sourceMessageId': message.id,
             'steps': [_stepToJson(step)],
           },
         );
       case MessageContentType.toolResult:
         final result = _readToolResult(message);
+        if (result.toolName.isEmpty || result.summary.isEmpty) {
+          return AssistantTurnBlock(
+            id: '$turnId-analysis-$sequence',
+            turnId: turnId,
+            type: AssistantTurnBlockType.analysis,
+            sequence: sequence,
+            createdAt: message.timestamp,
+            updatedAt: message.timestamp,
+            text: message.text,
+            payload: message.payloadJson,
+          );
+        }
         return AssistantTurnBlock(
           id: '$turnId-tool-result-$sequence',
           turnId: turnId,
@@ -118,7 +143,10 @@ class ChatBlockBuilder {
           status: result.status.name,
           title: result.toolName,
           text: result.summary,
-          payload: result.toJson(),
+          payload: {
+            'sourceMessageId': message.id,
+            ...result.toJson(),
+          },
         );
       case MessageContentType.plainText:
         return AssistantTurnBlock(
@@ -145,10 +173,20 @@ class ChatBlockBuilder {
   ToolInvocation _readToolInvocation(ChatMessage message) {
     final payload = message.payloadJson;
     if (payload != null) {
-      return ToolInvocation.fromJson(payload);
+      try {
+        return ToolInvocation.fromJson(payload);
+      } catch (_) {
+        return ToolInvocation(
+          toolName: '',
+          arguments: const {},
+          status: ToolInvocationStatus.proposed,
+          summary: message.text,
+          requiresConfirmation: false,
+        );
+      }
     }
     return ToolInvocation(
-      toolName: 'unknown_tool',
+      toolName: '',
       arguments: const {},
       status: ToolInvocationStatus.proposed,
       summary: message.text,
@@ -160,10 +198,18 @@ class ChatBlockBuilder {
   ToolResult _readToolResult(ChatMessage message) {
     final payload = message.payloadJson;
     if (payload != null) {
-      return ToolResult.fromJson(payload);
+      try {
+        return ToolResult.fromJson(payload);
+      } catch (_) {
+        return ToolResult(
+          toolName: '',
+          status: ToolExecutionStatus.failure,
+          summary: message.text,
+        );
+      }
     }
     return ToolResult(
-      toolName: 'unknown_tool',
+      toolName: '',
       status: ToolExecutionStatus.success,
       summary: message.text,
     );

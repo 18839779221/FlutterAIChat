@@ -43,11 +43,13 @@ class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
   MessagesNotifier(this._ref) : super([]);
 
   void setMessages(List<ChatMessage> messages) {
-    state = messages;
+    final sortedMessages = [...messages]
+      ..sort((left, right) => left.timestamp.compareTo(right.timestamp));
+    state = sortedMessages;
   }
 
   void addMessage(ChatMessage message) {
-    state = [message, ...state];
+    state = [...state, message];
   }
 
   void insertMessages(int index, List<ChatMessage> messages) {
@@ -112,13 +114,13 @@ class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
 
     if (indexMessage.isUser) {
       userMessage = newList[index];
-      if (index > 0) {
-        aiMessage = newList[index - 1];
+      if (index < newList.length - 1) {
+        aiMessage = newList[index + 1];
       }
     } else {
       aiMessage = newList[index];
-      if (index < newList.length - 1) {
-        userMessage = newList[index + 1];
+      if (index > 0) {
+        userMessage = newList[index - 1];
       }
     }
 
@@ -484,21 +486,20 @@ class ChatController {
       final List<ChatMessage> messagesCopy =
           List<ChatMessage>.from(_ref.read(messagesProvider));
 
-      // 跳过奇数长度的情况下的最后一条消息
+      // 正序列表中，历史成对消息应该是 user -> assistant。
       int i = 0;
       while (i < messagesCopy.length - 1) {
         final message1 = messagesCopy[i];
         final message2 = messagesCopy[i + 1];
 
-        // 确保是一对AI回复和用户消息，且AI回复已完成
-        if (message1.isAssistant &&
-            message2.isUser &&
-            message1.status == MessageStatus.completed) {
-          historyMessages.add(message2); // 先添加用户消息（旧的在前）
-          historyMessages.add(message1); // 再添加AI回复
+        if (message1.isUser &&
+            message2.isAssistant &&
+            message2.status == MessageStatus.completed) {
+          historyMessages.add(message1);
+          historyMessages.add(message2);
         }
 
-        i += 2; // 每次处理一对消息
+        i += 2;
       }
 
       Logger.d(_tag, '开始接收AI响应流，有效对话对数量: ${historyMessages.length / 2}');
@@ -789,7 +790,7 @@ class ChatController {
     if (messages.isEmpty) return;
 
     final lastIndex =
-        messages.indexWhere((message) => message.role == MessageRole.assistant);
+        messages.lastIndexWhere((message) => message.role == MessageRole.assistant);
     if (lastIndex == -1) return;
 
     final aiMessage = messages[lastIndex];

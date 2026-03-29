@@ -22,7 +22,6 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: colors.chatBackground,
-      fontFamily: 'JetBrainsMono',
       textTheme: Typography.blackMountainView.apply(
         bodyColor: colors.primaryText,
         displayColor: colors.primaryText,
