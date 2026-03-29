@@ -13,10 +13,13 @@ class ToolResult {
   const ToolResult({
     required this.toolName,
     required this.status,
-    required this.summary,
-    this.data = const {},
+    String? summary,
+    Map<String, dynamic>? data,
     this.errorMessage,
-  });
+    String? displayText,
+    Map<String, dynamic>? payload,
+  })  : summary = summary ?? displayText ?? '',
+        data = data ?? payload ?? const {};
 
   String get displayText => summary;
 
