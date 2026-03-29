@@ -288,7 +288,9 @@ class DatabaseHelper implements ChatStorage {
         orderBy: 'timestamp DESC',
         limit: 20,
       );
-      return List.generate(maps.length, (i) => ChatMessage.fromMap(maps[i]));
+      final messages =
+          List.generate(maps.length, (i) => ChatMessage.fromMap(maps[i]));
+      return messages.reversed.toList();
     } catch (e) {
       Logger.e(_tag, '获取分组消息失败', e);
       rethrow;
@@ -310,7 +312,9 @@ class DatabaseHelper implements ChatStorage {
         limit: limit,
         offset: offset,
       );
-      return List.generate(maps.length, (i) => ChatMessage.fromMap(maps[i]));
+      final messages =
+          List.generate(maps.length, (i) => ChatMessage.fromMap(maps[i]));
+      return messages.reversed.toList();
     } catch (e) {
       Logger.e(_tag, '分页获取分组消息失败', e);
       rethrow;
