@@ -12,7 +12,8 @@ class ChatDrawer extends ConsumerWidget {
     // 获取所需状态
     final groups = ref.watch(groupsProvider);
     final currentGroup = ref.watch(currentGroupProvider);
-    final isGenerating = ref.watch(isGeneratingProvider);
+    final sendPhase = ref.watch(sendPhaseProvider);
+    final isSendInFlight = sendPhase != ChatSendPhase.idle;
 
     // 获取控制器
     final chatController = ref.read(chatControllerProvider);
@@ -106,7 +107,8 @@ class ChatDrawer extends ConsumerWidget {
             child: SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: isGenerating ? null : chatController.createNewGroup,
+                onPressed:
+                    isSendInFlight ? null : chatController.createNewGroup,
                 icon: const Icon(Icons.add),
                 label: const Text('新建对话'),
                 style: ElevatedButton.styleFrom(
@@ -174,12 +176,12 @@ class ChatDrawer extends ConsumerWidget {
                     ),
                   ),
                   selected: isSelected,
-                  enabled: !isGenerating,
-                  onTap: isGenerating ? null : () {
+                  enabled: !isSendInFlight,
+                  onTap: isSendInFlight ? null : () {
                     chatController.selectGroup(group);
                     Navigator.pop(context);
                   },
-                  onLongPress: isGenerating ? null : () {
+                  onLongPress: isSendInFlight ? null : () {
                     showCupertinoDialog(
                       context: context,
                       builder: (context) => CupertinoAlertDialog(
@@ -209,8 +211,8 @@ class ChatDrawer extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.settings_outlined),
             title: const Text('设置'),
-            enabled: !isGenerating,
-            onTap: isGenerating
+            enabled: !isSendInFlight,
+            onTap: isSendInFlight
                 ? null
                 : () {
                     Navigator.pop(context);

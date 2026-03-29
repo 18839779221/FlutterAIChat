@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:ai_chat/database/database_helper.dart';
@@ -253,7 +254,7 @@ void main() {
           toolResult: null,
           additionalContextMessages: const [],
         ),
-        confirmedToolResult: ToolPreparationResult(
+        confirmedToolResult: const ToolPreparationResult(
           toolInvocation: const ToolInvocation(
             toolName: 'create_reminder',
             arguments: {'title': '交周报'},
@@ -316,6 +317,85 @@ void main() {
 
       await databaseHelper.deleteGroup(groupId);
     });
+
+    test('发送时会立即进入 preparing 并插入用户消息，不等待工具准备完成', () async {
+      final databaseHelper = DatabaseHelper();
+      final prepareCompleter = Completer<ToolPreparationResult>();
+      final chatService = _FakeChatService(
+        toolPreparationResult: const ToolPreparationResult.noTool(),
+        prepareCompleter: prepareCompleter,
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: chatService,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      unawaited(
+        container.read(chatControllerProvider).sendMessage('立即显示这条消息'),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(
+        container.read(sendPhaseProvider),
+        ChatSendPhase.preparing,
+      );
+      expect(
+        container.read(messagesProvider).any(
+              (message) =>
+                  message.isUser && message.text == '立即显示这条消息',
+            ),
+        isTrue,
+      );
+
+      prepareCompleter.complete(const ToolPreparationResult.noTool());
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(container.read(sendPhaseProvider), ChatSendPhase.idle);
+
+      await databaseHelper.deleteGroup(groupId);
+    });
+
+    test('需要确认的工具会让发送事务停留在 awaitingConfirmation', () async {
+      final databaseHelper = DatabaseHelper();
+      final chatService = _FakeChatService(
+        toolPreparationResult: const ToolPreparationResult(
+          toolInvocation: const ToolInvocation(
+            toolName: 'create_reminder',
+            arguments: {'title': '交周报'},
+            status: ToolInvocationStatus.awaitingConfirmation,
+            summary: '准备执行工具：创建提醒',
+            requiresConfirmation: true,
+          ),
+          toolResult: null,
+          additionalContextMessages: const [],
+        ),
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: chatService,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      await container.read(chatControllerProvider).sendMessage('提醒我交周报');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(
+        container.read(sendPhaseProvider),
+        ChatSendPhase.awaitingConfirmation,
+      );
+
+      await databaseHelper.deleteGroup(groupId);
+    });
   });
 }
 
@@ -337,6 +417,7 @@ ProviderContainer _createContainer({
 class _FakeChatService extends ChatService {
   final ToolPreparationResult toolPreparationResult;
   final ToolPreparationResult? confirmedToolResult;
+  final Completer<ToolPreparationResult>? prepareCompleter;
   final List<String> preparedUserMessages = [];
   final List<List<ChatMessage>> streamHistories = [];
   final List<bool> confirmedTrustFlags = [];
@@ -344,6 +425,7 @@ class _FakeChatService extends ChatService {
   _FakeChatService({
     required this.toolPreparationResult,
     this.confirmedToolResult,
+    this.prepareCompleter,
   })
       : super(llm: _NoopBaseLLM());
 
@@ -354,6 +436,10 @@ class _FakeChatService extends ChatService {
     required List<ChatMessage> history,
   }) async {
     preparedUserMessages.add(userMessage);
+    final pendingPrepare = prepareCompleter;
+    if (pendingPrepare != null) {
+      return pendingPrepare.future;
+    }
     return toolPreparationResult;
   }
 

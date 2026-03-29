@@ -27,9 +27,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 只监听生成状态，用于App Bar的新建按钮禁用逻辑
-    final isGenerating = ref.watch(isGeneratingProvider);
-    final currentGroup = ref.watch(currentGroupProvider);
+    final sendPhase = ref.watch(sendPhaseProvider);
+    final isSendInFlight = sendPhase != ChatSendPhase.idle;
     final systemPrompt = ref.watch(systemPromptProvider);
     final isLoadingMore = ref.watch(isLoadingMoreProvider);
     
@@ -82,7 +81,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: '新建对话',
-            onPressed: !isGenerating ? ref.read(chatControllerProvider).createNewGroup : null,
+            onPressed: !isSendInFlight
+                ? ref.read(chatControllerProvider).createNewGroup
+                : null,
           ),
         ],
       ),
