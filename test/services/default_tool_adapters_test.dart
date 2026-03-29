@@ -87,6 +87,39 @@ void main() {
       expect(decoded.first['folder'], 'research');
       expect(decoded.last['title'], '后续动作');
     });
+
+    test('result sharer returns success when share sheet is invoked', () async {
+      final sharer = buildDefaultResultSharer(
+        shareInvoker: ({required text, subject}) async => const ShareAdapterResult(
+          status: ShareAdapterStatus.success,
+          raw: 'share-sheet-opened',
+        ),
+      );
+
+      final result = await sharer(
+        text: '这是一段要分享的内容',
+        subject: '分享标题',
+      );
+
+      expect(result.status, ToolExecutionStatus.success);
+      expect(result.summary, '已发起分享');
+      expect(result.data['subject'], '分享标题');
+      expect(result.data['shareStatus'], 'success');
+    });
+
+    test('result sharer maps plugin failure into stable tool result', () async {
+      final sharer = buildDefaultResultSharer(
+        shareInvoker: ({required text, subject}) async {
+          throw Exception('share failed');
+        },
+      );
+
+      final result = await sharer(text: '分享内容');
+
+      expect(result.status, ToolExecutionStatus.failure);
+      expect(result.summary, '分享结果失败');
+      expect(result.errorMessage, 'share_failed');
+    });
   });
 }
 
