@@ -1,0 +1,25 @@
+import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_radius.dart';
+import 'package:ai_chat/theme/app_spacing.dart';
+import 'package:ai_chat/theme/app_theme.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test('light theme exposes semantic extensions', () {
+    final theme = AppTheme.light();
+
+    expect(theme.extension<AppColors>(), isNotNull);
+    expect(theme.extension<AppSpacing>(), isNotNull);
+    expect(theme.extension<AppRadius>(), isNotNull);
+  });
+
+  test('light theme exposes chat and settings semantic colors', () {
+    final colors = AppTheme.light().extension<AppColors>();
+
+    expect(colors, isNotNull);
+    expect(colors!.chatBackground, const Color(0xFFF7F8FA));
+    expect(colors.settingsPanelBackground, const Color(0xFFF1F2F4));
+    expect(colors.toolWorkflowSurface, const Color(0xFFEEF3F8));
+  });
+}
