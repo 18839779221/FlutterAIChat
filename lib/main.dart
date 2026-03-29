@@ -14,6 +14,7 @@ import 'models/llm/llm_factory.dart';
 import 'models/context/context_strategies.dart';
 import 'services/chat_service.dart';
 import 'services/tool_call_service.dart';
+import 'services/default_tool_adapters.dart';
 import 'services/tool_executor.dart';
 import 'services/tool_policy_service.dart';
 import 'services/tool_registry.dart';
@@ -36,7 +37,7 @@ void main() async {
         appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
         databaseProvider.overrideWithValue(storage),
         chatServiceFactoryProvider.overrideWithValue(
-          _createChatService(settingsRepository, storage),
+          _createChatService(settingsRepository, storage, preferences),
         ),
       ],
     );
@@ -64,6 +65,7 @@ void main() async {
 ChatService _createChatService(
   AppSettingsRepository settingsRepository,
   ChatStorage storage,
+  SharedPreferences preferences,
 ) {
   // 创建混合策略
   final contextStrategy = HybridStrategy(
@@ -86,7 +88,11 @@ ChatService _createChatService(
   final toolCallService = ToolCallService(
     llm: llm,
     toolRegistry: toolRegistry,
-    toolExecutor: ToolExecutor(chatStorage: storage),
+    toolExecutor: ToolExecutor(
+      chatStorage: storage,
+      webpageFetcher: buildDefaultWebpageFetcher(),
+      noteSaver: buildSharedPreferencesNoteSaver(preferences),
+    ),
     toolPolicyService: toolPolicyService,
   );
 
