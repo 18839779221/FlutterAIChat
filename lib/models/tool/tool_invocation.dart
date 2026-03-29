@@ -6,11 +6,22 @@ enum ToolInvocationStatus {
 }
 
 class ToolInvocation {
+  /// Registered tool name used to route execution on the client.
   final String toolName;
+
+  /// Structured arguments prepared for this specific tool execution.
   final Map<String, dynamic> arguments;
+
+  /// Current lifecycle state of the invocation card.
   final ToolInvocationStatus status;
+
+  /// User-facing summary shown in tool cards and confirmation prompts.
   final String summary;
+
+  /// Whether the invocation still requires an explicit user confirmation.
   final bool requiresConfirmation;
+
+  /// Optional explanation describing why the tool was selected.
   final String? decisionReason;
 
   const ToolInvocation({
@@ -62,5 +73,23 @@ class ToolInvocation {
       'requiresConfirmation': requiresConfirmation,
       if (decisionReason != null) 'decisionReason': decisionReason,
     };
+  }
+
+  ToolInvocation copyWith({
+    String? toolName,
+    Map<String, dynamic>? arguments,
+    ToolInvocationStatus? status,
+    String? summary,
+    bool? requiresConfirmation,
+    String? decisionReason,
+  }) {
+    return ToolInvocation(
+      toolName: toolName ?? this.toolName,
+      arguments: arguments ?? this.arguments,
+      status: status ?? this.status,
+      summary: summary ?? this.summary,
+      requiresConfirmation: requiresConfirmation ?? this.requiresConfirmation,
+      decisionReason: decisionReason ?? this.decisionReason,
+    );
   }
 }

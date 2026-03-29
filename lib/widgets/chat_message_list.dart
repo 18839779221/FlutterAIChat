@@ -317,7 +317,20 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
 
         try {
           final invocation = ToolInvocation.fromJson(payload);
-          return ToolConfirmationCardWidget(invocation: invocation);
+          return ToolConfirmationCardWidget(
+            invocation: invocation,
+            onContinue: () {
+              ref.read(chatControllerProvider).confirmToolInvocation(message);
+            },
+            onCancel: () {
+              ref.read(chatControllerProvider).cancelToolInvocation(message);
+            },
+            onContinueAndTrust: () {
+              ref
+                  .read(chatControllerProvider)
+                  .confirmToolInvocation(message, trustTool: true);
+            },
+          );
         } catch (_) {
           return Text(message.text, style: const TextStyle(fontSize: 16));
         }

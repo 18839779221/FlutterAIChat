@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/chat_message.dart';
 import '../models/llm/base_llm.dart';
 import '../models/response/structured_summary_card.dart';
+import '../models/tool/tool_invocation.dart';
 import 'tool_call_service.dart';
 import 'response_parser_service.dart';
 import '../utils/logger.dart';
@@ -100,6 +101,29 @@ class ChatService {
       );
     } catch (e, stackTrace) {
       Logger.e(_tag, '工具预处理失败', e);
+      Logger.e(_tag, '堆栈跟踪', stackTrace);
+      return const ToolPreparationResult.noTool();
+    }
+  }
+
+  Future<ToolPreparationResult> executeToolInvocation({
+    required int groupId,
+    required ToolInvocation invocation,
+    bool trustTool = false,
+  }) async {
+    final toolCallService = _toolCallService;
+    if (toolCallService == null) {
+      return const ToolPreparationResult.noTool();
+    }
+
+    try {
+      return await toolCallService.executeToolInvocation(
+        groupId: groupId,
+        invocation: invocation,
+        trustTool: trustTool,
+      );
+    } catch (e, stackTrace) {
+      Logger.e(_tag, '工具执行失败', e);
       Logger.e(_tag, '堆栈跟踪', stackTrace);
       return const ToolPreparationResult.noTool();
     }
