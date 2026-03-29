@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/tool/tool_policy.dart';
 import '../providers/chat_providers.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
@@ -21,6 +22,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _isLoading = true;
   bool _isSaving = false;
   bool _obscureApiKey = true;
+  ToolExecutionMode _toolExecutionMode = ToolExecutionMode.balanced;
+  List<String> _trustedToolNames = const [];
 
   @override
   void initState() {
@@ -41,6 +44,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final apiKey = await repository.getApiKey();
     final model = await repository.getModel();
     final baseUrl = await repository.getBaseUrl();
+    final toolExecutionModeName = await repository.getToolExecutionModeName();
+    final trustedToolNames = await repository.getTrustedToolNames();
 
     if (!mounted) {
       return;
@@ -51,6 +56,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _baseUrlController.text = baseUrl;
 
     setState(() {
+      _toolExecutionMode = _parseToolExecutionMode(toolExecutionModeName);
+      _trustedToolNames = trustedToolNames.toList()..sort();
       _isLoading = false;
     });
   }
@@ -116,6 +123,61 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
 
     return null;
+  }
+
+  ToolExecutionMode _parseToolExecutionMode(String? modeName) {
+    final matched = ToolExecutionMode.values.where(
+      (value) => value.name == modeName,
+    );
+    if (matched.isEmpty) {
+      return ToolExecutionMode.balanced;
+    }
+    return matched.first;
+  }
+
+  String _toolExecutionModeLabel(ToolExecutionMode mode) {
+    switch (mode) {
+      case ToolExecutionMode.conservative:
+        return '保守模式';
+      case ToolExecutionMode.balanced:
+        return '平衡模式';
+      case ToolExecutionMode.aggressive:
+        return '激进模式';
+    }
+  }
+
+  String _toolExecutionModeDescription(ToolExecutionMode mode) {
+    switch (mode) {
+      case ToolExecutionMode.conservative:
+        return '只有低风险读取类工具自动执行。';
+      case ToolExecutionMode.balanced:
+        return '读取类工具自动执行，副作用工具默认先确认。';
+      case ToolExecutionMode.aggressive:
+        return '尽量自动执行已识别的工具动作。';
+    }
+  }
+
+  Future<void> _saveToolExecutionMode(ToolExecutionMode mode) async {
+    await ref.read(appSettingsRepositoryProvider).saveToolExecutionModeName(
+          mode.name,
+        );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _toolExecutionMode = mode;
+    });
+  }
+
+  Future<void> _removeTrustedTool(String toolName) async {
+    await ref.read(appSettingsRepositoryProvider).removeTrustedToolName(toolName);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _trustedToolNames =
+          _trustedToolNames.where((item) => item != toolName).toList();
+    });
   }
 
   @override
@@ -203,6 +265,67 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           ),
                         ],
                       ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '工具执行设置',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<ToolExecutionMode>(
+                          value: _toolExecutionMode,
+                          decoration: const InputDecoration(
+                            labelText: '默认执行模式',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: ToolExecutionMode.values.map((mode) {
+                            return DropdownMenuItem<ToolExecutionMode>(
+                              value: mode,
+                              child: Text(_toolExecutionModeLabel(mode)),
+                            );
+                          }).toList(),
+                          onChanged: (mode) {
+                            if (mode == null) {
+                              return;
+                            }
+                            _saveToolExecutionMode(mode);
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _toolExecutionModeDescription(_toolExecutionMode),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          '自动执行白名单',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                        const SizedBox(height: 8),
+                        if (_trustedToolNames.isEmpty)
+                          const Text('当前没有已信任工具。')
+                        else
+                          ..._trustedToolNames.map(
+                            (toolName) => ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(toolName),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.remove_circle_outline),
+                                onPressed: () {
+                                  _removeTrustedTool(toolName);
+                                },
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),
