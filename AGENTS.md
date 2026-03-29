@@ -189,3 +189,7 @@ Database version: 5 (includes `is_summarized` field for automatic summarization 
 - History messages are filtered to only include completed AI-user message pairs before sending to the LLM
 - Auto-scrolling behavior pauses when user manually scrolls up during generation
 - The app supports Shorebird code push for over-the-air updates
+- When generating or modifying code, add necessary comments for public interfaces, payload models, and important fields
+  - This is especially required for interface fields, schema fields, DTO/model fields, and tool/message payload fields
+  - Comments should explain the meaning and usage of the field, not restate the field name mechanically
+  - Keep comments concise, but do not omit them for externally consumed structures just to save lines
