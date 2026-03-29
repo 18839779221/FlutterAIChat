@@ -8,9 +8,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/chat_message.dart';
 import '../models/response/message_content_type.dart';
 import '../models/response/structured_summary_card.dart';
+import '../models/tool/tool_invocation.dart';
 import '../models/tool/tool_result.dart';
 import '../providers/chat_providers.dart';
 import 'structured_message/structured_summary_card_widget.dart';
+import 'tool_call/tool_confirmation_card_widget.dart';
+import 'tool_call/tool_invocation_card_widget.dart';
+import 'tool_call/tool_result_card_widget.dart';
 
 class ChatMessageList extends ConsumerStatefulWidget {
   const ChatMessageList({super.key});
@@ -278,6 +282,18 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
         } catch (_) {
           return Text(message.text, style: const TextStyle(fontSize: 16));
         }
+      case MessageContentType.toolInvocation:
+        final payload = message.payloadJson;
+        if (payload == null) {
+          return Text(message.text, style: const TextStyle(fontSize: 16));
+        }
+
+        try {
+          final invocation = ToolInvocation.fromJson(payload);
+          return ToolInvocationCardWidget(invocation: invocation);
+        } catch (_) {
+          return Text(message.text, style: const TextStyle(fontSize: 16));
+        }
       case MessageContentType.toolResult:
         final payload = message.payloadJson;
         if (payload == null) {
@@ -289,36 +305,19 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           if (toolResult.toolName.isEmpty || toolResult.displayText.isEmpty) {
             return Text(message.text, style: const TextStyle(fontSize: 16));
           }
+          return ToolResultCardWidget(result: toolResult);
+        } catch (_) {
+          return Text(message.text, style: const TextStyle(fontSize: 16));
+        }
+      case MessageContentType.actionConfirmation:
+        final payload = message.payloadJson;
+        if (payload == null) {
+          return Text(message.text, style: const TextStyle(fontSize: 16));
+        }
 
-          final matchCount = toolResult.payload['matchCount'];
-          final secondaryText = matchCount is int
-              ? '找到 $matchCount 条历史消息'
-              : toolResult.status == ToolExecutionStatus.failure
-                  ? '工具执行失败'
-                  : null;
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                toolResult.displayText,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              if (secondaryText != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  secondaryText,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey[700],
-                  ),
-                ),
-              ],
-            ],
-          );
+        try {
+          final invocation = ToolInvocation.fromJson(payload);
+          return ToolConfirmationCardWidget(invocation: invocation);
         } catch (_) {
           return Text(message.text, style: const TextStyle(fontSize: 16));
         }
