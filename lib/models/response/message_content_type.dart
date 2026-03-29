@@ -2,7 +2,9 @@
 enum MessageContentType {
   plainText,
   structuredCard,
+  toolInvocation,
   toolResult,
+  actionConfirmation,
 }
 
 extension MessageContentTypeParsing on MessageContentType {
@@ -18,8 +20,12 @@ extension MessageContentTypeParsing on MessageContentType {
     switch (value) {
       case 'structuredCard':
         return MessageContentType.structuredCard;
+      case 'toolInvocation':
+        return MessageContentType.toolInvocation;
       case 'toolResult':
         return MessageContentType.toolResult;
+      case 'actionConfirmation':
+        return MessageContentType.actionConfirmation;
       case 'plainText':
       default:
         return MessageContentType.plainText;
@@ -33,8 +39,12 @@ extension MessageContentTypeParsing on MessageContentType {
         return 'plainText';
       case MessageContentType.structuredCard:
         return 'structuredCard';
+      case MessageContentType.toolInvocation:
+        return 'toolInvocation';
       case MessageContentType.toolResult:
         return 'toolResult';
+      case MessageContentType.actionConfirmation:
+        return 'actionConfirmation';
     }
   }
 }
