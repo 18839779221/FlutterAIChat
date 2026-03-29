@@ -92,6 +92,7 @@ ChatService _createChatService(
       chatStorage: storage,
       webpageFetcher: buildDefaultWebpageFetcher(),
       noteSaver: buildSharedPreferencesNoteSaver(preferences),
+      resultSharer: buildDefaultResultSharer(),
     ),
     toolPolicyService: toolPolicyService,
   );

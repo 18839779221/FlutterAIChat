@@ -1,12 +1,41 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'tool_executor.dart';
 
 /// Preference key for the lightweight app-internal note store.
 const String kSavedNotesPreferenceKey = 'tool.saved_notes';
+
+/// Low-level share adapter status used to normalize plugin output.
+enum ShareAdapterStatus {
+  success,
+  dismissed,
+  unavailable,
+}
+
+/// Raw result returned by the platform sharing adapter before conversion into
+/// the user-facing tool result payload.
+class ShareAdapterResult {
+  /// Normalized share outcome for UI/state handling.
+  final ShareAdapterStatus status;
+
+  /// Optional raw platform/plugin value for debugging or analytics.
+  final String? raw;
+
+  const ShareAdapterResult({
+    required this.status,
+    this.raw,
+  });
+}
+
+/// Host-level callback that performs the actual share-sheet invocation.
+typedef ShareInvoker = Future<ShareAdapterResult> Function({
+  required String text,
+  String? subject,
+});
 
 /// Builds the default webpage fetch adapter used by the mobile tool pipeline.
 ///
@@ -121,6 +150,56 @@ NoteSaver buildSharedPreferencesNoteSaver(SharedPreferences preferences) {
   };
 }
 
+/// Builds the default share adapter backed by `share_plus`.
+///
+/// Returned payload fields:
+/// - `text`: shared body text
+/// - `subject`: optional share title/subject
+/// - `shareStatus`: normalized platform share result
+/// - `rawStatus`: optional raw plugin response
+ResultSharer buildDefaultResultSharer({
+  ShareInvoker? shareInvoker,
+}) {
+  final resolvedInvoker = shareInvoker ?? _defaultShareInvoker;
+
+  return ({
+    required String text,
+    String? subject,
+  }) async {
+    try {
+      final result = await resolvedInvoker(text: text, subject: subject);
+      final isSuccess = result.status == ShareAdapterStatus.success ||
+          result.status == ShareAdapterStatus.dismissed;
+      return ToolResult(
+        toolName: 'share_result',
+        status: isSuccess
+            ? ToolExecutionStatus.success
+            : ToolExecutionStatus.failure,
+        summary: isSuccess ? '已发起分享' : '分享结果失败',
+        data: {
+          'text': text,
+          'subject': subject,
+          'shareStatus': result.status.name,
+          if (result.raw != null) 'rawStatus': result.raw,
+        },
+        errorMessage: isSuccess ? null : 'share_unavailable',
+      );
+    } catch (_) {
+      return ToolResult(
+        toolName: 'share_result',
+        status: ToolExecutionStatus.failure,
+        summary: '分享结果失败',
+        data: {
+          'text': text,
+          'subject': subject,
+          'reason': 'share_failed',
+        },
+        errorMessage: 'share_failed',
+      );
+    }
+  };
+}
+
 String? _extractHtmlTitle(String html) {
   final match = RegExp(
     r'<title[^>]*>(.*?)</title>',
@@ -175,4 +254,25 @@ String _decodeBasicHtmlEntities(String value) {
       .replaceAll('&gt;', '>')
       .replaceAll('&quot;', '"')
       .replaceAll('&#39;', "'");
+}
+
+Future<ShareAdapterResult> _defaultShareInvoker({
+  required String text,
+  String? subject,
+}) async {
+  final result = await Share.share(
+    text,
+    subject: subject,
+  );
+
+  final status = switch (result.status) {
+    ShareResultStatus.success => ShareAdapterStatus.success,
+    ShareResultStatus.dismissed => ShareAdapterStatus.dismissed,
+    ShareResultStatus.unavailable => ShareAdapterStatus.unavailable,
+  };
+
+  return ShareAdapterResult(
+    status: status,
+    raw: result.raw,
+  );
 }
