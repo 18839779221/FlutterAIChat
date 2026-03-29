@@ -71,6 +71,21 @@ fvm flutter test
 - When testing real chat flows in Chrome/web, verify whether API settings already exist before assuming network features will work
   - Required runtime fields are typically `API Key`, `Model`, and `Base URL`
 
+### Android Real-Device Automation
+- Prefer the deterministic Droidrun driver smoke test for chat send regression:
+  - `bash scripts/android_droidrun_driver_smoke.sh`
+- The driver smoke test uses Droidrun's low-level `AndroidDriver` directly instead of an LLM agent
+- Use the agent-driven smoke test only when you specifically want to validate natural-language mobile control behavior:
+  - `bash scripts/android_droidrun_chat_smoke.sh`
+- Prefer the project wrapper script for Droidrun-based Android smoke tests:
+  - `bash scripts/android_droidrun_chat_smoke.sh`
+- The smoke script reads model settings from `config/local_defaults.json` at runtime and generates a temporary Droidrun config under `build/droidrun/`
+- The script pre-wakes the phone, dismisses keyguard, launches the app via ADB, then hands control to Droidrun
+- If the device is still locked and `ai_chat` is not the foreground app after prewarm, the script should fail fast instead of spending agent steps on a broken precondition
+- Trajectories are saved under `build/droidrun/trajectories`
+- Prefer a unique smoke message per run to avoid false positives from old chat history
+- The deterministic driver smoke saves screenshots under `build/droidrun/driver-smoke`
+
 ### Building
 ```bash
 # Android
