@@ -90,6 +90,126 @@ void main() {
       expect(result.payload['matches'], isEmpty);
     });
   });
+
+  group('ToolExecutor first-wave tool adapters', () {
+    test('fetch_webpage returns structured success with stub fetcher', () async {
+      final executor = ToolExecutor(
+        chatStorage: const _FakeChatStorage(messages: []),
+        webpageFetcher: ({required url, extractMode}) async => const ToolResult(
+          toolName: 'fetch_webpage',
+          status: ToolExecutionStatus.success,
+          summary: '已读取网页',
+          data: {
+            'url': 'https://example.com',
+            'title': 'Example',
+            'content': '网页正文',
+          },
+        ),
+      );
+
+      final result = await executor.executeFetchWebpage(
+        url: 'https://example.com',
+      );
+
+      expect(result.status, ToolExecutionStatus.success);
+      expect(result.summary, '已读取网页');
+      expect(result.data['content'], '网页正文');
+    });
+
+    test('save_note returns success with stub note saver', () async {
+      final executor = ToolExecutor(
+        chatStorage: const _FakeChatStorage(messages: []),
+        noteSaver: ({required title, required content, folder}) async => ToolResult(
+          toolName: 'save_note',
+          status: ToolExecutionStatus.success,
+          summary: '已保存笔记：$title',
+          data: {
+            'title': title,
+            'content': content,
+            'folder': folder,
+          },
+        ),
+      );
+
+      final result = await executor.executeSaveNote(
+        title: 'ToolCall 设计',
+        content: '一段整理结果',
+      );
+
+      expect(result.status, ToolExecutionStatus.success);
+      expect(result.summary, contains('ToolCall 设计'));
+    });
+
+    test('create_reminder returns failure when adapter is unavailable', () async {
+      final executor = ToolExecutor(
+        chatStorage: const _FakeChatStorage(messages: []),
+      );
+
+      final result = await executor.executeCreateReminder(
+        title: '交周报',
+      );
+
+      expect(result.status, ToolExecutionStatus.failure);
+      expect(result.errorMessage, 'unsupported_tool');
+    });
+
+    test('create_calendar_event returns success with stub adapter', () async {
+      final executor = ToolExecutor(
+        chatStorage: const _FakeChatStorage(messages: []),
+        calendarEventCreator: ({
+          required title,
+          required startAt,
+          endAt,
+          location,
+          notes,
+        }) async =>
+            ToolResult(
+          toolName: 'create_calendar_event',
+          status: ToolExecutionStatus.success,
+          summary: '已创建日历事件：$title',
+          data: {
+            'title': title,
+            'startAt': startAt,
+            'endAt': endAt,
+            'location': location,
+            'notes': notes,
+          },
+        ),
+      );
+
+      final result = await executor.executeCreateCalendarEvent(
+        title: '项目评审',
+        startAt: '2026-03-31T15:00:00+08:00',
+      );
+
+      expect(result.status, ToolExecutionStatus.success);
+      expect(result.summary, contains('项目评审'));
+    });
+
+    test('share_result returns success with stub adapter', () async {
+      final executor = ToolExecutor(
+        chatStorage: const _FakeChatStorage(messages: []),
+        resultSharer: ({required text, subject}) async => ToolResult(
+          toolName: 'share_result',
+          status: ToolExecutionStatus.success,
+          summary: '已发起分享',
+          data: {
+            'text': text,
+            'subject': subject,
+          },
+        ),
+      );
+
+      final result = await executor.executeShareResult(
+        text: '这是一段要分享的内容',
+        subject: '分享标题',
+      );
+
+      expect(result.status, ToolExecutionStatus.success);
+      expect(result.summary, '已发起分享');
+      expect(result.data['subject'], '分享标题');
+    });
+  });
 }
 
 class _FakeChatStorage implements ChatStorage {
