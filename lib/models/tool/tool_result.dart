@@ -6,22 +6,29 @@ enum ToolExecutionStatus {
 class ToolResult {
   final String toolName;
   final ToolExecutionStatus status;
-  final String displayText;
-  final Map<String, dynamic> payload;
+  final String summary;
+  final Map<String, dynamic> data;
+  final String? errorMessage;
 
   const ToolResult({
     required this.toolName,
     required this.status,
-    required this.displayText,
-    this.payload = const {},
+    required this.summary,
+    this.data = const {},
+    this.errorMessage,
   });
+
+  String get displayText => summary;
+
+  Map<String, dynamic> get payload => data;
 
   Map<String, dynamic> toJson() {
     return {
       'toolName': toolName,
       'status': status.name,
-      'displayText': displayText,
-      'payload': payload,
+      'summary': summary,
+      'data': data,
+      'errorMessage': errorMessage,
     };
   }
 
@@ -36,13 +43,19 @@ class ToolResult {
       status: matchedStatus.isEmpty
           ? ToolExecutionStatus.success
           : matchedStatus.first,
-      displayText: json['displayText'] as String? ?? '',
-      payload: json['payload'] is Map<String, dynamic>
-          ? json['payload'] as Map<String, dynamic>
-          : json['payload'] is Map
+      summary: (json['summary'] ?? json['displayText']) as String? ?? '',
+      data: json['data'] is Map<String, dynamic>
+          ? json['data'] as Map<String, dynamic>
+          : json['data'] is Map
+              ? Map<String, dynamic>.from(
+                  json['data'] as Map<dynamic, dynamic>)
+              : json['payload'] is Map<String, dynamic>
+                  ? json['payload'] as Map<String, dynamic>
+                  : json['payload'] is Map
               ? Map<String, dynamic>.from(
                   json['payload'] as Map<dynamic, dynamic>)
               : const {},
+      errorMessage: json['errorMessage'] as String?,
     );
   }
 }
