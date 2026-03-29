@@ -23,6 +23,12 @@
 - **消息操作**：支持长按消息复制、删除等操作
 - **手势支持**：支持侧滑打开侧边栏
 
+### 自动化测试
+- **Flutter Web 自动化**：支持基于固定 host/port 的浏览器回归测试
+- **Android 真机自动化**：支持基于 Droidrun 的真机冒烟测试
+- **确定性回归脚本**：提供直接使用底层设备驱动的聊天发送冒烟脚本
+- **Agent 式回归脚本**：提供基于自然语言任务的 Android 真机验证脚本
+
 ## 技术架构
 
 ### 状态管理
@@ -149,6 +155,15 @@ flutter run
 1. 在 `lib/providers/chat_providers.dart` 中配置你的 AI 服务
 2. 在 `lib/models/llm/llm_factory.dart` 中添加或修改 LLM 模型
 3. 在 `lib/models/context/context_strategies.dart` 中调整上下文策略
+
+### 自动化入口
+```bash
+# Android 真机确定性发送冒烟
+bash scripts/android_droidrun_driver_smoke.sh
+
+# Android 真机 Agent 式聊天冒烟
+bash scripts/android_droidrun_chat_smoke.sh
+```
 
 ## 使用说明
 

@@ -1,0 +1,41 @@
+_version: 3
+
+agent:
+  name: droidrun
+  max_steps: 8
+  reasoning: false
+  streaming: true
+  after_sleep_action: 0.8
+  wait_for_stable_ui: 0.3
+  use_normalized_coordinates: false
+  fast_agent:
+    vision: true
+    codeact: false
+    parallel_tools: true
+  manager:
+    vision: true
+  executor:
+    vision: true
+  scripter:
+    enabled: true
+  app_cards:
+    enabled: true
+
+device:
+  serial: null
+  use_tcp: false
+  platform: android
+  auto_setup: true
+
+logging:
+  debug: false
+  save_trajectory: action
+  trajectory_path: build/droidrun/trajectories
+  trajectory_gifs: true
+  rich_text: false
+
+telemetry:
+  enabled: false
+
+tracing:
+  enabled: false

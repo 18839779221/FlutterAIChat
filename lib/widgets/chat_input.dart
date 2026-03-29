@@ -24,6 +24,15 @@ class ChatInput extends ConsumerWidget {
         sendPhase == ChatSendPhase.executingTool ||
         sendPhase == ChatSendPhase.streamingResponse;
     final isComposerLocked = sendPhase != ChatSendPhase.idle;
+    final composerValue =
+        textController.text.trim().isEmpty ? '空白' : textController.text;
+    final sendButtonLabel = isStreamingResponse
+        ? '停止生成'
+        : isAwaitingConfirmation
+            ? '等待工具确认'
+            : '发送消息';
+    final isSendButtonEnabled =
+        isStreamingResponse || (!isBlockingPhase && !isAwaitingConfirmation);
 
     void submitCurrentInput() {
       if (isComposerLocked) {
@@ -41,148 +50,175 @@ class ChatInput extends ConsumerWidget {
       chatController.sendMessage(pendingText);
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      margin: EdgeInsets.only(bottom: keyboardHeight > 0 ? 0 : bottomHomeHeight),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+    return Semantics(
+      container: true,
+      label: '聊天输入区域',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        margin:
+            EdgeInsets.only(bottom: keyboardHeight > 0 ? 0 : bottomHomeHeight),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
           // 模式按钮行
-          Row(
-            children: [
+            Row(
+              children: [
               // 推理模式按钮
-              TextButton(
-                onPressed: () => chatController.setUseReasoning(!useReasoning),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(
-                      color: useReasoning 
-                          ? Theme.of(context).primaryColor 
-                          : Colors.grey[300]!,
-                      width: 1,
-                    ),
-                  ),
-                  backgroundColor: useReasoning 
-                      ? Theme.of(context).primaryColor.withOpacity(0.1) 
-                      : Colors.transparent,
-                ),
-                child: Text(
-                  '深度思考',
-                  style: TextStyle(
-                    color: useReasoning 
-                        ? Theme.of(context).primaryColor 
-                        : Colors.grey[600],
-                    fontWeight: useReasoning ? FontWeight.bold : FontWeight.normal,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // 简洁模式按钮
-              TextButton(
-                onPressed: () => chatController.setUseConciseMode(!useConciseMode),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(
-                      color: useConciseMode 
-                          ? Theme.of(context).primaryColor 
-                          : Colors.grey[300]!,
-                      width: 1,
-                    ),
-                  ),
-                  backgroundColor: useConciseMode 
-                      ? Theme.of(context).primaryColor.withOpacity(0.1) 
-                      : Colors.transparent,
-                ),
-                child: Text(
-                  '简洁模式',
-                  style: TextStyle(
-                    color: useConciseMode 
-                        ? Theme.of(context).primaryColor 
-                        : Colors.grey[600],
-                    fontWeight: useConciseMode ? FontWeight.bold : FontWeight.normal,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Container(
-                  constraints: const BoxConstraints(
-                    maxHeight: 140, // 限制最大高度
-                  ),
-                  child: TextField(
-                    focusNode: focusNode,
-                    controller: textController,
-                    enabled: !isComposerLocked,
-                    maxLines: null, // 允许多行输入
-                    textInputAction: TextInputAction.newline, // 回车键变为换行
-                    keyboardType: TextInputType.multiline, // 多行输入键盘
-                    decoration: const InputDecoration(
-                      hintText: '输入消息...',
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 0,
+                TextButton(
+                  onPressed: () => chatController.setUseReasoning(!useReasoning),
+                  style: TextButton.styleFrom(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: useReasoning
+                            ? Theme.of(context).primaryColor
+                            : Colors.grey[300]!,
+                        width: 1,
                       ),
                     ),
-                    onSubmitted: (text) {
-                      submitCurrentInput();
-                    },
+                    backgroundColor: useReasoning
+                        ? Theme.of(context).primaryColor.withOpacity(0.1)
+                        : Colors.transparent,
+                  ),
+                  child: Text(
+                    '深度思考',
+                    style: TextStyle(
+                      color: useReasoning
+                          ? Theme.of(context).primaryColor
+                          : Colors.grey[600],
+                      fontWeight:
+                          useReasoning ? FontWeight.bold : FontWeight.normal,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              // 发送/取消按钮
-              SizedBox(
-                width: 48,
-                height: 48,
-                child: MaterialButton(
-                  padding: EdgeInsets.zero,
-                  shape: const CircleBorder(),
-                  color: Theme.of(context).primaryColor,
-                  onPressed: () {
-                    if (isStreamingResponse) {
-                      chatController.cancelStreamSubscription();
-                      return;
-                    }
-
-                    if (isBlockingPhase || isAwaitingConfirmation) {
-                      return;
-                    }
-
-                    submitCurrentInput();
-                  },
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 200),
-                    child: isBlockingPhase
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : Icon(
-                            isAwaitingConfirmation
-                                ? Icons.pending_actions
-                                : Icons.send,
-                            color: Colors.white,
-                            size: 20,
+                const SizedBox(width: 8),
+              // 简洁模式按钮
+                TextButton(
+                  onPressed: () =>
+                      chatController.setUseConciseMode(!useConciseMode),
+                  style: TextButton.styleFrom(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: useConciseMode
+                            ? Theme.of(context).primaryColor
+                            : Colors.grey[300]!,
+                        width: 1,
+                      ),
+                    ),
+                    backgroundColor: useConciseMode
+                        ? Theme.of(context).primaryColor.withOpacity(0.1)
+                        : Colors.transparent,
+                  ),
+                  child: Text(
+                    '简洁模式',
+                    style: TextStyle(
+                      color: useConciseMode
+                          ? Theme.of(context).primaryColor
+                          : Colors.grey[600],
+                      fontWeight:
+                          useConciseMode ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Semantics(
+                    container: true,
+                    textField: true,
+                    enabled: !isComposerLocked,
+                    focused: focusNode.hasFocus,
+                    label: '聊天输入框',
+                    hint: '输入消息',
+                    value: composerValue,
+                    child: Container(
+                      constraints: const BoxConstraints(
+                        maxHeight: 140, // 限制最大高度
+                      ),
+                      child: TextField(
+                        focusNode: focusNode,
+                        controller: textController,
+                        enabled: !isComposerLocked,
+                        maxLines: null, // 允许多行输入
+                        textInputAction: TextInputAction.newline, // 回车键变为换行
+                        keyboardType: TextInputType.multiline, // 多行输入键盘
+                        decoration: const InputDecoration(
+                          hintText: '输入消息...',
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 0,
                           ),
+                        ),
+                        onSubmitted: (text) {
+                          submitCurrentInput();
+                        },
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-        ],
+                const SizedBox(width: 8),
+                // 发送/取消按钮
+                Semantics(
+                  container: true,
+                  button: true,
+                  enabled: isSendButtonEnabled,
+                  label: sendButtonLabel,
+                  child: SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: MaterialButton(
+                      padding: EdgeInsets.zero,
+                      shape: const CircleBorder(),
+                      color: Theme.of(context).primaryColor,
+                      onPressed: () {
+                        if (isStreamingResponse) {
+                          chatController.cancelStreamSubscription();
+                          return;
+                        }
+
+                        if (isBlockingPhase || isAwaitingConfirmation) {
+                          return;
+                        }
+
+                        submitCurrentInput();
+                      },
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        child: isBlockingPhase
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                ),
+                              )
+                            : Icon(
+                                isAwaitingConfirmation
+                                    ? Icons.pending_actions
+                                    : Icons.send,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
