@@ -3,6 +3,7 @@ import 'package:ai_chat/pages/settings_page.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
+import 'package:ai_chat/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -29,17 +30,20 @@ void main() {
         overrides: [
           appSettingsRepositoryProvider.overrideWithValue(repository),
         ],
-        child: const MaterialApp(
-          home: SettingsPage(),
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const SettingsPage(),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('工具执行设置'), findsOneWidget);
-    expect(find.text('平衡模式'), findsOneWidget);
+    expect(find.text('Precision Settings'), findsOneWidget);
+    expect(find.text('工具自动化'), findsOneWidget);
+    expect(find.text('平衡'), findsOneWidget);
     expect(find.text('fetch_webpage'), findsOneWidget);
     expect(find.text('create_reminder'), findsOneWidget);
+    expect(find.text('将可信指令直接放行，降低重复确认。'), findsOneWidget);
   });
 
   testWidgets('model config fields load repository defaults', (tester) async {
@@ -61,8 +65,9 @@ void main() {
         overrides: [
           appSettingsRepositoryProvider.overrideWithValue(repository),
         ],
-        child: const MaterialApp(
-          home: SettingsPage(),
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const SettingsPage(),
         ),
       ),
     );
@@ -95,8 +100,9 @@ void main() {
         overrides: [
           appSettingsRepositoryProvider.overrideWithValue(repository),
         ],
-        child: const MaterialApp(
-          home: SettingsPage(),
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const SettingsPage(),
         ),
       ),
     );
