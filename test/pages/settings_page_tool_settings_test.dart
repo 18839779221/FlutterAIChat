@@ -2,6 +2,7 @@ import 'package:ai_chat/models/tool/tool_policy.dart';
 import 'package:ai_chat/pages/settings_page.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
+import 'package:ai_chat/repositories/llm_local_defaults.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -39,6 +40,39 @@ void main() {
     expect(find.text('平衡模式'), findsOneWidget);
     expect(find.text('fetch_webpage'), findsOneWidget);
     expect(find.text('create_reminder'), findsOneWidget);
+  });
+
+  testWidgets('model config fields load repository defaults', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    SharedPreferences.setMockInitialValues({});
+    final repository = AppSettingsRepository(
+      await SharedPreferences.getInstance(),
+      localDefaultsLoader: () async => const LlmLocalDefaults(
+        apiKey: 'test-key',
+        baseUrl: 'https://example.com/v1',
+        model: 'gpt-5.4',
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appSettingsRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(
+          home: SettingsPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextFormField, 'gpt-5.4'), findsOneWidget);
+    expect(
+      find.widgetWithText(TextFormField, 'https://example.com/v1'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('removing a trusted tool updates the repository-backed view', (
