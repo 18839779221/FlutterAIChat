@@ -522,6 +522,58 @@ void main() {
       expect(resolved.toolContextHistory, hasLength(2));
       expect(resolved.toolContextHistory.last.text, '额外工具上下文');
     });
+
+    test('resolveConfirmedToolExecutionDraft builds running invocation and optional tool result message', () {
+      final sourceMessage = ChatMessage(
+        id: 9,
+        text: '准备执行工具：创建提醒',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.actionConfirmation,
+        payloadJson: const {
+          'toolName': 'create_reminder',
+        },
+      );
+
+      final resolved = resolveConfirmedToolExecutionDraft(
+        sourceMessage: sourceMessage,
+        invocation: const ToolInvocation(
+          toolName: 'create_reminder',
+          arguments: {'title': '交周报'},
+          status: ToolInvocationStatus.awaitingConfirmation,
+          summary: '准备执行工具：创建提醒',
+          requiresConfirmation: true,
+        ),
+        executionResult: const ToolPreparationResult(
+          toolInvocation: ToolInvocation(
+            toolName: 'create_reminder',
+            arguments: {'title': '交周报'},
+            status: ToolInvocationStatus.running,
+            summary: '正在执行工具：创建提醒',
+            requiresConfirmation: false,
+          ),
+          toolResult: ToolResult(
+            toolName: 'create_reminder',
+            status: ToolExecutionStatus.success,
+            summary: '已创建提醒：交周报',
+            data: {'title': '交周报'},
+          ),
+          additionalContextMessages: [],
+        ),
+      );
+
+      expect(
+        resolved.runningMessage.contentType,
+        MessageContentType.toolInvocation,
+      );
+      expect(resolved.runningMessage.text, '正在执行工具：创建提醒');
+      expect(resolved.toolResultMessage, isNotNull);
+      expect(
+        resolved.toolResultMessage!.contentType,
+        MessageContentType.toolResult,
+      );
+      expect(resolved.toolResultMessage!.text, '已创建提醒：交周报');
+    });
   });
 }
 
