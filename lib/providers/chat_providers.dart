@@ -249,6 +249,20 @@ class ToolPreparationDraft {
   });
 }
 
+/// Derived message mutations produced after a confirmed tool invocation runs.
+class ConfirmedToolExecutionDraft {
+  /// Replacement for the original confirmation message once execution starts.
+  final ChatMessage runningMessage;
+
+  /// Optional tool-result message appended after execution completes.
+  final ChatMessage? toolResultMessage;
+
+  const ConfirmedToolExecutionDraft({
+    required this.runningMessage,
+    required this.toolResultMessage,
+  });
+}
+
 /// Builds the minimal send transaction snapshot so `sendMessage()` can focus on
 /// orchestration instead of inline state assembly details.
 @visibleForTesting
@@ -309,6 +323,43 @@ ToolPreparationDraft resolveToolPreparationDraft({
         ? ChatSendPhase.awaitingConfirmation
         : ChatSendPhase.streamingResponse,
     toolContextHistory: toolContextHistory,
+  );
+}
+
+/// Resolves UI messages that should be written after a confirmed tool
+/// invocation transitions into execution.
+@visibleForTesting
+ConfirmedToolExecutionDraft resolveConfirmedToolExecutionDraft({
+  required ChatMessage sourceMessage,
+  required ToolInvocation invocation,
+  required ToolPreparationResult executionResult,
+}) {
+  final runningInvocation = executionResult.toolInvocation ??
+      invocation.copyWith(
+        status: ToolInvocationStatus.running,
+        summary: '正在执行工具：${invocation.toolName}',
+        requiresConfirmation: false,
+      );
+  final runningMessage = sourceMessage.copyWith(
+    text: runningInvocation.summary,
+    contentType: MessageContentType.toolInvocation,
+    payloadJson: runningInvocation.toJson(),
+  );
+
+  final toolResult = executionResult.toolResult;
+  final toolResultMessage = toolResult == null
+      ? null
+      : ChatMessage(
+          text: toolResult.displayText,
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.toolResult,
+          payloadJson: toolResult.toJson(),
+        );
+
+  return ConfirmedToolExecutionDraft(
+    runningMessage: runningMessage,
+    toolResultMessage: toolResultMessage,
   );
 }
 
@@ -895,18 +946,12 @@ class ChatController {
           invocation: invocation,
           trustTool: trustTool,
         );
-
-    final runningInvocation = executionResult.toolInvocation ??
-        invocation.copyWith(
-          status: ToolInvocationStatus.running,
-          summary: '正在执行工具：${invocation.toolName}',
-          requiresConfirmation: false,
-        );
-    final runningMessage = message.copyWith(
-      text: runningInvocation.summary,
-      contentType: MessageContentType.toolInvocation,
-      payloadJson: runningInvocation.toJson(),
+    final executionDraft = resolveConfirmedToolExecutionDraft(
+      sourceMessage: message,
+      invocation: invocation,
+      executionResult: executionResult,
     );
+    final runningMessage = executionDraft.runningMessage;
     _ref.read(messagesProvider.notifier).replaceMessage(runningMessage);
 
     final dbHelper = _ref.read(databaseProvider);
@@ -918,19 +963,12 @@ class ChatController {
       payloadJson: jsonEncode(runningMessage.payloadJson),
     );
 
-    final toolResult = executionResult.toolResult;
-    if (toolResult == null) {
+    final toolMessage = executionDraft.toolResultMessage;
+    if (toolMessage == null) {
       _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
       return;
     }
 
-    final toolMessage = ChatMessage(
-      text: toolResult.displayText,
-      role: MessageRole.assistant,
-      status: MessageStatus.completed,
-      contentType: MessageContentType.toolResult,
-      payloadJson: toolResult.toJson(),
-    );
     final toolMessageId =
         await dbHelper.insertMessage(toolMessage, currentGroup.id!);
     toolMessage.id = toolMessageId;
