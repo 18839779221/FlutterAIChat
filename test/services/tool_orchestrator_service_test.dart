@@ -14,6 +14,7 @@ import 'package:ai_chat/services/tool_policy_service.dart';
 import 'package:ai_chat/services/tool_registry.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:ai_chat/tools/core/tool_runtime_registry.dart';
+import 'package:ai_chat/tools/default_tool_runtime_registry.dart';
 import 'package:ai_chat/tools/handlers/fetch_webpage_tool_handler.dart';
 import 'package:ai_chat/tools/handlers/save_note_tool_handler.dart';
 import 'package:ai_chat/tools/handlers/search_chat_history_tool_handler.dart';
@@ -483,23 +484,29 @@ Future<ToolOrchestratorService> _createService({
     preferences,
     localDefaultsLoader: () async => null,
   );
+  final resolvedExecutor = ToolExecutor(
+    chatStorage: _FakeChatStorage(messages: storageMessages),
+    webSearcher: webSearcher,
+    reminderCreator: reminderCreator,
+    calendarEventCreator: calendarEventCreator,
+  );
+  final resolvedRuntimeRegistry =
+      runtimeRegistry ?? buildDefaultToolRuntimeRegistry(toolExecutor: resolvedExecutor);
+  final resolvedToolRegistry = ToolRegistry(
+    runtimeRegistry: resolvedRuntimeRegistry,
+  );
 
   return ToolOrchestratorService(
-    toolRegistry: ToolRegistry(),
-    runtimeRegistry: runtimeRegistry,
+    toolRegistry: resolvedToolRegistry,
+    runtimeRegistry: resolvedRuntimeRegistry,
     toolDecisionService: ToolDecisionService(
       llm: _FakeBaseLLM(decisionResponse: decisionResponse),
-      toolRegistry: ToolRegistry(),
+      toolRegistry: resolvedToolRegistry,
       traceRecorder: traceRecorder,
     ),
     traceRecorder: traceRecorder,
     toolPolicyService: ToolPolicyService(repository: repository),
-    toolExecutor: ToolExecutor(
-      chatStorage: _FakeChatStorage(messages: storageMessages),
-      webSearcher: webSearcher,
-      reminderCreator: reminderCreator,
-      calendarEventCreator: calendarEventCreator,
-    ),
+    toolExecutor: resolvedExecutor,
   );
 }
 
