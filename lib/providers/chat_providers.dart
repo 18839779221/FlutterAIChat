@@ -1,10 +1,12 @@
 import 'package:ai_chat/controllers/chat_controller.dart';
+import 'package:ai_chat/controllers/chat_debug_controller.dart';
 import 'package:ai_chat/controllers/chat_send_coordinator.dart';
 import 'package:ai_chat/controllers/chat_session_coordinator.dart';
 import 'package:ai_chat/controllers/chat_summary_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 export '../controllers/chat_controller.dart';
+export '../controllers/chat_debug_controller.dart';
 export '../controllers/chat_send_coordinator.dart';
 export '../controllers/chat_session_coordinator.dart';
 export '../controllers/chat_summary_controller.dart';
@@ -28,11 +30,16 @@ final chatSummaryControllerProvider = Provider<ChatSummaryController>((ref) {
   );
 });
 
+final chatDebugControllerProvider = Provider<ChatDebugController>((ref) {
+  return DefaultChatDebugController(ref);
+});
+
 final chatControllerProvider = Provider<ChatController>((ref) {
   return ChatController(
     ref,
     sendCoordinator: ref.read(chatSendCoordinatorProvider),
     sessionCoordinator: ref.read(chatSessionCoordinatorProvider),
     summaryController: ref.read(chatSummaryControllerProvider),
+    debugController: ref.read(chatDebugControllerProvider),
   );
 });
