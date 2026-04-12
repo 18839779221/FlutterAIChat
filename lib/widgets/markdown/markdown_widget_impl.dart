@@ -3,13 +3,14 @@ import 'package:flutter_highlight/themes/a11y-dark.dart';
 import 'package:flutter_highlight/themes/a11y-light.dart';
 import 'package:markdown_widget/markdown_widget.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:ai_chat/theme/app_typography.dart';
 
 class MarkdownWidgetImpl extends StatefulWidget {
   final String data;
   const MarkdownWidgetImpl({
-    Key? key,
+    super.key,
     required this.data,
-  }) : super(key: key);
+  });
 
   @override
   State<MarkdownWidgetImpl> createState() => _MarkdownWidgetImplState();
@@ -40,21 +41,18 @@ class _MarkdownWidgetImplState extends State<MarkdownWidgetImpl> {
           language: 'javascript',
           theme: isDark ? a11yDarkTheme : a11yLightTheme,
           padding: const EdgeInsets.all(16),
-          textStyle: TextStyle(
-            fontFamily: 'JetBrainsMono',
+          textStyle: AppTypography.codeStyle(
+            color: isDark ? Colors.white : Colors.black87,
             fontSize: 14,
             height: 1.5,
           ),
         ),
         // 内联代码配置
         CodeConfig(
-          style: TextStyle(
-            fontFamily: 'JetBrainsMono',
+          style: AppTypography.codeStyle(
+            color: isDark ? Colors.white : Colors.black87,
             fontSize: 14,
-            // color: Theme.of(context).primaryColor,
-            // backgroundColor: isDark
-            //     ? Colors.white.withOpacity(0.1)
-            //     : Colors.black.withOpacity(0.05),
+            height: 1.2,
           ),
         ),
         // 标题配置
@@ -98,7 +96,7 @@ class _MarkdownWidgetImplState extends State<MarkdownWidgetImpl> {
         // 表格配置
         TableConfig(
           border: TableBorder.all(
-            color: Colors.grey.withOpacity(0.3),
+            color: Colors.grey.withValues(alpha: 0.3),
             width: 1,
           ),
           headerStyle: const TextStyle(fontWeight: FontWeight.bold),

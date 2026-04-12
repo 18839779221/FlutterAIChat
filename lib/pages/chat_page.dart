@@ -76,14 +76,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               right: 0,
               child: IgnorePointer(
                 child: Container(
-                  height: 108,
+                  height: 88,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
                         colors.chatBackground.withValues(alpha: 0.96),
-                        colors.chatBackground.withValues(alpha: 0.78),
+                        colors.chatBackground.withValues(alpha: 0.62),
                         colors.chatBackground.withValues(alpha: 0),
                       ],
                     ),
@@ -298,9 +298,9 @@ class _HeaderButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<AppColors>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
-    final backgroundColor = filled
-        ? colors.userBubbleSurface.withValues(alpha: 0.96)
-        : colors.structuredSurface.withValues(alpha: 0.92);
+    final backgroundColor = colors.assistantSurface.withValues(
+      alpha: filled ? 0.93 : 0.89,
+    );
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius.pill),
@@ -317,13 +317,13 @@ class _HeaderButton extends StatelessWidget {
               borderRadius: BorderRadius.circular(radius.pill),
               boxShadow: [
                 BoxShadow(
-                  color: colors.primaryText.withValues(alpha: 0.12),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
+                  color: colors.primaryText.withValues(alpha: 0.09),
+                  blurRadius: 14,
+                  offset: const Offset(0, 5),
                 ),
                 BoxShadow(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  blurRadius: 1.5,
+                  color: Colors.white.withValues(alpha: 0.14),
+                  blurRadius: 1.2,
                   offset: const Offset(0, -0.5),
                 ),
               ],
@@ -335,10 +335,10 @@ class _HeaderButton extends StatelessWidget {
               onPressed: onPressed,
               icon: Icon(
                 icon,
-                size: 16,
+                size: 15.5,
                 color: onPressed == null
                     ? colors.secondaryText.withValues(alpha: 0.45)
-                    : colors.primaryText.withValues(alpha: 0.96),
+                    : colors.primaryText.withValues(alpha: 0.9),
               ),
             ),
           ),

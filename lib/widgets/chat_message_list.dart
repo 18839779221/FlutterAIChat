@@ -120,7 +120,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           controller: scrollController,
           padding: EdgeInsets.fromLTRB(
             spacing.sm,
-            spacing.xl * 2.3,
+            spacing.xl * 2 + spacing.xxs,
             spacing.sm,
             spacing.xl * 4.2,
           ),
@@ -138,8 +138,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
             final item = timelineItems[hasMoreMessages ? index - 1 : index];
             return Align(
               alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
+                child: ConstrainedBox(
+                constraints: const BoxConstraints(
                   maxWidth: kIsWeb ? 860 : 720,
                 ),
                 child: Padding(
@@ -156,9 +156,9 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
             bottom: 28,
             child: FloatingActionButton(
               mini: true,
-              backgroundColor: colors.assistantSurface.withValues(alpha: 0.94),
-              foregroundColor: colors.primaryText,
-              elevation: 1.5,
+              backgroundColor: colors.assistantSurface.withValues(alpha: 0.9),
+              foregroundColor: colors.primaryText.withValues(alpha: 0.88),
+              elevation: 0.8,
               onPressed: _scrollToBottom,
               child: const Icon(Icons.keyboard_arrow_down),
             ),
@@ -183,9 +183,12 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
 
       if (current.isUser) {
         widgets.add(
-          GestureDetector(
-            onLongPress: () => _showMessageOptionMenu(current),
-            child: UserAnchorBubble(text: current.text),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: GestureDetector(
+              onLongPress: () => _showMessageOptionMenu(current),
+              child: UserAnchorBubble(text: current.text),
+            ),
           ),
         );
 
