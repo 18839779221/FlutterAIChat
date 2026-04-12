@@ -7,6 +7,10 @@ import 'package:ai_chat/services/tool_call_service.dart';
 import 'package:ai_chat/services/tool_executor.dart';
 import 'package:ai_chat/services/tool_registry.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
+import 'package:ai_chat/tools/core/tool_argument_resolution.dart';
+import 'package:ai_chat/tools/core/tool_execution_context.dart';
+import 'package:ai_chat/tools/core/tool_handler.dart';
+import 'package:ai_chat/tools/core/tool_runtime_registry.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -111,7 +115,91 @@ void main() {
       expect(result.toolResult, isNull);
       expect(result.additionalContextMessages, isEmpty);
     });
+
+    test('仅提供 runtime registry 时也能识别并执行运行时工具', () async {
+      final service = ToolCallService(
+        llm: _FakeBaseLLM(
+          decisionResponse:
+              '{"toolName":"debug_runtime_tool","arguments":{"topic":"runtime"}}',
+        ),
+        runtimeRegistry: ToolRuntimeRegistry(
+          handlers: [
+            _FakeRuntimeToolHandler(),
+          ],
+        ),
+        toolExecutor: ToolExecutor(
+          chatStorage: const _FakeChatStorage(messages: []),
+        ),
+      );
+
+      final result = await service.prepareToolContext(
+        groupId: 10,
+        userMessage: '请执行 runtime 调试工具',
+        history: const [],
+      );
+
+      expect(result.toolResult, isNotNull);
+      expect(result.toolResult!.toolName, 'debug_runtime_tool');
+      expect(result.additionalContextMessages.single.text, contains('runtime-debug-ok'));
+    });
   });
+}
+
+class _FakeRuntimeToolHandler implements ToolHandler {
+  @override
+  ToolDefinition get definition => const ToolDefinition(
+        name: 'debug_runtime_tool',
+        title: 'Runtime Debug Tool',
+        description: 'Only exists in the runtime registry for testing.',
+        parameters: {
+          'topic': 'string',
+        },
+      );
+
+  @override
+  List<ChatMessage> buildContextMessages({
+    required ToolResult result,
+    required ToolExecutionContext context,
+  }) {
+    return [
+      ChatMessage(
+        text: 'runtime-debug-ok',
+        role: MessageRole.system,
+        status: MessageStatus.completed,
+      ),
+    ];
+  }
+
+  @override
+  Future<ToolResult> execute(ToolExecutionContext context) async {
+    return ToolResult(
+      toolName: 'debug_runtime_tool',
+      status: ToolExecutionStatus.success,
+      summary: 'runtime handler executed',
+      data: {
+        'topic': context.arguments['topic'],
+      },
+    );
+  }
+
+  @override
+  Future<ToolArgumentResolution> normalizeArguments({
+    required Map<String, dynamic> rawArguments,
+    required String userMessage,
+    required List<ChatMessage> history,
+    required DateTime now,
+  }) async {
+    final topic = rawArguments['topic'];
+    if (topic is! String || topic.trim().isEmpty) {
+      return ToolArgumentResolution.invalid(
+        errorCode: 'invalid_topic',
+        errorSummary: 'missing topic',
+      );
+    }
+    return ToolArgumentResolution.valid({
+      'topic': topic.trim(),
+    });
+  }
 }
 
 class _FakeBaseLLM implements BaseLLM {

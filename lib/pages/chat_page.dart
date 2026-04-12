@@ -1,6 +1,11 @@
+import 'dart:ui';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_radius.dart';
+import '../theme/app_spacing.dart';
 import '../providers/chat_providers.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
@@ -30,104 +35,158 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final sendPhase = ref.watch(sendPhaseProvider);
     final isSendInFlight = sendPhase != ChatSendPhase.idle;
     final systemPrompt = ref.watch(systemPromptProvider);
+    final useReasoning = ref.watch(useReasoningProvider);
+    final useConciseMode = ref.watch(useConciseModeProvider);
     final isLoadingMore = ref.watch(isLoadingMoreProvider);
-    
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final colors = Theme.of(context).extension<AppColors>()!;
+
     return Scaffold(
       key: _scaffoldKey,
       drawer: const ChatDrawer(),
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        leading: IconButton(
-          icon: const Icon(Icons.menu),
-          onPressed: () {
-            _scaffoldKey.currentState?.openDrawer();
-          },
-        ),
-        title: GestureDetector(
-          onTap: () {
-            showCupertinoModalPopup(
-              context: context,
-              builder: (context) => CupertinoActionSheet(
-                title: const Text('AI Chat'),
-                message: const Text('选择操作'),
-                actions: [
-                  CupertinoActionSheetAction(
-                    child: Text(systemPrompt != null && systemPrompt.isNotEmpty
-                      ? '修改系统提示词'
-                      : '设置系统提示词'),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _showSystemPromptDialog(context);
-                    },
-                  ),
-                ],
-                cancelButton: CupertinoActionSheetAction(
-                  child: const Text('取消'),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ),
-            );
-          },
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(widget.title),
-              const SizedBox(width: 4),
-              const Icon(Icons.arrow_drop_down, size: 20),
-            ],
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            tooltip: '新建对话',
-            onPressed: !isSendInFlight
-                ? ref.read(chatControllerProvider).createNewGroup
-                : null,
-          ),
-        ],
-      ),
       body: GestureDetector(
         onHorizontalDragEnd: (details) {
           if (details.primaryVelocity! > 0) {
             _scaffoldKey.currentState?.openDrawer();
           }
         },
-        child: Column(
+        child: Stack(
           children: [
-            Expanded(
-              child: Stack(
-                children: [
-                  const ChatMessageList(),
-                  if (isLoadingMore)
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      child: LinearProgressIndicator(
-                        backgroundColor: Colors.transparent,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Theme.of(context).primaryColor,
-                        ),
-                      ),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: colors.chatBackground,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      colors.assistantSurface.withValues(alpha: 0.78),
+                      colors.chatBackground,
+                      colors.toolWorkflowSurface.withValues(alpha: 0.52),
+                      colors.chatBackground,
+                    ],
+                    stops: const [0, 0.38, 0.82, 1],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                child: Container(
+                  height: 108,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        colors.chatBackground.withValues(alpha: 0.96),
+                        colors.chatBackground.withValues(alpha: 0.78),
+                        colors.chatBackground.withValues(alpha: 0),
+                      ],
                     ),
+                  ),
+                ),
+              ),
+            ),
+            SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  Expanded(
+                    child: Stack(
+                      children: [
+                        const ChatMessageList(),
+                        if (isLoadingMore)
+                          Positioned(
+                            top: 0,
+                            left: spacing.lg,
+                            right: spacing.lg,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(999),
+                              child: LinearProgressIndicator(
+                                minHeight: 3,
+                                backgroundColor: Colors.transparent,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const ChatInput(),
                 ],
               ),
             ),
-            Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 4,
-                    offset: const Offset(0, -1),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                bottom: false,
+                child: _GhostHeader(
+                  isSendInFlight: isSendInFlight,
+                  onMenuPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                  onNewChatPressed:
+                      ref.read(chatControllerProvider).createNewGroup,
+                  onMorePressed: () => _showHeaderActions(
+                    context,
+                    hasSystemPrompt:
+                        systemPrompt != null && systemPrompt.isNotEmpty,
+                    useReasoning: useReasoning,
+                    useConciseMode: useConciseMode,
                   ),
-                ],
+                ),
               ),
-              child: const ChatInput(),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  void _showHeaderActions(
+    BuildContext context, {
+    required bool hasSystemPrompt,
+    required bool useReasoning,
+    required bool useConciseMode,
+  }) {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        message: const Text('选择操作'),
+        actions: [
+          CupertinoActionSheetAction(
+            child: Text(hasSystemPrompt ? '修改系统提示词' : '设置系统提示词'),
+            onPressed: () {
+              Navigator.pop(context);
+              _showSystemPromptDialog(context);
+            },
+          ),
+          CupertinoActionSheetAction(
+            child: Text(useReasoning ? '关闭深度模式' : '开启深度模式'),
+            onPressed: () {
+              ref.read(chatControllerProvider).setUseReasoning(!useReasoning);
+              Navigator.pop(context);
+            },
+          ),
+          CupertinoActionSheetAction(
+            child: Text(useConciseMode ? '关闭简洁模式' : '开启简洁模式'),
+            onPressed: () {
+              ref.read(chatControllerProvider).setUseConciseMode(
+                    !useConciseMode,
+                  );
+              Navigator.pop(context);
+            },
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          child: const Text('取消'),
+          onPressed: () => Navigator.pop(context),
         ),
       ),
     );
@@ -136,7 +195,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   void _showSystemPromptDialog(BuildContext context) {
     final systemPrompt = ref.read(systemPromptProvider);
     final controller = TextEditingController(text: systemPrompt);
-    
+
     showCupertinoDialog(
       context: context,
       builder: (context) => CupertinoAlertDialog(
@@ -166,5 +225,125 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       ),
     );
   }
+}
 
+class _GhostHeader extends StatelessWidget {
+  final bool isSendInFlight;
+  final VoidCallback onMenuPressed;
+  final VoidCallback onNewChatPressed;
+  final VoidCallback onMorePressed;
+
+  const _GhostHeader({
+    required this.isSendInFlight,
+    required this.onMenuPressed,
+    required this.onNewChatPressed,
+    required this.onMorePressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        spacing.lg,
+        spacing.xs,
+        spacing.lg,
+        0,
+      ),
+      child: SizedBox(
+        key: const ValueKey('ghost-header'),
+        height: 28,
+        child: Row(
+          children: [
+            _HeaderButton(
+              icon: Icons.menu,
+              tooltip: '会话列表',
+              onPressed: onMenuPressed,
+              filled: true,
+            ),
+            const Spacer(),
+            _HeaderButton(
+              icon: Icons.add,
+              tooltip: '新建对话',
+              onPressed: isSendInFlight ? null : onNewChatPressed,
+            ),
+            SizedBox(width: spacing.xs),
+            _HeaderButton(
+              icon: Icons.more_horiz,
+              tooltip: '更多操作',
+              onPressed: onMorePressed,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HeaderButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+  final bool filled;
+
+  const _HeaderButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.filled = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppColors>()!;
+    final radius = Theme.of(context).extension<AppRadius>()!;
+    final backgroundColor = filled
+        ? colors.userBubbleSurface.withValues(alpha: 0.96)
+        : colors.structuredSurface.withValues(alpha: 0.92);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius.pill),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Material(
+          color: backgroundColor,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(radius.pill),
+          ),
+          elevation: 0,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(radius.pill),
+              boxShadow: [
+                BoxShadow(
+                  color: colors.primaryText.withValues(alpha: 0.12),
+                  blurRadius: 18,
+                  offset: const Offset(0, 6),
+                ),
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  blurRadius: 1.5,
+                  offset: const Offset(0, -0.5),
+                ),
+              ],
+            ),
+            child: IconButton(
+              constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+              padding: EdgeInsets.zero,
+              tooltip: tooltip,
+              onPressed: onPressed,
+              icon: Icon(
+                icon,
+                size: 16,
+                color: onPressed == null
+                    ? colors.secondaryText.withValues(alpha: 0.45)
+                    : colors.primaryText.withValues(alpha: 0.96),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

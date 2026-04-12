@@ -1,0 +1,80 @@
+/// Supported block types rendered inside one assistant turn.
+enum AssistantTurnBlockType {
+  analysis,
+  toolWorkflow,
+  toolResultSummary,
+  structuredOutput,
+  finalResponse,
+}
+
+/// UI-facing block model used to render one assistant turn in document style.
+class AssistantTurnBlock {
+  /// Stable block id in the current runtime timeline.
+  final String id;
+
+  /// Assistant turn owner id.
+  final String turnId;
+
+  /// Semantic block type, never inferred at render time from free text.
+  final AssistantTurnBlockType type;
+
+  /// Order within the current assistant turn.
+  final int sequence;
+
+  /// When the block first became visible.
+  final DateTime createdAt;
+
+  /// Last update time for streaming or workflow refresh.
+  final DateTime updatedAt;
+
+  /// Optional status, mainly for workflow-like blocks.
+  final String? status;
+
+  /// Optional user-facing title.
+  final String? title;
+
+  /// Main body text.
+  final String? text;
+
+  /// Structured block payload for future renderers.
+  final Map<String, dynamic>? payload;
+
+  const AssistantTurnBlock({
+    required this.id,
+    required this.turnId,
+    required this.type,
+    required this.sequence,
+    required this.createdAt,
+    required this.updatedAt,
+    this.status,
+    this.title,
+    this.text,
+    this.payload,
+  });
+
+  AssistantTurnBlock copyWith({
+    String? id,
+    String? turnId,
+    AssistantTurnBlockType? type,
+    int? sequence,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    String? status,
+    String? title,
+    String? text,
+    Map<String, dynamic>? payload,
+  }) {
+    return AssistantTurnBlock(
+      id: id ?? this.id,
+      turnId: turnId ?? this.turnId,
+      type: type ?? this.type,
+      sequence: sequence ?? this.sequence,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      status: status ?? this.status,
+      title: title ?? this.title,
+      text: text ?? this.text,
+      payload: payload ?? this.payload,
+    );
+  }
+}

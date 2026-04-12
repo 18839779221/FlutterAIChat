@@ -5,14 +5,23 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 class LlmLocalDefaults {
+  /// Default LLM API key used when local overrides are absent.
   final String? apiKey;
+
+  /// Default LLM base URL used when local overrides are absent.
   final String? baseUrl;
+
+  /// Default model name used when local overrides are absent.
   final String? model;
+
+  /// Extra runtime config shared with non-LLM integrations such as tools.
+  final Map<String, dynamic> additionalConfig;
 
   const LlmLocalDefaults({
     this.apiKey,
     this.baseUrl,
     this.model,
+    this.additionalConfig = const {},
   });
 
   factory LlmLocalDefaults.fromJson(Map<String, dynamic> json) {
@@ -28,10 +37,40 @@ class LlmLocalDefaults {
       apiKey: normalize(json['api_key']),
       baseUrl: normalize(json['base_url']),
       model: normalize(json['model']),
+      additionalConfig: _readAdditionalConfig(json),
     );
   }
 
-  bool get isEmpty => apiKey == null && baseUrl == null && model == null;
+  bool get isEmpty =>
+      apiKey == null &&
+      baseUrl == null &&
+      model == null &&
+      additionalConfig.isEmpty;
+
+  static Map<String, dynamic> _readAdditionalConfig(Map<String, dynamic> json) {
+    final webSearch = json['web_search'];
+    if (webSearch is! Map) {
+      return const {};
+    }
+
+    String? normalize(dynamic value) {
+      if (value is! String) {
+        return null;
+      }
+      final trimmed = value.trim();
+      return trimmed.isEmpty ? null : trimmed;
+    }
+
+    final provider = normalize(webSearch['provider']);
+    final tavilyApiKey = normalize(webSearch['tavily_api_key']);
+    final tavilyBaseUrl = normalize(webSearch['tavily_base_url']);
+
+    return {
+      if (provider != null) 'web_search.provider': provider,
+      if (tavilyApiKey != null) 'web_search.tavily_api_key': tavilyApiKey,
+      if (tavilyBaseUrl != null) 'web_search.tavily_base_url': tavilyBaseUrl,
+    };
+  }
 }
 
 class AssetLlmLocalDefaultsLoader {
