@@ -1,4 +1,5 @@
 import 'package:ai_chat/controllers/chat_debug_controller.dart';
+import 'package:ai_chat/controllers/chat_preferences_controller.dart';
 import 'package:ai_chat/controllers/chat_send_coordinator.dart';
 import 'package:ai_chat/controllers/chat_session_coordinator.dart';
 import 'package:ai_chat/controllers/chat_summary_controller.dart';
@@ -17,6 +18,7 @@ class ChatController {
   final ChatSessionCoordinator _sessionCoordinator;
   final ChatSummaryController _summaryController;
   final ChatDebugController _debugController;
+  final ChatPreferencesController _preferencesController;
 
   ChatController(
     this._ref, {
@@ -24,10 +26,12 @@ class ChatController {
     required ChatSessionCoordinator sessionCoordinator,
     required ChatSummaryController summaryController,
     required ChatDebugController debugController,
+    required ChatPreferencesController preferencesController,
   })  : _sendCoordinator = sendCoordinator,
         _sessionCoordinator = sessionCoordinator,
         _summaryController = summaryController,
-        _debugController = debugController {
+        _debugController = debugController,
+        _preferencesController = preferencesController {
     _initScrollListener();
   }
 
@@ -139,34 +143,15 @@ class ChatController {
   }
 
   Future<void> setSystemPrompt(String? prompt) async {
-    _ref.read(systemPromptProvider.notifier).state = prompt;
-
-    final currentGroup = _ref.read(currentGroupProvider);
-    if (currentGroup != null && currentGroup.id != null) {
-      final dbHelper = _ref.read(databaseProvider);
-      await dbHelper.updateGroupSystemPrompt(currentGroup.id!, prompt);
-    }
+    await _preferencesController.setSystemPrompt(prompt);
   }
 
   void setUseReasoning(bool value) {
-    _ref.read(useReasoningProvider.notifier).state = value;
+    _preferencesController.setUseReasoning(value);
   }
 
   void setUseConciseMode(bool value) {
-    final currentPrompt = _ref.read(systemPromptProvider);
-    final cachedPrompt = _ref.read(cachedSystemPromptProvider);
-
-    if (value) {
-      if (cachedPrompt == null) {
-        _ref.read(cachedSystemPromptProvider.notifier).state = currentPrompt;
-      }
-      setSystemPrompt("极简模式，只回答问题本身，无需任何解释背景和扩展，尽量控制在30字之内(特殊情况下允许超出)");
-    } else {
-      setSystemPrompt(cachedPrompt);
-      _ref.read(cachedSystemPromptProvider.notifier).state = null;
-    }
-
-    _ref.read(useConciseModeProvider.notifier).state = value;
+    _preferencesController.setUseConciseMode(value);
   }
 
   Future<void> selectGroup(ChatGroup group) async {
