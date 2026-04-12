@@ -574,6 +574,66 @@ void main() {
       );
       expect(resolved.toolResultMessage!.text, '已创建提醒：交周报');
     });
+
+    test('resolveStreamingAssistantDelta parses content chunks', () {
+      final delta = resolveStreamingAssistantDelta(
+        jsonEncode({
+          'type': 'content',
+          'content': '第一段回答',
+        }),
+      );
+
+      expect(delta.kind, StreamingAssistantDeltaKind.content);
+      expect(delta.content, '第一段回答');
+    });
+
+    test('resolveStreamingAssistantDelta parses reasoning chunks', () {
+      final delta = resolveStreamingAssistantDelta(
+        jsonEncode({
+          'type': 'reasoning',
+          'content': '先分析约束',
+        }),
+      );
+
+      expect(delta.kind, StreamingAssistantDeltaKind.reasoning);
+      expect(delta.content, '先分析约束');
+    });
+
+    test(
+        'resolveStreamingAssistantCompletionDraft skips finalization for interrupted message',
+        () {
+      final draft = resolveStreamingAssistantCompletionDraft(
+        assistantMessageId: 99,
+        assistantMessage: ChatMessage(
+          id: 99,
+          text: '已被中断',
+          role: MessageRole.assistant,
+          status: MessageStatus.interrupted,
+        ),
+      );
+
+      expect(draft.shouldPersistStatusUpdate, isFalse);
+      expect(draft.shouldSetIdlePhase, isFalse);
+      expect(draft.shouldStopGenerating, isFalse);
+      expect(draft.shouldScheduleAutoSummary, isFalse);
+      expect(draft.traceEntry, isNull);
+    });
+
+    test('resolveStreamingAssistantFailureDraft finalizes failed phase and trace',
+        () {
+      final draft = resolveStreamingAssistantFailureDraft(
+        assistantMessageId: 7,
+        error: StateError('network'),
+      );
+
+      expect(draft.assistantMessageId, 7);
+      expect(draft.nextStatus, MessageStatus.failed);
+      expect(draft.shouldPersistStatusUpdate, isTrue);
+      expect(draft.shouldSetIdlePhase, isTrue);
+      expect(draft.shouldStopGenerating, isTrue);
+      expect(draft.traceEntry?.stage, ChatTraceStage.sendFailed);
+      expect(draft.traceEntry?.status, ChatTraceStatus.failure);
+    });
   });
 }
 
