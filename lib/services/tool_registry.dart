@@ -1,13 +1,27 @@
 import '../models/tool/tool_definition.dart';
+import '../tools/core/tool_runtime_registry.dart';
 
 class ToolRegistry {
-  ToolRegistry({List<ToolDefinition>? tools})
-      : _tools = tools ??
-            const [
+  ToolRegistry({
+    List<ToolDefinition>? tools,
+    ToolRuntimeRegistry? runtimeRegistry,
+  }) : _tools = List.unmodifiable(
+          tools ??
+              runtimeRegistry?.getAllDefinitions() ??
+              const [
               ToolDefinition(
                 name: 'search_chat_history',
                 title: '搜索聊天记录',
                 description: '搜索当前会话里的历史消息，找出和用户问题相关的内容。',
+                parameters: {
+                  'query': 'string',
+                  'maxResults': 'int?',
+                },
+              ),
+              ToolDefinition(
+                name: 'web_search',
+                title: '联网搜索',
+                description: '搜索外部网页并返回结构化结果列表。',
                 parameters: {
                   'query': 'string',
                   'maxResults': 'int?',
@@ -71,7 +85,8 @@ class ToolRegistry {
                 requiresConfirmation: true,
                 riskLevel: 'high',
               ),
-            ];
+            ],
+        );
 
   final List<ToolDefinition> _tools;
 

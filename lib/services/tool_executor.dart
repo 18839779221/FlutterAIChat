@@ -10,6 +10,12 @@ typedef WebpageFetcher = Future<ToolResult> Function({
   String? extractMode,
 });
 
+/// Searches the web and returns a normalized result list payload.
+typedef WebSearcher = Future<ToolResult> Function({
+  required String query,
+  int? maxResults,
+});
+
 /// Persists a note-like record and returns a normalized tool result payload.
 typedef NoteSaver = Future<ToolResult> Function({
   required String title,
@@ -42,12 +48,14 @@ typedef ResultSharer = Future<ToolResult> Function({
 class ToolExecutor {
   ToolExecutor({
     required ChatStorage chatStorage,
+    WebSearcher? webSearcher,
     WebpageFetcher? webpageFetcher,
     NoteSaver? noteSaver,
     ReminderCreator? reminderCreator,
     CalendarEventCreator? calendarEventCreator,
     ResultSharer? resultSharer,
   })  : _chatStorage = chatStorage,
+        _webSearcher = webSearcher,
         _webpageFetcher = webpageFetcher,
         _noteSaver = noteSaver,
         _reminderCreator = reminderCreator,
@@ -55,6 +63,7 @@ class ToolExecutor {
         _resultSharer = resultSharer;
 
   final ChatStorage _chatStorage;
+  final WebSearcher? _webSearcher;
   final WebpageFetcher? _webpageFetcher;
   final NoteSaver? _noteSaver;
   final ReminderCreator? _reminderCreator;
@@ -97,6 +106,18 @@ class ToolExecutor {
         'matches': matches,
       },
     );
+  }
+
+  /// Runs an external web search through an injected search adapter.
+  Future<ToolResult> executeWebSearch({
+    required String query,
+    int? maxResults,
+  }) async {
+    final searcher = _webSearcher;
+    if (searcher == null) {
+      return _unsupportedToolResult('web_search');
+    }
+    return searcher(query: query, maxResults: maxResults);
   }
 
   /// Loads webpage content through an injected fetcher to keep platform code out

@@ -115,7 +115,7 @@ class WebChatStorage implements ChatStorage {
   @override
   Future<List<ChatMessage>> getMessagesByGroup(int groupId) async {
     final messages = await _groupMessages(groupId);
-    messages.sort((a, b) => (b['timestamp'] as int).compareTo(a['timestamp'] as int));
+    messages.sort((a, b) => (a['timestamp'] as int).compareTo(b['timestamp'] as int));
     return messages.map(ChatMessage.fromMap).toList();
   }
 

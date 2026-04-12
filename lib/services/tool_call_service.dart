@@ -1,11 +1,14 @@
 import '../models/chat_message.dart';
 import '../models/llm/base_llm.dart';
 import '../models/tool/tool_invocation.dart';
+import 'chat_trace_recorder.dart';
 import 'tool_decision_service.dart';
 import 'tool_executor.dart';
 import 'tool_orchestrator_service.dart';
 import 'tool_policy_service.dart';
 import 'tool_registry.dart';
+import '../tools/default_tool_runtime_registry.dart';
+import '../tools/core/tool_runtime_registry.dart';
 
 class ToolPreparationResult {
   /// Tool invocation payload for pending confirmation or running-state display.
@@ -35,17 +38,28 @@ class ToolCallService {
   ToolCallService({
     required BaseLLM llm,
     ToolRegistry? toolRegistry,
+    ToolRuntimeRegistry? runtimeRegistry,
     required ToolExecutor toolExecutor,
     ToolPolicyService? toolPolicyService,
-  }) : _orchestrator = ToolOrchestratorService(
-          toolRegistry: toolRegistry ?? ToolRegistry(),
+    ChatTraceRecorder? traceRecorder,
+  }) : _orchestrator = (() {
+          final resolvedRuntimeRegistry =
+              runtimeRegistry ?? buildDefaultToolRuntimeRegistry(toolExecutor: toolExecutor);
+          final resolvedToolRegistry =
+              toolRegistry ?? ToolRegistry(runtimeRegistry: resolvedRuntimeRegistry);
+          return ToolOrchestratorService(
+            toolRegistry: resolvedToolRegistry,
+            runtimeRegistry: resolvedRuntimeRegistry,
           toolDecisionService: ToolDecisionService(
             llm: llm,
-            toolRegistry: toolRegistry ?? ToolRegistry(),
+            toolRegistry: resolvedToolRegistry,
+            traceRecorder: traceRecorder,
           ),
           toolPolicyService: toolPolicyService,
           toolExecutor: toolExecutor,
-        );
+          traceRecorder: traceRecorder,
+          );
+        })();
 
   final ToolOrchestratorService _orchestrator;
 
@@ -53,11 +67,13 @@ class ToolCallService {
     required int groupId,
     required String userMessage,
     required List<ChatMessage> history,
+    String? turnId,
   }) {
     return _orchestrator.prepareToolContext(
       groupId: groupId,
       userMessage: userMessage,
       history: history,
+      turnId: turnId,
     );
   }
 
@@ -65,11 +81,13 @@ class ToolCallService {
     required int groupId,
     required ToolInvocation invocation,
     bool trustTool = false,
+    String? turnId,
   }) {
     return _orchestrator.executeToolInvocation(
       groupId: groupId,
       invocation: invocation,
       trustTool: trustTool,
+      turnId: turnId,
     );
   }
 }

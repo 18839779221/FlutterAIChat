@@ -4,13 +4,16 @@ import 'dart:convert';
 import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/chat_send/chat_send_drafts.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
+import 'package:ai_chat/models/trace/chat_trace_event.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/tool_call_service.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -197,8 +200,8 @@ void main() {
     test('需要确认的工具会先插入 actionConfirmation 消息', () async {
       final databaseHelper = DatabaseHelper();
       final chatService = _FakeChatService(
-        toolPreparationResult: ToolPreparationResult(
-          toolInvocation: const ToolInvocation(
+        toolPreparationResult: const ToolPreparationResult(
+          toolInvocation: ToolInvocation(
             toolName: 'create_reminder',
             arguments: {'title': '交周报'},
             status: ToolInvocationStatus.awaitingConfirmation,
@@ -206,7 +209,7 @@ void main() {
             requiresConfirmation: true,
           ),
           toolResult: null,
-          additionalContextMessages: const [],
+          additionalContextMessages: [],
         ),
       );
       final container = _createContainer(
@@ -230,6 +233,10 @@ void main() {
 
       expect(confirmationMessage.text, '准备执行工具：创建提醒');
       expect(
+        confirmationMessage.payloadJson?['traceTurnId'],
+        isA<String>().having((value) => value, 'non-empty', isNotEmpty),
+      );
+      expect(
         messages.where(
           (message) => message.contentType == MessageContentType.toolResult,
         ),
@@ -242,9 +249,13 @@ void main() {
 
     test('继续并信任会执行挂起工具并追加 toolResult 消息', () async {
       final databaseHelper = DatabaseHelper();
+      final traceLogs = <Map<String, dynamic>>[];
+      final traceRecorder = ChatTraceRecorder(
+        logger: (entry) => traceLogs.add(entry),
+      );
       final chatService = _FakeChatService(
-        toolPreparationResult: ToolPreparationResult(
-          toolInvocation: const ToolInvocation(
+        toolPreparationResult: const ToolPreparationResult(
+          toolInvocation: ToolInvocation(
             toolName: 'create_reminder',
             arguments: {'title': '交周报'},
             status: ToolInvocationStatus.awaitingConfirmation,
@@ -252,28 +263,29 @@ void main() {
             requiresConfirmation: true,
           ),
           toolResult: null,
-          additionalContextMessages: const [],
+          additionalContextMessages: [],
         ),
         confirmedToolResult: const ToolPreparationResult(
-          toolInvocation: const ToolInvocation(
+          toolInvocation: ToolInvocation(
             toolName: 'create_reminder',
             arguments: {'title': '交周报'},
             status: ToolInvocationStatus.running,
             summary: '正在执行工具：创建提醒',
             requiresConfirmation: false,
           ),
-          toolResult: const ToolResult(
+          toolResult: ToolResult(
             toolName: 'create_reminder',
             status: ToolExecutionStatus.success,
             summary: '已创建提醒：交周报',
             data: {'title': '交周报'},
           ),
-          additionalContextMessages: const [],
+          additionalContextMessages: [],
         ),
       );
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: chatService,
+        traceRecorder: traceRecorder,
       );
       addTearDown(container.dispose);
 
@@ -314,6 +326,89 @@ void main() {
         isTrue,
       );
       expect(chatService.confirmedTrustFlags, [true]);
+      expect(chatService.confirmedTurnIds, hasLength(1));
+      final initialTurnId = traceLogs
+          .firstWhere((entry) => entry['stage'] == ChatTraceStage.sendStart.name)['turnId']
+          as String;
+      expect(chatService.confirmedTurnIds.single, initialTurnId);
+      expect(
+        traceLogs.any(
+          (entry) =>
+              entry['turnId'] == initialTurnId &&
+              entry['stage'] == ChatTraceStage.toolConfirmationAction.name &&
+              entry['status'] == ChatTraceStatus.success.name &&
+              entry['summary'] == '用户确认继续执行工具',
+        ),
+        isTrue,
+      );
+
+      await databaseHelper.deleteGroup(groupId);
+    });
+
+    test('取消工具会记录取消 trace 并复位发送阶段', () async {
+      final databaseHelper = DatabaseHelper();
+      final traceLogs = <Map<String, dynamic>>[];
+      final traceRecorder = ChatTraceRecorder(
+        logger: (entry) => traceLogs.add(entry),
+      );
+      final chatService = _FakeChatService(
+        toolPreparationResult: const ToolPreparationResult(
+          toolInvocation: ToolInvocation(
+            toolName: 'create_reminder',
+            arguments: {'title': '交周报'},
+            status: ToolInvocationStatus.awaitingConfirmation,
+            summary: '准备执行工具：创建提醒',
+            requiresConfirmation: true,
+          ),
+          toolResult: null,
+          additionalContextMessages: [],
+        ),
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: chatService,
+        traceRecorder: traceRecorder,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      await container.read(chatControllerProvider).sendMessage('提醒我交周报');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final confirmationMessage = container
+          .read(messagesProvider)
+          .firstWhere(
+            (message) =>
+                message.contentType == MessageContentType.actionConfirmation,
+          );
+      await container
+          .read(chatControllerProvider)
+          .cancelToolInvocation(confirmationMessage);
+
+      expect(container.read(sendPhaseProvider), ChatSendPhase.idle);
+      final updatedMessage = container
+          .read(messagesProvider)
+          .firstWhere((message) => message.id == confirmationMessage.id);
+      expect(updatedMessage.text, '已取消工具执行');
+      expect(updatedMessage.contentType, MessageContentType.plainText);
+
+      final initialTurnId = traceLogs
+          .firstWhere((entry) => entry['stage'] == ChatTraceStage.sendStart.name)['turnId']
+          as String;
+      expect(
+        traceLogs.any(
+          (entry) =>
+              entry['turnId'] == initialTurnId &&
+              entry['stage'] == ChatTraceStage.toolConfirmationAction.name &&
+              entry['status'] == ChatTraceStatus.success.name &&
+              entry['summary'] == '用户取消工具执行',
+        ),
+        isTrue,
+      );
 
       await databaseHelper.deleteGroup(groupId);
     });
@@ -345,6 +440,8 @@ void main() {
         container.read(sendPhaseProvider),
         ChatSendPhase.preparing,
       );
+      expect(container.read(chatSendStateProvider).phase, ChatSendPhase.preparing);
+      expect(container.read(chatSendStateProvider).isGenerating, isFalse);
       expect(
         container.read(messagesProvider).any(
               (message) =>
@@ -356,15 +453,240 @@ void main() {
       prepareCompleter.complete(const ToolPreparationResult.noTool());
       await Future<void>.delayed(const Duration(milliseconds: 30));
       expect(container.read(sendPhaseProvider), ChatSendPhase.idle);
+      expect(container.read(chatSendStateProvider).phase, ChatSendPhase.idle);
+      expect(container.read(chatSendStateProvider).isGenerating, isFalse);
 
       await databaseHelper.deleteGroup(groupId);
+    });
+
+    test('sendMessage records controller trace boundary events in order', () async {
+      final databaseHelper = DatabaseHelper();
+      final traceLogs = <Map<String, dynamic>>[];
+      final traceRecorder = ChatTraceRecorder(
+        logger: (entry) => traceLogs.add(entry),
+      );
+      final chatService = _FakeChatService(
+        toolPreparationResult: const ToolPreparationResult.noTool(),
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: chatService,
+        traceRecorder: traceRecorder,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      await container.read(chatControllerProvider).sendMessage('测试发送 trace');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final traceTurnIds = traceLogs
+          .map((entry) => entry['turnId'])
+          .whereType<String>()
+          .toSet();
+      expect(traceTurnIds, hasLength(1));
+
+      final stages = traceLogs
+          .where((entry) => entry['turnId'] == traceTurnIds.single)
+          .map((entry) => entry['stage'])
+          .toList();
+
+      expect(
+        stages,
+        containsAllInOrder([
+          ChatTraceStage.sendStart.name,
+          ChatTraceStage.sendDone.name,
+        ]),
+      );
+      expect(traceLogs.first['status'], ChatTraceStatus.started.name);
+      expect(traceLogs.last['status'], ChatTraceStatus.success.name);
+
+      await databaseHelper.deleteGroup(groupId);
+    });
+
+    test(
+        'chat controller delegates send transaction boundary to a dedicated coordinator',
+        () async {
+      final databaseHelper = DatabaseHelper();
+      final coordinator = _FakeChatSendCoordinator();
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(
+          toolPreparationResult: const ToolPreparationResult.noTool(),
+        ),
+        coordinator: coordinator,
+      );
+      addTearDown(container.dispose);
+
+      await container.read(chatControllerProvider).sendMessage('委托发送测试');
+
+      expect(coordinator.sentMessages, ['委托发送测试']);
+    });
+
+    test('chat controller delegates confirm and cancel tool actions to coordinator',
+        () async {
+      final databaseHelper = DatabaseHelper();
+      final coordinator = _FakeChatSendCoordinator();
+      final sessionCoordinator = _FakeChatSessionCoordinator();
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(
+          toolPreparationResult: const ToolPreparationResult.noTool(),
+        ),
+        coordinator: coordinator,
+        sessionCoordinator: sessionCoordinator,
+      );
+      addTearDown(container.dispose);
+
+      final message = ChatMessage(
+        id: 42,
+        text: '准备执行工具：创建提醒',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.actionConfirmation,
+        payloadJson: const {
+          'toolName': 'create_reminder',
+          'arguments': {'title': '交周报'},
+          'status': 'awaitingConfirmation',
+          'summary': '准备执行工具：创建提醒',
+          'requiresConfirmation': true,
+        },
+      );
+
+      await container
+          .read(chatControllerProvider)
+          .confirmToolInvocation(message, trustTool: true);
+      await container.read(chatControllerProvider).cancelToolInvocation(message);
+
+      expect(coordinator.confirmedMessages, [message]);
+      expect(coordinator.confirmedTrustFlags, [true]);
+      expect(coordinator.cancelledMessages, [message]);
+      expect(sessionCoordinator.loadGroupsCalls, 0);
+    });
+
+    test('chat controller delegates session lifecycle actions to session coordinator',
+        () async {
+      final databaseHelper = DatabaseHelper();
+      final sessionCoordinator = _FakeChatSessionCoordinator();
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(
+          toolPreparationResult: const ToolPreparationResult.noTool(),
+        ),
+        sessionCoordinator: sessionCoordinator,
+      );
+      addTearDown(container.dispose);
+
+      final group = ChatGroup(id: 7, title: 'group');
+
+      await container.read(chatControllerProvider).loadGroups();
+      await container.read(chatControllerProvider).loadCurrentGroup();
+      await container.read(chatControllerProvider).createNewGroup();
+      await container.read(chatControllerProvider).loadMessages();
+      await container.read(chatControllerProvider).loadMoreMessages();
+      await container.read(chatControllerProvider).selectGroup(group);
+
+      expect(sessionCoordinator.loadGroupsCalls, 1);
+      expect(sessionCoordinator.loadCurrentGroupCalls, 1);
+      expect(sessionCoordinator.createNewGroupCalls, 1);
+      expect(sessionCoordinator.loadMessagesCalls, 1);
+      expect(sessionCoordinator.loadMoreMessagesCalls, 1);
+      expect(sessionCoordinator.selectedGroups, [group]);
+    });
+
+    test('chat controller delegates deleteGroup to session coordinator',
+        () async {
+      final databaseHelper = DatabaseHelper();
+      final sessionCoordinator = _FakeChatSessionCoordinator();
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService:
+            _FakeChatService(toolPreparationResult: const ToolPreparationResult.noTool()),
+        sessionCoordinator: sessionCoordinator,
+      );
+      addTearDown(container.dispose);
+
+      await container.read(chatControllerProvider).deleteGroup(42);
+
+      expect(sessionCoordinator.deletedGroupIds, [42]);
+    });
+
+    test('chat controller delegates summary lifecycle to summary controller',
+        () async {
+      final databaseHelper = DatabaseHelper();
+      final summaryController = _FakeChatSummaryController();
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(
+          toolPreparationResult: const ToolPreparationResult.noTool(),
+        ),
+        summaryController: summaryController,
+      );
+      addTearDown(container.dispose);
+
+      final summary =
+          await container.read(chatControllerProvider).summarizeAndUpdateTitle();
+      container.read(chatControllerProvider).cancelAutoSummaryTimer();
+
+      expect(summary, 'fake-summary');
+      expect(summaryController.summarizeCalls, 1);
+      expect(summaryController.cancelTimerCalls, 1);
+    });
+
+    test('chat controller delegates debug structuring to debug controller',
+        () async {
+      final databaseHelper = DatabaseHelper();
+      final debugController = _FakeChatDebugController();
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(
+          toolPreparationResult: const ToolPreparationResult.noTool(),
+        ),
+        debugController: debugController,
+      );
+      addTearDown(container.dispose);
+
+      final message = ChatMessage(
+        text: 'debug me',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+      );
+
+      await container.read(chatControllerProvider).structureMessageForDebug(message);
+
+      expect(debugController.messages, [message]);
+    });
+
+    test('chat controller delegates preferences lifecycle to preferences controller',
+        () async {
+      final databaseHelper = DatabaseHelper();
+      final preferencesController = _FakeChatPreferencesController();
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(
+          toolPreparationResult: const ToolPreparationResult.noTool(),
+        ),
+        preferencesController: preferencesController,
+      );
+      addTearDown(container.dispose);
+
+      await container.read(chatControllerProvider).setSystemPrompt('new prompt');
+      container.read(chatControllerProvider).setUseReasoning(true);
+      container.read(chatControllerProvider).setUseConciseMode(true);
+
+      expect(preferencesController.systemPrompts, ['new prompt']);
+      expect(preferencesController.reasoningValues, [true]);
+      expect(preferencesController.conciseValues, [true]);
     });
 
     test('需要确认的工具会让发送事务停留在 awaitingConfirmation', () async {
       final databaseHelper = DatabaseHelper();
       final chatService = _FakeChatService(
         toolPreparationResult: const ToolPreparationResult(
-          toolInvocation: const ToolInvocation(
+          toolInvocation: ToolInvocation(
             toolName: 'create_reminder',
             arguments: {'title': '交周报'},
             status: ToolInvocationStatus.awaitingConfirmation,
@@ -372,7 +694,7 @@ void main() {
             requiresConfirmation: true,
           ),
           toolResult: null,
-          additionalContextMessages: const [],
+          additionalContextMessages: [],
         ),
       );
       final container = _createContainer(
@@ -393,8 +715,201 @@ void main() {
         container.read(sendPhaseProvider),
         ChatSendPhase.awaitingConfirmation,
       );
+      expect(
+        container.read(chatSendStateProvider).phase,
+        ChatSendPhase.awaitingConfirmation,
+      );
+      expect(container.read(chatSendStateProvider).isGenerating, isFalse);
 
       await databaseHelper.deleteGroup(groupId);
+    });
+
+    test('buildChatSendTransactionDraft only keeps completed user-assistant pairs in history', () {
+      final draft = buildChatSendTransactionDraft(
+        text: '新的用户消息',
+        currentMessages: [
+          ChatMessage(
+            text: '第一轮问题',
+            role: MessageRole.user,
+            status: MessageStatus.completed,
+          ),
+          ChatMessage(
+            text: '第一轮回答',
+            role: MessageRole.assistant,
+            status: MessageStatus.completed,
+          ),
+          ChatMessage(
+            text: '第二轮问题',
+            role: MessageRole.user,
+            status: MessageStatus.completed,
+          ),
+          ChatMessage(
+            text: '第二轮回答仍在生成',
+            role: MessageRole.assistant,
+            status: MessageStatus.generating,
+          ),
+          ChatMessage(
+            text: '工具结果消息',
+            role: MessageRole.assistant,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.toolResult,
+          ),
+        ],
+      );
+
+      expect(draft.userMessage.text, '新的用户消息');
+      expect(draft.userMessage.isUser, isTrue);
+      expect(draft.assistantPlaceholder.isAssistant, isTrue);
+      expect(draft.assistantPlaceholder.status, MessageStatus.generating);
+      expect(draft.historyMessages, hasLength(2));
+      expect(draft.historyMessages.first.text, '第一轮问题');
+      expect(draft.historyMessages.last.text, '第一轮回答');
+    });
+
+    test('resolveToolPreparationDraft enters awaitingConfirmation and preserves tool context history', () {
+      final resolved = resolveToolPreparationDraft(
+        historyMessages: [
+          ChatMessage(
+            text: '既有历史',
+            role: MessageRole.system,
+            status: MessageStatus.completed,
+          ),
+        ],
+        toolPreparationResult: ToolPreparationResult(
+          toolInvocation: const ToolInvocation(
+            toolName: 'create_reminder',
+            arguments: {'title': '交周报'},
+            status: ToolInvocationStatus.awaitingConfirmation,
+            summary: '准备执行工具：创建提醒',
+            requiresConfirmation: true,
+          ),
+          toolResult: null,
+          additionalContextMessages: [
+            ChatMessage(
+              text: '额外工具上下文',
+              role: MessageRole.system,
+              status: MessageStatus.completed,
+            ),
+          ],
+        ),
+      );
+
+      expect(resolved.requiresConfirmation, isTrue);
+      expect(resolved.nextPhase, ChatSendPhase.awaitingConfirmation);
+      expect(resolved.toolContextHistory, hasLength(2));
+      expect(resolved.toolContextHistory.last.text, '额外工具上下文');
+    });
+
+    test('resolveConfirmedToolExecutionDraft builds running invocation and optional tool result message', () {
+      final sourceMessage = ChatMessage(
+        id: 9,
+        text: '准备执行工具：创建提醒',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.actionConfirmation,
+        payloadJson: const {
+          'toolName': 'create_reminder',
+        },
+      );
+
+      final resolved = resolveConfirmedToolExecutionDraft(
+        sourceMessage: sourceMessage,
+        invocation: const ToolInvocation(
+          toolName: 'create_reminder',
+          arguments: {'title': '交周报'},
+          status: ToolInvocationStatus.awaitingConfirmation,
+          summary: '准备执行工具：创建提醒',
+          requiresConfirmation: true,
+        ),
+        executionResult: const ToolPreparationResult(
+          toolInvocation: ToolInvocation(
+            toolName: 'create_reminder',
+            arguments: {'title': '交周报'},
+            status: ToolInvocationStatus.running,
+            summary: '正在执行工具：创建提醒',
+            requiresConfirmation: false,
+          ),
+          toolResult: ToolResult(
+            toolName: 'create_reminder',
+            status: ToolExecutionStatus.success,
+            summary: '已创建提醒：交周报',
+            data: {'title': '交周报'},
+          ),
+          additionalContextMessages: [],
+        ),
+      );
+
+      expect(
+        resolved.runningMessage.contentType,
+        MessageContentType.toolInvocation,
+      );
+      expect(resolved.runningMessage.text, '正在执行工具：创建提醒');
+      expect(resolved.toolResultMessage, isNotNull);
+      expect(
+        resolved.toolResultMessage!.contentType,
+        MessageContentType.toolResult,
+      );
+      expect(resolved.toolResultMessage!.text, '已创建提醒：交周报');
+    });
+
+    test('resolveStreamingAssistantDelta parses content chunks', () {
+      final delta = resolveStreamingAssistantDelta(
+        jsonEncode({
+          'type': 'content',
+          'content': '第一段回答',
+        }),
+      );
+
+      expect(delta.kind, StreamingAssistantDeltaKind.content);
+      expect(delta.content, '第一段回答');
+    });
+
+    test('resolveStreamingAssistantDelta parses reasoning chunks', () {
+      final delta = resolveStreamingAssistantDelta(
+        jsonEncode({
+          'type': 'reasoning',
+          'content': '先分析约束',
+        }),
+      );
+
+      expect(delta.kind, StreamingAssistantDeltaKind.reasoning);
+      expect(delta.content, '先分析约束');
+    });
+
+    test(
+        'resolveStreamingAssistantCompletionDraft skips finalization for interrupted message',
+        () {
+      final draft = resolveStreamingAssistantCompletionDraft(
+        assistantMessageId: 99,
+        assistantMessage: ChatMessage(
+          id: 99,
+          text: '已被中断',
+          role: MessageRole.assistant,
+          status: MessageStatus.interrupted,
+        ),
+      );
+
+      expect(draft.shouldPersistStatusUpdate, isFalse);
+      expect(draft.shouldSetIdlePhase, isFalse);
+      expect(draft.shouldStopGenerating, isFalse);
+      expect(draft.shouldScheduleAutoSummary, isFalse);
+      expect(draft.traceEntry, isNull);
+    });
+
+    test('resolveStreamingAssistantFailureDraft finalizes failed phase and trace',
+        () {
+      final draft = resolveStreamingAssistantFailureDraft(
+        assistantMessageId: 7,
+        error: StateError('network'),
+      );
+
+      expect(draft.assistantMessageId, 7);
+      expect(draft.nextStatus, MessageStatus.failed);
+      expect(draft.shouldPersistStatusUpdate, isTrue);
+      expect(draft.shouldSetIdlePhase, isTrue);
+      expect(draft.shouldStopGenerating, isTrue);
+      expect(draft.traceEntry?.stage, ChatTraceStage.sendFailed);
+      expect(draft.traceEntry?.status, ChatTraceStatus.failure);
     });
   });
 }
@@ -402,11 +917,30 @@ void main() {
 ProviderContainer _createContainer({
   required DatabaseHelper databaseHelper,
   required ChatService chatService,
+  ChatTraceRecorder? traceRecorder,
+  ChatSendCoordinator? coordinator,
+  ChatSessionCoordinator? sessionCoordinator,
+  ChatSummaryController? summaryController,
+  ChatDebugController? debugController,
+  ChatPreferencesController? preferencesController,
 }) {
   return ProviderContainer(
     overrides: [
       databaseProvider.overrideWith((ref) => databaseHelper),
       chatServiceProvider.overrideWith((ref) => chatService),
+      if (coordinator != null)
+        chatSendCoordinatorProvider.overrideWith((ref) => coordinator),
+      if (sessionCoordinator != null)
+        chatSessionCoordinatorProvider.overrideWith((ref) => sessionCoordinator),
+      if (summaryController != null)
+        chatSummaryControllerProvider.overrideWith((ref) => summaryController),
+      if (debugController != null)
+        chatDebugControllerProvider.overrideWith((ref) => debugController),
+      if (preferencesController != null)
+        chatPreferencesControllerProvider
+            .overrideWith((ref) => preferencesController),
+      if (traceRecorder != null)
+        traceRecorderProvider.overrideWith((ref) => traceRecorder),
       scrollControllerProvider.overrideWith((ref) => ScrollController()),
       textControllerProvider.overrideWith((ref) => TextEditingController()),
       focusNodeProvider.overrideWith((ref) => FocusNode()),
@@ -421,6 +955,7 @@ class _FakeChatService extends ChatService {
   final List<String> preparedUserMessages = [];
   final List<List<ChatMessage>> streamHistories = [];
   final List<bool> confirmedTrustFlags = [];
+  final List<String?> confirmedTurnIds = [];
 
   _FakeChatService({
     required this.toolPreparationResult,
@@ -434,6 +969,7 @@ class _FakeChatService extends ChatService {
     required int groupId,
     required String userMessage,
     required List<ChatMessage> history,
+    String? turnId,
   }) async {
     preparedUserMessages.add(userMessage);
     final pendingPrepare = prepareCompleter;
@@ -447,8 +983,9 @@ class _FakeChatService extends ChatService {
   Stream<String> sendMessageStream(
     String message,
     List<ChatMessage> history,
-    ChatConfig config,
-  ) async* {
+    ChatConfig config, {
+    String? turnId,
+  }) async* {
     streamHistories.add(history);
     yield jsonEncode({'type': 'content', 'content': '最终回答'});
   }
@@ -458,8 +995,10 @@ class _FakeChatService extends ChatService {
     required int groupId,
     required ToolInvocation invocation,
     bool trustTool = false,
+    String? turnId,
   }) async {
     confirmedTrustFlags.add(trustTool);
+    confirmedTurnIds.add(turnId);
     return confirmedToolResult ?? const ToolPreparationResult.noTool();
   }
 }
@@ -494,4 +1033,128 @@ class _NoopBaseLLM implements BaseLLM {
 
   @override
   Future<bool> validateApiKey(ChatConfig config) async => true;
+}
+
+class _FakeChatSendCoordinator implements ChatSendCoordinator {
+  final List<String> sentMessages = [];
+  final List<ChatMessage> confirmedMessages = [];
+  final List<bool> confirmedTrustFlags = [];
+  final List<ChatMessage> cancelledMessages = [];
+
+  @override
+  Future<void> sendMessage(
+    String text, {
+    required VoidCallback scheduleAutoSummary,
+    required VoidCallback cancelActiveStream,
+  }) async {
+    sentMessages.add(text);
+  }
+
+  @override
+  Future<void> confirmToolInvocation(
+    ChatMessage message, {
+    bool trustTool = false,
+  }) async {
+    confirmedMessages.add(message);
+    confirmedTrustFlags.add(trustTool);
+  }
+
+  @override
+  Future<void> cancelToolInvocation(ChatMessage message) async {
+    cancelledMessages.add(message);
+  }
+}
+
+class _FakeChatSessionCoordinator implements ChatSessionCoordinator {
+  int loadGroupsCalls = 0;
+  int loadCurrentGroupCalls = 0;
+  int createNewGroupCalls = 0;
+  int loadMessagesCalls = 0;
+  int loadMoreMessagesCalls = 0;
+  final List<ChatGroup> selectedGroups = [];
+  final List<int> deletedGroupIds = [];
+
+  @override
+  Future<void> createNewGroup() async {
+    createNewGroupCalls += 1;
+  }
+
+  @override
+  Future<void> loadCurrentGroup() async {
+    loadCurrentGroupCalls += 1;
+  }
+
+  @override
+  Future<void> loadGroups() async {
+    loadGroupsCalls += 1;
+  }
+
+  @override
+  Future<void> loadMessages() async {
+    loadMessagesCalls += 1;
+  }
+
+  @override
+  Future<void> loadMoreMessages() async {
+    loadMoreMessagesCalls += 1;
+  }
+
+  @override
+  Future<void> selectGroup(ChatGroup group) async {
+    selectedGroups.add(group);
+  }
+
+  @override
+  Future<void> deleteGroup(int id) async {
+    deletedGroupIds.add(id);
+  }
+}
+
+class _FakeChatSummaryController implements ChatSummaryController {
+  int summarizeCalls = 0;
+  int cancelTimerCalls = 0;
+
+  @override
+  void cancelAutoSummaryTimer() {
+    cancelTimerCalls += 1;
+  }
+
+  @override
+  void scheduleAutoSummary() {}
+
+  @override
+  Future<String?> summarizeAndUpdateTitle() async {
+    summarizeCalls += 1;
+    return 'fake-summary';
+  }
+}
+
+class _FakeChatDebugController implements ChatDebugController {
+  final List<ChatMessage> messages = [];
+
+  @override
+  Future<void> structureMessageForDebug(ChatMessage message) async {
+    messages.add(message);
+  }
+}
+
+class _FakeChatPreferencesController implements ChatPreferencesController {
+  final List<String?> systemPrompts = [];
+  final List<bool> reasoningValues = [];
+  final List<bool> conciseValues = [];
+
+  @override
+  Future<void> setSystemPrompt(String? prompt) async {
+    systemPrompts.add(prompt);
+  }
+
+  @override
+  void setUseConciseMode(bool value) {
+    conciseValues.add(value);
+  }
+
+  @override
+  void setUseReasoning(bool value) {
+    reasoningValues.add(value);
+  }
 }

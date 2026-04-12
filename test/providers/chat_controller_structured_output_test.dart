@@ -27,8 +27,8 @@ void main() {
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: _FakeChatService(
-          result: StructuredSummaryParseResult.structured(
-            const StructuredSummaryCard(
+          result: const StructuredSummaryParseResult.structured(
+            StructuredSummaryCard(
               title: 'Weekly Summary',
               summary: 'A short summary',
               keyPoints: ['A'],
