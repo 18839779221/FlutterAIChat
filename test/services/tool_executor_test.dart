@@ -1,5 +1,7 @@
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/services/tool_executor.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -290,6 +292,22 @@ class _FakeChatStorage implements ChatStorage {
 
   @override
   Future<void> deleteGroup(int groupId) => throw UnimplementedError();
+
+  @override
+  Future<int> insertTurn(ChatTurn turn) => throw UnimplementedError();
+
+  @override
+  Future<ChatTurn?> getTurn(int id) => throw UnimplementedError();
+
+  @override
+  Future<void> updateTurn(ChatTurn turn) => throw UnimplementedError();
+
+  @override
+  Future<int> insertEvent(ChatEvent event) => throw UnimplementedError();
+
+  @override
+  Future<List<ChatEvent>> getEventsByTurn(int turnId) =>
+      throw UnimplementedError();
 
   @override
   Future<int> insertMessage(ChatMessage message, int groupId) =>

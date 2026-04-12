@@ -6,8 +6,8 @@ class ToolRuntimeRegistry {
   ToolRuntimeRegistry({
     required List<ToolHandler> handlers,
   }) : _handlersByName = {
-          for (final handler in handlers) handler.definition.name: handler,
-        };
+         for (final handler in handlers) handler.definition.name: handler,
+       };
 
   final Map<String, ToolHandler> _handlersByName;
 

@@ -20,6 +20,16 @@ void main() {
       expect(registry.findHandler('missing_tool'), isNull);
     });
 
+    test('does not resolve unknown tool names that are not explicitly registered', () {
+      final registry = ToolRuntimeRegistry(
+        handlers: [
+          _FakeToolHandler(toolName: 'web_search'),
+        ],
+      );
+
+      expect(registry.findHandler('search_news'), isNull);
+    });
+
     test('exposes all tool definitions for decision service', () {
       final registry = ToolRuntimeRegistry(
         handlers: [

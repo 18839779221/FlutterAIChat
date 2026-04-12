@@ -2,8 +2,6 @@ import 'dart:io';
 
 import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/chat_group.dart';
-import 'package:ai_chat/models/chat_message.dart';
-import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -13,77 +11,81 @@ void main() {
     databaseFactory = databaseFactoryFfi;
   });
 
-  test('DatabaseHelper schema includes typed message columns and v6 upgrade path', () {
+  test('DatabaseHelper schema includes turn and event tables in v7', () {
     final source = File('lib/database/database_helper.dart').readAsStringSync();
 
-    expect(source, contains('version: 6'));
+    expect(source, contains('version: 7'));
     expect(
       source,
-      contains(RegExp(r"content_type\s+TEXT\s+NOT\s+NULL\s+DEFAULT\s+'plainText'")),
-    );
-    expect(source, contains(RegExp(r'payload_json\s+TEXT')));
-    expect(source, contains(RegExp(r'reference_json\s+TEXT')));
-    expect(source, contains('if (oldVersion < 6)'));
-    expect(
-      source,
-      contains(
-        RegExp(
-          r"ALTER\s+TABLE\s+messages\s+ADD\s+COLUMN\s+content_type\s+TEXT\s+NOT\s+NULL\s+DEFAULT\s+'plainText'",
-        ),
-      ),
+      contains(RegExp(r'CREATE TABLE chat_turns \(')),
     );
     expect(
       source,
-      contains(
-        RegExp(
-          r'ALTER\s+TABLE\s+messages\s+ADD\s+COLUMN\s+payload_json\s+TEXT',
-        ),
-      ),
+      contains(RegExp(r'CREATE TABLE chat_events \(')),
     );
+    expect(source, contains(RegExp(r'sequence INTEGER NOT NULL')));
     expect(
       source,
-      contains(
-        RegExp(
-          r'ALTER\s+TABLE\s+messages\s+ADD\s+COLUMN\s+reference_json\s+TEXT',
-        ),
-      ),
+      contains(RegExp(r'CREATE UNIQUE INDEX idx_chat_events_turn_id_sequence')),
     );
+    expect(source, contains('if (oldVersion < 7)'));
   });
 
-  test('DatabaseHelper can persist structured message completion updates', () async {
-    final helper = DatabaseHelper();
-    final groupId = await helper.insertGroup(
-      ChatGroup(title: 'structured output test group'),
+  test('DatabaseHelper creates turn and event tables with unique sequence per turn', () async {
+    final helper = DatabaseHelper(databaseName: 'database_helper_test.db');
+    final db = await helper.database;
+
+    final tables = await db.rawQuery('''
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table' AND name IN ('chat_turns', 'chat_events')
+      ORDER BY name
+    ''');
+
+    expect(
+      tables.map((row) => row['name']).toList(),
+      ['chat_events', 'chat_turns'],
     );
 
-    final message = ChatMessage(
-      text: 'placeholder',
-      role: MessageRole.assistant,
-      status: MessageStatus.generating,
-    );
-    final messageId = await helper.insertMessage(message, groupId);
+    final indexes = await db.rawQuery('''
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'index' AND name = 'idx_chat_events_turn_id_sequence'
+    ''');
 
-    await helper.updateStructuredMessage(
-      messageId,
-      text: 'Structured fallback text',
-      status: MessageStatus.completed,
-      contentType: MessageContentType.structuredCard,
-      payloadJson: '{"title":"Weekly Summary","summary":"A short summary","keyPoints":["A"],"actionItems":["B"],"risks":["C"]}',
-    );
+    expect(indexes, isNotEmpty);
 
-    final messages = await helper.getMessagesByGroup(groupId);
-    final persisted = messages.singleWhere((item) => item.id == messageId);
-
-    expect(persisted.text, 'Structured fallback text');
-    expect(persisted.status, MessageStatus.completed);
-    expect(persisted.contentType, MessageContentType.structuredCard);
-    expect(persisted.payloadJson, {
-      'title': 'Weekly Summary',
-      'summary': 'A short summary',
-      'keyPoints': ['A'],
-      'actionItems': ['B'],
-      'risks': ['C'],
+    final groupId = await helper.insertGroup(ChatGroup(title: 'agent loop schema group'));
+    final turnId = await db.insert('chat_turns', {
+      'group_id': groupId,
+      'status': 'running',
+      'user_input': '测试 agent turn',
+      'iteration_count': 0,
+      'tool_call_count': 0,
+      'created_at': DateTime.now().millisecondsSinceEpoch,
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
     });
+
+    await db.insert('chat_events', {
+      'turn_id': turnId,
+      'group_id': groupId,
+      'sequence': 1,
+      'event_type': 'userMessage',
+      'role': 'user',
+      'created_at': DateTime.now().millisecondsSinceEpoch,
+    });
+
+    expect(
+      () => db.insert('chat_events', {
+        'turn_id': turnId,
+        'group_id': groupId,
+        'sequence': 1,
+        'event_type': 'assistantTextDelta',
+        'role': 'assistant',
+        'created_at': DateTime.now().millisecondsSinceEpoch,
+      }),
+      throwsA(isA<Exception>()),
+    );
 
     await helper.deleteGroup(groupId);
   });

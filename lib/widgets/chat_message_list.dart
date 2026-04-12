@@ -247,7 +247,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
                   ? null
                   : () => _showMessageOptionMenu(sourceMessage),
               child: FinalResponseBlock(
-                title: block.title ?? 'Final Response',
+                title: block.title ?? '最终回答',
                 text: block.text ?? '',
               ),
             ),

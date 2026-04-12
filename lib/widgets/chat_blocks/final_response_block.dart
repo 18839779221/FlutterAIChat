@@ -1,4 +1,3 @@
-import 'package:ai_chat/theme/app_colors.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
 import 'package:flutter/material.dart';
@@ -30,7 +29,7 @@ class FinalResponseBlock extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (title.trim().isNotEmpty && title != 'Final Response') ...[
+            if (title.trim().isNotEmpty && title != '最终回答') ...[
               Text(
                 title,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
