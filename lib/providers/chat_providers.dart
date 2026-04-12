@@ -656,6 +656,323 @@ final focusNodeProvider = Provider<FocusNode>((ref) {
 final streamSubscriptionProvider =
     StateProvider<StreamSubscription?>((ref) => null);
 
+abstract class ChatSendCoordinator {
+  Future<void> sendMessage(
+    String text, {
+    required VoidCallback scheduleAutoSummary,
+    required VoidCallback cancelActiveStream,
+  });
+}
+
+final chatSendCoordinatorProvider = Provider<ChatSendCoordinator>((ref) {
+  return DefaultChatSendCoordinator(ref);
+});
+
+class DefaultChatSendCoordinator implements ChatSendCoordinator {
+  static const String _tag = 'ChatSendCoordinator';
+
+  final Ref _ref;
+
+  DefaultChatSendCoordinator(this._ref);
+
+  @override
+  Future<void> sendMessage(
+    String text, {
+    required VoidCallback scheduleAutoSummary,
+    required VoidCallback cancelActiveStream,
+  }) async {
+    if (text.trim().isEmpty) return;
+
+    final currentGroup = _ref.read(currentGroupProvider);
+    if (currentGroup == null) return;
+
+    _ref.read(focusNodeProvider).unfocus();
+    Logger.d(
+      _tag,
+      '准备发送新消息: ${text.substring(0, text.length.clamp(0, 50))}...',
+    );
+
+    cancelActiveStream();
+    _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.preparing;
+    final traceRecorder = _ref.read(traceRecorderProvider);
+    final turnId = traceRecorder.newTurnId();
+    traceRecorder.record(
+      turnId: turnId,
+      stage: ChatTraceStage.sendStart,
+      status: ChatTraceStatus.started,
+      summary: '开始发送消息',
+      data: {
+        'groupId': currentGroup.id,
+        'userMessagePreview': text.substring(0, text.length.clamp(0, 80)),
+      },
+    );
+
+    _ref.read(autoScrollToBottomProvider.notifier).state = true;
+
+    if (currentGroup.id == null) {
+      try {
+        final dbHelper = _ref.read(databaseProvider);
+        final newGroup = currentGroup.copyWith(title: text);
+        final groupId = await dbHelper.insertGroup(newGroup);
+        _ref.read(currentGroupProvider.notifier).state =
+            newGroup.copyWith(id: groupId);
+        await _loadGroups();
+      } catch (e) {
+        Logger.e(_tag, '保存新分组失败', e);
+        traceRecorder.record(
+          turnId: turnId,
+          stage: ChatTraceStage.sendFailed,
+          status: ChatTraceStatus.failure,
+          summary: '保存新分组失败',
+          data: {
+            'error': e.toString(),
+          },
+        );
+        return;
+      }
+    }
+
+    final sendDraft = buildChatSendTransactionDraft(
+      text: text,
+      currentMessages: List<ChatMessage>.from(_ref.read(messagesProvider)),
+    );
+    final userMessage = sendDraft.userMessage;
+
+    _ref.read(messagesProvider.notifier).addMessage(userMessage);
+    await Future.delayed(const Duration(milliseconds: 1));
+
+    final aiMessage = sendDraft.assistantPlaceholder;
+
+    try {
+      final dbHelper = _ref.read(databaseProvider);
+      final currentGroupId = _ref.read(currentGroupProvider)!.id!;
+
+      Logger.d(_tag, '保存用户消息到数据库...');
+      final userMessageId =
+          await dbHelper.insertMessage(userMessage, currentGroupId);
+      userMessage.id = userMessageId;
+
+      final historyMessages = sendDraft.historyMessages;
+
+      Logger.d(_tag, '开始接收AI响应流，有效对话对数量: ${historyMessages.length / 2}');
+
+      final chatService = _ref.read(chatServiceProvider);
+      final toolPreparationResult = await chatService.prepareToolAssistance(
+        groupId: currentGroupId,
+        userMessage: text,
+        history: historyMessages,
+        turnId: turnId,
+      );
+      Logger.i(
+        _tag,
+        '工具预处理结果: invocation=${toolPreparationResult.toolInvocation?.toolName ?? 'none'}, '
+        'invocationStatus=${toolPreparationResult.toolInvocation?.status.name ?? 'none'}, '
+        'hasToolResult=${toolPreparationResult.toolResult != null}, '
+        'extraContext=${toolPreparationResult.additionalContextMessages.length}',
+      );
+      final toolPreparationDraft = resolveToolPreparationDraft(
+        historyMessages: historyMessages,
+        toolPreparationResult: toolPreparationResult,
+      );
+      final toolContextHistory = toolPreparationDraft.toolContextHistory;
+
+      if (toolPreparationDraft.requiresConfirmation) {
+        _ref.read(sendPhaseProvider.notifier).state =
+            toolPreparationDraft.nextPhase;
+        final confirmationMessage = ChatMessage(
+          text: toolPreparationResult.toolInvocation!.summary,
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.actionConfirmation,
+          payloadJson: toolPreparationResult.toolInvocation!.toJson(),
+        );
+        final confirmationMessageId =
+            await dbHelper.insertMessage(confirmationMessage, currentGroupId);
+        confirmationMessage.id = confirmationMessageId;
+        _ref.read(messagesProvider.notifier).addMessage(confirmationMessage);
+        traceRecorder.record(
+          turnId: turnId,
+          stage: ChatTraceStage.sendDone,
+          status: ChatTraceStatus.success,
+          summary: '发送进入确认态',
+          data: {
+            'phase': ChatSendPhase.awaitingConfirmation.name,
+            'toolName': toolPreparationResult.toolInvocation!.toolName,
+          },
+        );
+        return;
+      }
+
+      if (toolPreparationResult.toolResult != null) {
+        final toolMessage = ChatMessage(
+          text: toolPreparationResult.toolResult!.displayText,
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.toolResult,
+          payloadJson: toolPreparationResult.toolResult!.toJson(),
+        );
+        final toolMessageId =
+            await dbHelper.insertMessage(toolMessage, currentGroupId);
+        toolMessage.id = toolMessageId;
+        _ref.read(messagesProvider.notifier).addMessage(toolMessage);
+      }
+
+      Logger.d(_tag, '创建AI消息占位...');
+      final aiMessageId = await dbHelper.insertMessage(aiMessage, currentGroupId);
+      aiMessage.id = aiMessageId;
+      _ref.read(messagesProvider.notifier).addMessage(aiMessage);
+
+      _ref.read(isGeneratingProvider.notifier).state = true;
+      _ref.read(sendPhaseProvider.notifier).state =
+          toolPreparationDraft.nextPhase;
+
+      final systemPrompt = _ref.read(systemPromptProvider) ?? "";
+      final useReasoning = _ref.read(useReasoningProvider);
+
+      final subscription = chatService
+          .sendMessageStream(
+        text,
+        toolContextHistory,
+        ChatConfig(useReasoning: useReasoning, systemPrompt: systemPrompt),
+        turnId: turnId,
+      )
+          .listen(
+        (content) async {
+          final delta = resolveStreamingAssistantDelta(content);
+          switch (delta.kind) {
+            case StreamingAssistantDeltaKind.content:
+              Logger.d(_tag, '收到AI响应片段: ${delta.content}');
+              _ref
+                  .read(messagesProvider.notifier)
+                  .appendToMessage(aiMessageId, delta.content);
+              await dbHelper.updateMessage(aiMessageId, aiMessage.text);
+              break;
+            case StreamingAssistantDeltaKind.reasoning:
+              Logger.d(_tag, '收到推理内容: ${delta.content}');
+              _ref
+                  .read(messagesProvider.notifier)
+                  .appendReasoningToMessage(aiMessageId, delta.content);
+              await dbHelper.updateMessageReasoning(
+                  aiMessageId, aiMessage.reasoningContent);
+              break;
+            case StreamingAssistantDeltaKind.ignored:
+              Logger.d(_tag, '忽略无法识别的流式响应片段');
+              break;
+          }
+        },
+        onError: (error) {
+          Logger.e(_tag, 'AI响应出错', error);
+          final failureDraft = resolveStreamingAssistantFailureDraft(
+            assistantMessageId: aiMessageId,
+            error: error,
+          );
+          if (failureDraft.shouldPersistStatusUpdate) {
+            _ref
+                .read(messagesProvider.notifier)
+                .updateMessageStatus(aiMessageId, failureDraft.nextStatus);
+            dbHelper.updateMessageStatus(aiMessageId, failureDraft.nextStatus);
+          }
+          if (failureDraft.shouldStopGenerating) {
+            _ref.read(isGeneratingProvider.notifier).state = false;
+          }
+          if (failureDraft.shouldSetIdlePhase) {
+            _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
+          }
+          final traceEntry = failureDraft.traceEntry;
+          if (traceEntry != null) {
+            traceRecorder.record(
+              turnId: turnId,
+              stage: traceEntry.stage,
+              status: traceEntry.status,
+              summary: traceEntry.summary,
+              data: traceEntry.data,
+            );
+          }
+        },
+        onDone: () {
+          Logger.i(_tag, 'AI响应完成');
+          final latestAssistantMessage = _findMessageById(aiMessageId) ?? aiMessage;
+          final completionDraft = resolveStreamingAssistantCompletionDraft(
+            assistantMessageId: aiMessageId,
+            assistantMessage: latestAssistantMessage,
+          );
+          if (completionDraft.shouldPersistStatusUpdate) {
+            _ref
+                .read(messagesProvider.notifier)
+                .updateMessageStatus(aiMessageId, completionDraft.nextStatus);
+            dbHelper.updateMessageStatus(aiMessageId, completionDraft.nextStatus);
+          }
+          if (completionDraft.shouldStopGenerating) {
+            _ref.read(isGeneratingProvider.notifier).state = false;
+          }
+          if (completionDraft.shouldSetIdlePhase) {
+            _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
+          }
+          final traceEntry = completionDraft.traceEntry;
+          if (traceEntry != null) {
+            traceRecorder.record(
+              turnId: turnId,
+              stage: traceEntry.stage,
+              status: traceEntry.status,
+              summary: traceEntry.summary,
+              data: traceEntry.data,
+            );
+          }
+          if (completionDraft.shouldScheduleAutoSummary) {
+            scheduleAutoSummary();
+          }
+        },
+        cancelOnError: true,
+      );
+
+      _ref.read(streamSubscriptionProvider.notifier).state = subscription;
+    } catch (e, stackTrace) {
+      Logger.e(_tag, '发送消息过程中出错', e);
+      Logger.e(_tag, '堆栈跟踪', stackTrace);
+      traceRecorder.record(
+        turnId: turnId,
+        stage: ChatTraceStage.sendFailed,
+        status: ChatTraceStatus.failure,
+        summary: '发送消息过程中出错',
+        data: {
+          'error': e.toString(),
+        },
+      );
+      if (aiMessage.id != null) {
+        _ref
+            .read(messagesProvider.notifier)
+            .updateMessageStatus(aiMessage.id!, MessageStatus.failed);
+      }
+      _ref.read(isGeneratingProvider.notifier).state = false;
+      _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
+
+      final dbHelper = _ref.read(databaseProvider);
+      if (aiMessage.id != null) {
+        dbHelper.updateMessageStatus(aiMessage.id!, MessageStatus.failed);
+      }
+    }
+  }
+
+  ChatMessage? _findMessageById(int id) {
+    for (final message in _ref.read(messagesProvider)) {
+      if (message.id == id) {
+        return message;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _loadGroups() async {
+    try {
+      final dbHelper = _ref.read(databaseProvider);
+      final groups = await dbHelper.getAllGroups();
+      _ref.read(groupsProvider.notifier).setGroups(groups);
+    } catch (e) {
+      Logger.e(_tag, '加载分组失败', e);
+    }
+  }
+}
+
 // 聊天控制器提供者 - 集中处理业务逻辑
 final chatControllerProvider =
     Provider<ChatController>((ref) => ChatController(ref));
@@ -826,285 +1143,11 @@ class ChatController {
 
   // 发送消息
   Future<void> sendMessage(String text) async {
-    if (text.trim().isEmpty) return;
-
-    final currentGroup = _ref.read(currentGroupProvider);
-    if (currentGroup == null) return;
-
-    _ref.read(focusNodeProvider).unfocus();
-    Logger.d(
-        _tag, '准备发送新消息: ${text.substring(0, text.length.clamp(0, 50))}...');
-
-    cancelStreamSubscription();
-    _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.preparing;
-    final traceRecorder = _ref.read(traceRecorderProvider);
-    final turnId = traceRecorder.newTurnId();
-    traceRecorder.record(
-      turnId: turnId,
-      stage: ChatTraceStage.sendStart,
-      status: ChatTraceStatus.started,
-      summary: '开始发送消息',
-      data: {
-        'groupId': currentGroup.id,
-        'userMessagePreview': text.substring(0, text.length.clamp(0, 80)),
-      },
-    );
-
-    _ref.read(autoScrollToBottomProvider.notifier).state = true;
-
-    // 如果当前分组没有ID，说明是新建的分组，需要先保存到数据库
-    if (currentGroup.id == null) {
-      try {
-        final dbHelper = _ref.read(databaseProvider);
-        // 使用第一条消息作为分组标题
-        final newGroup = currentGroup.copyWith(title: text);
-        final groupId = await dbHelper.insertGroup(newGroup);
-        _ref.read(currentGroupProvider.notifier).state =
-            newGroup.copyWith(id: groupId);
-        // 更新分组列表
-        await loadGroups();
-      } catch (e) {
-        Logger.e(_tag, '保存新分组失败', e);
-        traceRecorder.record(
-          turnId: turnId,
-          stage: ChatTraceStage.sendFailed,
-          status: ChatTraceStatus.failure,
-          summary: '保存新分组失败',
-          data: {
-            'error': e.toString(),
-          },
+    await _ref.read(chatSendCoordinatorProvider).sendMessage(
+          text,
+          scheduleAutoSummary: _scheduleAutoSummary,
+          cancelActiveStream: cancelStreamSubscription,
         );
-        return;
-      }
-    }
-
-    final sendDraft = buildChatSendTransactionDraft(
-      text: text,
-      currentMessages: List<ChatMessage>.from(_ref.read(messagesProvider)),
-    );
-    final userMessage = sendDraft.userMessage;
-
-    // 用户消息必须先进入消息列表，再做后续异步准备，避免发送反馈滞后。
-    _ref.read(messagesProvider.notifier).addMessage(userMessage);
-
-    // 避免消息时间戳一致，延迟1毫秒
-    await Future.delayed(const Duration(milliseconds: 1));
-
-    final aiMessage = sendDraft.assistantPlaceholder;
-
-    try {
-      final dbHelper = _ref.read(databaseProvider);
-      final currentGroupId = _ref.read(currentGroupProvider)!.id!;
-
-      Logger.d(_tag, '保存用户消息到数据库...');
-      final userMessageId =
-          await dbHelper.insertMessage(userMessage, currentGroupId);
-      userMessage.id = userMessageId;
-
-      final historyMessages = sendDraft.historyMessages;
-
-      Logger.d(_tag, '开始接收AI响应流，有效对话对数量: ${historyMessages.length / 2}');
-
-      final chatService = _ref.read(chatServiceProvider);
-      final toolPreparationResult = await chatService.prepareToolAssistance(
-        groupId: currentGroupId,
-        userMessage: text,
-        history: historyMessages,
-        turnId: turnId,
-      );
-      Logger.i(
-        _tag,
-        '工具预处理结果: invocation=${toolPreparationResult.toolInvocation?.toolName ?? 'none'}, '
-        'invocationStatus=${toolPreparationResult.toolInvocation?.status.name ?? 'none'}, '
-        'hasToolResult=${toolPreparationResult.toolResult != null}, '
-        'extraContext=${toolPreparationResult.additionalContextMessages.length}',
-      );
-      final toolPreparationDraft = resolveToolPreparationDraft(
-        historyMessages: historyMessages,
-        toolPreparationResult: toolPreparationResult,
-      );
-      final toolContextHistory = toolPreparationDraft.toolContextHistory;
-
-      if (toolPreparationDraft.requiresConfirmation) {
-        _ref.read(sendPhaseProvider.notifier).state =
-            toolPreparationDraft.nextPhase;
-        final confirmationMessage = ChatMessage(
-          text: toolPreparationResult.toolInvocation!.summary,
-          role: MessageRole.assistant,
-          status: MessageStatus.completed,
-          contentType: MessageContentType.actionConfirmation,
-          payloadJson: toolPreparationResult.toolInvocation!.toJson(),
-        );
-        final confirmationMessageId =
-            await dbHelper.insertMessage(confirmationMessage, currentGroupId);
-        confirmationMessage.id = confirmationMessageId;
-        _ref.read(messagesProvider.notifier).addMessage(confirmationMessage);
-        traceRecorder.record(
-          turnId: turnId,
-          stage: ChatTraceStage.sendDone,
-          status: ChatTraceStatus.success,
-          summary: '发送进入确认态',
-          data: {
-            'phase': ChatSendPhase.awaitingConfirmation.name,
-            'toolName': toolPreparationResult.toolInvocation!.toolName,
-          },
-        );
-        return;
-      }
-
-      if (toolPreparationResult.toolResult != null) {
-        final toolMessage = ChatMessage(
-          text: toolPreparationResult.toolResult!.displayText,
-          role: MessageRole.assistant,
-          status: MessageStatus.completed,
-          contentType: MessageContentType.toolResult,
-          payloadJson: toolPreparationResult.toolResult!.toJson(),
-        );
-        final toolMessageId =
-            await dbHelper.insertMessage(toolMessage, currentGroupId);
-        toolMessage.id = toolMessageId;
-        _ref.read(messagesProvider.notifier).addMessage(toolMessage);
-      }
-
-      Logger.d(_tag, '创建AI消息占位...');
-      final aiMessageId =
-          await dbHelper.insertMessage(aiMessage, currentGroupId);
-      aiMessage.id = aiMessageId;
-      _ref.read(messagesProvider.notifier).addMessage(aiMessage);
-
-      // 设置生成状态
-      _ref.read(isGeneratingProvider.notifier).state = true;
-      _ref.read(sendPhaseProvider.notifier).state =
-          toolPreparationDraft.nextPhase;
-
-      // 获取系统提示词和推理模式设置
-      final systemPrompt = _ref.read(systemPromptProvider) ?? "";
-      final useReasoning = _ref.read(useReasoningProvider);
-
-      // 设置流订阅
-      final subscription = chatService
-          .sendMessageStream(
-        text,
-        toolContextHistory,
-        ChatConfig(useReasoning: useReasoning, systemPrompt: systemPrompt),
-        turnId: turnId,
-      )
-          .listen(
-        (content) async {
-          final delta = resolveStreamingAssistantDelta(content);
-          switch (delta.kind) {
-            case StreamingAssistantDeltaKind.content:
-              Logger.d(_tag, '收到AI响应片段: ${delta.content}');
-              _ref
-                  .read(messagesProvider.notifier)
-                  .appendToMessage(aiMessageId, delta.content);
-              await dbHelper.updateMessage(aiMessageId, aiMessage.text);
-              break;
-            case StreamingAssistantDeltaKind.reasoning:
-              Logger.d(_tag, '收到推理内容: ${delta.content}');
-              _ref
-                  .read(messagesProvider.notifier)
-                  .appendReasoningToMessage(aiMessageId, delta.content);
-              await dbHelper.updateMessageReasoning(
-                  aiMessageId, aiMessage.reasoningContent);
-              break;
-            case StreamingAssistantDeltaKind.ignored:
-              Logger.d(_tag, '忽略无法识别的流式响应片段');
-              break;
-          }
-        },
-        onError: (error) {
-          Logger.e(_tag, 'AI响应出错', error);
-          final failureDraft = resolveStreamingAssistantFailureDraft(
-            assistantMessageId: aiMessageId,
-            error: error,
-          );
-          if (failureDraft.shouldPersistStatusUpdate) {
-            _ref
-                .read(messagesProvider.notifier)
-                .updateMessageStatus(aiMessageId, failureDraft.nextStatus);
-            dbHelper.updateMessageStatus(aiMessageId, failureDraft.nextStatus);
-          }
-          if (failureDraft.shouldStopGenerating) {
-            _ref.read(isGeneratingProvider.notifier).state = false;
-          }
-          if (failureDraft.shouldSetIdlePhase) {
-            _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
-          }
-          final traceEntry = failureDraft.traceEntry;
-          if (traceEntry != null) {
-            traceRecorder.record(
-              turnId: turnId,
-              stage: traceEntry.stage,
-              status: traceEntry.status,
-              summary: traceEntry.summary,
-              data: traceEntry.data,
-            );
-          }
-        },
-        onDone: () {
-          Logger.i(_tag, 'AI响应完成');
-          final latestAssistantMessage = _findMessageById(aiMessageId) ?? aiMessage;
-          final completionDraft = resolveStreamingAssistantCompletionDraft(
-            assistantMessageId: aiMessageId,
-            assistantMessage: latestAssistantMessage,
-          );
-          if (completionDraft.shouldPersistStatusUpdate) {
-            _ref
-                .read(messagesProvider.notifier)
-                .updateMessageStatus(aiMessageId, completionDraft.nextStatus);
-            dbHelper.updateMessageStatus(aiMessageId, completionDraft.nextStatus);
-          }
-          if (completionDraft.shouldStopGenerating) {
-            _ref.read(isGeneratingProvider.notifier).state = false;
-          }
-          if (completionDraft.shouldSetIdlePhase) {
-            _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
-          }
-          final traceEntry = completionDraft.traceEntry;
-          if (traceEntry != null) {
-            traceRecorder.record(
-              turnId: turnId,
-              stage: traceEntry.stage,
-              status: traceEntry.status,
-              summary: traceEntry.summary,
-              data: traceEntry.data,
-            );
-          }
-          if (completionDraft.shouldScheduleAutoSummary) {
-            _scheduleAutoSummary();
-          }
-        },
-        cancelOnError: true,
-      );
-
-      _ref.read(streamSubscriptionProvider.notifier).state = subscription;
-    } catch (e, stackTrace) {
-      Logger.e(_tag, '发送消息过程中出错', e);
-      Logger.e(_tag, '堆栈跟踪', stackTrace);
-      traceRecorder.record(
-        turnId: turnId,
-        stage: ChatTraceStage.sendFailed,
-        status: ChatTraceStatus.failure,
-        summary: '发送消息过程中出错',
-        data: {
-          'error': e.toString(),
-        },
-      );
-      if (aiMessage.id != null) {
-        _ref
-            .read(messagesProvider.notifier)
-            .updateMessageStatus(aiMessage.id!, MessageStatus.failed);
-      }
-      _ref.read(isGeneratingProvider.notifier).state = false;
-      _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
-
-      final dbHelper = _ref.read(databaseProvider);
-      if (aiMessage.id != null) {
-        dbHelper.updateMessageStatus(aiMessage.id!, MessageStatus.failed);
-      }
-    }
-
   }
 
   Future<void> cancelToolInvocation(ChatMessage message) async {
@@ -1413,15 +1456,6 @@ class ChatController {
   // 判断是否为默认标题
   bool _isDefaultTitle(String title) {
     return title.startsWith('新对话') || title == 'AI Chat' || title == '默认对话';
-  }
-
-  ChatMessage? _findMessageById(int id) {
-    for (final message in _ref.read(messagesProvider)) {
-      if (message.id == id) {
-        return message;
-      }
-    }
-    return null;
   }
 
   // 取消自动摘要定时器
