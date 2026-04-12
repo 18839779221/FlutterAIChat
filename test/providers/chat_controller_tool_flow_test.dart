@@ -614,6 +614,28 @@ void main() {
       expect(sessionCoordinator.deletedGroupIds, [42]);
     });
 
+    test('chat controller delegates summary lifecycle to summary controller',
+        () async {
+      final databaseHelper = DatabaseHelper();
+      final summaryController = _FakeChatSummaryController();
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(
+          toolPreparationResult: const ToolPreparationResult.noTool(),
+        ),
+        summaryController: summaryController,
+      );
+      addTearDown(container.dispose);
+
+      final summary =
+          await container.read(chatControllerProvider).summarizeAndUpdateTitle();
+      container.read(chatControllerProvider).cancelAutoSummaryTimer();
+
+      expect(summary, 'fake-summary');
+      expect(summaryController.summarizeCalls, 1);
+      expect(summaryController.cancelTimerCalls, 1);
+    });
+
     test('需要确认的工具会让发送事务停留在 awaitingConfirmation', () async {
       final databaseHelper = DatabaseHelper();
       final chatService = _FakeChatService(
@@ -852,6 +874,7 @@ ProviderContainer _createContainer({
   ChatTraceRecorder? traceRecorder,
   ChatSendCoordinator? coordinator,
   ChatSessionCoordinator? sessionCoordinator,
+  ChatSummaryController? summaryController,
 }) {
   return ProviderContainer(
     overrides: [
@@ -861,6 +884,8 @@ ProviderContainer _createContainer({
         chatSendCoordinatorProvider.overrideWith((ref) => coordinator),
       if (sessionCoordinator != null)
         chatSessionCoordinatorProvider.overrideWith((ref) => sessionCoordinator),
+      if (summaryController != null)
+        chatSummaryControllerProvider.overrideWith((ref) => summaryController),
       if (traceRecorder != null)
         traceRecorderProvider.overrideWith((ref) => traceRecorder),
       scrollControllerProvider.overrideWith((ref) => ScrollController()),
@@ -1029,5 +1054,24 @@ class _FakeChatSessionCoordinator implements ChatSessionCoordinator {
   @override
   Future<void> deleteGroup(int id) async {
     deletedGroupIds.add(id);
+  }
+}
+
+class _FakeChatSummaryController implements ChatSummaryController {
+  int summarizeCalls = 0;
+  int cancelTimerCalls = 0;
+
+  @override
+  void cancelAutoSummaryTimer() {
+    cancelTimerCalls += 1;
+  }
+
+  @override
+  void scheduleAutoSummary() {}
+
+  @override
+  Future<String?> summarizeAndUpdateTitle() async {
+    summarizeCalls += 1;
+    return 'fake-summary';
   }
 }
