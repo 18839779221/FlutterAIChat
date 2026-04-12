@@ -112,7 +112,7 @@ void main() {
       expect(result.arguments, containsPair('title', '项目评审'));
     });
 
-    test('rejects reminder decision when dueAt is not iso8601', () async {
+    test('keeps reminder decision even when dueAt is not iso8601 and leaves validation to runtime', () async {
       final service = ToolDecisionService(
         llm: _FakeBaseLLM(
           decisionResponse:
@@ -126,10 +126,12 @@ void main() {
         history: const [],
       );
 
-      expect(result, isNull);
+      expect(result, isNotNull);
+      expect(result!.toolName, 'create_reminder');
+      expect(result.arguments['dueAt'], 'today at 8pm');
     });
 
-    test('rejects calendar decision when startAt is not iso8601', () async {
+    test('keeps calendar decision even when startAt is not iso8601 and leaves validation to runtime', () async {
       final service = ToolDecisionService(
         llm: _FakeBaseLLM(
           decisionResponse:
@@ -143,7 +145,9 @@ void main() {
         history: const [],
       );
 
-      expect(result, isNull);
+      expect(result, isNotNull);
+      expect(result!.toolName, 'create_calendar_event');
+      expect(result.arguments['startAt'], 'tomorrow at 3pm');
     });
 
     test('keeps reminder dueAt untouched and leaves normalization to runtime handler', () async {

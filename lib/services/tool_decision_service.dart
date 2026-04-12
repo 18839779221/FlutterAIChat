@@ -88,19 +88,6 @@ class ToolDecisionService {
       return null;
     }
 
-    if (!_hasValidStructuredArguments(toolCall)) {
-      Logger.w(_tag, '工具决策参数校验失败: ${toolCall.toolName} ${toolCall.arguments}');
-      _recordDecisionTrace(
-        turnId: turnId,
-        status: ChatTraceStatus.failure,
-        data: {
-          'toolName': toolCall.toolName,
-          'reason': 'invalid_arguments',
-        },
-      );
-      return null;
-    }
-
     Logger.i(_tag, '工具决策命中: ${toolCall.toolName}');
     _recordDecisionTrace(
       turnId: turnId,
@@ -168,37 +155,6 @@ class ToolDecisionService {
       return normalized;
     }
     return '${normalized.substring(0, 240)}...';
-  }
-
-  bool _hasValidStructuredArguments(ToolCall toolCall) {
-    switch (toolCall.toolName) {
-      case 'create_reminder':
-        final dueAt = toolCall.arguments['dueAt'];
-        if (dueAt is! String || dueAt.trim().isEmpty) {
-          return false;
-        }
-        return DateTime.tryParse(dueAt.trim()) != null;
-      case 'create_calendar_event':
-        final startAt = toolCall.arguments['startAt'];
-        if (startAt is! String || startAt.trim().isEmpty) {
-          return false;
-        }
-        final parsedStartAt = DateTime.tryParse(startAt.trim());
-        if (parsedStartAt == null) {
-          return false;
-        }
-
-        final endAt = toolCall.arguments['endAt'];
-        if (endAt == null) {
-          return true;
-        }
-        if (endAt is! String || endAt.trim().isEmpty) {
-          return false;
-        }
-        return DateTime.tryParse(endAt.trim()) != null;
-      default:
-        return true;
-    }
   }
 
   bool _matchesUserIntent(ToolCall toolCall, String userMessage) {
