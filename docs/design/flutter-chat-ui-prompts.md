@@ -13,7 +13,8 @@ Preferred product personality:
 Target impression:
 - a mature AI tool people can stay in for long sessions
 - visually intentional on phone first, but still composed on desktop and web
-- dark by default, with tonal depth instead of pure black harshness
+- light-theme-led, with dark mode as a secondary adaptation
+- more like a document reader than a stack of chat widgets
 
 ## Visual Principles
 
@@ -24,6 +25,8 @@ Target impression:
 - Prefer calm tonal layering over loud outlines, excessive shadows, or aggressive gradients.
 - Preserve reading comfort during long conversations, especially in streaming and reasoning-heavy sessions.
 - Keep visual language unified across chat bubbles, top bar, input bar, sheets, and settings entry points.
+- Prefer semantic surfaces over wireframe borders. If a region can be separated by tone, do not default to outlining it.
+- Floating controls may use subtle blur and lift, but should remain visually quiet and never dominate the reading area.
 
 ## Chat-Page Rules
 
@@ -31,6 +34,7 @@ Target impression:
 - The top bar should provide orientation and access, but it must not dominate the page.
 - Message rhythm matters: group related content cleanly, avoid noisy separators, and preserve vertical breathing room.
 - User and assistant messages should be visually distinguishable without creating a childish “two toy bubbles” effect.
+- User messages should feel like question anchors, not oversized chat balloons.
 - Reasoning, tool-call, loading, and streaming states need their own hierarchy and tone. They should feel integrated into the product, not bolted on.
 - Empty state should feel calm and premium, with a clear invitation to begin, not like placeholder scaffolding.
 - Input bar should feel anchored, comfortable, and high-confidence. It should visually communicate: type here, stay here, act here.
@@ -41,11 +45,12 @@ Target impression:
 
 ### Color
 
-- Prefer deep graphite, charcoal, slate, and muted ink tones over pure black.
+- Prefer paper, stone, warm gray, fog, slate, and muted ink tones over pure black.
 - Use one restrained accent family at a time.
 - Accent color should feel deliberate and modern, not neon.
 - Use semantic surfaces with tonal separation: background, elevated surface, active surface, accent surface.
 - Avoid relying on outline-only contrast when a subtle surface shift would do the job better.
+- Inline code, quotes, and lightweight annotations should use cool neutral or gray-blue surfaces rather than yellow-beige chips.
 
 ### Typography
 
@@ -53,12 +58,15 @@ Target impression:
 - Let hierarchy come from size, spacing, and weight rather than excessive color variation.
 - Avoid tiny label-heavy interfaces.
 - Long-form assistant content should feel comfortable to scan, not cramped.
+- Current default production direction: `Anthropic Sans` for UI and Latin content, `Noto Sans SC` for packaged Chinese document reading.
+- Use lighter heading weight and stable paragraph rhythm to approximate premium mobile reading rather than presentation-slide typography.
 
 ### Spacing
 
 - Use a consistent spacing rhythm with enough breathing room to feel premium.
 - Favor slightly more vertical space in chat than a generic productivity app would use.
 - Keep dense utility controls grouped and visually secondary.
+- Tighten message-to-message transitions when the intent is “question then answer”. The assistant reply should begin like a document continuation, not a separate module.
 
 ### Shape and Elevation
 
@@ -66,6 +74,7 @@ Target impression:
 - Use elevation sparingly.
 - Prefer surface contrast and tonal layers over heavy drop shadows.
 - Rounded corners, borders, and surfaces should feel like one system.
+- Header buttons, scroll affordances, and the input dock should share the same restrained floating-control language.
 
 ### Motion
 
@@ -84,6 +93,7 @@ Do not introduce any of the following unless there is an explicit, narrow reason
 - too many borders, nested cards, or redundant containers
 - random accent colors without a semantic system
 - user and assistant message styles that look like separate apps
+- line-box / wireframe-heavy surfaces that make the UI feel plastic
 - tiny controls, tiny labels, or dense toolbar clutter
 - changing only colors while leaving weak page hierarchy untouched
 - desktop layouts that simply stretch mobile proportions without recomposition

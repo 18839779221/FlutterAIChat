@@ -46,6 +46,7 @@ Review these chat-specific concerns every time:
 - Input area feels like a primary interaction surface
 - Top bar supports orientation without overpowering the screen
 - User and assistant messages are distinct but coherent
+- User messages read like anchors or prompts, not default bubble widgets
 - Streaming and reasoning states feel integrated into the product
 - Empty state feels intentional and premium
 - Tool-call or system-state visuals are understandable and not noisy
@@ -97,6 +98,7 @@ A chat UI is ready to pass when all of the following are true:
 - the input area feels strong, comfortable, and visually anchored
 - message reading is calm and sustainable over long sessions
 - the active theme feels editorial and professional, not plastic or overly componentized
+- inline code, quotes, and support surfaces feel chromatically intentional rather than default-beige or ad hoc
 - desktop/web composition feels intentional, not stretched from mobile
 - remaining issues are polish-level, not direction-level
 

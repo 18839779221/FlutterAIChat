@@ -1,6 +1,7 @@
 import 'package:ai_chat/theme/app_colors.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
+import 'package:ai_chat/theme/app_typography.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -66,16 +67,16 @@ class ChatInput extends ConsumerWidget {
         child: DecoratedBox(
           key: const ValueKey('chat-input-dock'),
           decoration: BoxDecoration(
-            color: colors.assistantSurface,
+            color: colors.assistantSurface.withValues(alpha: 0.96),
             borderRadius: BorderRadius.circular(radius.lg + 8),
             boxShadow: [
               BoxShadow(
-                color: colors.primaryText.withValues(alpha: 0.08),
-                blurRadius: 24,
-                offset: const Offset(0, 11),
+                color: colors.primaryText.withValues(alpha: 0.065),
+                blurRadius: 20,
+                offset: const Offset(0, 9),
               ),
               BoxShadow(
-                color: Colors.white.withValues(alpha: 0.5),
+                color: Colors.white.withValues(alpha: 0.42),
                 blurRadius: 1,
                 offset: const Offset(0, -1),
               ),
@@ -101,10 +102,11 @@ class ChatInput extends ConsumerWidget {
                       child: Text(
                         helperText,
                         key: ValueKey(helperText),
-                        style: TextStyle(
+                        style: AppTypography.uiStyle(
                           color: colors.secondaryText,
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
+                          height: 1.15,
                         ),
                       ),
                     ),
@@ -133,19 +135,19 @@ class ChatInput extends ConsumerWidget {
                               maxLines: 4,
                               textInputAction: TextInputAction.newline,
                               keyboardType: TextInputType.multiline,
-                              style: TextStyle(
+                              style: AppTypography.uiStyle(
                                 color: colors.primaryText,
-                                fontSize: 14.5,
-                                height: 1.38,
+                                fontSize: 13.7,
+                                height: 1.34,
                               ),
                               decoration: InputDecoration(
                                 hintText: '继续追问，或补充你的要求',
-                                hintStyle: TextStyle(
+                                hintStyle: AppTypography.uiStyle(
                                   color: colors.secondaryText.withValues(
-                                    alpha: 0.82,
+                                    alpha: 0.66,
                                   ),
-                                  fontSize: 14,
-                                  height: 1.32,
+                                  fontSize: 13.3,
+                                  height: 1.28,
                                 ),
                                 isDense: true,
                                 filled: false,
@@ -181,9 +183,9 @@ class ChatInput extends ConsumerWidget {
                               padding: EdgeInsets.zero,
                               shape: const CircleBorder(),
                               backgroundColor: isAwaitingConfirmation
-                                  ? colors.secondaryText.withValues(alpha: 0.92)
+                                  ? colors.secondaryText.withValues(alpha: 0.82)
                                   : colors.workflowRunning
-                                      .withValues(alpha: 0.98),
+                                      .withValues(alpha: 0.88),
                               foregroundColor: Colors.white,
                               elevation: 0,
                               shadowColor: Colors.transparent,

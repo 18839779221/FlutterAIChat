@@ -25,13 +25,13 @@ class ChatEmptyState extends StatelessWidget {
             constraints.maxHeight > 720 ? spacing.xl * 2.4 : spacing.xl;
 
         return Align(
-          alignment: const Alignment(0, 0.18),
+          alignment: const Alignment(0, 0.06),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 560),
             child: Padding(
               padding: EdgeInsets.fromLTRB(
                 spacing.xl,
-                spacing.xl,
+                spacing.lg,
                 spacing.xl,
                 bottomInset,
               ),

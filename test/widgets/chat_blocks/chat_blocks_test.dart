@@ -30,7 +30,7 @@ void main() {
           matching: find.byType(ConstrainedBox),
         ),
       );
-      expect(constrainedBox.constraints.maxWidth, 420);
+      expect(constrainedBox.constraints.maxWidth, 468);
     });
 
     testWidgets('renders assistant doc block label and content',
@@ -68,10 +68,17 @@ void main() {
       final markdown = tester.widget<MarkdownBody>(find.byType(MarkdownBody));
       final styleSheet = markdown.styleSheet!;
 
-      expect(styleSheet.p!.height, lessThanOrEqualTo(1.38));
+      expect(styleSheet.p!.height, lessThanOrEqualTo(1.42));
+      expect(styleSheet.p!.fontFamily, 'AnthropicSans');
       expect(styleSheet.p!.fontWeight, FontWeight.w400);
+      expect(
+        styleSheet.p!.fontFamilyFallback,
+        containsAllInOrder(
+          const ['NotoSansCJKSC', 'Noto Sans SC', 'PingFang SC'],
+        ),
+      );
       expect(styleSheet.h2!.fontSize, lessThan(17));
-      expect(styleSheet.listBullet!.height, lessThanOrEqualTo(1.3));
+      expect(styleSheet.listBullet!.height, lessThanOrEqualTo(1.36));
       expect(styleSheet.blockSpacing, lessThanOrEqualTo(6));
       expect(
           styleSheet.h2Padding!.top, greaterThan(styleSheet.h2Padding!.bottom));
