@@ -1,55 +1,90 @@
 import '../models/chat_message.dart';
+import '../models/trace/chat_trace_event.dart';
 import '../models/tool/tool_definition.dart';
 import '../models/tool/tool_invocation.dart';
 import '../models/tool/tool_policy.dart';
+import 'chat_trace_recorder.dart';
 import 'tool_call_service.dart';
 import 'tool_decision_service.dart';
 import 'tool_executor.dart';
 import 'tool_policy_service.dart';
 import 'tool_registry.dart';
+import '../tools/core/tool_argument_resolution.dart';
+import '../tools/core/tool_execution_context.dart';
+import '../tools/core/tool_runtime_registry.dart';
 
 /// Coordinates single-step ToolCall flow: decide, policy-check, execute or
 /// yield confirmation, then package result context for the chat layer.
 class ToolOrchestratorService {
   ToolOrchestratorService({
     required ToolRegistry toolRegistry,
+    ToolRuntimeRegistry? runtimeRegistry,
     required ToolDecisionService toolDecisionService,
     required ToolExecutor toolExecutor,
     ToolPolicyService? toolPolicyService,
+    ChatTraceRecorder? traceRecorder,
   })  : _toolRegistry = toolRegistry,
+        _runtimeRegistry = runtimeRegistry,
         _toolDecisionService = toolDecisionService,
         _toolPolicyService = toolPolicyService,
-        _toolExecutor = toolExecutor;
+        _toolExecutor = toolExecutor,
+        _traceRecorder = traceRecorder;
 
   final ToolRegistry _toolRegistry;
+  final ToolRuntimeRegistry? _runtimeRegistry;
   final ToolDecisionService _toolDecisionService;
   final ToolPolicyService? _toolPolicyService;
   final ToolExecutor _toolExecutor;
+  final ChatTraceRecorder? _traceRecorder;
 
   Future<ToolPreparationResult> prepareToolContext({
     required int groupId,
     required String userMessage,
     required List<ChatMessage> history,
+    String? turnId,
   }) async {
+    final now = DateTime.now();
+    _recordTrace(
+      turnId: turnId,
+      stage: ChatTraceStage.toolPrepareStart,
+      status: ChatTraceStatus.started,
+      summary: '开始准备工具上下文',
+      data: {'groupId': groupId},
+    );
     final toolCall = await _toolDecisionService.decideTool(
       userMessage: userMessage,
       history: history,
+      turnId: turnId,
     );
     if (toolCall == null) {
       return const ToolPreparationResult.noTool();
     }
 
-    final toolDefinition = _toolRegistry.findByName(toolCall.toolName);
+    final runtimeHandler = _runtimeRegistry?.findHandler(toolCall.toolName);
+    final toolDefinition =
+        runtimeHandler?.definition ?? _toolRegistry.findByName(toolCall.toolName);
     if (toolDefinition == null) {
       return const ToolPreparationResult.noTool();
     }
+
+    final normalizedArguments = runtimeHandler == null
+        ? toolCall.arguments
+        : await _normalizeHandlerArguments(
+            handlerName: toolCall.toolName,
+            resolution: await runtimeHandler.normalizeArguments(
+              rawArguments: toolCall.arguments,
+              userMessage: userMessage,
+              history: history,
+              now: now,
+            ),
+          );
 
     final policyDecision = await _resolvePolicyDecision(toolDefinition);
     if (policyDecision == ToolPolicyDecision.requireConfirmation) {
       return ToolPreparationResult(
         toolInvocation: ToolInvocation(
           toolName: toolCall.toolName,
-          arguments: toolCall.arguments,
+          arguments: normalizedArguments,
           status: ToolInvocationStatus.awaitingConfirmation,
           summary: '准备执行工具：${toolDefinition.title}',
           requiresConfirmation: true,
@@ -57,30 +92,76 @@ class ToolOrchestratorService {
         toolResult: null,
         additionalContextMessages: const [],
       );
-    }
+      }
 
-    final toolResult = await _executeTool(
-      toolDefinition: toolDefinition,
-      arguments: toolCall.arguments,
-      groupId: groupId,
+    final toolResult = runtimeHandler == null
+        ? await _executeTool(
+            toolDefinition: toolDefinition,
+            arguments: normalizedArguments,
+            groupId: groupId,
+          )
+        : await runtimeHandler.execute(
+            _buildExecutionContext(
+              groupId: groupId,
+              toolName: toolCall.toolName,
+              arguments: normalizedArguments,
+              history: history,
+              now: now,
+            ),
+          );
+    _recordTrace(
+      turnId: turnId,
+      stage: ChatTraceStage.toolExecuteDone,
+      status: toolResult.status == ToolExecutionStatus.success
+          ? ChatTraceStatus.success
+          : ChatTraceStatus.failure,
+      summary: '工具执行完成',
+      data: {
+        'toolName': toolCall.toolName,
+        'resultStatus': toolResult.status.name,
+      },
+    );
+    final contextMessages = runtimeHandler == null
+        ? [
+            ChatMessage(
+              text: _buildContextText(toolResult),
+              role: MessageRole.system,
+              status: MessageStatus.completed,
+            ),
+          ]
+        : runtimeHandler.buildContextMessages(
+            result: toolResult,
+            context: _buildExecutionContext(
+              groupId: groupId,
+              toolName: toolCall.toolName,
+              arguments: normalizedArguments,
+              history: history,
+              now: now,
+            ),
+          );
+    final contextText =
+        contextMessages.map((message) => message.text).join('\n').trim();
+    _recordTrace(
+      turnId: turnId,
+      stage: ChatTraceStage.toolContextBuilt,
+      status: ChatTraceStatus.success,
+      summary: '工具上下文构建完成',
+      data: {
+        'toolName': toolCall.toolName,
+        'contextLength': contextText.length,
+      },
     );
 
     return ToolPreparationResult(
       toolInvocation: ToolInvocation(
         toolName: toolCall.toolName,
-        arguments: toolCall.arguments,
+        arguments: normalizedArguments,
         status: ToolInvocationStatus.running,
         summary: '正在执行工具：${toolDefinition.title}',
         requiresConfirmation: false,
       ),
       toolResult: toolResult,
-      additionalContextMessages: [
-        ChatMessage(
-          text: _buildContextText(toolResult),
-          role: MessageRole.system,
-          status: MessageStatus.completed,
-        ),
-      ],
+      additionalContextMessages: contextMessages,
     );
   }
 
@@ -96,20 +177,67 @@ class ToolOrchestratorService {
     required int groupId,
     required ToolInvocation invocation,
     bool trustTool = false,
+    String? turnId,
   }) async {
     if (trustTool) {
       await _toolPolicyService?.trustTool(invocation.toolName);
     }
 
-    final toolDefinition = _toolRegistry.findByName(invocation.toolName);
+    final runtimeHandler = _runtimeRegistry?.findHandler(invocation.toolName);
+    final toolDefinition =
+        runtimeHandler?.definition ?? _toolRegistry.findByName(invocation.toolName);
     if (toolDefinition == null) {
       return const ToolPreparationResult.noTool();
     }
 
-    final toolResult = await _executeTool(
-      toolDefinition: toolDefinition,
-      arguments: invocation.arguments,
+    final executionContext = _buildExecutionContext(
       groupId: groupId,
+      toolName: invocation.toolName,
+      arguments: invocation.arguments,
+      history: const [],
+      now: DateTime.now(),
+    );
+    final toolResult = runtimeHandler == null
+        ? await _executeTool(
+            toolDefinition: toolDefinition,
+            arguments: invocation.arguments,
+            groupId: groupId,
+          )
+        : await runtimeHandler.execute(executionContext);
+    _recordTrace(
+      turnId: turnId,
+      stage: ChatTraceStage.toolExecuteDone,
+      status: toolResult.status == ToolExecutionStatus.success
+          ? ChatTraceStatus.success
+          : ChatTraceStatus.failure,
+      summary: '工具执行完成',
+      data: {
+        'toolName': invocation.toolName,
+        'resultStatus': toolResult.status.name,
+      },
+    );
+    final contextMessages = runtimeHandler == null
+        ? [
+            ChatMessage(
+              text: _buildContextText(toolResult),
+              role: MessageRole.system,
+              status: MessageStatus.completed,
+            ),
+          ]
+        : runtimeHandler.buildContextMessages(
+            result: toolResult,
+            context: executionContext,
+          );
+    final contextText = contextMessages.map((message) => message.text).join('\n').trim();
+    _recordTrace(
+      turnId: turnId,
+      stage: ChatTraceStage.toolContextBuilt,
+      status: ChatTraceStatus.success,
+      summary: '工具上下文构建完成',
+      data: {
+        'toolName': invocation.toolName,
+        'contextLength': contextText.length,
+      },
     );
 
     return ToolPreparationResult(
@@ -119,13 +247,23 @@ class ToolOrchestratorService {
         requiresConfirmation: false,
       ),
       toolResult: toolResult,
-      additionalContextMessages: [
-        ChatMessage(
-          text: _buildContextText(toolResult),
-          role: MessageRole.system,
-          status: MessageStatus.completed,
-        ),
-      ],
+      additionalContextMessages: contextMessages,
+    );
+  }
+
+  ToolExecutionContext _buildExecutionContext({
+    required int groupId,
+    required String toolName,
+    required Map<String, dynamic> arguments,
+    required List<ChatMessage> history,
+    required DateTime now,
+  }) {
+    return ToolExecutionContext(
+      groupId: groupId,
+      toolName: toolName,
+      arguments: arguments,
+      history: history,
+      now: now,
     );
   }
 
@@ -139,6 +277,21 @@ class ToolOrchestratorService {
           : ToolPolicyDecision.autoRun;
     }
     return policyService.resolveExecutionMode(toolDefinition);
+  }
+
+  Future<Map<String, dynamic>> _normalizeHandlerArguments({
+    required String handlerName,
+    required ToolArgumentResolution resolution,
+  }) async {
+    if (resolution.isValid) {
+      return resolution.normalizedArguments;
+    }
+
+    return {
+      'toolName': handlerName,
+      'normalizationError': resolution.errorCode,
+      'normalizationSummary': resolution.errorSummary,
+    };
   }
 
   Future<ToolResult> _executeTool({
@@ -163,6 +316,22 @@ class ToolOrchestratorService {
           groupId: groupId,
           query: query,
           maxResults: maxResults is num ? maxResults.toInt() : 3,
+        );
+      case 'web_search':
+        final query = arguments['query'];
+        final maxResults = arguments['maxResults'];
+        if (query is! String || query.trim().isEmpty) {
+          return const ToolResult(
+            toolName: 'web_search',
+            status: ToolExecutionStatus.failure,
+            summary: '联网搜索失败',
+            data: {'reason': 'invalid_arguments'},
+            errorMessage: 'invalid_arguments',
+          );
+        }
+        return _toolExecutor.executeWebSearch(
+          query: query,
+          maxResults: maxResults is num ? maxResults.toInt() : 5,
         );
       case 'fetch_webpage':
         final url = arguments['url'];
@@ -279,10 +448,67 @@ class ToolOrchestratorService {
           buffer.writeln('- [$role] $text');
         }
       }
+    } else if (toolResult.toolName == 'web_search') {
+      final results = payload['results'];
+      if (results is List && results.isNotEmpty) {
+        buffer.writeln('联网搜索结果：');
+        for (final result in results.take(3)) {
+          if (result is Map) {
+            final title = (result['title'] ?? '').toString().trim();
+            final snippet = _truncateContextText(
+              (result['snippet'] ?? '').toString().trim(),
+              maxLength: 160,
+            );
+            final source = (result['source'] ?? '').toString().trim();
+            final url = (result['url'] ?? '').toString().trim();
+            final titleText = title.isEmpty ? url : title;
+            final sourceText = source.isEmpty ? 'unknown' : source;
+            buffer.writeln('- [$sourceText] $titleText');
+            if (snippet.isNotEmpty) {
+              buffer.writeln('  摘要：$snippet');
+            }
+            if (url.isNotEmpty) {
+              buffer.writeln('  链接：$url');
+            }
+          }
+        }
+      } else if (toolResult.summary.isNotEmpty) {
+        buffer.writeln('结果摘要：${toolResult.summary}');
+      }
     } else if (toolResult.summary.isNotEmpty) {
       buffer.writeln('结果摘要：${toolResult.summary}');
     }
 
     return buffer.toString().trim();
+  }
+
+  String _truncateContextText(
+    String value, {
+    required int maxLength,
+  }) {
+    if (value.length <= maxLength) {
+      return value;
+    }
+    return '${value.substring(0, maxLength)}...';
+  }
+
+  void _recordTrace({
+    required String? turnId,
+    required ChatTraceStage stage,
+    required ChatTraceStatus status,
+    required String summary,
+    required Map<String, dynamic> data,
+  }) {
+    final traceRecorder = _traceRecorder;
+    if (traceRecorder == null || turnId == null) {
+      return;
+    }
+    traceRecorder.record(
+      turnId: turnId,
+      stage: stage,
+      status: status,
+      summary: summary,
+      data: data,
+    );
   }
 }

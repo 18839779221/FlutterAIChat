@@ -7,9 +7,11 @@ import '../models/chat_message.dart';
 import '../models/chat/tool_workflow_step.dart';
 import '../models/chat_group.dart';
 import '../models/response/message_content_type.dart';
+import '../models/trace/chat_trace_event.dart';
 import '../models/tool/tool_invocation.dart';
 import '../repositories/app_settings_repository.dart';
 import '../services/chat_service.dart';
+import '../services/chat_trace_recorder.dart';
 import '../storage/chat_storage.dart';
 import '../utils/logger.dart';
 
@@ -20,6 +22,10 @@ final databaseProvider = Provider<ChatStorage>((ref) {
 
 final appSettingsRepositoryProvider = Provider<AppSettingsRepository>((ref) {
   throw UnimplementedError('需要在 main.dart 中覆盖 AppSettingsRepository');
+});
+
+final traceRecorderProvider = Provider<ChatTraceRecorder>((ref) {
+  return ChatTraceRecorder();
 });
 
 // 聊天服务提供者
@@ -499,6 +505,18 @@ class ChatController {
 
     cancelStreamSubscription();
     _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.preparing;
+    final traceRecorder = _ref.read(traceRecorderProvider);
+    final turnId = traceRecorder.newTurnId();
+    traceRecorder.record(
+      turnId: turnId,
+      stage: ChatTraceStage.sendStart,
+      status: ChatTraceStatus.started,
+      summary: '开始发送消息',
+      data: {
+        'groupId': currentGroup.id,
+        'userMessagePreview': text.substring(0, text.length.clamp(0, 80)),
+      },
+    );
 
     _ref.read(autoScrollToBottomProvider.notifier).state = true;
 
@@ -515,6 +533,15 @@ class ChatController {
         await loadGroups();
       } catch (e) {
         Logger.e(_tag, '保存新分组失败', e);
+        traceRecorder.record(
+          turnId: turnId,
+          stage: ChatTraceStage.sendFailed,
+          status: ChatTraceStatus.failure,
+          summary: '保存新分组失败',
+          data: {
+            'error': e.toString(),
+          },
+        );
         return;
       }
     }
@@ -574,6 +601,14 @@ class ChatController {
         groupId: currentGroupId,
         userMessage: text,
         history: historyMessages,
+        turnId: turnId,
+      );
+      Logger.i(
+        _tag,
+        '工具预处理结果: invocation=${toolPreparationResult.toolInvocation?.toolName ?? 'none'}, '
+        'invocationStatus=${toolPreparationResult.toolInvocation?.status.name ?? 'none'}, '
+        'hasToolResult=${toolPreparationResult.toolResult != null}, '
+        'extraContext=${toolPreparationResult.additionalContextMessages.length}',
       );
       final toolContextHistory = [
         ...historyMessages,
@@ -595,6 +630,16 @@ class ChatController {
             await dbHelper.insertMessage(confirmationMessage, currentGroupId);
         confirmationMessage.id = confirmationMessageId;
         _ref.read(messagesProvider.notifier).addMessage(confirmationMessage);
+        traceRecorder.record(
+          turnId: turnId,
+          stage: ChatTraceStage.sendDone,
+          status: ChatTraceStatus.success,
+          summary: '发送进入确认态',
+          data: {
+            'phase': ChatSendPhase.awaitingConfirmation.name,
+            'toolName': toolPreparationResult.toolInvocation!.toolName,
+          },
+        );
         return;
       }
 
@@ -633,6 +678,7 @@ class ChatController {
         text,
         toolContextHistory,
         ChatConfig(useReasoning: useReasoning, systemPrompt: systemPrompt),
+        turnId: turnId,
       )
           .listen(
         (content) async {
@@ -664,6 +710,16 @@ class ChatController {
           _ref.read(isGeneratingProvider.notifier).state = false;
           _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
           dbHelper.updateMessageStatus(aiMessageId, MessageStatus.failed);
+          traceRecorder.record(
+            turnId: turnId,
+            stage: ChatTraceStage.sendFailed,
+            status: ChatTraceStatus.failure,
+            summary: 'AI响应出错',
+            data: {
+              'assistantMessageId': aiMessageId,
+              'error': error.toString(),
+            },
+          );
         },
         onDone: () {
           Logger.i(_tag, 'AI响应完成');
@@ -674,6 +730,16 @@ class ChatController {
             _ref.read(isGeneratingProvider.notifier).state = false;
             _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
             dbHelper.updateMessageStatus(aiMessageId, MessageStatus.completed);
+            traceRecorder.record(
+              turnId: turnId,
+              stage: ChatTraceStage.sendDone,
+              status: ChatTraceStatus.success,
+              summary: '发送完成',
+              data: {
+                'assistantMessageId': aiMessageId,
+                'phase': ChatSendPhase.idle.name,
+              },
+            );
 
             // 启动自动摘要定时器
             _scheduleAutoSummary();
@@ -686,6 +752,15 @@ class ChatController {
     } catch (e, stackTrace) {
       Logger.e(_tag, '发送消息过程中出错', e);
       Logger.e(_tag, '堆栈跟踪', stackTrace);
+      traceRecorder.record(
+        turnId: turnId,
+        stage: ChatTraceStage.sendFailed,
+        status: ChatTraceStatus.failure,
+        summary: '发送消息过程中出错',
+        data: {
+          'error': e.toString(),
+        },
+      );
       if (aiMessage.id != null) {
         _ref
             .read(messagesProvider.notifier)

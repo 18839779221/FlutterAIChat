@@ -6,11 +6,13 @@ import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
+import 'package:ai_chat/models/trace/chat_trace_event.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/tool_call_service.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -197,8 +199,8 @@ void main() {
     test('需要确认的工具会先插入 actionConfirmation 消息', () async {
       final databaseHelper = DatabaseHelper();
       final chatService = _FakeChatService(
-        toolPreparationResult: ToolPreparationResult(
-          toolInvocation: const ToolInvocation(
+        toolPreparationResult: const ToolPreparationResult(
+          toolInvocation: ToolInvocation(
             toolName: 'create_reminder',
             arguments: {'title': '交周报'},
             status: ToolInvocationStatus.awaitingConfirmation,
@@ -206,7 +208,7 @@ void main() {
             requiresConfirmation: true,
           ),
           toolResult: null,
-          additionalContextMessages: const [],
+          additionalContextMessages: [],
         ),
       );
       final container = _createContainer(
@@ -243,8 +245,8 @@ void main() {
     test('继续并信任会执行挂起工具并追加 toolResult 消息', () async {
       final databaseHelper = DatabaseHelper();
       final chatService = _FakeChatService(
-        toolPreparationResult: ToolPreparationResult(
-          toolInvocation: const ToolInvocation(
+        toolPreparationResult: const ToolPreparationResult(
+          toolInvocation: ToolInvocation(
             toolName: 'create_reminder',
             arguments: {'title': '交周报'},
             status: ToolInvocationStatus.awaitingConfirmation,
@@ -252,23 +254,23 @@ void main() {
             requiresConfirmation: true,
           ),
           toolResult: null,
-          additionalContextMessages: const [],
+          additionalContextMessages: [],
         ),
         confirmedToolResult: const ToolPreparationResult(
-          toolInvocation: const ToolInvocation(
+          toolInvocation: ToolInvocation(
             toolName: 'create_reminder',
             arguments: {'title': '交周报'},
             status: ToolInvocationStatus.running,
             summary: '正在执行工具：创建提醒',
             requiresConfirmation: false,
           ),
-          toolResult: const ToolResult(
+          toolResult: ToolResult(
             toolName: 'create_reminder',
             status: ToolExecutionStatus.success,
             summary: '已创建提醒：交周报',
             data: {'title': '交周报'},
           ),
-          additionalContextMessages: const [],
+          additionalContextMessages: [],
         ),
       );
       final container = _createContainer(
@@ -360,11 +362,59 @@ void main() {
       await databaseHelper.deleteGroup(groupId);
     });
 
+    test('sendMessage records controller trace boundary events in order', () async {
+      final databaseHelper = DatabaseHelper();
+      final traceLogs = <Map<String, dynamic>>[];
+      final traceRecorder = ChatTraceRecorder(
+        logger: (entry) => traceLogs.add(entry),
+      );
+      final chatService = _FakeChatService(
+        toolPreparationResult: const ToolPreparationResult.noTool(),
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: chatService,
+        traceRecorder: traceRecorder,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      await container.read(chatControllerProvider).sendMessage('测试发送 trace');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final traceTurnIds = traceLogs
+          .map((entry) => entry['turnId'])
+          .whereType<String>()
+          .toSet();
+      expect(traceTurnIds, hasLength(1));
+
+      final stages = traceLogs
+          .where((entry) => entry['turnId'] == traceTurnIds.single)
+          .map((entry) => entry['stage'])
+          .toList();
+
+      expect(
+        stages,
+        containsAllInOrder([
+          ChatTraceStage.sendStart.name,
+          ChatTraceStage.sendDone.name,
+        ]),
+      );
+      expect(traceLogs.first['status'], ChatTraceStatus.started.name);
+      expect(traceLogs.last['status'], ChatTraceStatus.success.name);
+
+      await databaseHelper.deleteGroup(groupId);
+    });
+
     test('需要确认的工具会让发送事务停留在 awaitingConfirmation', () async {
       final databaseHelper = DatabaseHelper();
       final chatService = _FakeChatService(
         toolPreparationResult: const ToolPreparationResult(
-          toolInvocation: const ToolInvocation(
+          toolInvocation: ToolInvocation(
             toolName: 'create_reminder',
             arguments: {'title': '交周报'},
             status: ToolInvocationStatus.awaitingConfirmation,
@@ -372,7 +422,7 @@ void main() {
             requiresConfirmation: true,
           ),
           toolResult: null,
-          additionalContextMessages: const [],
+          additionalContextMessages: [],
         ),
       );
       final container = _createContainer(
@@ -402,11 +452,14 @@ void main() {
 ProviderContainer _createContainer({
   required DatabaseHelper databaseHelper,
   required ChatService chatService,
+  ChatTraceRecorder? traceRecorder,
 }) {
   return ProviderContainer(
     overrides: [
       databaseProvider.overrideWith((ref) => databaseHelper),
       chatServiceProvider.overrideWith((ref) => chatService),
+      if (traceRecorder != null)
+        traceRecorderProvider.overrideWith((ref) => traceRecorder),
       scrollControllerProvider.overrideWith((ref) => ScrollController()),
       textControllerProvider.overrideWith((ref) => TextEditingController()),
       focusNodeProvider.overrideWith((ref) => FocusNode()),
@@ -434,6 +487,7 @@ class _FakeChatService extends ChatService {
     required int groupId,
     required String userMessage,
     required List<ChatMessage> history,
+    String? turnId,
   }) async {
     preparedUserMessages.add(userMessage);
     final pendingPrepare = prepareCompleter;
@@ -447,8 +501,9 @@ class _FakeChatService extends ChatService {
   Stream<String> sendMessageStream(
     String message,
     List<ChatMessage> history,
-    ChatConfig config,
-  ) async* {
+    ChatConfig config, {
+    String? turnId,
+  }) async* {
     streamHistories.add(history);
     yield jsonEncode({'type': 'content', 'content': '最终回答'});
   }
@@ -458,6 +513,7 @@ class _FakeChatService extends ChatService {
     required int groupId,
     required ToolInvocation invocation,
     bool trustTool = false,
+    String? turnId,
   }) async {
     confirmedTrustFlags.add(trustTool);
     return confirmedToolResult ?? const ToolPreparationResult.noTool();

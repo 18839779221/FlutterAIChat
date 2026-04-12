@@ -50,10 +50,16 @@ class AppSettingsRepository {
   }
 
   Future<LLMConfig> getLlmConfig() async {
+    final localDefaults = await _getLocalDefaults();
+    final additionalConfig = <String, dynamic>{
+      ...?localDefaults?.additionalConfig,
+    };
+
     return LLMConfig(
       apiKey: await getApiKey(),
       apiUrl: await getBaseUrl(),
       model: await getModel(),
+      additionalConfig: additionalConfig,
     );
   }
 

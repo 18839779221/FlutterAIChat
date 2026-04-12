@@ -48,5 +48,35 @@ void main() {
       expect(config.apiUrl, 'https://saved.example/v1');
       expect(config.model, 'saved-model');
     });
+
+    test('loads tavily web search config from local defaults', () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final repository = AppSettingsRepository(
+        preferences,
+        localDefaultsLoader: () async => const LlmLocalDefaults(
+          apiKey: 'local-key',
+          baseUrl: 'https://local.example/v1',
+          model: 'gpt-5.4',
+          additionalConfig: {
+            'web_search.provider': 'tavily',
+            'web_search.tavily_api_key': 'tavily-local-key',
+            'web_search.tavily_base_url': 'https://api.tavily.com/search',
+          },
+        ),
+      );
+
+      final config = await repository.getLlmConfig();
+
+      expect(config.additionalConfig['web_search.provider'], 'tavily');
+      expect(
+        config.additionalConfig['web_search.tavily_api_key'],
+        'tavily-local-key',
+      );
+      expect(
+        config.additionalConfig['web_search.tavily_base_url'],
+        'https://api.tavily.com/search',
+      );
+    });
   });
 }
