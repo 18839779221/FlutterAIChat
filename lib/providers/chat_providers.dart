@@ -1,13 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+export 'chat_collection_providers.dart';
+export 'chat_dependency_providers.dart';
+export 'chat_send_state_providers.dart';
+export 'chat_ui_providers.dart';
 import 'package:ai_chat/models/chat_send/chat_send_drafts.dart';
+import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/providers/chat_send_state_providers.dart';
+import 'package:ai_chat/providers/chat_ui_providers.dart';
 import '../models/chat_message.dart';
-import '../models/chat/tool_workflow_step.dart';
 import '../models/chat_group.dart';
 import '../models/response/message_content_type.dart';
 import '../models/trace/chat_trace_event.dart';
@@ -15,277 +19,6 @@ import '../models/tool/tool_invocation.dart';
 import '../services/chat_service.dart';
 import '../services/chat_trace_recorder.dart';
 import '../utils/logger.dart';
-
-// 消息列表提供者
-final messagesProvider =
-    StateNotifierProvider<MessagesNotifier, List<ChatMessage>>((ref) {
-  return MessagesNotifier(ref);
-});
-
-class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
-  final Ref _ref;
-
-  MessagesNotifier(this._ref) : super([]);
-
-  void setMessages(List<ChatMessage> messages) {
-    final sortedMessages = [...messages]
-      ..sort((left, right) => left.timestamp.compareTo(right.timestamp));
-    state = sortedMessages;
-  }
-
-  void addMessage(ChatMessage message) {
-    state = [...state, message];
-  }
-
-  void insertMessages(int index, List<ChatMessage> messages) {
-    final newList = [...state];
-    newList.insertAll(index, messages);
-    state = newList;
-  }
-
-  void updateMessage(int id, String text) {
-    final index = state.indexWhere((message) => message.id == id);
-    if (index != -1) {
-      final message = state[index];
-      message.text = text;
-      state = [...state];
-    }
-  }
-
-  void appendToMessage(int id, String text) {
-    final index = state.indexWhere((message) => message.id == id);
-    if (index != -1) {
-      final message = state[index];
-      message.appendText(text);
-      state = [...state]; // 触发状态更新
-    }
-  }
-
-  void appendReasoningToMessage(int id, String reasoning) {
-    final index = state.indexWhere((message) => message.id == id);
-    if (index != -1) {
-      final message = state[index];
-      message.appendReasoning(reasoning);
-      state = [...state]; // 触发状态更新
-    }
-  }
-
-  void updateMessageStatus(int id, MessageStatus status) {
-    final index = state.indexWhere((message) => message.id == id);
-    if (index != -1) {
-      final message = state[index].copyWith(status: status);
-      final newList = [...state];
-      newList[index] = message;
-      state = newList;
-    }
-  }
-
-  void replaceMessage(ChatMessage updatedMessage) {
-    final index =
-        state.indexWhere((message) => message.id == updatedMessage.id);
-    if (index == -1) {
-      return;
-    }
-
-    final newList = [...state];
-    newList[index] = updatedMessage;
-    state = newList;
-  }
-
-  void deleteMessagePair(int index) {
-    final newList = [...state];
-    final indexMessage = newList[index];
-    ChatMessage? userMessage, aiMessage;
-
-    if (indexMessage.isUser) {
-      userMessage = newList[index];
-      if (index < newList.length - 1) {
-        aiMessage = newList[index + 1];
-      }
-    } else {
-      aiMessage = newList[index];
-      if (index > 0) {
-        userMessage = newList[index - 1];
-      }
-    }
-
-    if (userMessage != null && aiMessage != null) {
-      newList.remove(aiMessage);
-      newList.remove(userMessage);
-      state = newList;
-
-      // 从数据库中删除
-      final dbHelper = _ref.read(databaseProvider);
-      if (userMessage.id != null) {
-        dbHelper.deleteMessage(userMessage.id!);
-      }
-      if (aiMessage.id != null) {
-        dbHelper.deleteMessage(aiMessage.id!);
-      }
-    }
-  }
-
-  void clearMessages() {
-    state = [];
-  }
-}
-
-// 聊天分组提供者
-final groupsProvider =
-    StateNotifierProvider<GroupsNotifier, List<ChatGroup>>((ref) {
-  return GroupsNotifier(ref);
-});
-
-class GroupsNotifier extends StateNotifier<List<ChatGroup>> {
-  final Ref _ref;
-
-  GroupsNotifier(this._ref) : super([]);
-
-  void setGroups(List<ChatGroup> groups) {
-    state = groups;
-  }
-
-  void addGroup(ChatGroup group) {
-    state = [...state, group];
-  }
-
-  Future<void> deleteGroup(int id) async {
-    final dbHelper = _ref.read(databaseProvider);
-    await dbHelper.deleteGroup(id);
-    state = state.where((group) => group.id != id).toList();
-
-    // 如果删除的是当前分组，需要加载新的当前分组
-    final currentGroup = _ref.read(currentGroupProvider);
-    if (currentGroup?.id == id) {
-      final latestGroup = await dbHelper.getLatestGroup();
-      if (latestGroup != null) {
-        _ref.read(currentGroupProvider.notifier).state = latestGroup;
-      } else {
-        // 创建新分组
-        _ref.read(chatControllerProvider).createNewGroup();
-      }
-    }
-  }
-}
-
-// 当前分组提供者
-final currentGroupProvider = StateProvider<ChatGroup?>((ref) => null);
-
-// 系统提示词提供者
-final systemPromptProvider = StateProvider<String?>((ref) => null);
-
-final toolWorkflowExpansionProvider = StateNotifierProvider<
-    ToolWorkflowExpansionNotifier, Map<String, String>>((ref) {
-  return ToolWorkflowExpansionNotifier();
-});
-
-class ToolWorkflowExpansionNotifier extends StateNotifier<Map<String, String>> {
-  ToolWorkflowExpansionNotifier() : super(const {});
-
-  void toggleExpandedStep({
-    required String turnId,
-    required String stepId,
-  }) {
-    final currentStepId = state[turnId];
-    if (currentStepId == stepId) {
-      final nextState = Map<String, String>.from(state)..remove(turnId);
-      state = nextState;
-      return;
-    }
-
-    state = {
-      ...state,
-      turnId: stepId,
-    };
-  }
-
-  void clearTurn(String turnId) {
-    if (!state.containsKey(turnId)) {
-      return;
-    }
-    final nextState = Map<String, String>.from(state)..remove(turnId);
-    state = nextState;
-  }
-}
-
-String? resolveWorkflowExpandedStepId({
-  required String turnId,
-  required List<ToolWorkflowStep> steps,
-  required String? manualExpandedStepId,
-}) {
-  for (final step in steps) {
-    if (step.status == ToolWorkflowStepStatus.failed) {
-      return step.stepId;
-    }
-  }
-
-  for (final step in steps) {
-    if (step.status == ToolWorkflowStepStatus.awaitingConfirmation ||
-        step.status == ToolWorkflowStepStatus.running) {
-      return step.stepId;
-    }
-  }
-
-  if (manualExpandedStepId == null) {
-    return null;
-  }
-
-  final matched = steps.where((step) => step.stepId == manualExpandedStepId);
-  if (matched.isEmpty) {
-    return null;
-  }
-
-  return manualExpandedStepId;
-}
-
-// 正在自动摘要状态提供者
-final isAutoSummarizingProvider = StateProvider<bool>((ref) => false);
-
-// 加载更多状态提供者
-final isLoadingMoreProvider = StateProvider<bool>((ref) => false);
-
-// 是否有更多消息提供者
-final hasMoreMessagesProvider = StateProvider<bool>((ref) => true);
-
-// 自动滚动提供者
-final autoScrollToBottomProvider = StateProvider<bool>((ref) => true);
-
-// 推理模式提供者
-final useReasoningProvider = StateProvider<bool>((ref) => false);
-
-// 简洁模式提供者
-final useConciseModeProvider = StateProvider<bool>((ref) => false);
-
-// 暂存的系统提示词提供者
-final cachedSystemPromptProvider = StateProvider<String?>((ref) => null);
-
-// 初始化状态提供者
-final isInitializingProvider = StateProvider<bool>((ref) => true);
-
-// 控制器提供者
-final scrollControllerProvider = Provider<ScrollController>((ref) {
-  final controller = ScrollController();
-  ref.onDispose(() => controller.dispose());
-  return controller;
-});
-
-// 文本控制器提供者
-final textControllerProvider = Provider<TextEditingController>((ref) {
-  final controller = TextEditingController();
-  ref.onDispose(() => controller.dispose());
-  return controller;
-});
-
-// 焦点提供者
-final focusNodeProvider = Provider<FocusNode>((ref) {
-  final focusNode = FocusNode();
-  ref.onDispose(() => focusNode.dispose());
-  return focusNode;
-});
-
-// 流订阅提供者
-final streamSubscriptionProvider =
-    StateProvider<StreamSubscription?>((ref) => null);
 
 const String _traceTurnIdPayloadKey = 'traceTurnId';
 
@@ -314,6 +47,8 @@ abstract class ChatSessionCoordinator {
   Future<void> loadCurrentGroup();
 
   Future<void> createNewGroup();
+
+  Future<void> deleteGroup(int id);
 
   Future<void> loadMessages();
 
@@ -824,6 +559,35 @@ class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
   }
 
   @override
+  Future<void> deleteGroup(int id) async {
+    try {
+      final dbHelper = _ref.read(databaseProvider);
+      await dbHelper.deleteGroup(id);
+      _ref.read(groupsProvider.notifier).setGroups(
+            _ref.read(groupsProvider).where((group) => group.id != id).toList(),
+          );
+
+      final currentGroup = _ref.read(currentGroupProvider);
+      if (currentGroup?.id != id) {
+        return;
+      }
+
+      final latestGroup = await dbHelper.getLatestGroup();
+      if (latestGroup != null) {
+        _ref.read(currentGroupProvider.notifier).state = latestGroup;
+        _ref.read(systemPromptProvider.notifier).state =
+            latestGroup.systemPrompt;
+        await loadMessages();
+        return;
+      }
+
+      await createNewGroup();
+    } catch (e) {
+      Logger.e(_tag, '删除分组失败', e);
+    }
+  }
+
+  @override
   Future<void> loadMessages() async {
     final currentGroup = _ref.read(currentGroupProvider);
     if (currentGroup?.id == null) return;
@@ -947,6 +711,10 @@ class ChatController {
   // 创建新分组
   Future<void> createNewGroup() async {
     await _ref.read(chatSessionCoordinatorProvider).createNewGroup();
+  }
+
+  Future<void> deleteGroup(int id) async {
+    await _ref.read(chatSessionCoordinatorProvider).deleteGroup(id);
   }
 
   // 加载消息

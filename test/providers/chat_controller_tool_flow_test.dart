@@ -12,7 +12,6 @@ import 'package:ai_chat/models/tool/tool_definition.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
-import 'package:ai_chat/providers/chat_send_state_providers.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/tool_call_service.dart';
@@ -598,6 +597,23 @@ void main() {
       expect(sessionCoordinator.selectedGroups, [group]);
     });
 
+    test('chat controller delegates deleteGroup to session coordinator',
+        () async {
+      final databaseHelper = DatabaseHelper();
+      final sessionCoordinator = _FakeChatSessionCoordinator();
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService:
+            _FakeChatService(toolPreparationResult: const ToolPreparationResult.noTool()),
+        sessionCoordinator: sessionCoordinator,
+      );
+      addTearDown(container.dispose);
+
+      await container.read(chatControllerProvider).deleteGroup(42);
+
+      expect(sessionCoordinator.deletedGroupIds, [42]);
+    });
+
     test('需要确认的工具会让发送事务停留在 awaitingConfirmation', () async {
       final databaseHelper = DatabaseHelper();
       final chatService = _FakeChatService(
@@ -978,6 +994,7 @@ class _FakeChatSessionCoordinator implements ChatSessionCoordinator {
   int loadMessagesCalls = 0;
   int loadMoreMessagesCalls = 0;
   final List<ChatGroup> selectedGroups = [];
+  final List<int> deletedGroupIds = [];
 
   @override
   Future<void> createNewGroup() async {
@@ -1007,5 +1024,10 @@ class _FakeChatSessionCoordinator implements ChatSessionCoordinator {
   @override
   Future<void> selectGroup(ChatGroup group) async {
     selectedGroups.add(group);
+  }
+
+  @override
+  Future<void> deleteGroup(int id) async {
+    deletedGroupIds.add(id);
   }
 }
