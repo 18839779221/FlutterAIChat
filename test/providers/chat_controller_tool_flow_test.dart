@@ -410,6 +410,25 @@ void main() {
       await databaseHelper.deleteGroup(groupId);
     });
 
+    test(
+        'chat controller delegates send transaction boundary to a dedicated coordinator',
+        () async {
+      final databaseHelper = DatabaseHelper();
+      final coordinator = _FakeChatSendCoordinator();
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(
+          toolPreparationResult: const ToolPreparationResult.noTool(),
+        ),
+        coordinator: coordinator,
+      );
+      addTearDown(container.dispose);
+
+      await container.read(chatControllerProvider).sendMessage('委托发送测试');
+
+      expect(coordinator.sentMessages, ['委托发送测试']);
+    });
+
     test('需要确认的工具会让发送事务停留在 awaitingConfirmation', () async {
       final databaseHelper = DatabaseHelper();
       final chatService = _FakeChatService(
@@ -641,11 +660,14 @@ ProviderContainer _createContainer({
   required DatabaseHelper databaseHelper,
   required ChatService chatService,
   ChatTraceRecorder? traceRecorder,
+  ChatSendCoordinator? coordinator,
 }) {
   return ProviderContainer(
     overrides: [
       databaseProvider.overrideWith((ref) => databaseHelper),
       chatServiceProvider.overrideWith((ref) => chatService),
+      if (coordinator != null)
+        chatSendCoordinatorProvider.overrideWith((ref) => coordinator),
       if (traceRecorder != null)
         traceRecorderProvider.overrideWith((ref) => traceRecorder),
       scrollControllerProvider.overrideWith((ref) => ScrollController()),
@@ -738,4 +760,17 @@ class _NoopBaseLLM implements BaseLLM {
 
   @override
   Future<bool> validateApiKey(ChatConfig config) async => true;
+}
+
+class _FakeChatSendCoordinator implements ChatSendCoordinator {
+  final List<String> sentMessages = [];
+
+  @override
+  Future<void> sendMessage(
+    String text, {
+    required VoidCallback scheduleAutoSummary,
+    required VoidCallback cancelActiveStream,
+  }) async {
+    sentMessages.add(text);
+  }
 }
