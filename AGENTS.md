@@ -106,18 +106,30 @@ fvm flutter build ios
 ## Architecture Overview
 
 ### State Management
-The app uses **flutter_riverpod** for state management with a centralized controller pattern:
+The app uses **flutter_riverpod** with a split provider/controller architecture:
 
-- `ChatController` (in `lib/providers/chat_providers.dart`) is the main business logic controller that handles all chat operations
-- State is managed through various providers: `messagesProvider`, `groupsProvider`, `currentGroupProvider`, etc.
-- The controller pattern centralizes logic and prevents state management code from spreading across UI components
+- `lib/providers/chat_providers.dart` is the composition entry that wires controllers and re-exports chat providers
+- Collection, dependency, send-state, and UI-state providers are split into dedicated files under `lib/providers/`
+- Chat business logic is split across dedicated controllers under `lib/controllers/`
+- UI should consume providers and controller facades rather than embedding orchestration logic in widgets
 
 ### Data Flow Architecture
 
 1. **UI Layer** (`lib/pages/`, `lib/widgets/`) - Consumes providers and displays data
-2. **Controller Layer** (`ChatController` in `lib/providers/chat_providers.dart`) - Orchestrates business logic
+2. **Controller Layer** (`lib/controllers/`) - Coordinates chat, session, summary, debug, and preference flows
 3. **Service Layer** (`lib/services/chat_service.dart`) - Handles AI communication with context strategy
 4. **Data Layer** (`lib/database/database_helper.dart`) - SQLite operations for persistence
+
+### Controller Boundaries
+
+- `ChatController` is the page-facing facade and should stay thin
+- `ChatSendCoordinator` owns send transaction lifecycle, tool confirmation/cancel, and streaming terminal handling
+- `ChatSessionCoordinator` owns group load/select/delete and message pagination
+- `ChatSummaryController` owns auto-summary scheduling and summary title updates
+- `ChatDebugController` owns `structureMessageForDebug` lifecycle
+- `ChatPreferencesController` owns system prompt, reasoning mode, and concise mode
+
+When adding a feature, prefer extending an existing bounded controller or creating a new narrow controller instead of growing `ChatController` back into a god object.
 
 ### Context Management System
 
@@ -143,7 +155,7 @@ To add a new LLM provider:
 
 The app automatically creates new conversation groups based on time:
 - New group is created if the last message was on a different day AND more than 5 hours ago
-- This logic is in `ChatController.loadCurrentGroup()` in `lib/providers/chat_providers.dart`
+- This logic is in `ChatSessionCoordinator.loadCurrentGroup()`
 
 ### Concise Mode Implementation
 
@@ -151,7 +163,7 @@ When concise mode is toggled:
 1. Current system prompt is cached in `cachedSystemPromptProvider`
 2. System prompt is replaced with a concise instruction (30 characters max)
 3. When disabled, the cached prompt is restored
-4. This is handled in `ChatController.setUseConciseMode()`
+4. This is handled in `ChatPreferencesController.setUseConciseMode()`
 
 ### Automatic Conversation Summarization
 
@@ -166,16 +178,14 @@ The app automatically generates conversation summaries using a Hybrid Approach:
 
 **Implementation Details:**
 - Timer-based: After each AI response completes, a 30-second timer is scheduled
-- When timer fires, `_checkAndTriggerAutoSummary()` validates all conditions
+- When timer fires, `ChatSummaryController` validates all conditions
 - If conditions pass, calls `summarizeAndUpdateTitle()` to generate summary via LLM
 - Summary updates both database and UI state
 - `isSummarized` flag prevents re-summarization of the same conversation
 - Fails silently if summarization errors occur (doesn't interrupt user experience)
 
 **Key Methods:**
-- `_scheduleAutoSummary()` - Schedules the 30-second timer after message completion
-- `_checkAndTriggerAutoSummary()` - Validates conditions and triggers summarization
-- `_isDefaultTitle()` - Checks if title is still default/generic
+- `scheduleAutoSummary()` - Schedules the 30-second timer after message completion
 - `summarizeAndUpdateTitle()` - Generates summary and updates group title
 
 ### Database Schema
@@ -191,7 +201,13 @@ Database version: 5 (includes `is_summarized` field for automatic summarization 
 ## Key Files
 
 - `lib/main.dart` - App entry point, configures ChatService with context strategy and LLM
-- `lib/providers/chat_providers.dart` - All Riverpod providers and ChatController business logic
+- `lib/providers/chat_providers.dart` - Chat provider composition entry
+- `lib/controllers/chat_controller.dart` - Page-facing chat facade
+- `lib/controllers/chat_send_coordinator.dart` - Send transaction coordinator
+- `lib/controllers/chat_session_coordinator.dart` - Session/group coordinator
+- `lib/controllers/chat_summary_controller.dart` - Summary and auto-summary controller
+- `lib/controllers/chat_debug_controller.dart` - Structured debug controller
+- `lib/controllers/chat_preferences_controller.dart` - Prompt/mode preference controller
 - `lib/services/chat_service.dart` - Handles AI streaming with context selection
 - `lib/models/context/context_strategies.dart` - Context selection strategy implementations
 - `lib/models/llm/llm_factory.dart` - LLM factory for creating model instances
@@ -208,3 +224,13 @@ Database version: 5 (includes `is_summarized` field for automatic summarization 
   - This is especially required for interface fields, schema fields, DTO/model fields, and tool/message payload fields
   - Comments should explain the meaning and usage of the field, not restate the field name mechanically
   - Keep comments concise, but do not omit them for externally consumed structures just to save lines
+- When architecture changes, update `README.md` to reflect the current structure rather than the historical structure
+- When project requirements, implementation rules, or team conventions change, update `AGENTS.md`
+- When adding a new feature, explicitly consider whether the following also need updates:
+  - trace/log coverage
+  - automated tests
+  - README capability/architecture docs
+  - AGENTS implementation constraints
+  - backlog/todo docs if the feature changes future priorities
+- New feature work should stay visually and architecturally consistent with the current project direction
+  - Avoid one-off UI patterns or isolated architectural shortcuts that bypass the current controller/provider boundaries
