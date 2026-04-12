@@ -36,7 +36,7 @@ class ChatDrawer extends ConsumerWidget {
                 end: Alignment.bottomRight,
                 colors: [
                   theme.primaryColor,
-                  theme.primaryColor.withOpacity(0.8),
+                  theme.primaryColor.withValues(alpha: 0.8),
                 ],
               ),
             ),
@@ -55,7 +55,7 @@ class ChatDrawer extends ConsumerWidget {
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
+                              color: Colors.black.withValues(alpha: 0.1),
                               blurRadius: 8,
                               offset: const Offset(0, 2),
                             ),
@@ -88,7 +88,7 @@ class ChatDrawer extends ConsumerWidget {
                             Text(
                               '随时为您服务',
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.8),
+                                color: Colors.white.withValues(alpha: 0.8),
                                 fontSize: 14,
                               ),
                             ),
@@ -197,7 +197,7 @@ class ChatDrawer extends ConsumerWidget {
                             child: const Text('删除'),
                             onPressed: () {
                               Navigator.pop(context);
-                              ref.read(groupsProvider.notifier).deleteGroup(group.id!);
+                              chatController.deleteGroup(group.id!);
                             },
                           ),
                         ],
@@ -231,7 +231,7 @@ class ChatDrawer extends ConsumerWidget {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: theme.primaryColor.withOpacity(0.1),
+                    color: theme.primaryColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
