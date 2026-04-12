@@ -521,6 +521,44 @@ void main() {
       expect(coordinator.sentMessages, ['委托发送测试']);
     });
 
+    test('chat controller delegates confirm and cancel tool actions to coordinator',
+        () async {
+      final databaseHelper = DatabaseHelper();
+      final coordinator = _FakeChatSendCoordinator();
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(
+          toolPreparationResult: const ToolPreparationResult.noTool(),
+        ),
+        coordinator: coordinator,
+      );
+      addTearDown(container.dispose);
+
+      final message = ChatMessage(
+        id: 42,
+        text: '准备执行工具：创建提醒',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.actionConfirmation,
+        payloadJson: const {
+          'toolName': 'create_reminder',
+          'arguments': {'title': '交周报'},
+          'status': 'awaitingConfirmation',
+          'summary': '准备执行工具：创建提醒',
+          'requiresConfirmation': true,
+        },
+      );
+
+      await container
+          .read(chatControllerProvider)
+          .confirmToolInvocation(message, trustTool: true);
+      await container.read(chatControllerProvider).cancelToolInvocation(message);
+
+      expect(coordinator.confirmedMessages, [message]);
+      expect(coordinator.confirmedTrustFlags, [true]);
+      expect(coordinator.cancelledMessages, [message]);
+    });
+
     test('需要确认的工具会让发送事务停留在 awaitingConfirmation', () async {
       final databaseHelper = DatabaseHelper();
       final chatService = _FakeChatService(
@@ -858,6 +896,9 @@ class _NoopBaseLLM implements BaseLLM {
 
 class _FakeChatSendCoordinator implements ChatSendCoordinator {
   final List<String> sentMessages = [];
+  final List<ChatMessage> confirmedMessages = [];
+  final List<bool> confirmedTrustFlags = [];
+  final List<ChatMessage> cancelledMessages = [];
 
   @override
   Future<void> sendMessage(
@@ -866,5 +907,19 @@ class _FakeChatSendCoordinator implements ChatSendCoordinator {
     required VoidCallback cancelActiveStream,
   }) async {
     sentMessages.add(text);
+  }
+
+  @override
+  Future<void> confirmToolInvocation(
+    ChatMessage message, {
+    bool trustTool = false,
+  }) async {
+    confirmedMessages.add(message);
+    confirmedTrustFlags.add(trustTool);
+  }
+
+  @override
+  Future<void> cancelToolInvocation(ChatMessage message) async {
+    cancelledMessages.add(message);
   }
 }
