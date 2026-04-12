@@ -660,6 +660,28 @@ void main() {
       expect(debugController.messages, [message]);
     });
 
+    test('chat controller delegates preferences lifecycle to preferences controller',
+        () async {
+      final databaseHelper = DatabaseHelper();
+      final preferencesController = _FakeChatPreferencesController();
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(
+          toolPreparationResult: const ToolPreparationResult.noTool(),
+        ),
+        preferencesController: preferencesController,
+      );
+      addTearDown(container.dispose);
+
+      await container.read(chatControllerProvider).setSystemPrompt('new prompt');
+      container.read(chatControllerProvider).setUseReasoning(true);
+      container.read(chatControllerProvider).setUseConciseMode(true);
+
+      expect(preferencesController.systemPrompts, ['new prompt']);
+      expect(preferencesController.reasoningValues, [true]);
+      expect(preferencesController.conciseValues, [true]);
+    });
+
     test('需要确认的工具会让发送事务停留在 awaitingConfirmation', () async {
       final databaseHelper = DatabaseHelper();
       final chatService = _FakeChatService(
@@ -900,6 +922,7 @@ ProviderContainer _createContainer({
   ChatSessionCoordinator? sessionCoordinator,
   ChatSummaryController? summaryController,
   ChatDebugController? debugController,
+  ChatPreferencesController? preferencesController,
 }) {
   return ProviderContainer(
     overrides: [
@@ -913,6 +936,9 @@ ProviderContainer _createContainer({
         chatSummaryControllerProvider.overrideWith((ref) => summaryController),
       if (debugController != null)
         chatDebugControllerProvider.overrideWith((ref) => debugController),
+      if (preferencesController != null)
+        chatPreferencesControllerProvider
+            .overrideWith((ref) => preferencesController),
       if (traceRecorder != null)
         traceRecorderProvider.overrideWith((ref) => traceRecorder),
       scrollControllerProvider.overrideWith((ref) => ScrollController()),
@@ -1109,5 +1135,26 @@ class _FakeChatDebugController implements ChatDebugController {
   @override
   Future<void> structureMessageForDebug(ChatMessage message) async {
     messages.add(message);
+  }
+}
+
+class _FakeChatPreferencesController implements ChatPreferencesController {
+  final List<String?> systemPrompts = [];
+  final List<bool> reasoningValues = [];
+  final List<bool> conciseValues = [];
+
+  @override
+  Future<void> setSystemPrompt(String? prompt) async {
+    systemPrompts.add(prompt);
+  }
+
+  @override
+  void setUseConciseMode(bool value) {
+    conciseValues.add(value);
+  }
+
+  @override
+  void setUseReasoning(bool value) {
+    reasoningValues.add(value);
   }
 }
