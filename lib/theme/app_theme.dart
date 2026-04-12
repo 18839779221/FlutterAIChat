@@ -13,9 +13,12 @@ class AppTheme {
     final radius = AppRadius.base();
     final colorScheme = const ColorScheme.light().copyWith(
       primary: colors.workflowRunning,
+      secondary: colors.workflowSuccess,
       surface: colors.assistantSurface,
       onSurface: colors.primaryText,
       onPrimary: Colors.white,
+      onSecondary: Colors.white,
+      outlineVariant: colors.divider,
     );
 
     return ThemeData(
@@ -26,6 +29,10 @@ class AppTheme {
         bodyColor: colors.primaryText,
         displayColor: colors.primaryText,
       ),
+      canvasColor: colors.settingsPanelBackground,
+      splashFactory: NoSplash.splashFactory,
+      highlightColor: Colors.transparent,
+      hoverColor: Colors.transparent,
       inputDecorationTheme: AppComponentTheme.inputDecorationTheme(
         colors,
         radius,
@@ -33,6 +40,13 @@ class AppTheme {
       ),
       cardTheme: AppComponentTheme.cardTheme(colors, radius),
       dividerColor: colors.divider,
+      iconTheme: IconThemeData(color: colors.primaryText),
+      appBarTheme: AppBarTheme(
+        backgroundColor: Colors.transparent,
+        foregroundColor: colors.primaryText,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+      ),
       extensions: <ThemeExtension<dynamic>>[
         colors,
         spacing,

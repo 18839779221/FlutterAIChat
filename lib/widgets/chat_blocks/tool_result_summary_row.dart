@@ -25,35 +25,53 @@ class ToolResultSummaryRow extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: EdgeInsets.symmetric(
-        horizontal: spacing.md,
-        vertical: spacing.sm,
+        horizontal: spacing.xs + spacing.xxs,
+        vertical: spacing.xs - 1,
       ),
       decoration: BoxDecoration(
-        color: colors.toolWorkflowSurface,
-        borderRadius: BorderRadius.circular(radius.md),
-        border: Border.all(color: colors.divider),
+        color: colors.structuredSurface.withValues(alpha: 0.44),
+        borderRadius: BorderRadius.circular(radius.sm + 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: statusColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              SizedBox(width: spacing.sm),
               Expanded(
                 child: Text(
                   result.toolName,
                   style: TextStyle(
                     color: colors.primaryText,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
-              Text(
-                result.status == ToolExecutionStatus.success ? '完成' : '失败',
-                style: TextStyle(
-                  color: statusColor,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: spacing.xs,
+                  vertical: spacing.xxs,
+                ),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(radius.pill),
+                ),
+                child: Text(
+                  result.status == ToolExecutionStatus.success ? '完成' : '失败',
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
@@ -65,7 +83,8 @@ class ToolResultSummaryRow extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: colors.secondaryText,
-              fontSize: 12,
+              fontSize: 10.5,
+              height: 1.28,
             ),
           ),
         ],

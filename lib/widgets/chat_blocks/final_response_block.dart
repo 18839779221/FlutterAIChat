@@ -1,5 +1,4 @@
 import 'package:ai_chat/theme/app_colors.dart';
-import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
 import 'package:flutter/material.dart';
@@ -17,32 +16,34 @@ class FinalResponseBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
-    final radius = Theme.of(context).extension<AppRadius>()!;
 
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(spacing.md),
-      decoration: BoxDecoration(
-        color: colors.structuredSurface,
-        borderRadius: BorderRadius.circular(radius.md),
-        border: Border.all(color: colors.divider),
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        spacing.xs,
+        spacing.xxs,
+        spacing.xs,
+        spacing.xxs + 1,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: colors.primaryText,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          SizedBox(height: spacing.xs),
-          FlutterMarkdownImpl(data: text),
-        ],
+      child: SizedBox(
+        width: double.infinity,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (title.trim().isNotEmpty && title != 'Final Response') ...[
+              Text(
+                title,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      height: 1.2,
+                    ),
+              ),
+              SizedBox(height: spacing.xxs + 2),
+            ],
+            FlutterMarkdownImpl(data: text),
+          ],
+        ),
       ),
     );
   }

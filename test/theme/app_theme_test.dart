@@ -14,12 +14,15 @@ void main() {
     expect(theme.extension<AppRadius>(), isNotNull);
   });
 
-  test('light theme exposes chat and settings semantic colors', () {
+  test('light theme exposes calm light chat semantics', () {
+    final theme = AppTheme.light();
     final colors = AppTheme.light().extension<AppColors>();
 
+    expect(theme.colorScheme.brightness, Brightness.light);
+    expect(theme.scaffoldBackgroundColor, const Color(0xFFF3F1EC));
     expect(colors, isNotNull);
-    expect(colors!.chatBackground, const Color(0xFFF7F8FA));
-    expect(colors.settingsPanelBackground, const Color(0xFFF1F2F4));
-    expect(colors.toolWorkflowSurface, const Color(0xFFEEF3F8));
+    expect(colors!.chatBackground, const Color(0xFFF3F1EC));
+    expect(colors.settingsPanelBackground, const Color(0xFFE3E4DE));
+    expect(colors.toolWorkflowSurface, const Color(0xFFDDE4D8));
   });
 }

@@ -15,6 +15,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('ChatMessageList block rendering', () {
+    testWidgets('empty conversations show a designed start state', (tester) async {
+      await _pumpMessageList(tester, messages: const []);
+
+      expect(find.text('开始一段新的对话'), findsOneWidget);
+      expect(find.text('从一个问题开始，或让助手帮你推进下一步。'), findsOneWidget);
+    });
+
     testWidgets('plain assistant text stays visible in the timeline', (
       tester,
     ) async {

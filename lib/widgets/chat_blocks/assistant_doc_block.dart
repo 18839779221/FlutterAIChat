@@ -1,5 +1,4 @@
 import 'package:ai_chat/theme/app_colors.dart';
-import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
 import 'package:flutter/material.dart';
@@ -19,33 +18,40 @@ class AssistantDocBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<AppColors>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
-    final radius = Theme.of(context).extension<AppRadius>()!;
 
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(spacing.md),
-      decoration: BoxDecoration(
-        color: colors.assistantSurface,
-        borderRadius: BorderRadius.circular(radius.md),
-        border: Border.all(color: colors.divider),
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        spacing.md + 1,
+        spacing.xxs,
+        spacing.md + 1,
+        spacing.xxs + 1,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (label != null) ...[
-            Text(
-              label!,
-              style: TextStyle(
-                color: colors.secondaryText,
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.6,
+      child: SizedBox(
+        width: double.infinity,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (label != null) ...[
+              Text(
+                label!,
+                style: TextStyle(
+                  color: colors.secondaryText,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                ),
               ),
-            ),
-            SizedBox(height: spacing.xs),
+              SizedBox(height: spacing.xxs + 1),
+              Container(
+                height: 1,
+                width: 18,
+                color: colors.divider.withValues(alpha: 0.48),
+              ),
+              SizedBox(height: spacing.xs + 1),
+            ],
+            FlutterMarkdownImpl(data: text),
           ],
-          FlutterMarkdownImpl(data: text),
-        ],
+        ),
       ),
     );
   }

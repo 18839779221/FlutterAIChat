@@ -1,3 +1,4 @@
+import 'package:ai_chat/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -28,67 +29,60 @@ class CodeBlockWidget extends StatefulWidget {
 class _CodeBlockWidgetState extends State<CodeBlockWidget> {
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppColors>()!;
+
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: const Color(0xFF1B1E21),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 代码块头部
           Container(
             padding: const EdgeInsets.fromLTRB(12, 0, 8, 0),
+            height: 32,
             decoration: const BoxDecoration(
-              color: Color(0xFF2D2D2D),
+              color: Color(0xFF25292D),
               borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(8),
-                topRight: Radius.circular(8),
+                topLeft: Radius.circular(12),
+                topRight: Radius.circular(12),
               ),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // 语言标识
                 Text(
                   widget.language.toUpperCase(),
                   style: const TextStyle(
-                    color: Color(0xFFAAAAAA),
-                    fontSize: 10,
+                    color: Color(0xFF9EA4AC),
+                    fontSize: 9,
                     fontWeight: FontWeight.w500,
+                    letterSpacing: 0.45,
                   ),
                 ),
-                // 操作按钮
                 Row(
                   children: [
-                    // 自动换行按钮
                     SizedBox(
-                        width: 36,
-                        height: 36,
+                        width: 28,
+                        height: 28,
                         child: IconButton(
-                          iconSize: 16,
+                          iconSize: 14,
                           icon: Icon(
                             widget.codeConfig.autoLineBreak
                                 ? Icons.wrap_text
                                 : Icons.wrap_text_outlined,
                             color: widget.codeConfig.autoLineBreak
-                                ? Colors.blue
-                                : Colors.grey[400],
+                                ? colors.workflowRunning
+                                : const Color(0xFF8E959D),
                           ),
                           tooltip: widget.codeConfig.autoLineBreak
                               ? '关闭自动换行'
                               : '开启自动换行',
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(
-                            minWidth: 20,
-                            minHeight: 20,
+                            minWidth: 18,
+                            minHeight: 18,
                           ),
                           splashRadius: 6,
                           onPressed: () {
@@ -98,15 +92,13 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
                             });
                           },
                         )),
-                    const SizedBox(width: 4),
-                    // 复制按钮
+                    const SizedBox(width: 2),
                     _CopyButton(code: widget.code),
                   ],
                 ),
               ],
             ),
           ),
-          // 代码内容
           Row(
             children: [
               Expanded(
@@ -129,7 +121,7 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
       code,
       language: language,
       theme: CodeConfig.theme,
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 2),
       textStyle: CodeConfig.codeTextStyle,
     );
   }
@@ -160,23 +152,23 @@ class _CopyButtonState extends State<_CopyButton> {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-        width: 36,
-        height: 36,
+        width: 28,
+        height: 28,
         child: IconButton(
-          iconSize: 16,
+          iconSize: 14,
           icon: AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
             child: Icon(
               _isCopied ? Icons.check : Icons.copy_outlined,
               key: ValueKey(_isCopied),
-              color: _isCopied ? Colors.green : Colors.grey[400],
+              color: _isCopied ? const Color(0xFF7FBE95) : const Color(0xFF8E959D),
             ),
           ),
           tooltip: _isCopied ? '已复制' : '复制代码',
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(
-            minWidth: 20,
-            minHeight: 20,
+            minWidth: 18,
+            minHeight: 18,
           ),
           splashRadius: 6,
           onPressed: _copyCode,
@@ -192,17 +184,18 @@ class CodeSegmentWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(4.0),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
       decoration: BoxDecoration(
-        color: Colors.grey[200],
-        borderRadius: BorderRadius.circular(4.0),
+        color: const Color(0xFFE8E4DB),
+        borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         code,
-        style: TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 14,
-          backgroundColor: Colors.grey[200],
+        style: const TextStyle(
+          fontFamily: 'JetBrainsMono',
+          fontSize: 13,
+          height: 1.2,
+          color: Color(0xFF30353A),
         ),
       ),
     );
