@@ -656,6 +656,8 @@ final focusNodeProvider = Provider<FocusNode>((ref) {
 final streamSubscriptionProvider =
     StateProvider<StreamSubscription?>((ref) => null);
 
+const String _traceTurnIdPayloadKey = 'traceTurnId';
+
 abstract class ChatSendCoordinator {
   Future<void> sendMessage(
     String text, {
@@ -784,7 +786,10 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
           role: MessageRole.assistant,
           status: MessageStatus.completed,
           contentType: MessageContentType.actionConfirmation,
-          payloadJson: toolPreparationResult.toolInvocation!.toJson(),
+          payloadJson: {
+            ...toolPreparationResult.toolInvocation!.toJson(),
+            _traceTurnIdPayloadKey: turnId,
+          },
         );
         final confirmationMessageId =
             await dbHelper.insertMessage(confirmationMessage, currentGroupId);
@@ -1155,6 +1160,11 @@ class ChatController {
       return;
     }
 
+    final payload = message.payloadJson;
+    final traceRecorder = _ref.read(traceRecorderProvider);
+    final traceTurnId = _resolveTraceTurnId(payload, traceRecorder);
+    final toolName = payload == null ? null : payload['toolName'] as String?;
+
     final cancelledMessage = message.copyWith(
       text: '已取消工具执行',
       contentType: MessageContentType.plainText,
@@ -1171,6 +1181,18 @@ class ChatController {
       contentType: cancelledMessage.contentType,
       payloadJson: null,
     );
+
+    traceRecorder.record(
+      turnId: traceTurnId,
+      stage: ChatTraceStage.toolConfirmationAction,
+      status: ChatTraceStatus.success,
+      summary: '用户取消工具执行',
+      data: {
+        'action': 'cancel',
+        'messageId': message.id,
+        if (toolName != null) 'toolName': toolName,
+      },
+    );
   }
 
   Future<void> confirmToolInvocation(
@@ -1184,11 +1206,26 @@ class ChatController {
     }
 
     _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.executingTool;
+    final traceRecorder = _ref.read(traceRecorderProvider);
+    final traceTurnId = _resolveTraceTurnId(payload, traceRecorder);
     final invocation = ToolInvocation.fromJson(payload);
+    traceRecorder.record(
+      turnId: traceTurnId,
+      stage: ChatTraceStage.toolConfirmationAction,
+      status: ChatTraceStatus.success,
+      summary: '用户确认继续执行工具',
+      data: {
+        'action': 'confirm',
+        'messageId': message.id,
+        'toolName': invocation.toolName,
+        'trustTool': trustTool,
+      },
+    );
     final executionResult = await _ref.read(chatServiceProvider).executeToolInvocation(
           groupId: currentGroup!.id!,
           invocation: invocation,
           trustTool: trustTool,
+          turnId: traceTurnId,
         );
     final executionDraft = resolveConfirmedToolExecutionDraft(
       sourceMessage: message,
@@ -1456,6 +1493,17 @@ class ChatController {
   // 判断是否为默认标题
   bool _isDefaultTitle(String title) {
     return title.startsWith('新对话') || title == 'AI Chat' || title == '默认对话';
+  }
+
+  String _resolveTraceTurnId(
+    Map<String, dynamic>? payload,
+    ChatTraceRecorder traceRecorder,
+  ) {
+    final rawTurnId = payload?[_traceTurnIdPayloadKey];
+    if (rawTurnId is String && rawTurnId.isNotEmpty) {
+      return rawTurnId;
+    }
+    return traceRecorder.newTurnId();
   }
 
   // 取消自动摘要定时器

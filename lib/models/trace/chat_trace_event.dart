@@ -22,6 +22,8 @@ enum ChatTraceStage {
   toolExecuteDone,
   /// The tool context builder completed.
   toolContextBuilt,
+  /// The user explicitly confirmed or cancelled a pending tool invocation.
+  toolConfirmationAction,
 }
 
 /// Represents the structured status of each stage for logging and observability.

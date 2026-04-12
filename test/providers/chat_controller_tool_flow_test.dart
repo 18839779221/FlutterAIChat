@@ -232,6 +232,10 @@ void main() {
 
       expect(confirmationMessage.text, '准备执行工具：创建提醒');
       expect(
+        confirmationMessage.payloadJson?['traceTurnId'],
+        isA<String>().having((value) => value, 'non-empty', isNotEmpty),
+      );
+      expect(
         messages.where(
           (message) => message.contentType == MessageContentType.toolResult,
         ),
@@ -244,6 +248,10 @@ void main() {
 
     test('继续并信任会执行挂起工具并追加 toolResult 消息', () async {
       final databaseHelper = DatabaseHelper();
+      final traceLogs = <Map<String, dynamic>>[];
+      final traceRecorder = ChatTraceRecorder(
+        logger: (entry) => traceLogs.add(entry),
+      );
       final chatService = _FakeChatService(
         toolPreparationResult: const ToolPreparationResult(
           toolInvocation: ToolInvocation(
@@ -276,6 +284,7 @@ void main() {
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: chatService,
+        traceRecorder: traceRecorder,
       );
       addTearDown(container.dispose);
 
@@ -316,6 +325,89 @@ void main() {
         isTrue,
       );
       expect(chatService.confirmedTrustFlags, [true]);
+      expect(chatService.confirmedTurnIds, hasLength(1));
+      final initialTurnId = traceLogs
+          .firstWhere((entry) => entry['stage'] == ChatTraceStage.sendStart.name)['turnId']
+          as String;
+      expect(chatService.confirmedTurnIds.single, initialTurnId);
+      expect(
+        traceLogs.any(
+          (entry) =>
+              entry['turnId'] == initialTurnId &&
+              entry['stage'] == ChatTraceStage.toolConfirmationAction.name &&
+              entry['status'] == ChatTraceStatus.success.name &&
+              entry['summary'] == '用户确认继续执行工具',
+        ),
+        isTrue,
+      );
+
+      await databaseHelper.deleteGroup(groupId);
+    });
+
+    test('取消工具会记录取消 trace 并复位发送阶段', () async {
+      final databaseHelper = DatabaseHelper();
+      final traceLogs = <Map<String, dynamic>>[];
+      final traceRecorder = ChatTraceRecorder(
+        logger: (entry) => traceLogs.add(entry),
+      );
+      final chatService = _FakeChatService(
+        toolPreparationResult: const ToolPreparationResult(
+          toolInvocation: ToolInvocation(
+            toolName: 'create_reminder',
+            arguments: {'title': '交周报'},
+            status: ToolInvocationStatus.awaitingConfirmation,
+            summary: '准备执行工具：创建提醒',
+            requiresConfirmation: true,
+          ),
+          toolResult: null,
+          additionalContextMessages: [],
+        ),
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: chatService,
+        traceRecorder: traceRecorder,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      await container.read(chatControllerProvider).sendMessage('提醒我交周报');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final confirmationMessage = container
+          .read(messagesProvider)
+          .firstWhere(
+            (message) =>
+                message.contentType == MessageContentType.actionConfirmation,
+          );
+      await container
+          .read(chatControllerProvider)
+          .cancelToolInvocation(confirmationMessage);
+
+      expect(container.read(sendPhaseProvider), ChatSendPhase.idle);
+      final updatedMessage = container
+          .read(messagesProvider)
+          .firstWhere((message) => message.id == confirmationMessage.id);
+      expect(updatedMessage.text, '已取消工具执行');
+      expect(updatedMessage.contentType, MessageContentType.plainText);
+
+      final initialTurnId = traceLogs
+          .firstWhere((entry) => entry['stage'] == ChatTraceStage.sendStart.name)['turnId']
+          as String;
+      expect(
+        traceLogs.any(
+          (entry) =>
+              entry['turnId'] == initialTurnId &&
+              entry['stage'] == ChatTraceStage.toolConfirmationAction.name &&
+              entry['status'] == ChatTraceStatus.success.name &&
+              entry['summary'] == '用户取消工具执行',
+        ),
+        isTrue,
+      );
 
       await databaseHelper.deleteGroup(groupId);
     });
@@ -684,6 +776,7 @@ class _FakeChatService extends ChatService {
   final List<String> preparedUserMessages = [];
   final List<List<ChatMessage>> streamHistories = [];
   final List<bool> confirmedTrustFlags = [];
+  final List<String?> confirmedTurnIds = [];
 
   _FakeChatService({
     required this.toolPreparationResult,
@@ -726,6 +819,7 @@ class _FakeChatService extends ChatService {
     String? turnId,
   }) async {
     confirmedTrustFlags.add(trustTool);
+    confirmedTurnIds.add(turnId);
     return confirmedToolResult ?? const ToolPreparationResult.noTool();
   }
 }
