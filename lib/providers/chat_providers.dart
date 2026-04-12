@@ -263,6 +263,82 @@ class ConfirmedToolExecutionDraft {
   });
 }
 
+enum StreamingAssistantDeltaKind {
+  content,
+  reasoning,
+  ignored,
+}
+
+/// Parsed semantic delta emitted by the streaming assistant response.
+class StreamingAssistantDelta {
+  /// Whether this chunk updates visible content, reasoning text, or should be ignored.
+  final StreamingAssistantDeltaKind kind;
+
+  /// Normalized textual payload carried by the chunk.
+  final String content;
+
+  const StreamingAssistantDelta({
+    required this.kind,
+    required this.content,
+  });
+}
+
+/// Structured trace payload resolved before the controller records it.
+class ChatSendTraceDraft {
+  /// Trace stage represented by the future log entry.
+  final ChatTraceStage stage;
+
+  /// Success or failure outcome for the stage.
+  final ChatTraceStatus status;
+
+  /// Short operator-facing summary attached to the event.
+  final String summary;
+
+  /// Additional structured diagnostic fields.
+  final Map<String, dynamic> data;
+
+  const ChatSendTraceDraft({
+    required this.stage,
+    required this.status,
+    required this.summary,
+    required this.data,
+  });
+}
+
+/// Finalization decision for assistant streaming terminal events.
+class StreamingAssistantTerminalDraft {
+  /// Assistant message id affected by the terminal event.
+  final int assistantMessageId;
+
+  /// Message status that should be persisted when requested.
+  final MessageStatus nextStatus;
+
+  /// Whether the assistant status should be updated in UI and persistence layers.
+  final bool shouldPersistStatusUpdate;
+
+  /// Whether the controller should clear the generating flag.
+  final bool shouldStopGenerating;
+
+  /// Whether the controller should return the send phase to idle.
+  final bool shouldSetIdlePhase;
+
+  /// Whether the auto summary timer should start after this terminal event.
+  final bool shouldScheduleAutoSummary;
+
+  /// Optional trace entry to record for this terminal event.
+  final ChatSendTraceDraft? traceEntry;
+
+  const StreamingAssistantTerminalDraft({
+    required this.assistantMessageId,
+    required this.nextStatus,
+    required this.shouldPersistStatusUpdate,
+    required this.shouldStopGenerating,
+    required this.shouldSetIdlePhase,
+    required this.shouldScheduleAutoSummary,
+    required this.traceEntry,
+  });
+}
+
 /// Builds the minimal send transaction snapshot so `sendMessage()` can focus on
 /// orchestration instead of inline state assembly details.
 @visibleForTesting
@@ -360,6 +436,110 @@ ConfirmedToolExecutionDraft resolveConfirmedToolExecutionDraft({
   return ConfirmedToolExecutionDraft(
     runningMessage: runningMessage,
     toolResultMessage: toolResultMessage,
+  );
+}
+
+/// Parses a raw stream event into a normalized assistant delta shape.
+@visibleForTesting
+StreamingAssistantDelta resolveStreamingAssistantDelta(String rawEvent) {
+  try {
+    final decoded = jsonDecode(rawEvent);
+    if (decoded is! Map) {
+      return const StreamingAssistantDelta(
+        kind: StreamingAssistantDeltaKind.ignored,
+        content: '',
+      );
+    }
+    final data = decoded.cast<String, dynamic>();
+    final type = data['type'];
+    final content = data['content'];
+    if (content is! String || content.isEmpty) {
+      return const StreamingAssistantDelta(
+        kind: StreamingAssistantDeltaKind.ignored,
+        content: '',
+      );
+    }
+    if (type == 'content') {
+      return StreamingAssistantDelta(
+        kind: StreamingAssistantDeltaKind.content,
+        content: content,
+      );
+    }
+    if (type == 'reasoning') {
+      return StreamingAssistantDelta(
+        kind: StreamingAssistantDeltaKind.reasoning,
+        content: content,
+      );
+    }
+  } catch (_) {
+    // Ignore malformed stream chunks and let the controller continue.
+  }
+
+  return const StreamingAssistantDelta(
+    kind: StreamingAssistantDeltaKind.ignored,
+    content: '',
+  );
+}
+
+/// Resolves the terminal state when assistant streaming fails.
+@visibleForTesting
+StreamingAssistantTerminalDraft resolveStreamingAssistantFailureDraft({
+  required int assistantMessageId,
+  required Object error,
+}) {
+  return StreamingAssistantTerminalDraft(
+    assistantMessageId: assistantMessageId,
+    nextStatus: MessageStatus.failed,
+    shouldPersistStatusUpdate: true,
+    shouldStopGenerating: true,
+    shouldSetIdlePhase: true,
+    shouldScheduleAutoSummary: false,
+    traceEntry: ChatSendTraceDraft(
+      stage: ChatTraceStage.sendFailed,
+      status: ChatTraceStatus.failure,
+      summary: 'AI响应出错',
+      data: {
+        'assistantMessageId': assistantMessageId,
+        'error': error.toString(),
+      },
+    ),
+  );
+}
+
+/// Resolves the terminal state when assistant streaming finishes normally.
+@visibleForTesting
+StreamingAssistantTerminalDraft resolveStreamingAssistantCompletionDraft({
+  required int assistantMessageId,
+  required ChatMessage assistantMessage,
+}) {
+  if (assistantMessage.status == MessageStatus.interrupted) {
+    return StreamingAssistantTerminalDraft(
+      assistantMessageId: assistantMessageId,
+      nextStatus: MessageStatus.interrupted,
+      shouldPersistStatusUpdate: false,
+      shouldStopGenerating: false,
+      shouldSetIdlePhase: false,
+      shouldScheduleAutoSummary: false,
+      traceEntry: null,
+    );
+  }
+
+  return StreamingAssistantTerminalDraft(
+    assistantMessageId: assistantMessageId,
+    nextStatus: MessageStatus.completed,
+    shouldPersistStatusUpdate: true,
+    shouldStopGenerating: true,
+    shouldSetIdlePhase: true,
+    shouldScheduleAutoSummary: true,
+    traceEntry: ChatSendTraceDraft(
+      stage: ChatTraceStage.sendDone,
+      status: ChatTraceStatus.success,
+      summary: '发送完成',
+      data: {
+        'assistantMessageId': assistantMessageId,
+        'phase': ChatSendPhase.idle.name,
+      },
+    ),
   );
 }
 
@@ -811,66 +991,87 @@ class ChatController {
       )
           .listen(
         (content) async {
-          try {
-            final data = jsonDecode(content);
-            if (data['type'] == 'content') {
-              Logger.d(_tag, '收到AI响应片段: ${data['content']}');
+          final delta = resolveStreamingAssistantDelta(content);
+          switch (delta.kind) {
+            case StreamingAssistantDeltaKind.content:
+              Logger.d(_tag, '收到AI响应片段: ${delta.content}');
               _ref
                   .read(messagesProvider.notifier)
-                  .appendToMessage(aiMessageId, data['content']);
+                  .appendToMessage(aiMessageId, delta.content);
               await dbHelper.updateMessage(aiMessageId, aiMessage.text);
-            } else if (data['type'] == 'reasoning') {
-              Logger.d(_tag, '收到推理内容: ${data['content']}');
+              break;
+            case StreamingAssistantDeltaKind.reasoning:
+              Logger.d(_tag, '收到推理内容: ${delta.content}');
               _ref
                   .read(messagesProvider.notifier)
-                  .appendReasoningToMessage(aiMessageId, data['content']);
+                  .appendReasoningToMessage(aiMessageId, delta.content);
               await dbHelper.updateMessageReasoning(
                   aiMessageId, aiMessage.reasoningContent);
-            }
-          } catch (e) {
-            Logger.e(_tag, '处理响应数据失败', e);
+              break;
+            case StreamingAssistantDeltaKind.ignored:
+              Logger.d(_tag, '忽略无法识别的流式响应片段');
+              break;
           }
         },
         onError: (error) {
           Logger.e(_tag, 'AI响应出错', error);
-          _ref
-              .read(messagesProvider.notifier)
-              .updateMessageStatus(aiMessageId, MessageStatus.failed);
-          _ref.read(isGeneratingProvider.notifier).state = false;
-          _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
-          dbHelper.updateMessageStatus(aiMessageId, MessageStatus.failed);
-          traceRecorder.record(
-            turnId: turnId,
-            stage: ChatTraceStage.sendFailed,
-            status: ChatTraceStatus.failure,
-            summary: 'AI响应出错',
-            data: {
-              'assistantMessageId': aiMessageId,
-              'error': error.toString(),
-            },
+          final failureDraft = resolveStreamingAssistantFailureDraft(
+            assistantMessageId: aiMessageId,
+            error: error,
           );
+          if (failureDraft.shouldPersistStatusUpdate) {
+            _ref
+                .read(messagesProvider.notifier)
+                .updateMessageStatus(aiMessageId, failureDraft.nextStatus);
+            dbHelper.updateMessageStatus(aiMessageId, failureDraft.nextStatus);
+          }
+          if (failureDraft.shouldStopGenerating) {
+            _ref.read(isGeneratingProvider.notifier).state = false;
+          }
+          if (failureDraft.shouldSetIdlePhase) {
+            _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
+          }
+          final traceEntry = failureDraft.traceEntry;
+          if (traceEntry != null) {
+            traceRecorder.record(
+              turnId: turnId,
+              stage: traceEntry.stage,
+              status: traceEntry.status,
+              summary: traceEntry.summary,
+              data: traceEntry.data,
+            );
+          }
         },
         onDone: () {
           Logger.i(_tag, 'AI响应完成');
-          if (aiMessage.status != MessageStatus.interrupted) {
+          final latestAssistantMessage = _findMessageById(aiMessageId) ?? aiMessage;
+          final completionDraft = resolveStreamingAssistantCompletionDraft(
+            assistantMessageId: aiMessageId,
+            assistantMessage: latestAssistantMessage,
+          );
+          if (completionDraft.shouldPersistStatusUpdate) {
             _ref
                 .read(messagesProvider.notifier)
-                .updateMessageStatus(aiMessageId, MessageStatus.completed);
+                .updateMessageStatus(aiMessageId, completionDraft.nextStatus);
+            dbHelper.updateMessageStatus(aiMessageId, completionDraft.nextStatus);
+          }
+          if (completionDraft.shouldStopGenerating) {
             _ref.read(isGeneratingProvider.notifier).state = false;
+          }
+          if (completionDraft.shouldSetIdlePhase) {
             _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
-            dbHelper.updateMessageStatus(aiMessageId, MessageStatus.completed);
+          }
+          final traceEntry = completionDraft.traceEntry;
+          if (traceEntry != null) {
             traceRecorder.record(
               turnId: turnId,
-              stage: ChatTraceStage.sendDone,
-              status: ChatTraceStatus.success,
-              summary: '发送完成',
-              data: {
-                'assistantMessageId': aiMessageId,
-                'phase': ChatSendPhase.idle.name,
-              },
+              stage: traceEntry.stage,
+              status: traceEntry.status,
+              summary: traceEntry.summary,
+              data: traceEntry.data,
             );
-
-            // 启动自动摘要定时器
+          }
+          if (completionDraft.shouldScheduleAutoSummary) {
             _scheduleAutoSummary();
           }
         },
@@ -1212,6 +1413,15 @@ class ChatController {
   // 判断是否为默认标题
   bool _isDefaultTitle(String title) {
     return title.startsWith('新对话') || title == 'AI Chat' || title == '默认对话';
+  }
+
+  ChatMessage? _findMessageById(int id) {
+    for (final message in _ref.read(messagesProvider)) {
+      if (message.id == id) {
+        return message;
+      }
+    }
+    return null;
   }
 
   // 取消自动摘要定时器
