@@ -636,6 +636,30 @@ void main() {
       expect(summaryController.cancelTimerCalls, 1);
     });
 
+    test('chat controller delegates debug structuring to debug controller',
+        () async {
+      final databaseHelper = DatabaseHelper();
+      final debugController = _FakeChatDebugController();
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(
+          toolPreparationResult: const ToolPreparationResult.noTool(),
+        ),
+        debugController: debugController,
+      );
+      addTearDown(container.dispose);
+
+      final message = ChatMessage(
+        text: 'debug me',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+      );
+
+      await container.read(chatControllerProvider).structureMessageForDebug(message);
+
+      expect(debugController.messages, [message]);
+    });
+
     test('需要确认的工具会让发送事务停留在 awaitingConfirmation', () async {
       final databaseHelper = DatabaseHelper();
       final chatService = _FakeChatService(
@@ -875,6 +899,7 @@ ProviderContainer _createContainer({
   ChatSendCoordinator? coordinator,
   ChatSessionCoordinator? sessionCoordinator,
   ChatSummaryController? summaryController,
+  ChatDebugController? debugController,
 }) {
   return ProviderContainer(
     overrides: [
@@ -886,6 +911,8 @@ ProviderContainer _createContainer({
         chatSessionCoordinatorProvider.overrideWith((ref) => sessionCoordinator),
       if (summaryController != null)
         chatSummaryControllerProvider.overrideWith((ref) => summaryController),
+      if (debugController != null)
+        chatDebugControllerProvider.overrideWith((ref) => debugController),
       if (traceRecorder != null)
         traceRecorderProvider.overrideWith((ref) => traceRecorder),
       scrollControllerProvider.overrideWith((ref) => ScrollController()),
@@ -1073,5 +1100,14 @@ class _FakeChatSummaryController implements ChatSummaryController {
   Future<String?> summarizeAndUpdateTitle() async {
     summarizeCalls += 1;
     return 'fake-summary';
+  }
+}
+
+class _FakeChatDebugController implements ChatDebugController {
+  final List<ChatMessage> messages = [];
+
+  @override
+  Future<void> structureMessageForDebug(ChatMessage message) async {
+    messages.add(message);
   }
 }
