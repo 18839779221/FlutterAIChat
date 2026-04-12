@@ -677,6 +677,24 @@ final chatSendCoordinatorProvider = Provider<ChatSendCoordinator>((ref) {
   return DefaultChatSendCoordinator(ref);
 });
 
+abstract class ChatSessionCoordinator {
+  Future<void> loadGroups();
+
+  Future<void> loadCurrentGroup();
+
+  Future<void> createNewGroup();
+
+  Future<void> loadMessages();
+
+  Future<void> loadMoreMessages();
+
+  Future<void> selectGroup(ChatGroup group);
+}
+
+final chatSessionCoordinatorProvider = Provider<ChatSessionCoordinator>((ref) {
+  return DefaultChatSessionCoordinator(ref);
+});
+
 class DefaultChatSendCoordinator implements ChatSendCoordinator {
   static const String _tag = 'ChatSendCoordinator';
 
@@ -1100,13 +1118,149 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
   }
 }
 
+class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
+  static const String _tag = 'ChatSessionCoordinator';
+  static const int _pageSize = 20;
+
+  final Ref _ref;
+
+  DefaultChatSessionCoordinator(this._ref);
+
+  @override
+  Future<void> loadGroups() async {
+    try {
+      final dbHelper = _ref.read(databaseProvider);
+      final groups = await dbHelper.getAllGroups();
+      _ref.read(groupsProvider.notifier).setGroups(groups);
+      await loadCurrentGroup();
+    } catch (e) {
+      Logger.e(_tag, '加载分组失败', e);
+    }
+  }
+
+  @override
+  Future<void> loadCurrentGroup() async {
+    try {
+      final dbHelper = _ref.read(databaseProvider);
+      final latestGroup = await dbHelper.getLatestGroup();
+
+      if (latestGroup != null) {
+        final now = DateTime.now();
+        final lastMessageTime = latestGroup.lastMessageAt;
+        final isSameDay = now.year == lastMessageTime.year &&
+            now.month == lastMessageTime.month &&
+            now.day == lastMessageTime.day;
+        final timeDiff = now.difference(lastMessageTime);
+
+        if (!isSameDay && timeDiff.inHours >= 5) {
+          await createNewGroup();
+        } else {
+          _ref.read(currentGroupProvider.notifier).state = latestGroup;
+          _ref.read(systemPromptProvider.notifier).state =
+              latestGroup.systemPrompt;
+          await loadMessages();
+        }
+      } else {
+        await createNewGroup();
+      }
+    } catch (e) {
+      Logger.e(_tag, '加载当前分组失败', e);
+    }
+  }
+
+  @override
+  Future<void> createNewGroup() async {
+    try {
+      final groups = _ref.read(groupsProvider);
+      final systemPrompt = _ref.read(systemPromptProvider);
+
+      final newGroup = ChatGroup(
+        title: '新对话 ${groups.length + 1}',
+        systemPrompt: systemPrompt,
+      );
+
+      _ref.read(currentGroupProvider.notifier).state = newGroup;
+      _ref.read(messagesProvider.notifier).clearMessages();
+      _ref.read(hasMoreMessagesProvider.notifier).state = false;
+      _ref.read(isInitializingProvider.notifier).state = false;
+    } catch (e) {
+      Logger.e(_tag, '创建新分组失败', e);
+    }
+  }
+
+  @override
+  Future<void> loadMessages() async {
+    final currentGroup = _ref.read(currentGroupProvider);
+    if (currentGroup?.id == null) return;
+
+    try {
+      Logger.d(_tag, '开始加载历史消息...');
+      final dbHelper = _ref.read(databaseProvider);
+      final messages = await dbHelper.getMessagesByGroup(currentGroup!.id!);
+      final totalCount = await dbHelper.getGroupMessageCount(currentGroup.id!);
+
+      _ref.read(messagesProvider.notifier).setMessages(messages);
+      _ref.read(hasMoreMessagesProvider.notifier).state =
+          totalCount > messages.length;
+      _ref.read(isInitializingProvider.notifier).state = false;
+
+      Logger.i(_tag, '成功加载 ${messages.length} 条历史消息');
+    } catch (e) {
+      Logger.e(_tag, '加载历史消息失败', e);
+    }
+  }
+
+  @override
+  Future<void> loadMoreMessages() async {
+    final currentGroup = _ref.read(currentGroupProvider);
+    if (currentGroup?.id == null) return;
+    final groupId = currentGroup!.id!;
+
+    if (_ref.read(isLoadingMoreProvider) ||
+        !_ref.read(hasMoreMessagesProvider)) {
+      return;
+    }
+
+    _ref.read(isLoadingMoreProvider.notifier).state = true;
+
+    try {
+      final dbHelper = _ref.read(databaseProvider);
+      final currentCount = _ref.read(messagesProvider).length;
+      final newMessages = await dbHelper.getMessagesByGroupWithPagination(
+        groupId: groupId,
+        limit: _pageSize,
+        offset: currentCount,
+      );
+
+      if (newMessages.isEmpty) {
+        _ref.read(hasMoreMessagesProvider.notifier).state = false;
+        return;
+      }
+
+      _ref
+          .read(messagesProvider.notifier)
+          .insertMessages(currentCount, newMessages);
+    } catch (e) {
+      Logger.e(_tag, '加载更多消息失败', e);
+    } finally {
+      _ref.read(isLoadingMoreProvider.notifier).state = false;
+    }
+  }
+
+  @override
+  Future<void> selectGroup(ChatGroup group) async {
+    _ref.read(currentGroupProvider.notifier).state = group;
+    _ref.read(systemPromptProvider.notifier).state = group.systemPrompt;
+    await loadMessages();
+  }
+}
+
 // 聊天控制器提供者 - 集中处理业务逻辑
 final chatControllerProvider =
     Provider<ChatController>((ref) => ChatController(ref));
 
 class ChatController {
   static const String _tag = 'ChatController';
-  static const int _pageSize = 20;
 
   // 自动摘要配置
   static const int _minMessagesForSummary = 6; // 最少6条消息（3对）
@@ -1147,125 +1301,27 @@ class ChatController {
 
   // 加载分组
   Future<void> loadGroups() async {
-    try {
-      final dbHelper = _ref.read(databaseProvider);
-      final groups = await dbHelper.getAllGroups();
-      _ref.read(groupsProvider.notifier).setGroups(groups);
-      await loadCurrentGroup();
-    } catch (e) {
-      Logger.e(_tag, '加载分组失败', e);
-    }
+    await _ref.read(chatSessionCoordinatorProvider).loadGroups();
   }
 
   // 加载当前分组
   Future<void> loadCurrentGroup() async {
-    try {
-      final dbHelper = _ref.read(databaseProvider);
-      final latestGroup = await dbHelper.getLatestGroup();
-
-      if (latestGroup != null) {
-        final now = DateTime.now();
-        final lastMessageTime = latestGroup.lastMessageAt;
-        final isSameDay = now.year == lastMessageTime.year &&
-            now.month == lastMessageTime.month &&
-            now.day == lastMessageTime.day;
-        final timeDiff = now.difference(lastMessageTime);
-
-        if (!isSameDay && timeDiff.inHours >= 5) {
-          // 创建新分组
-          await createNewGroup();
-        } else {
-          // 使用现有分组
-          _ref.read(currentGroupProvider.notifier).state = latestGroup;
-          _ref.read(systemPromptProvider.notifier).state =
-              latestGroup.systemPrompt;
-          await loadMessages();
-        }
-      } else {
-        // 没有分组，创建新分组
-        await createNewGroup();
-      }
-    } catch (e) {
-      Logger.e(_tag, '加载当前分组失败', e);
-    }
+    await _ref.read(chatSessionCoordinatorProvider).loadCurrentGroup();
   }
 
   // 创建新分组
   Future<void> createNewGroup() async {
-    try {
-      final groups = _ref.read(groupsProvider);
-      final systemPrompt = _ref.read(systemPromptProvider);
-
-      final newGroup = ChatGroup(
-        title: '新对话 ${groups.length + 1}',
-        systemPrompt: systemPrompt,
-      );
-
-      _ref.read(currentGroupProvider.notifier).state = newGroup;
-      _ref.read(messagesProvider.notifier).clearMessages();
-      _ref.read(hasMoreMessagesProvider.notifier).state = false;
-      _ref.read(isInitializingProvider.notifier).state = false;
-    } catch (e) {
-      Logger.e(_tag, '创建新分组失败', e);
-    }
+    await _ref.read(chatSessionCoordinatorProvider).createNewGroup();
   }
 
   // 加载消息
   Future<void> loadMessages() async {
-    final currentGroup = _ref.read(currentGroupProvider);
-    if (currentGroup?.id == null) return;
-
-    try {
-      Logger.d(_tag, '开始加载历史消息...');
-      final dbHelper = _ref.read(databaseProvider);
-      final messages = await dbHelper.getMessagesByGroup(currentGroup!.id!);
-      final totalCount = await dbHelper.getGroupMessageCount(currentGroup.id!);
-
-      _ref.read(messagesProvider.notifier).setMessages(messages);
-      _ref.read(hasMoreMessagesProvider.notifier).state =
-          totalCount > messages.length;
-      _ref.read(isInitializingProvider.notifier).state = false;
-
-      Logger.i(_tag, '成功加载 ${messages.length} 条历史消息');
-    } catch (e) {
-      Logger.e(_tag, '加载历史消息失败', e);
-    }
+    await _ref.read(chatSessionCoordinatorProvider).loadMessages();
   }
 
   // 加载更多消息
   Future<void> loadMoreMessages() async {
-    final currentGroup = _ref.read(currentGroupProvider);
-    if (currentGroup?.id == null) return;
-
-    if (_ref.read(isLoadingMoreProvider) ||
-        !_ref.read(hasMoreMessagesProvider)) {
-      return;
-    }
-
-    _ref.read(isLoadingMoreProvider.notifier).state = true;
-
-    try {
-      final dbHelper = _ref.read(databaseProvider);
-      final currentCount = _ref.read(messagesProvider).length;
-      final newMessages = await dbHelper.getMessagesByGroupWithPagination(
-        groupId: currentGroup!.id!,
-        limit: _pageSize,
-        offset: currentCount,
-      );
-
-      if (newMessages.isEmpty) {
-        _ref.read(hasMoreMessagesProvider.notifier).state = false;
-        return;
-      }
-
-      _ref
-          .read(messagesProvider.notifier)
-          .insertMessages(currentCount, newMessages);
-    } catch (e) {
-      Logger.e(_tag, '加载更多消息失败', e);
-    } finally {
-      _ref.read(isLoadingMoreProvider.notifier).state = false;
-    }
+    await _ref.read(chatSessionCoordinatorProvider).loadMoreMessages();
   }
 
   // 发送消息
@@ -1418,9 +1474,7 @@ class ChatController {
 
   // 选择分组
   Future<void> selectGroup(ChatGroup group) async {
-    _ref.read(currentGroupProvider.notifier).state = group;
-    _ref.read(systemPromptProvider.notifier).state = group.systemPrompt;
-    await loadMessages();
+    await _ref.read(chatSessionCoordinatorProvider).selectGroup(group);
   }
 
   // 生成对话摘要并更新分组标题
