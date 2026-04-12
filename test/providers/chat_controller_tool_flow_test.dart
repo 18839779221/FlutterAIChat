@@ -525,12 +525,14 @@ void main() {
         () async {
       final databaseHelper = DatabaseHelper();
       final coordinator = _FakeChatSendCoordinator();
+      final sessionCoordinator = _FakeChatSessionCoordinator();
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: _FakeChatService(
           toolPreparationResult: const ToolPreparationResult.noTool(),
         ),
         coordinator: coordinator,
+        sessionCoordinator: sessionCoordinator,
       );
       addTearDown(container.dispose);
 
@@ -557,6 +559,37 @@ void main() {
       expect(coordinator.confirmedMessages, [message]);
       expect(coordinator.confirmedTrustFlags, [true]);
       expect(coordinator.cancelledMessages, [message]);
+      expect(sessionCoordinator.loadGroupsCalls, 0);
+    });
+
+    test('chat controller delegates session lifecycle actions to session coordinator',
+        () async {
+      final databaseHelper = DatabaseHelper();
+      final sessionCoordinator = _FakeChatSessionCoordinator();
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(
+          toolPreparationResult: const ToolPreparationResult.noTool(),
+        ),
+        sessionCoordinator: sessionCoordinator,
+      );
+      addTearDown(container.dispose);
+
+      final group = ChatGroup(id: 7, title: 'group');
+
+      await container.read(chatControllerProvider).loadGroups();
+      await container.read(chatControllerProvider).loadCurrentGroup();
+      await container.read(chatControllerProvider).createNewGroup();
+      await container.read(chatControllerProvider).loadMessages();
+      await container.read(chatControllerProvider).loadMoreMessages();
+      await container.read(chatControllerProvider).selectGroup(group);
+
+      expect(sessionCoordinator.loadGroupsCalls, 1);
+      expect(sessionCoordinator.loadCurrentGroupCalls, 1);
+      expect(sessionCoordinator.createNewGroupCalls, 1);
+      expect(sessionCoordinator.loadMessagesCalls, 1);
+      expect(sessionCoordinator.loadMoreMessagesCalls, 1);
+      expect(sessionCoordinator.selectedGroups, [group]);
     });
 
     test('需要确认的工具会让发送事务停留在 awaitingConfirmation', () async {
@@ -791,6 +824,7 @@ ProviderContainer _createContainer({
   required ChatService chatService,
   ChatTraceRecorder? traceRecorder,
   ChatSendCoordinator? coordinator,
+  ChatSessionCoordinator? sessionCoordinator,
 }) {
   return ProviderContainer(
     overrides: [
@@ -798,6 +832,8 @@ ProviderContainer _createContainer({
       chatServiceProvider.overrideWith((ref) => chatService),
       if (coordinator != null)
         chatSendCoordinatorProvider.overrideWith((ref) => coordinator),
+      if (sessionCoordinator != null)
+        chatSessionCoordinatorProvider.overrideWith((ref) => sessionCoordinator),
       if (traceRecorder != null)
         traceRecorderProvider.overrideWith((ref) => traceRecorder),
       scrollControllerProvider.overrideWith((ref) => ScrollController()),
@@ -921,5 +957,44 @@ class _FakeChatSendCoordinator implements ChatSendCoordinator {
   @override
   Future<void> cancelToolInvocation(ChatMessage message) async {
     cancelledMessages.add(message);
+  }
+}
+
+class _FakeChatSessionCoordinator implements ChatSessionCoordinator {
+  int loadGroupsCalls = 0;
+  int loadCurrentGroupCalls = 0;
+  int createNewGroupCalls = 0;
+  int loadMessagesCalls = 0;
+  int loadMoreMessagesCalls = 0;
+  final List<ChatGroup> selectedGroups = [];
+
+  @override
+  Future<void> createNewGroup() async {
+    createNewGroupCalls += 1;
+  }
+
+  @override
+  Future<void> loadCurrentGroup() async {
+    loadCurrentGroupCalls += 1;
+  }
+
+  @override
+  Future<void> loadGroups() async {
+    loadGroupsCalls += 1;
+  }
+
+  @override
+  Future<void> loadMessages() async {
+    loadMessagesCalls += 1;
+  }
+
+  @override
+  Future<void> loadMoreMessages() async {
+    loadMoreMessagesCalls += 1;
+  }
+
+  @override
+  Future<void> selectGroup(ChatGroup group) async {
+    selectedGroups.add(group);
   }
 }
