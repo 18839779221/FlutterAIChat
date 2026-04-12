@@ -7,6 +7,7 @@ import 'tool_executor.dart';
 import 'tool_orchestrator_service.dart';
 import 'tool_policy_service.dart';
 import 'tool_registry.dart';
+import '../tools/default_tool_runtime_registry.dart';
 import '../tools/core/tool_runtime_registry.dart';
 
 class ToolPreparationResult {
@@ -41,18 +42,24 @@ class ToolCallService {
     required ToolExecutor toolExecutor,
     ToolPolicyService? toolPolicyService,
     ChatTraceRecorder? traceRecorder,
-  }) : _orchestrator = ToolOrchestratorService(
-          toolRegistry: toolRegistry ?? ToolRegistry(runtimeRegistry: runtimeRegistry),
-          runtimeRegistry: runtimeRegistry,
+  }) : _orchestrator = (() {
+          final resolvedRuntimeRegistry =
+              runtimeRegistry ?? buildDefaultToolRuntimeRegistry(toolExecutor: toolExecutor);
+          final resolvedToolRegistry =
+              toolRegistry ?? ToolRegistry(runtimeRegistry: resolvedRuntimeRegistry);
+          return ToolOrchestratorService(
+            toolRegistry: resolvedToolRegistry,
+            runtimeRegistry: resolvedRuntimeRegistry,
           toolDecisionService: ToolDecisionService(
             llm: llm,
-            toolRegistry: toolRegistry ?? ToolRegistry(runtimeRegistry: runtimeRegistry),
+            toolRegistry: resolvedToolRegistry,
             traceRecorder: traceRecorder,
           ),
           toolPolicyService: toolPolicyService,
           toolExecutor: toolExecutor,
           traceRecorder: traceRecorder,
-        );
+          );
+        })();
 
   final ToolOrchestratorService _orchestrator;
 

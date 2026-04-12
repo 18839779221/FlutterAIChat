@@ -19,14 +19,7 @@ import 'services/default_tool_adapters.dart';
 import 'services/tool_executor.dart';
 import 'services/tool_policy_service.dart';
 import 'services/tool_registry.dart';
-import 'tools/core/tool_runtime_registry.dart';
-import 'tools/handlers/create_calendar_event_tool_handler.dart';
-import 'tools/handlers/create_reminder_tool_handler.dart';
-import 'tools/handlers/fetch_webpage_tool_handler.dart';
-import 'tools/handlers/save_note_tool_handler.dart';
-import 'tools/handlers/search_chat_history_tool_handler.dart';
-import 'tools/handlers/share_result_tool_handler.dart';
-import 'tools/handlers/web_search_tool_handler.dart';
+import 'tools/default_tool_runtime_registry.dart';
 import 'theme/app_theme.dart';
 
 void main() async {
@@ -102,72 +95,44 @@ ChatService _createChatService(
     settingsRepository: settingsRepository,
   );
   final tavilyWebSearcher = buildTavilyWebSearcher();
-  final runtimeRegistry = ToolRuntimeRegistry(
-    handlers: [
-      SearchChatHistoryToolHandler(
-        searcher: ({
-          required groupId,
-          required query,
-          required maxResults,
-        }) {
-          return ToolExecutor(
-            chatStorage: storage,
-          ).executeSearchChatHistory(
-            groupId: groupId,
-            query: query,
-            maxResults: maxResults,
-          );
-        },
-      ),
-      WebSearchToolHandler(
-        webSearcher: ({
-          required query,
-          maxResults,
-        }) async {
-          final config = await settingsRepository.getLlmConfig();
-          final provider =
-              (config.additionalConfig['web_search.provider'] as String?)
-                      ?.trim() ??
-                  'tavily';
-          if (provider != 'tavily') {
-            return ToolResult(
-              toolName: 'web_search',
-              status: ToolExecutionStatus.failure,
-              summary: '联网搜索失败',
-              data: {
-                'query': query,
-                'provider': provider,
-                'reason': 'unsupported_provider',
-              },
-              errorMessage: 'unsupported_provider',
-            );
-          }
-          return tavilyWebSearcher(
-            query: query,
-            maxResults: maxResults,
-            apiKey:
-                config.additionalConfig['web_search.tavily_api_key'] as String?,
-            baseUrl: config.additionalConfig['web_search.tavily_base_url']
-                as String?,
-          );
-        },
-      ),
-      FetchWebpageToolHandler(
-        webpageFetcher: buildDefaultWebpageFetcher(),
-      ),
-      SaveNoteToolHandler(
-        noteSaver: buildSharedPreferencesNoteSaver(preferences),
-      ),
-      CreateReminderToolHandler(
-        reminderCreator: buildDefaultReminderCreator(),
-      ),
-      CreateCalendarEventToolHandler(
-        calendarEventCreator: buildDefaultCalendarEventCreator(),
-      ),
-      ShareResultToolHandler(
-        resultSharer: buildDefaultResultSharer(),
-      ),
-    ],
+  final toolExecutor = ToolExecutor(
+    chatStorage: storage,
+    webSearcher: ({
+      required query,
+      maxResults,
+    }) async {
+      final config = await settingsRepository.getLlmConfig();
+      final provider =
+          (config.additionalConfig['web_search.provider'] as String?)?.trim() ??
+              'tavily';
+      if (provider != 'tavily') {
+        return ToolResult(
+          toolName: 'web_search',
+          status: ToolExecutionStatus.failure,
+          summary: '联网搜索失败',
+          data: {
+            'query': query,
+            'provider': provider,
+            'reason': 'unsupported_provider',
+          },
+          errorMessage: 'unsupported_provider',
+        );
+      }
+      return tavilyWebSearcher(
+        query: query,
+        maxResults: maxResults,
+        apiKey: config.additionalConfig['web_search.tavily_api_key'] as String?,
+        baseUrl: config.additionalConfig['web_search.tavily_base_url'] as String?,
+      );
+    },
+    webpageFetcher: buildDefaultWebpageFetcher(),
+    noteSaver: buildSharedPreferencesNoteSaver(preferences),
+    reminderCreator: buildDefaultReminderCreator(),
+    calendarEventCreator: buildDefaultCalendarEventCreator(),
+    resultSharer: buildDefaultResultSharer(),
+  );
+  final runtimeRegistry = buildDefaultToolRuntimeRegistry(
+    toolExecutor: toolExecutor,
   );
   final toolRegistry = ToolRegistry(
     runtimeRegistry: runtimeRegistry,
@@ -180,14 +145,7 @@ ChatService _createChatService(
     toolRegistry: toolRegistry,
     runtimeRegistry: runtimeRegistry,
     traceRecorder: traceRecorder,
-    toolExecutor: ToolExecutor(
-      chatStorage: storage,
-      webpageFetcher: buildDefaultWebpageFetcher(),
-      noteSaver: buildSharedPreferencesNoteSaver(preferences),
-      reminderCreator: buildDefaultReminderCreator(),
-      calendarEventCreator: buildDefaultCalendarEventCreator(),
-      resultSharer: buildDefaultResultSharer(),
-    ),
+    toolExecutor: toolExecutor,
     toolPolicyService: toolPolicyService,
   );
 
