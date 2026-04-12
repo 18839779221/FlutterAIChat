@@ -197,9 +197,6 @@ final currentGroupProvider = StateProvider<ChatGroup?>((ref) => null);
 // 系统提示词提供者
 final systemPromptProvider = StateProvider<String?>((ref) => null);
 
-// 正在生成状态提供者
-final isGeneratingProvider = StateProvider<bool>((ref) => false);
-
 enum ChatSendPhase {
   idle,
   preparing,
@@ -208,9 +205,69 @@ enum ChatSendPhase {
   streamingResponse,
 }
 
+class ChatSendState {
+  /// Current lifecycle phase of the active send transaction.
+  final ChatSendPhase phase;
+
+  /// Whether the assistant is actively generating a streamed response.
+  final bool isGenerating;
+
+  const ChatSendState({
+    required this.phase,
+    required this.isGenerating,
+  });
+
+  const ChatSendState.idle()
+      : phase = ChatSendPhase.idle,
+        isGenerating = false;
+
+  ChatSendState copyWith({
+    ChatSendPhase? phase,
+    bool? isGenerating,
+  }) {
+    return ChatSendState(
+      phase: phase ?? this.phase,
+      isGenerating: isGenerating ?? this.isGenerating,
+    );
+  }
+}
+
+class ChatSendStateNotifier extends StateNotifier<ChatSendState> {
+  ChatSendStateNotifier() : super(const ChatSendState.idle());
+
+  void setPhase(ChatSendPhase phase) {
+    state = state.copyWith(phase: phase);
+  }
+
+  void setGenerating(bool isGenerating) {
+    state = state.copyWith(isGenerating: isGenerating);
+  }
+
+  void update({
+    ChatSendPhase? phase,
+    bool? isGenerating,
+  }) {
+    state = state.copyWith(
+      phase: phase,
+      isGenerating: isGenerating,
+    );
+  }
+}
+
+final chatSendStateProvider =
+    StateNotifierProvider<ChatSendStateNotifier, ChatSendState>((ref) {
+  return ChatSendStateNotifier();
+});
+
+// 正在生成状态提供者
+final isGeneratingProvider = Provider<bool>((ref) {
+  return ref.watch(chatSendStateProvider.select((state) => state.isGenerating));
+});
+
 // 当前消息发送事务阶段提供者
-final sendPhaseProvider =
-    StateProvider<ChatSendPhase>((ref) => ChatSendPhase.idle);
+final sendPhaseProvider = Provider<ChatSendPhase>((ref) {
+  return ref.watch(chatSendStateProvider.select((state) => state.phase));
+});
 
 /// Snapshot of the local send transaction inputs before tool preparation and
 /// model streaming start.
@@ -720,7 +777,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     );
 
     cancelActiveStream();
-    _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.preparing;
+    _ref.read(chatSendStateProvider.notifier).setPhase(ChatSendPhase.preparing);
     final traceRecorder = _ref.read(traceRecorderProvider);
     final turnId = traceRecorder.newTurnId();
     traceRecorder.record(
@@ -804,8 +861,9 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       final toolContextHistory = toolPreparationDraft.toolContextHistory;
 
       if (toolPreparationDraft.requiresConfirmation) {
-        _ref.read(sendPhaseProvider.notifier).state =
-            toolPreparationDraft.nextPhase;
+        _ref
+            .read(chatSendStateProvider.notifier)
+            .setPhase(toolPreparationDraft.nextPhase);
         final confirmationMessage = ChatMessage(
           text: toolPreparationResult.toolInvocation!.summary,
           role: MessageRole.assistant,
@@ -852,9 +910,10 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       aiMessage.id = aiMessageId;
       _ref.read(messagesProvider.notifier).addMessage(aiMessage);
 
-      _ref.read(isGeneratingProvider.notifier).state = true;
-      _ref.read(sendPhaseProvider.notifier).state =
-          toolPreparationDraft.nextPhase;
+      _ref.read(chatSendStateProvider.notifier).update(
+            isGenerating: true,
+            phase: toolPreparationDraft.nextPhase,
+          );
 
       final systemPrompt = _ref.read(systemPromptProvider) ?? "";
       final useReasoning = _ref.read(useReasoningProvider);
@@ -903,10 +962,10 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
             dbHelper.updateMessageStatus(aiMessageId, failureDraft.nextStatus);
           }
           if (failureDraft.shouldStopGenerating) {
-            _ref.read(isGeneratingProvider.notifier).state = false;
+            _ref.read(chatSendStateProvider.notifier).setGenerating(false);
           }
           if (failureDraft.shouldSetIdlePhase) {
-            _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
+            _ref.read(chatSendStateProvider.notifier).setPhase(ChatSendPhase.idle);
           }
           final traceEntry = failureDraft.traceEntry;
           if (traceEntry != null) {
@@ -933,10 +992,10 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
             dbHelper.updateMessageStatus(aiMessageId, completionDraft.nextStatus);
           }
           if (completionDraft.shouldStopGenerating) {
-            _ref.read(isGeneratingProvider.notifier).state = false;
+            _ref.read(chatSendStateProvider.notifier).setGenerating(false);
           }
           if (completionDraft.shouldSetIdlePhase) {
-            _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
+            _ref.read(chatSendStateProvider.notifier).setPhase(ChatSendPhase.idle);
           }
           final traceEntry = completionDraft.traceEntry;
           if (traceEntry != null) {
@@ -973,8 +1032,10 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
             .read(messagesProvider.notifier)
             .updateMessageStatus(aiMessage.id!, MessageStatus.failed);
       }
-      _ref.read(isGeneratingProvider.notifier).state = false;
-      _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
+      _ref.read(chatSendStateProvider.notifier).update(
+            isGenerating: false,
+            phase: ChatSendPhase.idle,
+          );
 
       final dbHelper = _ref.read(databaseProvider);
       if (aiMessage.id != null) {
@@ -1008,7 +1069,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       contentType: MessageContentType.plainText,
       payloadJson: null,
     );
-    _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
+    _ref.read(chatSendStateProvider.notifier).setPhase(ChatSendPhase.idle);
     _ref.read(messagesProvider.notifier).replaceMessage(cancelledMessage);
 
     final dbHelper = _ref.read(databaseProvider);
@@ -1044,7 +1105,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       return;
     }
 
-    _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.executingTool;
+    _ref.read(chatSendStateProvider.notifier).setPhase(ChatSendPhase.executingTool);
     final traceRecorder = _ref.read(traceRecorderProvider);
     final traceTurnId = _resolveTraceTurnId(payload, traceRecorder);
     final invocation = ToolInvocation.fromJson(payload);
@@ -1085,7 +1146,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
 
     final toolMessage = executionDraft.toolResultMessage;
     if (toolMessage == null) {
-      _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
+      _ref.read(chatSendStateProvider.notifier).setPhase(ChatSendPhase.idle);
       return;
     }
 
@@ -1093,7 +1154,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         await dbHelper.insertMessage(toolMessage, currentGroup.id!);
     toolMessage.id = toolMessageId;
     _ref.read(messagesProvider.notifier).addMessage(toolMessage);
-    _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
+    _ref.read(chatSendStateProvider.notifier).setPhase(ChatSendPhase.idle);
   }
 
   String _resolveTraceTurnId(
@@ -1410,8 +1471,10 @@ class ChatController {
     }
 
     if (!_ref.read(isGeneratingProvider)) return;
-    _ref.read(isGeneratingProvider.notifier).state = false;
-    _ref.read(sendPhaseProvider.notifier).state = ChatSendPhase.idle;
+    _ref.read(chatSendStateProvider.notifier).update(
+          isGenerating: false,
+          phase: ChatSendPhase.idle,
+        );
 
     final messages = _ref.read(messagesProvider);
     if (messages.isEmpty) return;
