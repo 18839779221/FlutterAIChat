@@ -92,6 +92,39 @@ void main() {
   });
 
   group('ToolExecutor first-wave tool adapters', () {
+    test('web_search returns structured success with stub adapter', () async {
+      final executor = ToolExecutor(
+        chatStorage: const _FakeChatStorage(messages: []),
+        webSearcher: ({required query, maxResults}) async => const ToolResult(
+          toolName: 'web_search',
+          status: ToolExecutionStatus.success,
+          summary: '已执行联网搜索',
+          data: {
+            'query': 'OpenAI 最新消息',
+            'provider': 'tavily',
+            'results': [
+              {
+                'title': 'OpenAI launches new feature',
+                'url': 'https://example.com/openai',
+                'snippet': 'Latest OpenAI update.',
+                'source': 'example.com',
+              },
+            ],
+          },
+        ),
+      );
+
+      final result = await executor.executeWebSearch(
+        query: 'OpenAI 最新消息',
+        maxResults: 3,
+      );
+
+      expect(result.status, ToolExecutionStatus.success);
+      expect(result.summary, '已执行联网搜索');
+      expect(result.data['provider'], 'tavily');
+      expect((result.data['results'] as List).single['source'], 'example.com');
+    });
+
     test('fetch_webpage returns structured success with stub fetcher', () async {
       final executor = ToolExecutor(
         chatStorage: const _FakeChatStorage(messages: []),
@@ -147,6 +180,19 @@ void main() {
 
       final result = await executor.executeCreateReminder(
         title: '交周报',
+      );
+
+      expect(result.status, ToolExecutionStatus.failure);
+      expect(result.errorMessage, 'unsupported_tool');
+    });
+
+    test('web_search returns failure when adapter is unavailable', () async {
+      final executor = ToolExecutor(
+        chatStorage: const _FakeChatStorage(messages: []),
+      );
+
+      final result = await executor.executeWebSearch(
+        query: 'OpenAI 最新消息',
       );
 
       expect(result.status, ToolExecutionStatus.failure);

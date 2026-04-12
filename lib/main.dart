@@ -13,11 +13,20 @@ import 'providers/chat_providers.dart';
 import 'models/llm/llm_factory.dart';
 import 'models/context/context_strategies.dart';
 import 'services/chat_service.dart';
+import 'services/chat_trace_recorder.dart';
 import 'services/tool_call_service.dart';
 import 'services/default_tool_adapters.dart';
 import 'services/tool_executor.dart';
 import 'services/tool_policy_service.dart';
 import 'services/tool_registry.dart';
+import 'tools/core/tool_runtime_registry.dart';
+import 'tools/handlers/create_calendar_event_tool_handler.dart';
+import 'tools/handlers/create_reminder_tool_handler.dart';
+import 'tools/handlers/fetch_webpage_tool_handler.dart';
+import 'tools/handlers/save_note_tool_handler.dart';
+import 'tools/handlers/search_chat_history_tool_handler.dart';
+import 'tools/handlers/share_result_tool_handler.dart';
+import 'tools/handlers/web_search_tool_handler.dart';
 import 'theme/app_theme.dart';
 
 void main() async {
@@ -28,6 +37,10 @@ void main() async {
     final preferences = await SharedPreferences.getInstance();
     final settingsRepository = AppSettingsRepository(preferences);
     final storage = _createChatStorage(preferences);
+    late final ChatTraceRecorder traceRecorder;
+    traceRecorder = ChatTraceRecorder(
+      logger: (entry) => Logger.i('ChatTrace', traceRecorder.formatLogLine(entry)),
+    );
     await storage.testDatabaseConnection();
 
     // 创建一个自定义的ProviderContainer来添加覆盖
@@ -36,8 +49,14 @@ void main() async {
         // 覆盖聊天服务工厂提供者
         appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
         databaseProvider.overrideWithValue(storage),
+        traceRecorderProvider.overrideWithValue(traceRecorder),
         chatServiceFactoryProvider.overrideWithValue(
-          _createChatService(settingsRepository, storage, preferences),
+          _createChatService(
+            settingsRepository,
+            storage,
+            preferences,
+            traceRecorder,
+          ),
         ),
       ],
     );
@@ -66,6 +85,7 @@ ChatService _createChatService(
   AppSettingsRepository settingsRepository,
   ChatStorage storage,
   SharedPreferences preferences,
+  ChatTraceRecorder traceRecorder,
 ) {
   // 创建混合策略
   final contextStrategy = HybridStrategy(
@@ -81,17 +101,91 @@ ChatService _createChatService(
     LLMType.configurable,
     settingsRepository: settingsRepository,
   );
-  final toolRegistry = ToolRegistry();
+  final tavilyWebSearcher = buildTavilyWebSearcher();
+  final runtimeRegistry = ToolRuntimeRegistry(
+    handlers: [
+      SearchChatHistoryToolHandler(
+        searcher: ({
+          required groupId,
+          required query,
+          required maxResults,
+        }) {
+          return ToolExecutor(
+            chatStorage: storage,
+          ).executeSearchChatHistory(
+            groupId: groupId,
+            query: query,
+            maxResults: maxResults,
+          );
+        },
+      ),
+      WebSearchToolHandler(
+        webSearcher: ({
+          required query,
+          maxResults,
+        }) async {
+          final config = await settingsRepository.getLlmConfig();
+          final provider =
+              (config.additionalConfig['web_search.provider'] as String?)
+                      ?.trim() ??
+                  'tavily';
+          if (provider != 'tavily') {
+            return ToolResult(
+              toolName: 'web_search',
+              status: ToolExecutionStatus.failure,
+              summary: '联网搜索失败',
+              data: {
+                'query': query,
+                'provider': provider,
+                'reason': 'unsupported_provider',
+              },
+              errorMessage: 'unsupported_provider',
+            );
+          }
+          return tavilyWebSearcher(
+            query: query,
+            maxResults: maxResults,
+            apiKey:
+                config.additionalConfig['web_search.tavily_api_key'] as String?,
+            baseUrl: config.additionalConfig['web_search.tavily_base_url']
+                as String?,
+          );
+        },
+      ),
+      FetchWebpageToolHandler(
+        webpageFetcher: buildDefaultWebpageFetcher(),
+      ),
+      SaveNoteToolHandler(
+        noteSaver: buildSharedPreferencesNoteSaver(preferences),
+      ),
+      CreateReminderToolHandler(
+        reminderCreator: buildDefaultReminderCreator(),
+      ),
+      CreateCalendarEventToolHandler(
+        calendarEventCreator: buildDefaultCalendarEventCreator(),
+      ),
+      ShareResultToolHandler(
+        resultSharer: buildDefaultResultSharer(),
+      ),
+    ],
+  );
+  final toolRegistry = ToolRegistry(
+    runtimeRegistry: runtimeRegistry,
+  );
   final toolPolicyService = ToolPolicyService(
     repository: settingsRepository,
   );
   final toolCallService = ToolCallService(
     llm: llm,
     toolRegistry: toolRegistry,
+    runtimeRegistry: runtimeRegistry,
+    traceRecorder: traceRecorder,
     toolExecutor: ToolExecutor(
       chatStorage: storage,
       webpageFetcher: buildDefaultWebpageFetcher(),
       noteSaver: buildSharedPreferencesNoteSaver(preferences),
+      reminderCreator: buildDefaultReminderCreator(),
+      calendarEventCreator: buildDefaultCalendarEventCreator(),
       resultSharer: buildDefaultResultSharer(),
     ),
     toolPolicyService: toolPolicyService,
@@ -102,6 +196,7 @@ ChatService _createChatService(
     llm: llm,
     contextStrategy: contextStrategy,
     toolCallService: toolCallService,
+    traceRecorder: traceRecorder,
     maxTokens: 4000,
   );
 }
