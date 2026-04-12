@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_chat/models/chat_send/chat_send_drafts.dart';
+import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/providers/chat_send_state_providers.dart';
 import '../models/chat_message.dart';
 import '../models/chat/tool_workflow_step.dart';
@@ -11,34 +12,9 @@ import '../models/chat_group.dart';
 import '../models/response/message_content_type.dart';
 import '../models/trace/chat_trace_event.dart';
 import '../models/tool/tool_invocation.dart';
-import '../repositories/app_settings_repository.dart';
 import '../services/chat_service.dart';
 import '../services/chat_trace_recorder.dart';
-import '../storage/chat_storage.dart';
 import '../utils/logger.dart';
-
-// 数据库提供者（实际实现在 main.dart 中通过 override 注入）
-final databaseProvider = Provider<ChatStorage>((ref) {
-  throw UnimplementedError('需要在 main.dart 中覆盖 databaseProvider');
-});
-
-final appSettingsRepositoryProvider = Provider<AppSettingsRepository>((ref) {
-  throw UnimplementedError('需要在 main.dart 中覆盖 AppSettingsRepository');
-});
-
-final traceRecorderProvider = Provider<ChatTraceRecorder>((ref) {
-  return ChatTraceRecorder();
-});
-
-// 聊天服务提供者
-final chatServiceProvider = Provider<ChatService>((ref) {
-  return ref.watch(chatServiceFactoryProvider);
-});
-
-// 聊天服务工厂提供者
-final chatServiceFactoryProvider = Provider<ChatService>((ref) {
-  throw UnimplementedError("需要在 main.dart 中覆盖创建 ChatService 的代码");
-});
 
 // 消息列表提供者
 final messagesProvider =
