@@ -1,6 +1,5 @@
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/chat_message.dart';
-import 'package:ai_chat/models/tool/tool_definition.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -39,13 +38,4 @@ class _NoopBaseLLM extends BaseLLM {
 
   @override
   Future<String> structureSummaryCard(String sourceText) async => '';
-
-  @override
-  Future<String> decideToolCall({
-    required String userMessage,
-    required List<ChatMessage> history,
-    required List<ToolDefinition> tools,
-  }) async {
-    return '';
-  }
 }

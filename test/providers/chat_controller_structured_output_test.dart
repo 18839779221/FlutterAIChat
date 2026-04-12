@@ -23,7 +23,7 @@ void main() {
     });
 
     test('成功路径会生成新的结构化卡片助手消息', () async {
-      final databaseHelper = DatabaseHelper();
+      final databaseHelper = _createTestDatabaseHelper();
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: _FakeChatService(
@@ -76,7 +76,7 @@ void main() {
     });
 
     test('回退路径会生成新的普通文本助手消息', () async {
-      final databaseHelper = DatabaseHelper();
+      final databaseHelper = _createTestDatabaseHelper();
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: _FakeChatService(
@@ -120,7 +120,7 @@ void main() {
     });
 
     test('守卫路径不会对不支持的消息触发整理动作', () async {
-      final databaseHelper = DatabaseHelper();
+      final databaseHelper = _createTestDatabaseHelper();
       final chatService = _FakeChatService(
         result: const StructuredSummaryParseResult.fallback(),
       );
@@ -157,7 +157,7 @@ void main() {
     });
 
     test('debug 成功标记会走真实服务链路并生成结构化卡片消息', () async {
-      final databaseHelper = DatabaseHelper();
+      final databaseHelper = _createTestDatabaseHelper();
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: ChatService(llm: _NoopBaseLLM()),
@@ -204,6 +204,16 @@ void main() {
   });
 }
 
+int _testDatabaseCounter = 0;
+
+DatabaseHelper _createTestDatabaseHelper() {
+  _testDatabaseCounter += 1;
+  return DatabaseHelper(
+    databaseName:
+        'chat_controller_structured_output_test_$_testDatabaseCounter.db',
+  );
+}
+
 ProviderContainer _createContainer({
   required DatabaseHelper databaseHelper,
   required ChatService chatService,
@@ -240,13 +250,10 @@ class _NoopBaseLLM implements BaseLLM {
       const Stream.empty();
 
   @override
-  Future<String> decideToolCall({
-    required String userMessage,
-    required List<ChatMessage> history,
-    required List<ToolDefinition> tools,
-  }) {
-    throw UnimplementedError();
-  }
+  Future<String> planNextAction({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+  }) async => '{"action":"respond","response":"stub"}';
 
   @override
   String getModelName(ChatConfig config) => 'noop';

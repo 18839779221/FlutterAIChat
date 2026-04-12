@@ -7,7 +7,6 @@ import 'package:http/http.dart' as http;
 import '../../repositories/app_settings_repository.dart';
 import '../../utils/logger.dart';
 import '../chat_message.dart';
-import '../tool/tool_definition.dart';
 import 'api_protocol_resolver.dart';
 import 'api_stream_parser.dart';
 import 'base_llm.dart';
@@ -168,78 +167,23 @@ class ConfigurableHttpLLM implements BaseLLM {
   }
 
   @override
-  Future<String> decideToolCall({
-    required String userMessage,
-    required List<ChatMessage> history,
-    required List<ToolDefinition> tools,
+  Future<String> planNextAction({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
   }) async {
     try {
       final runtimeConfig = await _settingsRepository.getLlmConfig();
       _validateRuntimeConfig(runtimeConfig);
-      final apiStyle = _protocolResolver.resolveStyle(runtimeConfig.apiUrl);
-      Logger.i(_tag, '开始工具决策，请求风格: $apiStyle，工具数: ${tools.length}');
-
-      final toolDescriptions = tools
-          .map(
-            (tool) =>
-                '- ${tool.name}: ${tool.description}; parameters: ${tool.parameters}',
-          )
-          .join('\n');
-      final localNow = DateTime.now();
-      final localNowText =
-          '${localNow.year.toString().padLeft(4, '0')}-'
-          '${localNow.month.toString().padLeft(2, '0')}-'
-          '${localNow.day.toString().padLeft(2, '0')} '
-          '${localNow.hour.toString().padLeft(2, '0')}:'
-          '${localNow.minute.toString().padLeft(2, '0')}';
-      final historySummary = history
-          .take(6)
-          .map((message) => '${message.role.name}: ${message.text}')
-          .join('\n');
-
-      final promptMessages = [
-        ChatMessage(
-          text: '你是一个工具决策器。请根据用户当前问题判断是否需要调用工具。'
-              '只允许使用下面提供的工具，不要编造工具名。'
-              '如果需要调用工具，只返回严格 JSON：'
-              '{"toolName":"search_chat_history","arguments":{"query":"...","maxResults":3}}。'
-              '如果不需要工具，只返回严格 JSON：{"toolName":"none"}。'
-              '当用户要查询外部网页、新闻、公开资料、最新信息时，优先使用 web_search。'
-              '当用户已经给出明确 URL，并且目标是读取该 URL 的正文内容时，使用 fetch_webpage。'
-              '当用户明确要查当前聊天里的既有内容时，才使用 search_chat_history。'
-              '时间相关工具必须输出严格 ISO8601 时间字符串，禁止输出 today at 8pm、tomorrow at 3pm 这类自然语言时间。'
-              'create_reminder 的 dueAt 必须形如 2026-03-31T20:00:00+08:00。'
-              'create_calendar_event 的 startAt / endAt 必须形如 2026-04-01T15:00:00+08:00。'
-              '当前用户本地时间是：$localNowText。'
-              '如果用户说 today / tonight / 今天 / 今晚，就必须使用当前本地日期。'
-              '如果用户说 tomorrow / 明天，就必须使用当前本地日期的下一天。'
-              '不要输出 Markdown，不要输出解释，不要输出代码块。\n'
-              '示例 0：{"toolName":"web_search","arguments":{"query":"OpenAI 最新消息","maxResults":5}}\n'
-              '示例 1：{"toolName":"create_reminder","arguments":{"title":"submit weekly report","dueAt":"2026-03-31T20:00:00+08:00","note":"submit weekly report"}}\n'
-              '示例 2：{"toolName":"create_calendar_event","arguments":{"title":"project review","startAt":"2026-04-01T15:00:00+08:00","endAt":"2026-04-01T16:00:00+08:00"}}\n'
-              '可用工具如下：\n$toolDescriptions',
-          role: MessageRole.system,
-        ),
-        if (historySummary.isNotEmpty)
-          ChatMessage(
-            text: '最近对话历史（仅供决策参考）：\n$historySummary',
-            role: MessageRole.system,
-          ),
-        ChatMessage(text: userMessage, role: MessageRole.user),
-      ];
-
-      final decision = (await _sendTextRequest(
+      return (await _sendTextRequest(
         runtimeConfig,
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
-        messages: promptMessages,
+        config: config,
+        messages: messages,
       ))
           .trim();
-      Logger.i(_tag, '工具决策响应: ${_previewLogText(decision)}');
-      return decision;
     } catch (e, stackTrace) {
-      Logger.e(_tag, '工具决策失败', e);
+      Logger.e(_tag, 'agent planner 请求失败', e);
       Logger.e(_tag, '堆栈跟踪', stackTrace);
-      throw Exception('工具决策失败: $e');
+      throw Exception('agent planner 请求失败: $e');
     }
   }
 

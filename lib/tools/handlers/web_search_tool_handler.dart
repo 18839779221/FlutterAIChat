@@ -40,7 +40,7 @@ class WebSearchToolHandler implements ToolHandler {
       );
     }
 
-    final maxResults = rawArguments['maxResults'];
+    final maxResults = rawArguments['maxResults'] ?? rawArguments['num_results'];
     final normalizedMaxResults =
         maxResults is num ? maxResults.toInt().clamp(1, 10) : 5;
     return ToolArgumentResolution.valid({

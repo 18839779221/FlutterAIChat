@@ -1,7 +1,6 @@
 import 'package:ai_chat/services/chat_service.dart';
 
 import '../chat_message.dart';
-import '../tool/tool_definition.dart';
 
 abstract class BaseLLM {
   /// 模型名称
@@ -22,10 +21,11 @@ abstract class BaseLLM {
   /// 非流式结构化整理调试入口
   Future<String> structureSummaryCard(String sourceText);
 
-  /// 非流式工具决策入口
-  Future<String> decideToolCall({
-    required String userMessage,
-    required List<ChatMessage> history,
-    required List<ToolDefinition> tools,
-  });
+  /// 非流式 agent planner 入口
+  Future<String> planNextAction({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+  }) {
+    throw UnimplementedError('planNextAction is not implemented');
+  }
 }

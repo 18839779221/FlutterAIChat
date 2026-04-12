@@ -45,5 +45,34 @@ void main() {
       expect(result.data['query'], 'OpenAI 最新消息');
       expect(result.data['maxResults'], 5);
     });
+
+    test('accepts planner num_results alias and clamps it into maxResults', () async {
+      final handler = WebSearchToolHandler(
+        webSearcher: ({required query, maxResults}) async => ToolResult(
+          toolName: 'web_search',
+          status: ToolExecutionStatus.success,
+          summary: '已执行联网搜索',
+          data: {
+            'query': query,
+            'maxResults': maxResults,
+            'results': const [],
+          },
+        ),
+      );
+
+      final resolution = await handler.normalizeArguments(
+        rawArguments: {
+          'query': 'OpenAI latest news',
+          'num_results': 12,
+        },
+        userMessage: '搜索 OpenAI latest news',
+        history: const [],
+        now: DateTime(2026, 4, 13),
+      );
+
+      expect(resolution.isValid, isTrue);
+      expect(resolution.normalizedArguments['query'], 'OpenAI latest news');
+      expect(resolution.normalizedArguments['maxResults'], 10);
+    });
   });
 }

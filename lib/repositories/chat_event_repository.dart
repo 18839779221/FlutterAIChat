@@ -1,0 +1,192 @@
+import '../models/chat_event.dart';
+import '../models/chat_message.dart';
+import '../storage/chat_storage.dart';
+
+class ChatEventRepository {
+  final ChatStorage _storage;
+
+  ChatEventRepository(this._storage);
+
+  Future<int> appendUserMessage({
+    required int turnId,
+    required int groupId,
+    required String content,
+  }) {
+    return _appendEvent(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.userMessage,
+      role: MessageRole.user,
+      content: content,
+    );
+  }
+
+  Future<int> appendToolResult({
+    required int turnId,
+    required int groupId,
+    required String content,
+    Map<String, dynamic>? payloadJson,
+  }) {
+    return _appendEvent(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.toolResult,
+      role: MessageRole.system,
+      content: content,
+      payloadJson: payloadJson,
+    );
+  }
+
+  Future<int> appendToolCall({
+    required int turnId,
+    required int groupId,
+    required String toolName,
+    required Map<String, dynamic> arguments,
+    required String summary,
+  }) {
+    return _appendEvent(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.assistantToolCall,
+      role: MessageRole.assistant,
+      content: summary,
+      payloadJson: {
+        'toolName': toolName,
+        'arguments': arguments,
+      },
+    );
+  }
+
+  Future<int> appendToolConfirmation({
+    required int turnId,
+    required int groupId,
+    required String toolName,
+    required Map<String, dynamic> arguments,
+    required String summary,
+  }) {
+    return _appendEvent(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.assistantToolConfirmation,
+      role: MessageRole.assistant,
+      content: summary,
+      payloadJson: {
+        'toolName': toolName,
+        'arguments': arguments,
+      },
+    );
+  }
+
+  Future<int> appendToolExecutionStarted({
+    required int turnId,
+    required int groupId,
+    required String content,
+  }) {
+    return _appendEvent(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.toolExecutionStarted,
+      role: MessageRole.system,
+      content: content,
+    );
+  }
+
+  Future<int> appendToolError({
+    required int turnId,
+    required int groupId,
+    required String content,
+    String? errorCode,
+  }) {
+    return _appendEvent(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.toolError,
+      role: MessageRole.system,
+      content: content,
+      status: errorCode,
+    );
+  }
+
+  Future<int> appendAssistantTextDelta({
+    required int turnId,
+    required int groupId,
+    required String content,
+  }) {
+    return _appendEvent(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.assistantTextDelta,
+      role: MessageRole.assistant,
+      content: content,
+    );
+  }
+
+  Future<int> appendAssistantTextFinal({
+    required int turnId,
+    required int groupId,
+    required String content,
+  }) {
+    return _appendEvent(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.assistantTextFinal,
+      role: MessageRole.assistant,
+      content: content,
+    );
+  }
+
+  Future<int> appendFinalAnswer({
+    required int turnId,
+    required int groupId,
+    required String content,
+  }) {
+    return _appendEvent(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.finalAnswer,
+      role: MessageRole.assistant,
+      content: content,
+    );
+  }
+
+  Future<int> appendTurnStatus({
+    required int turnId,
+    required int groupId,
+    required String content,
+  }) {
+    return _appendEvent(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.turnStatus,
+      role: MessageRole.system,
+      content: content,
+    );
+  }
+
+  Future<List<ChatEvent>> listEventsByTurn(int turnId) {
+    return _storage.getEventsByTurn(turnId);
+  }
+
+  Future<int> _appendEvent({
+    required int turnId,
+    required int groupId,
+    required ChatEventType eventType,
+    MessageRole? role,
+    String? content,
+    String? status,
+    Map<String, dynamic>? payloadJson,
+  }) async {
+    final existingEvents = await _storage.getEventsByTurn(turnId);
+    final event = ChatEvent(
+      turnId: turnId,
+      groupId: groupId,
+      sequence: existingEvents.length + 1,
+      eventType: eventType,
+      role: role,
+      status: status,
+      content: content,
+      payloadJson: payloadJson,
+    );
+    return _storage.insertEvent(event);
+  }
+}

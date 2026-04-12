@@ -1,14 +1,11 @@
 import '../models/chat_message.dart';
-import '../models/llm/base_llm.dart';
 import '../models/tool/tool_invocation.dart';
 import 'chat_trace_recorder.dart';
-import 'tool_decision_service.dart';
 import 'tool_executor.dart';
 import 'tool_orchestrator_service.dart';
 import 'tool_policy_service.dart';
-import 'tool_registry.dart';
-import '../tools/default_tool_runtime_registry.dart';
 import '../tools/core/tool_runtime_registry.dart';
+import '../tools/default_tool_runtime_registry.dart';
 
 class ToolPreparationResult {
   /// Tool invocation payload for pending confirmation or running-state display.
@@ -32,50 +29,23 @@ class ToolPreparationResult {
         additionalContextMessages = const [];
 }
 
-/// Compatibility facade that preserves the old entry point while delegating the
-/// real decision/policy/execution flow to the orchestrator service.
+/// Runtime facade for executing tool invocations that have already been
+/// decided by the agent loop.
 class ToolCallService {
   ToolCallService({
-    required BaseLLM llm,
-    ToolRegistry? toolRegistry,
     ToolRuntimeRegistry? runtimeRegistry,
     required ToolExecutor toolExecutor,
     ToolPolicyService? toolPolicyService,
     ChatTraceRecorder? traceRecorder,
-  }) : _orchestrator = (() {
-          final resolvedRuntimeRegistry =
-              runtimeRegistry ?? buildDefaultToolRuntimeRegistry(toolExecutor: toolExecutor);
-          final resolvedToolRegistry =
-              toolRegistry ?? ToolRegistry(runtimeRegistry: resolvedRuntimeRegistry);
-          return ToolOrchestratorService(
-            toolRegistry: resolvedToolRegistry,
-            runtimeRegistry: resolvedRuntimeRegistry,
-          toolDecisionService: ToolDecisionService(
-            llm: llm,
-            toolRegistry: resolvedToolRegistry,
-            traceRecorder: traceRecorder,
-          ),
+  }) : _orchestrator = ToolOrchestratorService(
+          runtimeRegistry:
+              runtimeRegistry ??
+              buildDefaultToolRuntimeRegistry(toolExecutor: toolExecutor),
           toolPolicyService: toolPolicyService,
-          toolExecutor: toolExecutor,
           traceRecorder: traceRecorder,
-          );
-        })();
+        );
 
   final ToolOrchestratorService _orchestrator;
-
-  Future<ToolPreparationResult> prepareToolContext({
-    required int groupId,
-    required String userMessage,
-    required List<ChatMessage> history,
-    String? turnId,
-  }) {
-    return _orchestrator.prepareToolContext(
-      groupId: groupId,
-      userMessage: userMessage,
-      history: history,
-      turnId: turnId,
-    );
-  }
 
   Future<ToolPreparationResult> executeToolInvocation({
     required int groupId,
