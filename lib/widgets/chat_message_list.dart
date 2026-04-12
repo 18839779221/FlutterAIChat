@@ -14,6 +14,7 @@ import 'package:ai_chat/widgets/chat_blocks/structured_output_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
+import 'package:ai_chat/widgets/chat_empty_state.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -65,7 +66,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     if (scrollingPosition.userScrollDirection == ScrollDirection.reverse) {
       ref.read(focusNodeProvider).unfocus();
       ref.read(autoScrollToBottomProvider.notifier).state = false;
-    } else if (scrollingPosition.userScrollDirection == ScrollDirection.forward &&
+    } else if (scrollingPosition.userScrollDirection ==
+            ScrollDirection.forward &&
         isNearBottom) {
       ref.read(autoScrollToBottomProvider.notifier).state = true;
     }
@@ -108,15 +110,19 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final timelineItems = _buildTimelineItems(messages);
     final itemCount = timelineItems.length + (hasMoreMessages ? 1 : 0);
 
+    if (messages.isEmpty) {
+      return const ChatEmptyState();
+    }
+
     return Stack(
       children: [
         ListView.builder(
           controller: scrollController,
           padding: EdgeInsets.fromLTRB(
-            spacing.md,
-            spacing.md,
-            spacing.md,
-            spacing.xl * 4,
+            spacing.sm,
+            spacing.xl * 2.3,
+            spacing.sm,
+            spacing.xl * 4.2,
           ),
           itemCount: itemCount,
           itemBuilder: (context, index) {
@@ -130,21 +136,31 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
             }
 
             final item = timelineItems[hasMoreMessages ? index - 1 : index];
-            return Padding(
-              padding: EdgeInsets.only(bottom: spacing.sm),
-              child: item,
+            return Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: kIsWeb ? 860 : 720,
+                ),
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: spacing.sm),
+                  child: item,
+                ),
+              ),
             );
           },
         ),
         if (!_isNearBottom)
           Positioned(
             right: 16,
-            bottom: 16,
+            bottom: 28,
             child: FloatingActionButton(
               mini: true,
-              backgroundColor: colors.workflowRunning,
+              backgroundColor: colors.assistantSurface.withValues(alpha: 0.94),
+              foregroundColor: colors.primaryText,
+              elevation: 1.5,
               onPressed: _scrollToBottom,
-              child: const Icon(Icons.keyboard_arrow_down, color: Colors.white),
+              child: const Icon(Icons.keyboard_arrow_down),
             ),
           ),
       ],
@@ -157,8 +173,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     }
 
     final currentGroup = ref.read(currentGroupProvider);
-    final sortedMessages = [...messages]
-      ..sort((left, right) => left.timestamp.compareTo(right.timestamp));
+    final sortedMessages = [...messages]..sort(compareChatMessagesForTimeline);
 
     final widgets = <Widget>[];
     var cursor = 0;
@@ -257,7 +272,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
             widgets.add(AssistantDocBlock(text: block.text ?? ''));
             break;
           }
-          widgets.add(ToolResultSummaryRow(result: ToolResult.fromJson(payload)));
+          widgets
+              .add(ToolResultSummaryRow(result: ToolResult.fromJson(payload)));
           break;
         case AssistantTurnBlockType.toolWorkflow:
           final steps = _extractWorkflowSteps(block);
@@ -311,10 +327,14 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final payload = block.payload;
     final sourceMessageId = payload?['sourceMessageId'];
     if (sourceMessageId is int) {
-      return messages.where((message) => message.id == sourceMessageId).firstOrNull;
+      return messages
+          .where((message) => message.id == sourceMessageId)
+          .firstOrNull;
     }
 
-    return messages.where((message) => message.timestamp == block.createdAt).firstOrNull;
+    return messages
+        .where((message) => message.timestamp == block.createdAt)
+        .firstOrNull;
   }
 
   Map<String, String> _extractStructuredFields(AssistantTurnBlock block) {

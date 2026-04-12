@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('chat input shows compact status row and send label when idle', (
+  testWidgets('chat input shows compact reply tray when idle', (
     tester,
   ) async {
     final container = ProviderContainer();
@@ -22,8 +22,18 @@ void main() {
       ),
     );
 
-    expect(find.text('发送'), findsOneWidget);
-    expect(find.text('Balanced · 可追溯输出'), findsOneWidget);
+    expect(find.byKey(const ValueKey('chat-input-dock')), findsOneWidget);
+    expect(find.byKey(const ValueKey('chat-input-panel')), findsOneWidget);
+    expect(find.text('Balanced · 可追溯输出'), findsNothing);
+    expect(find.text('深度'), findsNothing);
+    expect(find.text('简洁'), findsNothing);
+    expect(find.byKey(const ValueKey('chat-input-idle-note')), findsNothing);
+    expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
+
+    final textField = tester
+        .widget<TextField>(find.byKey(const ValueKey('chat-input-field')));
+    expect(textField.minLines, 1);
+    expect(textField.maxLines, 4);
   });
 
   testWidgets('chat input shows pending label while awaiting confirmation', (

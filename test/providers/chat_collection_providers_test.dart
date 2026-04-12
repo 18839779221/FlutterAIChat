@@ -23,9 +23,38 @@ void main() {
       );
 
       container.read(messagesProvider.notifier).setMessages([
-            lateMessage,
-            earlyMessage,
-          ]);
+        lateMessage,
+        earlyMessage,
+      ]);
+
+      expect(
+        container.read(messagesProvider).map((message) => message.id).toList(),
+        [1, 2],
+      );
+    });
+
+    test('setMessages 在同一时间戳下保持用户消息先于助手回复', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final timestamp = DateTime(2026, 4, 13, 1, 40, 0);
+      final assistantMessage = ChatMessage(
+        id: 2,
+        text: 'assistant reply',
+        role: MessageRole.assistant,
+        timestamp: timestamp,
+      );
+      final userMessage = ChatMessage(
+        id: 1,
+        text: 'user prompt',
+        role: MessageRole.user,
+        timestamp: timestamp,
+      );
+
+      container.read(messagesProvider.notifier).setMessages([
+        assistantMessage,
+        userMessage,
+      ]);
 
       expect(
         container.read(messagesProvider).map((message) => message.id).toList(),

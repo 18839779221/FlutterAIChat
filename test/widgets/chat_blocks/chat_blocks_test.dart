@@ -5,7 +5,9 @@ import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
+import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -21,9 +23,18 @@ void main() {
       );
 
       expect(find.text('用户短消息'), findsOneWidget);
+
+      final constrainedBox = tester.widget<ConstrainedBox>(
+        find.descendant(
+          of: find.byType(UserAnchorBubble),
+          matching: find.byType(ConstrainedBox),
+        ),
+      );
+      expect(constrainedBox.constraints.maxWidth, 420);
     });
 
-    testWidgets('renders assistant doc block label and content', (tester) async {
+    testWidgets('renders assistant doc block label and content',
+        (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.light(),
@@ -40,7 +51,34 @@ void main() {
       expect(find.text('这是一段分析内容'), findsOneWidget);
     });
 
-    testWidgets('active workflow step is expanded and completed step is collapsed', (
+    testWidgets('markdown typography favors tighter document rhythm', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: FlutterMarkdownImpl(
+              data: '# Heading\n\nFirst paragraph.\n\n- item',
+            ),
+          ),
+        ),
+      );
+
+      final markdown = tester.widget<MarkdownBody>(find.byType(MarkdownBody));
+      final styleSheet = markdown.styleSheet!;
+
+      expect(styleSheet.p!.height, lessThanOrEqualTo(1.38));
+      expect(styleSheet.p!.fontWeight, FontWeight.w400);
+      expect(styleSheet.h2!.fontSize, lessThan(17));
+      expect(styleSheet.listBullet!.height, lessThanOrEqualTo(1.3));
+      expect(styleSheet.blockSpacing, lessThanOrEqualTo(6));
+      expect(
+          styleSheet.h2Padding!.top, greaterThan(styleSheet.h2Padding!.bottom));
+    });
+
+    testWidgets(
+        'active workflow step is expanded and completed step is collapsed', (
       tester,
     ) async {
       final steps = [
@@ -83,7 +121,8 @@ void main() {
       expect(find.text('命中 4 条历史消息'), findsOneWidget);
     });
 
-    testWidgets('workflow confirmation actions only show on expanded confirming step', (
+    testWidgets(
+        'workflow confirmation actions only show on expanded confirming step', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -114,7 +153,8 @@ void main() {
       expect(find.text('继续，以后不再确认'), findsOneWidget);
     });
 
-    testWidgets('tool result summary shows compact status and summary', (tester) async {
+    testWidgets('tool result summary shows compact status and summary',
+        (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.light(),

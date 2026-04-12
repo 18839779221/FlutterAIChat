@@ -11,8 +11,7 @@ class ChatBlockBuilder {
     required List<ChatMessage> messages,
     int? groupId,
   }) {
-    final sortedMessages = [...messages]
-      ..sort((left, right) => left.timestamp.compareTo(right.timestamp));
+    final sortedMessages = [...messages]..sort(compareChatMessagesForTimeline);
 
     final blocks = <AssistantTurnBlock>[];
     String? currentTurnId;
@@ -98,7 +97,9 @@ class ChatBlockBuilder {
           stepId: '$turnId-step-$sequence',
           turnId: turnId,
           toolName: invocation.toolName,
-          title: invocation.summary.isEmpty ? invocation.toolName : invocation.summary,
+          title: invocation.summary.isEmpty
+              ? invocation.toolName
+              : invocation.summary,
           summary: invocation.summary,
           status: _mapInvocationStatus(invocation.status),
           requiresConfirmation: invocation.requiresConfirmation,
@@ -190,8 +191,8 @@ class ChatBlockBuilder {
       arguments: const {},
       status: ToolInvocationStatus.proposed,
       summary: message.text,
-      requiresConfirmation: message.contentType ==
-          MessageContentType.actionConfirmation,
+      requiresConfirmation:
+          message.contentType == MessageContentType.actionConfirmation,
     );
   }
 

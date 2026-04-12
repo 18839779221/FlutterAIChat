@@ -2,11 +2,7 @@ import 'dart:convert';
 
 import 'package:ai_chat/models/response/message_content_type.dart';
 
-enum MessageRole {
-  user,
-  assistant,
-  system
-}
+enum MessageRole { user, assistant, system }
 
 enum MessageStatus {
   // 初始状态
@@ -88,7 +84,7 @@ class ChatMessage {
   bool get isUser => role == MessageRole.user;
 
   bool get isAssistant => role == MessageRole.assistant;
-  
+
   // 添加copyWith方法以支持状态更新
   ChatMessage copyWith({
     String? text,
@@ -147,5 +143,38 @@ class ChatMessage {
     } catch (_) {
       return null;
     }
+  }
+}
+
+int compareChatMessagesForTimeline(ChatMessage left, ChatMessage right) {
+  final timestampComparison = left.timestamp.compareTo(right.timestamp);
+  if (timestampComparison != 0) {
+    return timestampComparison;
+  }
+
+  final roleComparison = _timelineRolePriority(left.role).compareTo(
+    _timelineRolePriority(right.role),
+  );
+  if (roleComparison != 0) {
+    return roleComparison;
+  }
+
+  final leftId = left.id;
+  final rightId = right.id;
+  if (leftId != null && rightId != null) {
+    return leftId.compareTo(rightId);
+  }
+
+  return 0;
+}
+
+int _timelineRolePriority(MessageRole role) {
+  switch (role) {
+    case MessageRole.user:
+      return 0;
+    case MessageRole.assistant:
+      return 1;
+    case MessageRole.system:
+      return 2;
   }
 }

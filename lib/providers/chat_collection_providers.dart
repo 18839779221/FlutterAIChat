@@ -16,8 +16,7 @@ class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
   MessagesNotifier(this._ref) : super([]);
 
   void setMessages(List<ChatMessage> messages) {
-    final sortedMessages = [...messages]
-      ..sort((left, right) => left.timestamp.compareTo(right.timestamp));
+    final sortedMessages = [...messages]..sort(compareChatMessagesForTimeline);
     state = sortedMessages;
   }
 
@@ -141,8 +140,9 @@ final currentGroupProvider = StateProvider<ChatGroup?>((ref) => null);
 // 系统提示词提供者
 final systemPromptProvider = StateProvider<String?>((ref) => null);
 
-final toolWorkflowExpansionProvider = StateNotifierProvider<
-    ToolWorkflowExpansionNotifier, Map<String, String>>((ref) {
+final toolWorkflowExpansionProvider =
+    StateNotifierProvider<ToolWorkflowExpansionNotifier, Map<String, String>>(
+        (ref) {
   return ToolWorkflowExpansionNotifier();
 });
 

@@ -33,11 +33,15 @@ class ToolWorkflowCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(spacing.md),
+      padding: EdgeInsets.fromLTRB(
+        spacing.md + spacing.xs,
+        spacing.sm + spacing.xs,
+        spacing.md + spacing.xs,
+        spacing.sm,
+      ),
       decoration: BoxDecoration(
-        color: colors.toolWorkflowSurface,
-        borderRadius: BorderRadius.circular(radius.md),
-        border: Border.all(color: colors.divider),
+        color: colors.structuredSurface.withValues(alpha: 0.74),
+        borderRadius: BorderRadius.circular(radius.md + 2),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -46,75 +50,125 @@ class ToolWorkflowCard extends StatelessWidget {
             title,
             style: TextStyle(
               color: colors.primaryText,
-              fontSize: 14,
+              fontSize: 16,
               fontWeight: FontWeight.w700,
+              height: 1.24,
             ),
           ),
-          SizedBox(height: spacing.xs),
+          SizedBox(height: spacing.sm),
           ...steps.map((step) {
             final expanded = step.stepId == expandedStepId;
             return Padding(
-              padding: EdgeInsets.only(bottom: spacing.xs),
+              padding: EdgeInsets.only(bottom: spacing.xs + spacing.xxs),
               child: InkWell(
-                onTap: onStepTapped == null ? null : () => onStepTapped!(step.stepId),
-                child: Container(
+                onTap: onStepTapped == null
+                    ? null
+                    : () => onStepTapped!(step.stepId),
+                borderRadius: BorderRadius.circular(radius.md),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOut,
                   padding: EdgeInsets.all(spacing.sm),
                   decoration: BoxDecoration(
-                    color: expanded ? colors.assistantSurface : Colors.white.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(radius.sm),
-                    border: Border.all(color: colors.divider),
+                    color: expanded
+                        ? colors.assistantSurface.withValues(alpha: 0.96)
+                        : colors.chatBackground.withValues(alpha: 0.56),
+                    borderRadius: BorderRadius.circular(radius.md),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: _statusColor(colors, step.status),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          SizedBox(width: spacing.sm),
                           Expanded(
                             child: Text(
-                              step.toolName,
+                              step.title.isEmpty ? step.toolName : step.title,
                               style: TextStyle(
                                 color: colors.primaryText,
-                                fontSize: 12,
+                                fontSize: 12.5,
                                 fontWeight: FontWeight.w700,
+                                height: 1.3,
                               ),
                             ),
                           ),
-                          Text(
-                            _statusLabel(step.status),
-                            style: TextStyle(
-                              color: _statusColor(colors, step.status),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: spacing.xs,
+                              vertical: spacing.xxs,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _statusColor(
+                                colors,
+                                step.status,
+                              ).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(radius.pill),
+                            ),
+                            child: Text(
+                              _statusLabel(step.status),
+                              style: TextStyle(
+                                color: _statusColor(colors, step.status),
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
                         ],
                       ),
-                      SizedBox(height: spacing.xxs),
+                      SizedBox(height: spacing.xs),
                       Text(
                         step.summary,
                         maxLines: expanded ? null : 1,
-                        overflow:
-                            expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+                        overflow: expanded
+                            ? TextOverflow.visible
+                            : TextOverflow.ellipsis,
                         style: TextStyle(
                           color: colors.secondaryText,
-                          fontSize: 12,
+                          fontSize: 11.5,
+                          height: 1.42,
                         ),
                       ),
                       if (expanded && step.requiresConfirmation) ...[
-                        SizedBox(height: spacing.xs),
+                        SizedBox(height: spacing.sm),
                         Wrap(
                           spacing: spacing.xs,
                           runSpacing: spacing.xs,
                           children: [
                             FilledButton(
+                              style: FilledButton.styleFrom(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius:
+                                      BorderRadius.circular(radius.pill),
+                                ),
+                              ),
                               onPressed: onContinue,
                               child: const Text('继续'),
                             ),
                             OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius:
+                                      BorderRadius.circular(radius.pill),
+                                ),
+                              ),
                               onPressed: onCancel,
                               child: const Text('取消'),
                             ),
                             OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius:
+                                      BorderRadius.circular(radius.pill),
+                                ),
+                              ),
                               onPressed: onContinueAndTrust,
                               child: const Text('继续，以后不再确认'),
                             ),

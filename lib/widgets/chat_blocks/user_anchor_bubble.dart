@@ -21,28 +21,34 @@ class UserAnchorBubble extends StatelessWidget {
     return Align(
       alignment: Alignment.centerRight,
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 320),
+        constraints: const BoxConstraints(maxWidth: 420),
         padding: EdgeInsets.symmetric(
-          horizontal: spacing.md,
+          horizontal: spacing.md + spacing.xxs,
           vertical: spacing.sm,
         ),
         decoration: BoxDecoration(
-          color: colors.userBubbleSurface,
+          color: colors.userBubbleSurface.withValues(alpha: 0.96),
           borderRadius: BorderRadius.only(
             topLeft: Radius.circular(radius.lg),
             topRight: Radius.circular(radius.lg),
             bottomLeft: Radius.circular(radius.lg),
             bottomRight: Radius.circular(radius.sm),
           ),
-          border: Border.all(color: colors.divider),
+          boxShadow: [
+            BoxShadow(
+              color: colors.primaryText.withValues(alpha: 0.055),
+              blurRadius: 14,
+              offset: const Offset(0, 7),
+            ),
+          ],
         ),
         child: Text(
           text,
           style: TextStyle(
             color: colors.primaryText,
             fontWeight: FontWeight.w600,
-            fontSize: 13,
-            height: 1.45,
+            fontSize: 14,
+            height: 1.38,
           ),
         ),
       ),

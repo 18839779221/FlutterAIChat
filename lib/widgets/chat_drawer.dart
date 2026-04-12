@@ -1,4 +1,7 @@
 import 'package:ai_chat/constants/route_constant.dart';
+import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_radius.dart';
+import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,77 +22,79 @@ class ChatDrawer extends ConsumerWidget {
     final chatController = ref.read(chatControllerProvider);
 
     final ThemeData theme = Theme.of(context);
+    final colors = theme.extension<AppColors>()!;
+    final spacing = theme.extension<AppSpacing>()!;
+    final radius = theme.extension<AppRadius>()!;
+    final showDraftGroup = currentGroup != null && currentGroup.id == null;
 
     return Drawer(
+      backgroundColor: colors.settingsPanelBackground,
       child: Column(
         children: [
           Container(
             padding: EdgeInsets.fromLTRB(
-              16,
-              MediaQuery.of(context).padding.top + 16,
-              16,
-              16,
+              spacing.lg,
+              MediaQuery.of(context).padding.top + spacing.lg,
+              spacing.lg,
+              spacing.lg,
             ),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  theme.primaryColor,
-                  theme.primaryColor.withValues(alpha: 0.8),
-                ],
-              ),
+              color: colors.assistantSurface,
+              boxShadow: [
+                BoxShadow(
+                  color: colors.primaryText.withValues(alpha: 0.07),
+                  blurRadius: 20,
+                  offset: const Offset(0, 7),
+                ),
+              ],
             ),
             child: SafeArea(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // 头像和名称容器
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(2),
+                        padding: EdgeInsets.all(spacing.sm),
                         decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
+                          color: colors.structuredSurface,
+                          borderRadius: BorderRadius.circular(radius.md),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
+                              color: colors.primaryText.withValues(alpha: 0.08),
+                              blurRadius: 16,
+                              offset: const Offset(0, 6),
                             ),
                           ],
                         ),
-                        child: const CircleAvatar(
-                          radius: 24,
-                          backgroundColor: Colors.white,
-                          child: Icon(
-                            Icons.chat_bubble_outline,
-                            color: Colors.blue,
-                            size: 28,
-                          ),
+                        child: Icon(
+                          Icons.chat_bubble_outline,
+                          color: colors.primaryText,
+                          size: 20,
                         ),
                       ),
-                      const SizedBox(width: 16),
+                      SizedBox(width: spacing.md),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               'AI 助手',
                               style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w600,
+                                color: colors.primaryText,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
-                            const SizedBox(height: 4),
+                            SizedBox(height: spacing.xxs),
                             Text(
-                              '随时为您服务',
+                              '继续当前对话，或从新的任务开始',
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.8),
-                                fontSize: 14,
+                                color: colors.secondaryText,
+                                fontSize: 13,
+                                height: 1.45,
                               ),
                             ),
                           ],
@@ -101,143 +106,137 @@ class ChatDrawer extends ConsumerWidget {
               ),
             ),
           ),
-          // 新建分组按钮
           Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: EdgeInsets.all(spacing.lg),
             child: SizedBox(
               width: double.infinity,
-              child: ElevatedButton.icon(
+              child: FilledButton.icon(
                 onPressed:
                     isSendInFlight ? null : chatController.createNewGroup,
                 icon: const Icon(Icons.add),
                 label: const Text('新建对话'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                style: FilledButton.styleFrom(
+                  padding: EdgeInsets.symmetric(vertical: spacing.md),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(radius.md),
+                  ),
                 ),
               ),
             ),
           ),
-          // 分组列表
           Expanded(
             child: ListView.builder(
-              padding: EdgeInsets.zero,
-              itemCount: groups.length + (currentGroup?.id == null ? 1 : 0),
+              padding: EdgeInsets.symmetric(horizontal: spacing.sm),
+              itemCount: groups.length + (showDraftGroup ? 1 : 0),
               itemBuilder: (context, index) {
-                // 如果是第一个位置且当前分组没有ID，显示当前分组
-                if (index == 0 && currentGroup?.id == null) {
-                  return ListTile(
-                    leading: Icon(
-                      Icons.chat_bubble_outline,
-                      color: theme.primaryColor,
-                    ),
-                    title: Text(
-                      currentGroup!.title,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: theme.primaryColor,
-                      ),
-                    ),
-                    subtitle: const Text(
-                      '新对话',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey,
-                      ),
-                    ),
-                    selected: true,
-                    onTap: null,
+                if (index == 0 && showDraftGroup) {
+                  return _DrawerGroupTile(
+                    title: currentGroup.title,
+                    subtitle: '新对话',
+                    isSelected: true,
+                    enabled: false,
                   );
                 }
 
-                // 调整索引以跳过临时分组
-                final adjustedIndex = currentGroup?.id == null ? index - 1 : index;
+                final adjustedIndex = showDraftGroup ? index - 1 : index;
                 final group = groups[adjustedIndex];
                 final isSelected = currentGroup?.id == group.id;
 
-                return ListTile(
-                  leading: Icon(
-                    Icons.chat_bubble_outline,
-                    color: isSelected ? theme.primaryColor : Colors.grey[600],
-                  ),
-                  title: Text(
-                    group.title,
-                    style: TextStyle(
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      color: isSelected ? theme.primaryColor : null,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    '最后消息：${_formatDateTime(group.lastMessageAt)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                  selected: isSelected,
+                return _DrawerGroupTile(
+                  title: group.title,
+                  subtitle: '最后消息：${_formatDateTime(group.lastMessageAt)}',
+                  isSelected: isSelected,
                   enabled: !isSendInFlight,
-                  onTap: isSendInFlight ? null : () {
-                    chatController.selectGroup(group);
-                    Navigator.pop(context);
-                  },
-                  onLongPress: isSendInFlight ? null : () {
-                    showCupertinoDialog(
-                      context: context,
-                      builder: (context) => CupertinoAlertDialog(
-                        title: const Text('删除对话'),
-                        content: Text('确定要删除"${group.title}"吗？此操作不可恢复。'),
-                        actions: [
-                          CupertinoDialogAction(
-                            child: const Text('取消'),
-                            onPressed: () => Navigator.pop(context),
-                          ),
-                          CupertinoDialogAction(
-                            isDestructiveAction: true,
-                            child: const Text('删除'),
-                            onPressed: () {
-                              Navigator.pop(context);
-                              chatController.deleteGroup(group.id!);
-                            },
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+                  onTap: isSendInFlight
+                      ? null
+                      : () {
+                          chatController.selectGroup(group);
+                          Navigator.pop(context);
+                        },
+                  onLongPress: isSendInFlight
+                      ? null
+                      : () {
+                          showCupertinoDialog(
+                            context: context,
+                            builder: (context) => CupertinoAlertDialog(
+                              title: const Text('删除对话'),
+                              content: Text('确定要删除"${group.title}"吗？此操作不可恢复。'),
+                              actions: [
+                                CupertinoDialogAction(
+                                  child: const Text('取消'),
+                                  onPressed: () => Navigator.pop(context),
+                                ),
+                                CupertinoDialogAction(
+                                  isDestructiveAction: true,
+                                  child: const Text('删除'),
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                    chatController.deleteGroup(group.id!);
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                 );
               },
             ),
           ),
-          ListTile(
-            leading: const Icon(Icons.settings_outlined),
-            title: const Text('设置'),
-            enabled: !isSendInFlight,
-            onTap: isSendInFlight
-                ? null
-                : () {
-                    Navigator.pop(context);
-                    Navigator.pushNamed(context, RouteConstant.settingsPage);
-                  },
-          ),
-          // 底部版本信息
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.fromLTRB(
+              spacing.md,
+              spacing.sm,
+              spacing.md,
+              0,
+            ),
+            child: Material(
+              color: colors.assistantSurface,
+              borderRadius: BorderRadius.circular(radius.md),
+              child: ListTile(
+                leading: Icon(
+                  Icons.settings_outlined,
+                  color: colors.secondaryText,
+                ),
+                title: Text(
+                  '设置',
+                  style: TextStyle(color: colors.primaryText),
+                ),
+                enabled: !isSendInFlight,
+                onTap: isSendInFlight
+                    ? null
+                    : () {
+                        Navigator.pop(context);
+                        Navigator.pushNamed(
+                            context, RouteConstant.settingsPage);
+                      },
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.all(spacing.lg),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: spacing.md,
+                    vertical: spacing.xs,
                   ),
                   decoration: BoxDecoration(
-                    color: theme.primaryColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    color: colors.structuredSurface,
+                    borderRadius: BorderRadius.circular(radius.pill),
+                    boxShadow: [
+                      BoxShadow(
+                        color: colors.primaryText.withValues(alpha: 0.035),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
                   child: Text(
                     'Version 1.0.0',
                     style: TextStyle(
-                      color: theme.primaryColor,
+                      color: colors.secondaryText,
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                     ),
@@ -264,5 +263,75 @@ class ChatDrawer extends ConsumerWidget {
     } else {
       return '刚刚';
     }
+  }
+}
+
+class _DrawerGroupTile extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final bool isSelected;
+  final bool enabled;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+
+  const _DrawerGroupTile({
+    required this.title,
+    required this.subtitle,
+    required this.isSelected,
+    required this.enabled,
+    this.onTap,
+    this.onLongPress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppColors>()!;
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final radius = Theme.of(context).extension<AppRadius>()!;
+
+    return Padding(
+      padding:
+          EdgeInsets.symmetric(horizontal: spacing.md, vertical: spacing.xxs),
+      child: Material(
+        color: isSelected
+            ? colors.toolWorkflowSurface
+            : Colors.white.withValues(alpha: 0.58),
+        borderRadius: BorderRadius.circular(radius.md),
+        shadowColor: Colors.transparent,
+        elevation: isSelected ? 0 : 0,
+        child: ListTile(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(radius.md),
+          ),
+          tileColor: isSelected
+              ? colors.toolWorkflowSurface
+              : Colors.white.withValues(alpha: 0.58),
+          leading: Icon(
+            Icons.chat_bubble_outline,
+            color: isSelected ? colors.primaryText : colors.secondaryText,
+          ),
+          title: Text(
+            title,
+            style: TextStyle(
+              color: colors.primaryText,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            subtitle,
+            style: TextStyle(
+              color: colors.secondaryText,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          enabled: enabled,
+          onTap: onTap,
+          onLongPress: onLongPress,
+        ),
+      ),
+    );
   }
 }

@@ -56,18 +56,18 @@ class AppColors extends ThemeExtension<AppColors> {
 
   factory AppColors.light() {
     return const AppColors(
-      chatBackground: Color(0xFFF7F8FA),
-      settingsPanelBackground: Color(0xFFF1F2F4),
-      assistantSurface: Color(0xFFF8F5EF),
-      userBubbleSurface: Color(0xFFDCE6F2),
-      toolWorkflowSurface: Color(0xFFEEF3F8),
-      structuredSurface: Color(0xFFF6F3EC),
-      primaryText: Color(0xFF1D2733),
-      secondaryText: Color(0xFF5F6B7A),
-      divider: Color(0x14271D33),
-      workflowRunning: Color(0xFF4D6FA3),
-      workflowSuccess: Color(0xFF3D7A57),
-      workflowWarning: Color(0xFFA46A2A),
+      chatBackground: Color(0xFFF3F1EC),
+      settingsPanelBackground: Color(0xFFE3E4DE),
+      assistantSurface: Color(0xFFECE7DE),
+      userBubbleSurface: Color(0xFFD6DBD2),
+      toolWorkflowSurface: Color(0xFFDDE4D8),
+      structuredSurface: Color(0xFFE6E1D6),
+      primaryText: Color(0xFF182019),
+      secondaryText: Color(0xFF596259),
+      divider: Color(0x2E20281F),
+      workflowRunning: Color(0xFF35594A),
+      workflowSuccess: Color(0xFF2F6A4F),
+      workflowWarning: Color(0xFF9A6C37),
     );
   }
 
@@ -135,12 +135,14 @@ class AppColors extends ThemeExtension<AppColors> {
         other.settingsPanelBackground,
         t,
       )!,
-      assistantSurface: Color.lerp(assistantSurface, other.assistantSurface, t)!,
+      assistantSurface:
+          Color.lerp(assistantSurface, other.assistantSurface, t)!,
       userBubbleSurface:
           Color.lerp(userBubbleSurface, other.userBubbleSurface, t)!,
       toolWorkflowSurface:
           Color.lerp(toolWorkflowSurface, other.toolWorkflowSurface, t)!,
-      structuredSurface: Color.lerp(structuredSurface, other.structuredSurface, t)!,
+      structuredSurface:
+          Color.lerp(structuredSurface, other.structuredSurface, t)!,
       primaryText: Color.lerp(primaryText, other.primaryText, t)!,
       secondaryText: Color.lerp(secondaryText, other.secondaryText, t)!,
       divider: Color.lerp(divider, other.divider, t)!,
