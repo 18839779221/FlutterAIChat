@@ -4,6 +4,7 @@ import 'app_colors.dart';
 import 'app_component_theme.dart';
 import 'app_radius.dart';
 import 'app_spacing.dart';
+import 'app_typography.dart';
 
 /// Central app theme entry point.
 class AppTheme {
@@ -23,6 +24,7 @@ class AppTheme {
 
     return ThemeData(
       useMaterial3: true,
+      fontFamily: AppTypography.uiFontFamily,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: colors.chatBackground,
       textTheme: Typography.blackMountainView.apply(

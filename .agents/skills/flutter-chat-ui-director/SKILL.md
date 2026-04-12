@@ -26,6 +26,13 @@ Treat the desired chat experience as:
 
 Design for sustained reading, high content density, low visual fatigue, and an input area that does not break the editorial feel.
 
+Current repository-tested production direction:
+
+- `Anthropic Sans` for UI chrome and Latin-first text
+- `Noto Sans SC` as the packaged Chinese reading font
+- subtle floating controls instead of app-bar slabs
+- semantic surfaces instead of border-driven segmentation
+
 ## Required Workflow
 
 Do not jump directly into code edits.
@@ -54,11 +61,13 @@ If the request is vague, still diagnose first rather than producing generic “m
 - Keep the top bar useful but visually subordinate to the conversation.
 - Use it for orientation, group title, and lightweight controls.
 - Avoid turning it into the loudest region on the screen.
+- Floating header buttons may be used, but the center reading lane should stay visually open.
 
 ### Message List
 
 - Preserve reading rhythm through spacing, grouping, and predictable width.
 - Distinguish user and assistant content clearly, but avoid playful bubble theatrics or toy-like contrast.
+- Treat user turns as question anchors. They should lead into assistant content rather than fight for equal visual mass.
 - Long assistant replies must remain comfortable to scan.
 - Reasoning, tool, loading, and streaming states must feel like part of the same system.
 - Prefer the feel of a document reader with conversational anchors, not a stack of chat cards.
@@ -70,6 +79,7 @@ If the request is vague, still diagnose first rather than producing generic “m
 - Improve comfort through restraint, alignment, and calm tonal separation.
 - Secondary controls should support the composer, not compete with it.
 - Avoid chunky trays, layered borders, or “plastic” floating form styling when the surrounding page is editorial.
+- Placeholder and send-button emphasis should never become louder than the page's reading rhythm.
 
 ### Empty and Transitional States
 
@@ -89,6 +99,7 @@ Map design recommendations into Flutter-native concepts:
 
 - **Color:** use semantic roles through `ColorScheme` and surface layering, not ad hoc hex scattered through widgets.
 - **Typography:** define a readable scale and weight hierarchy; avoid solving hierarchy with color alone.
+- **Typography:** prefer a neutral Latin family plus a stable CJK reading family; optimize for long-form Chinese and mixed-script content, not just short labels.
 - **Spacing:** prefer a repeatable spacing rhythm and reuse it across message items, bars, and sheets.
 - **Shape:** keep radius decisions consistent across bubbles, input containers, buttons, and cards.
 - **Components:** prefer reusable chat-specific widgets over one-off visual tweaks in page files.
@@ -109,6 +120,7 @@ Do not recommend or normalize:
 - mobile-first layouts stretched to desktop without recomposition
 - input bars that feel like generic forms instead of core product controls
 - wireframe-heavy surfaces that make the UI feel plastic rather than editorial
+- warm beige inline-code chips or quote backgrounds that feel muddy inside an otherwise cool-neutral reading system
 - solving document readability with oversized cards instead of typography and spacing
 
 ## Output Contract

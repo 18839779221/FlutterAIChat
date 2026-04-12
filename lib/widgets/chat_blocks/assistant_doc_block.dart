@@ -1,5 +1,6 @@
 import 'package:ai_chat/theme/app_colors.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
+import 'package:ai_chat/theme/app_typography.dart';
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
 import 'package:flutter/material.dart';
 
@@ -21,10 +22,10 @@ class AssistantDocBlock extends StatelessWidget {
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
-        spacing.md + 1,
+        spacing.md - 1,
+        0,
+        spacing.md - 1,
         spacing.xxs,
-        spacing.md + 1,
-        spacing.xxs + 1,
       ),
       child: SizedBox(
         width: double.infinity,
@@ -34,20 +35,21 @@ class AssistantDocBlock extends StatelessWidget {
             if (label != null) ...[
               Text(
                 label!,
-                style: TextStyle(
+                style: AppTypography.uiStyle(
                   color: colors.secondaryText,
                   fontSize: 9,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
+                  height: 1.0,
                   letterSpacing: 0.5,
                 ),
               ),
-              SizedBox(height: spacing.xxs + 1),
+              SizedBox(height: spacing.xxs),
               Container(
                 height: 1,
-                width: 18,
-                color: colors.divider.withValues(alpha: 0.48),
+                width: 14,
+                color: colors.divider.withValues(alpha: 0.36),
               ),
-              SizedBox(height: spacing.xs + 1),
+              SizedBox(height: spacing.xs),
             ],
             FlutterMarkdownImpl(data: text),
           ],
