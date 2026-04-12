@@ -46,6 +46,7 @@ dependencies:
   hooks_riverpod: ^2.6.1
   shared_preferences: ^2.5.3
   share_plus: ^9.0.0
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
@@ -101,6 +102,16 @@ flutter:
   # see https://flutter.dev/to/font-from-package
 
   fonts:
+    - family: AnthropicSans
+      fonts:
+        - asset: fonts/AnthropicSansVariable-TextRegular.ttf
+          weight: 400
+    - family: NotoSansCJKSC
+      fonts:
+        - asset: fonts/NotoSansCJKsc-Regular.otf
+          weight: 400
+        - asset: fonts/NotoSansCJKsc-Medium.otf
+          weight: 500
     - family: JetBrainsMono
       fonts:
         - asset: fonts/JetBrainsMono-Regular.ttf

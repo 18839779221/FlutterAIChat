@@ -1,5 +1,5 @@
-import 'package:ai_chat/theme/app_colors.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
+import 'package:ai_chat/theme/app_typography.dart';
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
 import 'package:flutter/material.dart';
 
@@ -20,10 +20,10 @@ class FinalResponseBlock extends StatelessWidget {
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
-        spacing.xs,
+        spacing.md - 1,
+        0,
+        spacing.md - 1,
         spacing.xxs,
-        spacing.xs,
-        spacing.xxs + 1,
       ),
       child: SizedBox(
         width: double.infinity,
@@ -33,13 +33,14 @@ class FinalResponseBlock extends StatelessWidget {
             if (title.trim().isNotEmpty && title != 'Final Response') ...[
               Text(
                 title,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      height: 1.2,
-                    ),
+                style: AppTypography.uiStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontSize: 14.8,
+                  fontWeight: FontWeight.w500,
+                  height: 1.14,
+                ),
               ),
-              SizedBox(height: spacing.xxs + 2),
+              SizedBox(height: spacing.xxs + 1),
             ],
             FlutterMarkdownImpl(data: text),
           ],
