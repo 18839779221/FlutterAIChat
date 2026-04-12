@@ -488,6 +488,40 @@ void main() {
       expect(draft.historyMessages.first.text, '第一轮问题');
       expect(draft.historyMessages.last.text, '第一轮回答');
     });
+
+    test('resolveToolPreparationDraft enters awaitingConfirmation and preserves tool context history', () {
+      final resolved = resolveToolPreparationDraft(
+        historyMessages: [
+          ChatMessage(
+            text: '既有历史',
+            role: MessageRole.system,
+            status: MessageStatus.completed,
+          ),
+        ],
+        toolPreparationResult: ToolPreparationResult(
+          toolInvocation: const ToolInvocation(
+            toolName: 'create_reminder',
+            arguments: {'title': '交周报'},
+            status: ToolInvocationStatus.awaitingConfirmation,
+            summary: '准备执行工具：创建提醒',
+            requiresConfirmation: true,
+          ),
+          toolResult: null,
+          additionalContextMessages: [
+            ChatMessage(
+              text: '额外工具上下文',
+              role: MessageRole.system,
+              status: MessageStatus.completed,
+            ),
+          ],
+        ),
+      );
+
+      expect(resolved.requiresConfirmation, isTrue);
+      expect(resolved.nextPhase, ChatSendPhase.awaitingConfirmation);
+      expect(resolved.toolContextHistory, hasLength(2));
+      expect(resolved.toolContextHistory.last.text, '额外工具上下文');
+    });
   });
 }
 

@@ -11,6 +11,7 @@ import '../models/trace/chat_trace_event.dart';
 import '../models/tool/tool_invocation.dart';
 import '../repositories/app_settings_repository.dart';
 import '../services/chat_service.dart';
+import '../services/tool_call_service.dart';
 import '../services/chat_trace_recorder.dart';
 import '../storage/chat_storage.dart';
 import '../utils/logger.dart';
@@ -230,6 +231,24 @@ class ChatSendTransactionDraft {
   });
 }
 
+/// Derived result of the tool preparation stage before assistant streaming.
+class ToolPreparationDraft {
+  /// Whether the current turn must stop and wait for user confirmation.
+  final bool requiresConfirmation;
+
+  /// Next send phase implied by the tool preparation result.
+  final ChatSendPhase nextPhase;
+
+  /// History snapshot that should be passed into the next model round.
+  final List<ChatMessage> toolContextHistory;
+
+  const ToolPreparationDraft({
+    required this.requiresConfirmation,
+    required this.nextPhase,
+    required this.toolContextHistory,
+  });
+}
+
 /// Builds the minimal send transaction snapshot so `sendMessage()` can focus on
 /// orchestration instead of inline state assembly details.
 @visibleForTesting
@@ -268,6 +287,28 @@ ChatSendTransactionDraft buildChatSendTransactionDraft({
     userMessage: userMessage,
     assistantPlaceholder: assistantPlaceholder,
     historyMessages: historyMessages,
+  );
+}
+
+/// Resolves the next send-stage snapshot after tool preparation completes.
+@visibleForTesting
+ToolPreparationDraft resolveToolPreparationDraft({
+  required List<ChatMessage> historyMessages,
+  required ToolPreparationResult toolPreparationResult,
+}) {
+  final toolContextHistory = [
+    ...historyMessages,
+    ...toolPreparationResult.additionalContextMessages,
+  ];
+  final requiresConfirmation = toolPreparationResult.toolInvocation != null &&
+      toolPreparationResult.toolResult == null;
+
+  return ToolPreparationDraft(
+    requiresConfirmation: requiresConfirmation,
+    nextPhase: requiresConfirmation
+        ? ChatSendPhase.awaitingConfirmation
+        : ChatSendPhase.streamingResponse,
+    toolContextHistory: toolContextHistory,
   );
 }
 
@@ -647,15 +688,15 @@ class ChatController {
         'hasToolResult=${toolPreparationResult.toolResult != null}, '
         'extraContext=${toolPreparationResult.additionalContextMessages.length}',
       );
-      final toolContextHistory = [
-        ...historyMessages,
-        ...toolPreparationResult.additionalContextMessages,
-      ];
+      final toolPreparationDraft = resolveToolPreparationDraft(
+        historyMessages: historyMessages,
+        toolPreparationResult: toolPreparationResult,
+      );
+      final toolContextHistory = toolPreparationDraft.toolContextHistory;
 
-      if (toolPreparationResult.toolInvocation != null &&
-          toolPreparationResult.toolResult == null) {
+      if (toolPreparationDraft.requiresConfirmation) {
         _ref.read(sendPhaseProvider.notifier).state =
-            ChatSendPhase.awaitingConfirmation;
+            toolPreparationDraft.nextPhase;
         final confirmationMessage = ChatMessage(
           text: toolPreparationResult.toolInvocation!.summary,
           role: MessageRole.assistant,
@@ -703,7 +744,7 @@ class ChatController {
       // 设置生成状态
       _ref.read(isGeneratingProvider.notifier).state = true;
       _ref.read(sendPhaseProvider.notifier).state =
-          ChatSendPhase.streamingResponse;
+          toolPreparationDraft.nextPhase;
 
       // 获取系统提示词和推理模式设置
       final systemPrompt = _ref.read(systemPromptProvider) ?? "";
