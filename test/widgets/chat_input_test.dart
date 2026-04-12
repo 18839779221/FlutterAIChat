@@ -29,10 +29,18 @@ void main() {
   testWidgets('chat input shows pending label while awaiting confirmation', (
     tester,
   ) async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(
+      overrides: [
+        chatSendStateProvider.overrideWith(
+          (ref) => ChatSendStateNotifier()
+            ..update(
+              phase: ChatSendPhase.awaitingConfirmation,
+              isGenerating: false,
+            ),
+        ),
+      ],
+    );
     addTearDown(container.dispose);
-    container.read(sendPhaseProvider.notifier).state =
-        ChatSendPhase.awaitingConfirmation;
 
     await tester.pumpWidget(
       UncontrolledProviderScope(

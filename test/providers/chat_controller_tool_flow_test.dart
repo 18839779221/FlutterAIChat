@@ -439,6 +439,8 @@ void main() {
         container.read(sendPhaseProvider),
         ChatSendPhase.preparing,
       );
+      expect(container.read(chatSendStateProvider).phase, ChatSendPhase.preparing);
+      expect(container.read(chatSendStateProvider).isGenerating, isFalse);
       expect(
         container.read(messagesProvider).any(
               (message) =>
@@ -450,6 +452,8 @@ void main() {
       prepareCompleter.complete(const ToolPreparationResult.noTool());
       await Future<void>.delayed(const Duration(milliseconds: 30));
       expect(container.read(sendPhaseProvider), ChatSendPhase.idle);
+      expect(container.read(chatSendStateProvider).phase, ChatSendPhase.idle);
+      expect(container.read(chatSendStateProvider).isGenerating, isFalse);
 
       await databaseHelper.deleteGroup(groupId);
     });
@@ -625,6 +629,11 @@ void main() {
         container.read(sendPhaseProvider),
         ChatSendPhase.awaitingConfirmation,
       );
+      expect(
+        container.read(chatSendStateProvider).phase,
+        ChatSendPhase.awaitingConfirmation,
+      );
+      expect(container.read(chatSendStateProvider).isGenerating, isFalse);
 
       await databaseHelper.deleteGroup(groupId);
     });

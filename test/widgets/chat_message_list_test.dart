@@ -211,7 +211,13 @@ Future<void> _pumpMessageList(
   final container = ProviderContainer(
     overrides: [
       hasMoreMessagesProvider.overrideWith((ref) => false),
-      isGeneratingProvider.overrideWith((ref) => false),
+      chatSendStateProvider.overrideWith(
+        (ref) => ChatSendStateNotifier()
+          ..update(
+            phase: ChatSendPhase.idle,
+            isGenerating: false,
+          ),
+      ),
       autoScrollToBottomProvider.overrideWith((ref) => true),
     ],
   );
