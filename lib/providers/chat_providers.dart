@@ -211,6 +211,66 @@ enum ChatSendPhase {
 final sendPhaseProvider =
     StateProvider<ChatSendPhase>((ref) => ChatSendPhase.idle);
 
+/// Snapshot of the local send transaction inputs before tool preparation and
+/// model streaming start.
+class ChatSendTransactionDraft {
+  /// Newly created user message that should appear immediately in the UI.
+  final ChatMessage userMessage;
+
+  /// Assistant placeholder inserted once streaming is ready to begin.
+  final ChatMessage assistantPlaceholder;
+
+  /// Stable history snapshot restricted to completed user/assistant pairs.
+  final List<ChatMessage> historyMessages;
+
+  const ChatSendTransactionDraft({
+    required this.userMessage,
+    required this.assistantPlaceholder,
+    required this.historyMessages,
+  });
+}
+
+/// Builds the minimal send transaction snapshot so `sendMessage()` can focus on
+/// orchestration instead of inline state assembly details.
+@visibleForTesting
+ChatSendTransactionDraft buildChatSendTransactionDraft({
+  required String text,
+  required List<ChatMessage> currentMessages,
+}) {
+  final userMessage = ChatMessage(
+    text: text,
+    role: MessageRole.user,
+    status: MessageStatus.completed,
+  );
+  final assistantPlaceholder = ChatMessage(
+    text: '',
+    role: MessageRole.assistant,
+    status: MessageStatus.generating,
+  );
+
+  final historyMessages = <ChatMessage>[];
+  int index = 0;
+  while (index < currentMessages.length - 1) {
+    final current = currentMessages[index];
+    final next = currentMessages[index + 1];
+    if (current.isUser &&
+        next.isAssistant &&
+        next.status == MessageStatus.completed &&
+        current.contentType == MessageContentType.plainText &&
+        next.contentType == MessageContentType.plainText) {
+      historyMessages.add(current);
+      historyMessages.add(next);
+    }
+    index += 2;
+  }
+
+  return ChatSendTransactionDraft(
+    userMessage: userMessage,
+    assistantPlaceholder: assistantPlaceholder,
+    historyMessages: historyMessages,
+  );
+}
+
 final toolWorkflowExpansionProvider = StateNotifierProvider<
     ToolWorkflowExpansionNotifier, Map<String, String>>((ref) {
   return ToolWorkflowExpansionNotifier();
@@ -546,11 +606,11 @@ class ChatController {
       }
     }
 
-    final userMessage = ChatMessage(
+    final sendDraft = buildChatSendTransactionDraft(
       text: text,
-      role: MessageRole.user,
-      status: MessageStatus.completed,
+      currentMessages: List<ChatMessage>.from(_ref.read(messagesProvider)),
     );
+    final userMessage = sendDraft.userMessage;
 
     // 用户消息必须先进入消息列表，再做后续异步准备，避免发送反馈滞后。
     _ref.read(messagesProvider.notifier).addMessage(userMessage);
@@ -558,11 +618,7 @@ class ChatController {
     // 避免消息时间戳一致，延迟1毫秒
     await Future.delayed(const Duration(milliseconds: 1));
 
-    final aiMessage = ChatMessage(
-      text: '',
-      role: MessageRole.assistant,
-      status: MessageStatus.generating,
-    );
+    final aiMessage = sendDraft.assistantPlaceholder;
 
     try {
       final dbHelper = _ref.read(databaseProvider);
@@ -573,26 +629,7 @@ class ChatController {
           await dbHelper.insertMessage(userMessage, currentGroupId);
       userMessage.id = userMessageId;
 
-      // 获取有效的历史消息（成对的用户消息和已完成的AI回复）
-      final List<ChatMessage> historyMessages = [];
-      final List<ChatMessage> messagesCopy =
-          List<ChatMessage>.from(_ref.read(messagesProvider));
-
-      // 正序列表中，历史成对消息应该是 user -> assistant。
-      int i = 0;
-      while (i < messagesCopy.length - 1) {
-        final message1 = messagesCopy[i];
-        final message2 = messagesCopy[i + 1];
-
-        if (message1.isUser &&
-            message2.isAssistant &&
-            message2.status == MessageStatus.completed) {
-          historyMessages.add(message1);
-          historyMessages.add(message2);
-        }
-
-        i += 2;
-      }
+      final historyMessages = sendDraft.historyMessages;
 
       Logger.d(_tag, '开始接收AI响应流，有效对话对数量: ${historyMessages.length / 2}');
 

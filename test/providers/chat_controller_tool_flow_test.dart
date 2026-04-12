@@ -446,6 +446,48 @@ void main() {
 
       await databaseHelper.deleteGroup(groupId);
     });
+
+    test('buildChatSendTransactionDraft only keeps completed user-assistant pairs in history', () {
+      final draft = buildChatSendTransactionDraft(
+        text: '新的用户消息',
+        currentMessages: [
+          ChatMessage(
+            text: '第一轮问题',
+            role: MessageRole.user,
+            status: MessageStatus.completed,
+          ),
+          ChatMessage(
+            text: '第一轮回答',
+            role: MessageRole.assistant,
+            status: MessageStatus.completed,
+          ),
+          ChatMessage(
+            text: '第二轮问题',
+            role: MessageRole.user,
+            status: MessageStatus.completed,
+          ),
+          ChatMessage(
+            text: '第二轮回答仍在生成',
+            role: MessageRole.assistant,
+            status: MessageStatus.generating,
+          ),
+          ChatMessage(
+            text: '工具结果消息',
+            role: MessageRole.assistant,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.toolResult,
+          ),
+        ],
+      );
+
+      expect(draft.userMessage.text, '新的用户消息');
+      expect(draft.userMessage.isUser, isTrue);
+      expect(draft.assistantPlaceholder.isAssistant, isTrue);
+      expect(draft.assistantPlaceholder.status, MessageStatus.generating);
+      expect(draft.historyMessages, hasLength(2));
+      expect(draft.historyMessages.first.text, '第一轮问题');
+      expect(draft.historyMessages.last.text, '第一轮回答');
+    });
   });
 }
 
