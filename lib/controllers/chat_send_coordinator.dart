@@ -561,6 +561,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     final dbHelper = _ref.read(databaseProvider);
     int? assistantMessageId;
     ChatMessage? assistantMessage;
+    var hasPendingConfirmation = false;
 
     await for (final event in orchestrator.resumeAfterConfirmation(
       turnId: turnId,
@@ -573,14 +574,15 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     )) {
       switch (event.eventType) {
         case ChatEventType.toolExecutionStarted:
+          final runningPayload = {
+            ...?event.payloadJson,
+            'agentTurnId': turnId,
+            traceTurnIdPayloadKey: traceTurnId,
+          };
           final runningMessage = sourceMessage.copyWith(
             text: event.content ?? invocation.summary,
             contentType: MessageContentType.toolInvocation,
-            payloadJson: {
-              ...invocation.toJson(),
-              'agentTurnId': turnId,
-              traceTurnIdPayloadKey: traceTurnId,
-            },
+            payloadJson: runningPayload,
           );
           _ref.read(messagesProvider.notifier).replaceMessage(runningMessage);
           await dbHelper.updateStructuredMessage(
@@ -588,8 +590,51 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
             text: runningMessage.text,
             status: runningMessage.status,
             contentType: runningMessage.contentType,
-            payloadJson: jsonEncode(runningMessage.payloadJson),
+            payloadJson: jsonEncode(runningPayload),
           );
+          break;
+        case ChatEventType.assistantToolCall:
+          final toolCallMessage = ChatMessage(
+            text: event.content ?? '准备执行工具',
+            role: MessageRole.assistant,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: {
+              ...?event.payloadJson,
+              'agentTurnId': turnId,
+              traceTurnIdPayloadKey: traceTurnId,
+            },
+          );
+          final toolCallMessageId =
+              await dbHelper.insertMessage(toolCallMessage, currentGroupId);
+          toolCallMessage.id = toolCallMessageId;
+          _ref.read(messagesProvider.notifier).addMessage(toolCallMessage);
+          break;
+        case ChatEventType.assistantToolConfirmation:
+          hasPendingConfirmation = true;
+          _ref.read(chatSendStateProvider.notifier).update(
+                isGenerating: false,
+                phase: ChatSendPhase.awaitingConfirmation,
+              );
+          final confirmationPayload = {
+            ...?event.payloadJson,
+            'status': ToolInvocationStatus.awaitingConfirmation.name,
+            'summary': event.content ?? '准备执行工具',
+            'requiresConfirmation': true,
+            'agentTurnId': turnId,
+            traceTurnIdPayloadKey: traceTurnId,
+          };
+          final confirmationMessage = ChatMessage(
+            text: event.content ?? '准备执行工具',
+            role: MessageRole.assistant,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.actionConfirmation,
+            payloadJson: confirmationPayload,
+          );
+          final confirmationMessageId =
+              await dbHelper.insertMessage(confirmationMessage, currentGroupId);
+          confirmationMessage.id = confirmationMessageId;
+          _ref.read(messagesProvider.notifier).addMessage(confirmationMessage);
           break;
         case ChatEventType.toolResult:
           final toolMessage = ChatMessage(
@@ -654,8 +699,6 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
           }
           break;
         case ChatEventType.assistantTextFinal:
-        case ChatEventType.assistantToolCall:
-        case ChatEventType.assistantToolConfirmation:
         case ChatEventType.userMessage:
         case ChatEventType.assistantReasoningDelta:
         case ChatEventType.toolError:
@@ -665,7 +708,11 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       }
     }
 
-    _ref.read(chatSendStateProvider.notifier).setPhase(ChatSendPhase.idle);
+    _ref.read(chatSendStateProvider.notifier).setPhase(
+      hasPendingConfirmation
+          ? ChatSendPhase.awaitingConfirmation
+          : ChatSendPhase.idle,
+    );
   }
 
   String _resolveTraceTurnId(

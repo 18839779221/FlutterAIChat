@@ -1,4 +1,6 @@
 import '../../models/chat_message.dart';
+import '../../models/tool/tool_argument_property.dart';
+import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
 import '../../services/tool_executor.dart';
 import '../core/tool_argument_resolution.dart';
@@ -23,11 +25,37 @@ class CreateReminderToolHandler implements ToolHandler {
         name: 'create_reminder',
         title: '创建提醒',
         description: '创建系统提醒事项。',
+        descriptionForModel:
+            '当用户明确要求创建提醒、闹钟或待办提醒时使用。必须具备标题和提醒时间；如果时间缺失，应先继续确认，不要盲目调用。该工具会触发系统侧写操作，需要确认。',
+        category: ToolCategory.productivity,
+        capabilities: [ToolCapability.reminderCreate],
+        whenToUse: [
+          '用户要求提醒我、到时候叫我、帮我设提醒',
+        ],
+        whenNotToUse: [
+          '用户没有明确要求创建提醒',
+          '缺少可解析的提醒时间',
+        ],
         parameters: {
           'title': 'string',
           'dueAt': 'string?',
           'note': 'string?',
         },
+        argumentSchema: ToolArgumentSchema(
+          properties: {
+            'title': ToolArgumentProperty.string(
+              description: '提醒标题，说明需要提醒的事项。',
+            ),
+            'dueAt': ToolArgumentProperty.string(
+              description: '提醒时间，建议使用 ISO 时间字符串或可被系统解析的明确时间。',
+              format: 'date-time',
+            ),
+            'note': ToolArgumentProperty.string(
+              description: '可选备注，用于补充提醒细节。',
+            ),
+          },
+          required: ['title', 'dueAt'],
+        ),
         requiresConfirmation: true,
         riskLevel: 'medium',
       );
@@ -56,7 +84,14 @@ class CreateReminderToolHandler implements ToolHandler {
 
     var normalizedDueAt = dueAt.trim();
     final relativeOffsetDays = extractRelativeDayOffset(userMessage);
-    if (relativeOffsetDays != null) {
+    final normalizedNaturalLanguageDueAt = normalizeNaturalLanguageDateTime(
+      rawText: normalizedDueAt,
+      anchor: _nowProvider(),
+      fallbackDayOffset: relativeOffsetDays,
+    );
+    if (normalizedNaturalLanguageDueAt != null) {
+      normalizedDueAt = normalizedNaturalLanguageDueAt;
+    } else if (relativeOffsetDays != null) {
       normalizedDueAt = normalizeRelativeIsoDate(
             rawIsoText: normalizedDueAt,
             dayOffset: relativeOffsetDays,

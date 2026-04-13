@@ -1,5 +1,6 @@
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
@@ -16,7 +17,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('ToolCallService.executeToolInvocation', () {
-    test('delegates confirmed invocation to runtime handler and returns context',
+    test(
+        'delegates confirmed invocation to runtime handler and returns context',
         () async {
       final service = ToolCallService(
         runtimeRegistry: ToolRuntimeRegistry(
@@ -114,14 +116,16 @@ class _FakeChatStorage implements ChatStorage {
   Future<ChatGroup?> getLatestGroup() => throw UnimplementedError();
 
   @override
-  Future<void> updateGroupLastMessageTime(int groupId) => throw UnimplementedError();
+  Future<void> updateGroupLastMessageTime(int groupId) =>
+      throw UnimplementedError();
 
   @override
   Future<void> updateGroupSystemPrompt(int groupId, String? systemPrompt) =>
       throw UnimplementedError();
 
   @override
-  Future<void> updateGroupTitle(int groupId, String title, {bool isSummarized = true}) =>
+  Future<void> updateGroupTitle(int groupId, String title,
+          {bool isSummarized = true}) =>
       throw UnimplementedError();
 
   @override
@@ -134,13 +138,27 @@ class _FakeChatStorage implements ChatStorage {
   Future<ChatTurn?> getTurn(int id) => throw UnimplementedError();
 
   @override
+  Future<ChatTurnStep?> getTurnStep(int id) => throw UnimplementedError();
+
+  @override
+  Future<List<ChatTurnStep>> getTurnSteps(int turnId) =>
+      throw UnimplementedError();
+
+  @override
   Future<void> updateTurn(ChatTurn turn) => throw UnimplementedError();
+
+  @override
+  Future<int> insertTurnStep(ChatTurnStep step) => throw UnimplementedError();
+
+  @override
+  Future<void> updateTurnStep(ChatTurnStep step) => throw UnimplementedError();
 
   @override
   Future<int> insertEvent(ChatEvent event) => throw UnimplementedError();
 
   @override
-  Future<List<ChatEvent>> getEventsByTurn(int turnId) => throw UnimplementedError();
+  Future<List<ChatEvent>> getEventsByTurn(int turnId) =>
+      throw UnimplementedError();
 
   @override
   Future<int> insertMessage(ChatMessage message, int groupId) =>

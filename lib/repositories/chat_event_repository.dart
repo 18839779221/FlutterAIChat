@@ -1,5 +1,6 @@
 import '../models/chat_event.dart';
 import '../models/chat_message.dart';
+import '../models/tool/tool_invocation.dart';
 import '../storage/chat_storage.dart';
 
 class ChatEventRepository {
@@ -43,6 +44,7 @@ class ChatEventRepository {
     required String toolName,
     required Map<String, dynamic> arguments,
     required String summary,
+    Map<String, dynamic>? payloadJson,
   }) {
     return _appendEvent(
       turnId: turnId,
@@ -50,10 +52,14 @@ class ChatEventRepository {
       eventType: ChatEventType.assistantToolCall,
       role: MessageRole.assistant,
       content: summary,
-      payloadJson: {
-        'toolName': toolName,
-        'arguments': arguments,
-      },
+      payloadJson: payloadJson ??
+          {
+            'toolName': toolName,
+            'arguments': arguments,
+            'status': ToolInvocationStatus.proposed.name,
+            'summary': summary,
+            'requiresConfirmation': false,
+          },
     );
   }
 
@@ -73,6 +79,9 @@ class ChatEventRepository {
       payloadJson: {
         'toolName': toolName,
         'arguments': arguments,
+        'status': ToolInvocationStatus.awaitingConfirmation.name,
+        'summary': summary,
+        'requiresConfirmation': true,
       },
     );
   }
@@ -81,6 +90,7 @@ class ChatEventRepository {
     required int turnId,
     required int groupId,
     required String content,
+    Map<String, dynamic>? payloadJson,
   }) {
     return _appendEvent(
       turnId: turnId,
@@ -88,6 +98,7 @@ class ChatEventRepository {
       eventType: ChatEventType.toolExecutionStarted,
       role: MessageRole.system,
       content: content,
+      payloadJson: payloadJson,
     );
   }
 

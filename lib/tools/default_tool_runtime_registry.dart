@@ -2,11 +2,17 @@ import '../services/tool_executor.dart';
 import 'core/tool_runtime_registry.dart';
 import 'handlers/create_calendar_event_tool_handler.dart';
 import 'handlers/create_reminder_tool_handler.dart';
+import 'handlers/edit_tool_handler.dart';
 import 'handlers/fetch_webpage_tool_handler.dart';
+import 'handlers/glob_tool_handler.dart';
+import 'handlers/grep_tool_handler.dart';
+import 'handlers/ls_tool_handler.dart';
+import 'handlers/read_tool_handler.dart';
 import 'handlers/save_note_tool_handler.dart';
 import 'handlers/search_chat_history_tool_handler.dart';
 import 'handlers/share_result_tool_handler.dart';
 import 'handlers/web_search_tool_handler.dart';
+import 'handlers/write_tool_handler.dart';
 
 /// Builds the default runtime registry by wiring built-in tool handlers to the
 /// host adapters exposed by [ToolExecutor].
@@ -50,6 +56,12 @@ ToolRuntimeRegistry buildDefaultToolRuntimeRegistry({
           );
         },
       ),
+      LsToolHandler(),
+      GlobToolHandler(),
+      GrepToolHandler(),
+      ReadToolHandler(),
+      WriteToolHandler(),
+      EditToolHandler(),
       SaveNoteToolHandler(
         noteSaver: ({
           required title,

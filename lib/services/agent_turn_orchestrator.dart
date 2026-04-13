@@ -1,15 +1,21 @@
-import '../models/agent/agent_action.dart';
+import '../models/agent/chat_turn_step.dart';
+import '../models/agent/model_tool_call.dart';
+import '../models/agent/model_turn_decision.dart';
 import '../models/agent/agent_loop_limits.dart';
 import '../models/chat_event.dart';
+import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/tool/tool_invocation.dart';
 import '../models/tool/tool_result.dart';
 import '../repositories/chat_event_repository.dart';
 import '../repositories/chat_turn_repository.dart';
+import '../repositories/chat_turn_step_repository.dart';
+import '../tools/core/tool_display_names.dart';
 import '../utils/logger.dart';
 import 'agent_planner_service.dart';
 import 'chat_service.dart';
 import 'stop_verifier_service.dart';
+import 'turn_ledger_builder_service.dart';
 import 'tool_call_service.dart';
 import 'transcript_builder_service.dart';
 
@@ -17,8 +23,10 @@ class AgentTurnOrchestrator {
   static const _tag = 'AgentTurnOrchestrator';
   final AgentPlannerService _plannerService;
   final ChatTurnRepository _turnRepository;
+  final ChatTurnStepRepository? _stepRepository;
   final ChatEventRepository _eventRepository;
   final TranscriptBuilderService _transcriptBuilderService;
+  final TurnLedgerBuilderService _turnLedgerBuilder;
   final StopVerifierService _stopVerifierService;
   final ChatService _chatService;
   final ToolCallService _toolCallService;
@@ -27,16 +35,21 @@ class AgentTurnOrchestrator {
   AgentTurnOrchestrator({
     required AgentPlannerService plannerService,
     required ChatTurnRepository turnRepository,
+    ChatTurnStepRepository? turnStepRepository,
     required ChatEventRepository eventRepository,
     required TranscriptBuilderService transcriptBuilderService,
+    TurnLedgerBuilderService turnLedgerBuilder =
+        const TurnLedgerBuilderService(),
     required StopVerifierService stopVerifierService,
     required ChatService chatService,
     required ToolCallService toolCallService,
     AgentLoopLimits limits = const AgentLoopLimits(),
   })  : _plannerService = plannerService,
         _turnRepository = turnRepository,
+        _stepRepository = turnStepRepository,
         _eventRepository = eventRepository,
         _transcriptBuilderService = transcriptBuilderService,
+        _turnLedgerBuilder = turnLedgerBuilder,
         _stopVerifierService = stopVerifierService,
         _chatService = chatService,
         _toolCallService = toolCallService,
@@ -47,6 +60,10 @@ class AgentTurnOrchestrator {
     required ChatConfig config,
   }) async* {
     final turnId = turn.id!;
+    Logger.i(
+      _tag,
+      'runTurn start turnId=$turnId groupId=${turn.groupId} iteration=${turn.iterationCount} toolCalls=${turn.toolCallCount} userInput=${_preview(turn.userInput)}',
+    );
     yield await _appendAndLoad(
       turnId,
       () => _eventRepository.appendUserMessage(
@@ -116,137 +133,327 @@ class AgentTurnOrchestrator {
         _tag,
         'planning iteration=${currentTurn.iterationCount} toolCalls=${currentTurn.toolCallCount} transcriptEvents=${transcript.length}',
       );
-      final action = await _plannerService.planNextAction(
-        turn: currentTurn,
-        transcript: transcript,
-        config: config,
-        limits: _limits,
+      Logger.d(
+        _tag,
+        'transcript summary turnId=$turnId ${_summarizeTranscript(transcript)}',
       );
-
-      if (action.type == AgentActionType.callTool && action.toolCall != null) {
-        final toolCall = action.toolCall!;
-        Logger.d(
-          _tag,
-          'planner chose tool ${toolCall.toolName} with args=${toolCall.arguments}',
-        );
+      final steps = _stepRepository == null
+          ? <ChatTurnStep>[]
+          : await _stepRepository!.listSteps(turnId);
+      final decision = await _plannerService.planNextDecision(
+            turn: currentTurn,
+            transcript: transcript,
+            steps: steps,
+            config: config,
+            limits: _limits,
+          ) ??
+          const ModelTurnDecision(
+            toolCalls: [],
+            assistantMessage: '抱歉，我暂时无法规划下一步动作，请直接重试。',
+            diagnosticCode: 'planner_request_failed',
+            providerState: {},
+            isTerminal: true,
+          );
+      await _persistDecisionRuntimeState(
+        turnId: turnId,
+        turn: currentTurn,
+        decision: decision,
+      );
+      final runtimeTurn = await _turnRepository.getTurn(turnId) ?? currentTurn;
+      final decisionResponseId = _resolveDecisionResponseId(decision);
+      if (decision.toolCalls.isNotEmpty) {
+        await _turnRepository.incrementIteration(turnId);
         yield await _appendAndLoad(
           turnId,
-          () => _eventRepository.appendToolCall(
+          () => _eventRepository.appendTurnStatus(
             turnId: turnId,
-            groupId: currentTurn.groupId,
-            toolName: toolCall.toolName,
-            arguments: toolCall.arguments,
-            summary: '准备执行工具：${toolCall.toolName}',
+            groupId: runtimeTurn.groupId,
+            content: _decisionStatusContent(decision),
           ),
         );
 
-        final invocation = ToolInvocation(
-          toolName: toolCall.toolName,
-          arguments: toolCall.arguments,
-          status: ToolInvocationStatus.running,
-          summary: '正在执行工具：${toolCall.toolName}',
-          requiresConfirmation: false,
-        );
-        final execution = await _toolCallService.executeToolInvocation(
-          groupId: currentTurn.groupId,
-          invocation: invocation,
-        );
+        var shouldBreakBatch = false;
+        for (final toolCall in decision.toolCalls) {
+          final stepId = _stepRepository == null
+              ? null
+              : await _stepRepository!.createStep(
+                  ChatTurnStep(
+                    turnId: turnId,
+                    stepIndex: steps.length + 1,
+                    providerResponseId: decisionResponseId,
+                    providerCallId: toolCall.providerCallId,
+                    toolName: toolCall.toolName,
+                    toolArgsJson: toolCall.arguments,
+                    status: ChatTurnStepStatus.planned,
+                  ),
+                );
+          if (stepId != null) {
+            steps.add(
+              ChatTurnStep(
+                id: stepId,
+                turnId: turnId,
+                stepIndex: steps.length + 1,
+                providerResponseId: decisionResponseId,
+                providerCallId: toolCall.providerCallId,
+                toolName: toolCall.toolName,
+                toolArgsJson: toolCall.arguments,
+                status: ChatTurnStepStatus.planned,
+              ),
+            );
+          }
 
-        final executionEvents = _handleToolExecution(
-          turn: currentTurn,
-          invocation: invocation,
-          execution: execution,
-          consecutiveFailures: failures,
-          config: config,
-        );
-        await for (final event in executionEvents) {
-          yield event;
+          await for (final event in _executePlannedToolCall(
+            turn: runtimeTurn,
+            toolCall: toolCall,
+            stepId: stepId,
+            consecutiveFailures: failures,
+            config: config,
+          )) {
+            yield event;
+          }
+
+          final refreshedTurn =
+              await _turnRepository.getTurn(turnId) ?? currentTurn;
+          if (refreshedTurn.status == ChatTurnStatus.awaitingToolConfirmation ||
+              refreshedTurn.status == ChatTurnStatus.failed ||
+              refreshedTurn.status == ChatTurnStatus.completed ||
+              refreshedTurn.status == ChatTurnStatus.cancelled) {
+            shouldBreakBatch = true;
+            break;
+          }
+
+          if (stepId != null) {
+            final persistedStep = await _stepRepository!.getStep(stepId);
+            if (persistedStep == null ||
+                persistedStep.status != ChatTurnStepStatus.completed) {
+              shouldBreakBatch = true;
+              break;
+            }
+          }
         }
 
-        final refreshedTurn = await _turnRepository.getTurn(turnId) ?? currentTurn;
-        if (refreshedTurn.status == ChatTurnStatus.awaitingToolConfirmation ||
-            refreshedTurn.status == ChatTurnStatus.failed ||
-            refreshedTurn.status == ChatTurnStatus.completed ||
-            refreshedTurn.status == ChatTurnStatus.cancelled) {
+        if (shouldBreakBatch) {
           break;
         }
+
         failures = 0;
         continue;
       }
 
-      Logger.d(_tag, 'planner chose final response path');
-
-      final answerTranscript = await _transcriptBuilderService.loadTranscript(turnId);
-      Logger.d(
-        _tag,
-        'building final answer with transcriptEvents=${answerTranscript.length}',
-      );
-      final answerMessages =
-          await _transcriptBuilderService.buildFinalAnswerMessages(
-        groupId: currentTurn.groupId,
-        turn: currentTurn,
-        transcript: answerTranscript,
-        systemPrompt: config.systemPrompt,
-      );
-
-      final buffer = StringBuffer();
-      await for (final chunk in _chatService.streamFinalAnswer(
-        messages: answerMessages,
-        config: config,
-      )) {
-        buffer.write(chunk);
+      if (decision.isTerminal &&
+          (decision.assistantMessage ?? '').trim().isNotEmpty) {
         yield await _appendAndLoad(
           turnId,
-          () => _eventRepository.appendAssistantTextDelta(
+          () => _eventRepository.appendTurnStatus(
             turnId: turnId,
-            groupId: currentTurn.groupId,
-            content: chunk,
+            groupId: runtimeTurn.groupId,
+            content: _decisionStatusContent(decision),
           ),
         );
-      }
+        Logger.i(
+          _tag,
+          'planner chose final response path for turnId=$turnId responsePreview=${_preview(decision.assistantMessage ?? '')}',
+        );
 
-      final finalText = buffer.toString();
-      yield await _appendAndLoad(
-        turnId,
-        () => _eventRepository.appendAssistantTextFinal(
-          turnId: turnId,
-          groupId: currentTurn.groupId,
-          content: finalText,
-        ),
-      );
+        final answerTranscript =
+            await _transcriptBuilderService.loadTranscript(turnId);
+        Logger.d(
+          _tag,
+          'building final answer with transcriptEvents=${answerTranscript.length}',
+        );
+        final answerMessages =
+            await _transcriptBuilderService.buildFinalAnswerMessages(
+          groupId: runtimeTurn.groupId,
+          turn: runtimeTurn,
+          transcript: answerTranscript,
+          systemPrompt: config.systemPrompt,
+        );
+        final finalSummary = _turnLedgerBuilder.buildFinalAnswerSummary(
+          turn: runtimeTurn,
+          steps: _stepRepository == null
+              ? const []
+              : await _stepRepository!.listSteps(turnId),
+        );
+        answerMessages.insert(
+          config.systemPrompt.trim().isEmpty ? 0 : 1,
+          ChatMessage(
+            text: finalSummary,
+            role: MessageRole.system,
+            status: MessageStatus.completed,
+          ),
+        );
 
-      final verifyResult = await _stopVerifierService.verifyCanStop(
-        turn: currentTurn,
-        transcript: await _transcriptBuilderService.loadTranscript(turnId),
-        latestAssistantText: finalText,
-        limits: _limits,
-      );
+        final buffer = StringBuffer();
+        await for (final chunk in _chatService.streamFinalAnswer(
+          messages: answerMessages,
+          config: config,
+        )) {
+          buffer.write(chunk);
+          yield await _appendAndLoad(
+            turnId,
+            () => _eventRepository.appendAssistantTextDelta(
+              turnId: turnId,
+              groupId: runtimeTurn.groupId,
+              content: chunk,
+            ),
+          );
+        }
 
-      if (verifyResult.canStop) {
+        final finalText = buffer.toString();
         yield await _appendAndLoad(
           turnId,
-          () => _eventRepository.appendFinalAnswer(
+          () => _eventRepository.appendAssistantTextFinal(
             turnId: turnId,
-            groupId: currentTurn.groupId,
+            groupId: runtimeTurn.groupId,
             content: finalText,
           ),
         );
-        await _turnRepository.markCompleted(
-          turnId,
-          stopReason: verifyResult.reason,
+
+        final verifyResult = await _stopVerifierService.verifyCanStop(
+          turn: runtimeTurn,
+          transcript: await _transcriptBuilderService.loadTranscript(turnId),
+          latestAssistantText: finalText,
+          limits: _limits,
         );
-        break;
+
+        if (verifyResult.canStop) {
+          yield await _appendAndLoad(
+            turnId,
+            () => _eventRepository.appendFinalAnswer(
+              turnId: turnId,
+              groupId: runtimeTurn.groupId,
+              content: finalText,
+            ),
+          );
+          await _turnRepository.markCompleted(
+            turnId,
+            stopReason: verifyResult.reason,
+            finalResponseText: finalText,
+          );
+          break;
+        }
+
+        yield await _appendAndLoad(
+          turnId,
+          () => _eventRepository.appendTurnStatus(
+            turnId: turnId,
+            groupId: runtimeTurn.groupId,
+            content: verifyResult.reason,
+          ),
+        );
+        Logger.w(
+          _tag,
+          'stop verifier requested another iteration for turnId=$turnId reason=${verifyResult.reason}',
+        );
+        await _turnRepository.incrementIteration(turnId);
+        continue;
       }
 
+      await _turnRepository.markFailed(
+        turnId,
+        errorMessage: 'planner_no_terminal_decision',
+      );
       yield await _appendAndLoad(
         turnId,
         () => _eventRepository.appendTurnStatus(
           turnId: turnId,
-          groupId: currentTurn.groupId,
-          content: verifyResult.reason,
+          groupId: runtimeTurn.groupId,
+          content: 'planner_no_terminal_decision',
         ),
       );
-      await _turnRepository.incrementIteration(turnId);
+      break;
+    }
+  }
+
+  Future<void> _persistDecisionRuntimeState({
+    required int turnId,
+    required ChatTurn turn,
+    required ModelTurnDecision decision,
+  }) async {
+    final nextProviderStyle = decision.providerStyle;
+    final nextModelName = decision.modelName;
+    final nextProviderState =
+        decision.providerState.isEmpty ? null : decision.providerState;
+    final hasChanges = nextProviderStyle != null ||
+        nextModelName != null ||
+        nextProviderState != null;
+    if (!hasChanges) {
+      return;
+    }
+    await _turnRepository.updateRuntimeState(
+      turnId,
+      providerStyle: nextProviderStyle ?? turn.providerStyle,
+      modelName: nextModelName ?? turn.modelName,
+      providerStateJson: nextProviderState ?? turn.providerStateJson,
+    );
+  }
+
+  String? _resolveDecisionResponseId(ModelTurnDecision decision) {
+    final responseId = decision.providerState['response_id'];
+    if (responseId is! String) {
+      return null;
+    }
+    final trimmed = responseId.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+    return trimmed;
+  }
+
+  Stream<ChatEvent> _executePlannedToolCall({
+    required ChatTurn turn,
+    required ModelToolCall toolCall,
+    required int? stepId,
+    required int consecutiveFailures,
+    required ChatConfig config,
+  }) async* {
+    final toolDisplayName = resolveToolDisplayName(toolCall.toolName);
+    Logger.d(
+      _tag,
+      'planner chose tool ${toolCall.toolName} with args=${toolCall.arguments}',
+    );
+    yield await _appendAndLoad(
+      turn.id!,
+      () => _eventRepository.appendToolCall(
+        turnId: turn.id!,
+        groupId: turn.groupId,
+        toolName: toolCall.toolName,
+        arguments: toolCall.arguments,
+        summary: '准备执行工具：$toolDisplayName',
+        payloadJson: {
+          'toolName': toolCall.toolName,
+          'arguments': toolCall.arguments,
+          'providerCallId': toolCall.providerCallId,
+          'status': ToolInvocationStatus.proposed.name,
+          'summary': '准备执行工具：$toolDisplayName',
+          'requiresConfirmation': false,
+          'stepId': stepId,
+        },
+      ),
+    );
+
+    final invocation = ToolInvocation(
+      toolName: toolCall.toolName,
+      arguments: toolCall.arguments,
+      status: ToolInvocationStatus.running,
+      summary: '正在执行工具：$toolDisplayName',
+      requiresConfirmation: false,
+    );
+    final execution = await _toolCallService.executeToolInvocation(
+      groupId: turn.groupId,
+      invocation: invocation,
+    );
+
+    await for (final event in _handleToolExecution(
+      turn: turn,
+      invocation: invocation,
+      execution: execution,
+      consecutiveFailures: consecutiveFailures,
+      config: config,
+      resumeLoopAfterSuccess: false,
+      stepId: stepId,
+    )) {
+      yield event;
     }
   }
 
@@ -256,6 +463,8 @@ class AgentTurnOrchestrator {
     required ToolPreparationResult execution,
     required int consecutiveFailures,
     required ChatConfig config,
+    bool resumeLoopAfterSuccess = true,
+    int? stepId,
   }) async* {
     final turnId = turn.id!;
     final groupId = turn.groupId;
@@ -282,11 +491,16 @@ class AgentTurnOrchestrator {
         turnId: turnId,
         groupId: groupId,
         content: toolInvocation?.summary ?? invocation.summary,
+        payloadJson: toolInvocation?.toJson() ?? invocation.toJson(),
       ),
     );
+    if (stepId != null) {
+      await _stepRepository?.markRunning(stepId);
+    }
 
     final toolResult = execution.toolResult;
-    if (toolResult == null || toolResult.status == ToolExecutionStatus.failure) {
+    if (toolResult == null ||
+        toolResult.status == ToolExecutionStatus.failure) {
       Logger.w(
         _tag,
         'tool execution failed for ${invocation.toolName}: ${toolResult?.errorMessage ?? 'tool_execution_failed'}',
@@ -300,6 +514,15 @@ class AgentTurnOrchestrator {
           errorCode: toolResult?.errorMessage,
         ),
       );
+      await _turnRepository.incrementToolCallCount(turnId);
+      if (stepId != null) {
+        await _stepRepository?.markFailed(
+          stepId,
+          errorCode: toolResult?.errorMessage ?? 'tool_execution_failed',
+          resultSummary: toolResult?.summary,
+          resultJson: toolResult?.data,
+        );
+      }
 
       if (consecutiveFailures + 1 >= _limits.maxConsecutiveFailures) {
         await _turnRepository.markFailed(
@@ -308,8 +531,6 @@ class AgentTurnOrchestrator {
         );
         return;
       }
-
-      await _turnRepository.incrementIterationAndToolCount(turnId);
       return;
     }
 
@@ -322,18 +543,27 @@ class AgentTurnOrchestrator {
       () => _eventRepository.appendToolResult(
         turnId: turnId,
         groupId: groupId,
-        content: toolResult.summary,
+        content: _buildToolResultTranscriptContent(execution),
         payloadJson: toolResult.toJson(),
       ),
     );
-    await _turnRepository.incrementIterationAndToolCount(turnId);
+    await _turnRepository.incrementToolCallCount(turnId);
+    if (stepId != null) {
+      await _stepRepository?.markCompleted(
+        stepId,
+        resultSummary: toolResult.summary,
+        resultJson: toolResult.data,
+      );
+    }
 
-    final resumedTurn = await _turnRepository.getTurn(turnId) ?? turn;
-    yield* _continueTurnLoop(
-      turn: resumedTurn,
-      config: config,
-      consecutiveFailures: 0,
-    );
+    if (resumeLoopAfterSuccess) {
+      final resumedTurn = await _turnRepository.getTurn(turnId) ?? turn;
+      yield* _continueTurnLoop(
+        turn: resumedTurn,
+        config: config,
+        consecutiveFailures: 0,
+      );
+    }
   }
 
   Future<ChatTurn> _requireTurn(int turnId) async {
@@ -351,5 +581,62 @@ class AgentTurnOrchestrator {
     await append();
     final events = await _eventRepository.listEventsByTurn(turnId);
     return events.last;
+  }
+
+  String _summarizeTranscript(List<ChatEvent> transcript) {
+    if (transcript.isEmpty) {
+      return 'events=0';
+    }
+
+    final counts = <String, int>{};
+    for (final event in transcript) {
+      counts.update(
+        event.eventType.name,
+        (value) => value + 1,
+        ifAbsent: () => 1,
+      );
+    }
+    final parts =
+        counts.entries.map((entry) => '${entry.key}:${entry.value}').join(', ');
+    return 'events=${transcript.length} [$parts]';
+  }
+
+  String _preview(String value) {
+    final normalized = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.isEmpty) {
+      return '<empty>';
+    }
+    if (normalized.length <= 160) {
+      return normalized;
+    }
+    return '${normalized.substring(0, 160)}...';
+  }
+
+  String _decisionStatusContent(ModelTurnDecision decision) {
+    final code = decision.diagnosticCode?.trim();
+    if (decision.toolCalls.isNotEmpty) {
+      if (code == 'planner_action_call_tool' &&
+          decision.toolCalls.length == 1) {
+        return '$code:${decision.toolCalls.first.toolName}';
+      }
+      if (code != null &&
+          code.isNotEmpty &&
+          code != 'planner_action_call_tools') {
+        return code;
+      }
+      return 'planner_action_call_tools:${decision.toolCalls.map((call) => call.toolName).join(',')}';
+    }
+    if (code != null && code.isNotEmpty) {
+      return code;
+    }
+    return 'planner_action_respond';
+  }
+
+  String _buildToolResultTranscriptContent(ToolPreparationResult execution) {
+    final toolResult = execution.toolResult;
+    if (toolResult == null) {
+      return '';
+    }
+    return toolResult.summary;
   }
 }

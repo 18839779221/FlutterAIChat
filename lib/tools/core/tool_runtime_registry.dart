@@ -22,4 +22,12 @@ class ToolRuntimeRegistry {
         .map((handler) => handler.definition)
         .toList(growable: false);
   }
+
+  /// Returns tool definitions available on the requested runtime platform.
+  List<ToolDefinition> getDefinitionsForPlatform(String platform) {
+    return _handlersByName.values
+        .map((handler) => handler.definition)
+        .where((definition) => definition.supportedPlatforms.contains(platform))
+        .toList(growable: false);
+  }
 }
