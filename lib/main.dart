@@ -18,9 +18,9 @@ import 'models/llm/llm_factory.dart';
 import 'services/chat_service.dart';
 import 'services/chat_trace_recorder.dart';
 import 'services/agent_planner_service.dart';
-import 'services/agent_turn_orchestrator.dart';
 import 'services/default_file_tool_adapters.dart';
-import 'services/stop_verifier_service.dart';
+import 'services/turn_harness.dart';
+import 'services/turn_verifier.dart';
 import 'services/tool_call_service.dart';
 import 'services/default_tool_adapters.dart';
 import 'services/transcript_builder_service.dart';
@@ -40,7 +40,7 @@ void main() async {
     final storage = _createChatStorage(preferences);
     late final ChatTraceRecorder traceRecorder;
     late final ChatService chatService;
-    late final AgentTurnOrchestrator agentTurnOrchestrator;
+    late final TurnHarness turnHarness;
     traceRecorder = ChatTraceRecorder(
       logger: (entry) =>
           Logger.i('ChatTrace', traceRecorder.formatLogLine(entry)),
@@ -111,9 +111,10 @@ void main() async {
     final turnRepository = ChatTurnRepository(storage);
     final turnStepRepository = ChatTurnStepRepository(storage);
     final eventRepository = ChatEventRepository(storage);
-    agentTurnOrchestrator = AgentTurnOrchestrator(
+    turnHarness = TurnHarness(
       plannerService: AgentPlannerService(
         llm: llm,
+        toolPolicyService: toolPolicyService,
         availableTools: runtimeRegistry.getDefinitionsForPlatform(
           _resolveRuntimePlatform(),
         ),
@@ -124,7 +125,7 @@ void main() async {
       transcriptBuilderService: TranscriptBuilderService(
         eventRepository: eventRepository,
       ),
-      stopVerifierService: StopVerifierService(),
+      turnVerifier: TurnVerifier(),
       chatService: chatService,
       toolCallService: toolCallService,
     );
@@ -137,7 +138,7 @@ void main() async {
         databaseProvider.overrideWithValue(storage),
         traceRecorderProvider.overrideWithValue(traceRecorder),
         chatServiceFactoryProvider.overrideWithValue(chatService),
-        agentTurnOrchestratorProvider.overrideWithValue(agentTurnOrchestrator),
+        turnHarnessProvider.overrideWithValue(turnHarness),
       ],
     );
 

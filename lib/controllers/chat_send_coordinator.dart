@@ -12,9 +12,10 @@ import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/providers/chat_send_state_providers.dart';
 import 'package:ai_chat/providers/chat_ui_providers.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
-import 'package:ai_chat/services/agent_turn_orchestrator.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
+import 'package:ai_chat/services/turn_harness.dart';
+import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:ai_chat/utils/logger.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -118,16 +119,16 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
           await dbHelper.insertMessage(userMessage, currentGroupId);
       userMessage.id = userMessageId;
 
-      final agentTurnOrchestrator = _ref.read(agentTurnOrchestratorProvider);
-      if (agentTurnOrchestrator == null) {
-        throw StateError('agentTurnOrchestratorProvider is required');
+      final turnHarness = _ref.read(turnHarnessProvider);
+      if (turnHarness == null) {
+        throw StateError('turnHarnessProvider is required');
       }
       await _sendMessageWithAgentLoop(
         text: text,
         currentGroupId: currentGroupId,
         userMessage: userMessage,
         turnId: turnId,
-        orchestrator: agentTurnOrchestrator,
+        harness: turnHarness,
         scheduleAutoSummary: scheduleAutoSummary,
       );
     } catch (e, stackTrace) {
@@ -158,7 +159,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     required int currentGroupId,
     required ChatMessage userMessage,
     required String turnId,
-    required AgentTurnOrchestrator orchestrator,
+    required TurnHarness harness,
     required VoidCallback scheduleAutoSummary,
   }) async {
     final dbHelper = _ref.read(databaseProvider);
@@ -180,7 +181,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     ChatMessage? assistantMessage;
     final completion = Completer<void>();
 
-    final subscription = orchestrator
+    final subscription = harness
         .runTurn(
       turn: persistedTurn,
       config: config,
@@ -263,19 +264,13 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
           _ref.read(messagesProvider.notifier).addMessage(message);
           break;
         case ChatEventType.toolError:
-          final message = ChatMessage(
-            text: event.content ?? '工具执行失败',
-            role: MessageRole.assistant,
-            status: MessageStatus.completed,
-            contentType: MessageContentType.toolResult,
-            payloadJson: {
-              'status': 'failure',
-              'errorMessage': event.status,
-            },
+          await _appendToolResultMessage(
+            dbHelper: dbHelper,
+            groupId: currentGroupId,
+            event: event,
+            fallbackText: '工具执行失败',
+            payloadJson: _buildToolFailurePayload(event),
           );
-          final messageId = await dbHelper.insertMessage(message, currentGroupId);
-          message.id = messageId;
-          _ref.read(messagesProvider.notifier).addMessage(message);
           break;
         case ChatEventType.assistantTextDelta:
           if (assistantMessageId == null) {
@@ -550,11 +545,11 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     required bool trustTool,
     required ChatMessage sourceMessage,
   }) async {
-    final orchestrator = _ref.read(agentTurnOrchestratorProvider);
+    final harness = _ref.read(turnHarnessProvider);
     final currentGroup = _ref.read(currentGroupProvider);
     final currentGroupId = currentGroup?.id;
     final sourceMessageId = sourceMessage.id;
-    if (orchestrator == null || currentGroupId == null || sourceMessageId == null) {
+    if (harness == null || currentGroupId == null || sourceMessageId == null) {
       return;
     }
 
@@ -563,7 +558,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     ChatMessage? assistantMessage;
     var hasPendingConfirmation = false;
 
-    await for (final event in orchestrator.resumeAfterConfirmation(
+    await for (final event in harness.resumeAfterConfirmation(
       turnId: turnId,
       invocation: invocation,
       config: ChatConfig(
@@ -637,17 +632,13 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
           _ref.read(messagesProvider.notifier).addMessage(confirmationMessage);
           break;
         case ChatEventType.toolResult:
-          final toolMessage = ChatMessage(
-            text: event.content ?? '',
-            role: MessageRole.assistant,
-            status: MessageStatus.completed,
-            contentType: MessageContentType.toolResult,
+          await _appendToolResultMessage(
+            dbHelper: dbHelper,
+            groupId: currentGroupId,
+            event: event,
+            fallbackText: '',
             payloadJson: event.payloadJson,
           );
-          final toolMessageId =
-              await dbHelper.insertMessage(toolMessage, currentGroupId);
-          toolMessage.id = toolMessageId;
-          _ref.read(messagesProvider.notifier).addMessage(toolMessage);
           break;
         case ChatEventType.assistantTextDelta:
           if (assistantMessageId == null) {
@@ -698,10 +689,18 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
             );
           }
           break;
+        case ChatEventType.toolError:
+          await _appendToolResultMessage(
+            dbHelper: dbHelper,
+            groupId: currentGroupId,
+            event: event,
+            fallbackText: '工具执行失败',
+            payloadJson: _buildToolFailurePayload(event),
+          );
+          break;
         case ChatEventType.assistantTextFinal:
         case ChatEventType.userMessage:
         case ChatEventType.assistantReasoningDelta:
-        case ChatEventType.toolError:
         case ChatEventType.turnStatus:
         case ChatEventType.error:
           break;
@@ -724,6 +723,34 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       return rawTurnId;
     }
     return traceRecorder.newTurnId();
+  }
+
+  Future<void> _appendToolResultMessage({
+    required ChatStorage dbHelper,
+    required int groupId,
+    required ChatEvent event,
+    required String fallbackText,
+    required Map<String, dynamic>? payloadJson,
+  }) async {
+    final message = ChatMessage(
+      text: event.content ?? fallbackText,
+      role: MessageRole.assistant,
+      status: MessageStatus.completed,
+      contentType: MessageContentType.toolResult,
+      payloadJson: payloadJson,
+    );
+    final messageId = await dbHelper.insertMessage(message, groupId);
+    message.id = messageId;
+    _ref.read(messagesProvider.notifier).addMessage(message);
+  }
+
+  Map<String, dynamic> _buildToolFailurePayload(ChatEvent event) {
+    return {
+      ...?event.payloadJson,
+      'status': event.payloadJson?['status'] ?? 'failure',
+      'errorMessage':
+          event.payloadJson?['errorMessage'] ?? event.status ?? 'unknown_error',
+    };
   }
 
   Future<void> _loadGroups() async {

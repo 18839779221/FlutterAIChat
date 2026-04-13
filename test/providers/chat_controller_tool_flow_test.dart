@@ -16,10 +16,10 @@ import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/services/agent_planner_service.dart';
-import 'package:ai_chat/services/agent_turn_orchestrator.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
-import 'package:ai_chat/services/stop_verifier_service.dart';
+import 'package:ai_chat/services/turn_harness.dart';
+import 'package:ai_chat/services/turn_verifier.dart';
 import 'package:ai_chat/services/tool_call_service.dart';
 import 'package:ai_chat/services/tool_executor.dart';
 import 'package:ai_chat/services/transcript_builder_service.dart';
@@ -39,7 +39,7 @@ void main() {
 
     test('工具命中时会新增 toolResult 消息再生成最终回答', () async {
       final databaseHelper = _createTestDatabaseHelper();
-      final orchestrator = _FakeAgentTurnOrchestrator(
+      final orchestrator = _FakeTurnHarness(
         databaseHelper: databaseHelper,
         events: [
           ChatEvent(
@@ -103,7 +103,7 @@ void main() {
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: _FakeChatService(),
-        orchestrator: orchestrator,
+        harness: orchestrator,
       );
       addTearDown(container.dispose);
 
@@ -144,7 +144,7 @@ void main() {
     test('agent loop 可在最终回答前连续消费多次工具事件', () async {
       final databaseHelper =
           DatabaseHelper(databaseName: 'chat_controller_agent_loop_test.db');
-      final orchestrator = _FakeAgentTurnOrchestrator(
+      final orchestrator = _FakeTurnHarness(
         databaseHelper: databaseHelper,
         events: [
           ChatEvent(
@@ -220,7 +220,7 @@ void main() {
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: _FakeChatService(),
-        orchestrator: orchestrator,
+        harness: orchestrator,
       );
       addTearDown(container.dispose);
 
@@ -260,7 +260,7 @@ void main() {
 
     test('不需要工具时不会新增 toolResult 消息', () async {
       final databaseHelper = _createTestDatabaseHelper();
-      final orchestrator = _FakeAgentTurnOrchestrator(
+      final orchestrator = _FakeTurnHarness(
         databaseHelper: databaseHelper,
         events: [
           ChatEvent(
@@ -284,7 +284,7 @@ void main() {
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: _FakeChatService(),
-        orchestrator: orchestrator,
+        harness: orchestrator,
       );
       addTearDown(container.dispose);
 
@@ -318,7 +318,7 @@ void main() {
 
     test('工具失败时仍会记录失败状态消息且最终回答链路不中断', () async {
       final databaseHelper = _createTestDatabaseHelper();
-      final orchestrator = _FakeAgentTurnOrchestrator(
+      final orchestrator = _FakeTurnHarness(
         databaseHelper: databaseHelper,
         events: [
           ChatEvent(
@@ -337,6 +337,19 @@ void main() {
             role: MessageRole.system,
             content: '搜索历史记录失败',
             status: 'empty_query',
+            payloadJson: const {
+              'toolName': 'search_chat_history',
+              'status': 'failure',
+              'summary': '搜索历史记录失败',
+              'executionPolicy': 'blocked',
+              'toolAccess': {
+                'toolName': 'search_chat_history',
+                'executionDecision': 'blocked',
+                'executionPolicy': 'blocked',
+                'isVisibleToPlanner': false,
+              },
+              'errorMessage': 'empty_query',
+            },
           ),
           ChatEvent(
             turnId: 1,
@@ -351,7 +364,7 @@ void main() {
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: _FakeChatService(),
-        orchestrator: orchestrator,
+        harness: orchestrator,
       );
       addTearDown(container.dispose);
 
@@ -370,6 +383,12 @@ void main() {
 
       expect(toolMessage.text, '搜索历史记录失败');
       expect(toolMessage.payloadJson?['status'], 'failure');
+      expect(toolMessage.payloadJson?['executionPolicy'], 'blocked');
+      expect(
+        toolMessage.payloadJson?['toolAccess']?['executionPolicy'],
+        'blocked',
+      );
+      expect(toolMessage.payloadJson?['errorMessage'], 'empty_query');
       expect(
         messages.any(
           (message) =>
@@ -385,7 +404,7 @@ void main() {
 
     test('需要确认的工具会先插入 actionConfirmation 消息', () async {
       final databaseHelper = _createTestDatabaseHelper();
-      final orchestrator = _FakeAgentTurnOrchestrator(
+      final orchestrator = _FakeTurnHarness(
         databaseHelper: databaseHelper,
         events: [
           ChatEvent(
@@ -413,7 +432,7 @@ void main() {
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: _FakeChatService(),
-        orchestrator: orchestrator,
+        harness: orchestrator,
       );
       addTearDown(container.dispose);
 
@@ -446,13 +465,13 @@ void main() {
       await databaseHelper.deleteGroup(groupId);
     });
 
-    test('继续并信任会通过 orchestrator resume 执行挂起工具', () async {
+    test('继续并信任会通过 harness resume 执行挂起工具', () async {
       final databaseHelper = _createTestDatabaseHelper();
       final traceLogs = <Map<String, dynamic>>[];
       final traceRecorder = ChatTraceRecorder(
         logger: (entry) => traceLogs.add(entry),
       );
-      final orchestrator = _FakeAgentTurnOrchestrator(
+      final orchestrator = _FakeTurnHarness(
         databaseHelper: databaseHelper,
         events: [
           ChatEvent(
@@ -514,7 +533,7 @@ void main() {
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: chatService,
-        orchestrator: orchestrator,
+        harness: orchestrator,
         traceRecorder: traceRecorder,
       );
       addTearDown(container.dispose);
@@ -571,9 +590,9 @@ void main() {
       await databaseHelper.deleteGroup(groupId);
     });
 
-    test('agent loop confirmation 会通过 orchestrator 恢复执行并补齐最终回答', () async {
+    test('agent loop confirmation 会通过 harness 恢复执行并补齐最终回答', () async {
       final databaseHelper = _createTestDatabaseHelper();
-      final orchestrator = _FakeAgentTurnOrchestrator(
+      final orchestrator = _FakeTurnHarness(
         databaseHelper: databaseHelper,
         events: [],
         resumedEvents: [
@@ -629,7 +648,7 @@ void main() {
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: chatService,
-        orchestrator: orchestrator,
+        harness: orchestrator,
       );
       addTearDown(container.dispose);
 
@@ -693,10 +712,108 @@ void main() {
       expect(chatService.confirmedTurnIds, isEmpty);
     });
 
+    test('agent loop confirmation 遇到 toolError 时会保留失败策略 payload', () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final orchestrator = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: [],
+        resumedEvents: [
+          ChatEvent(
+            turnId: 13,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.toolError,
+            role: MessageRole.system,
+            content: '搜索历史记录失败',
+            status: 'empty_query',
+            payloadJson: const {
+              'toolName': 'search_chat_history',
+              'status': 'failure',
+              'summary': '搜索历史记录失败',
+              'executionPolicy': 'blocked',
+              'toolAccess': {
+                'toolName': 'search_chat_history',
+                'executionDecision': 'blocked',
+                'executionPolicy': 'blocked',
+                'isVisibleToPlanner': false,
+              },
+              'errorMessage': 'empty_query',
+            },
+          ),
+          ChatEvent(
+            turnId: 13,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.finalAnswer,
+            role: MessageRole.assistant,
+            content: '我改用直接回答继续完成本轮。',
+          ),
+        ],
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(),
+        harness: orchestrator,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+      final confirmationMessage = ChatMessage(
+        text: '准备执行工具：搜索历史记录',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.actionConfirmation,
+        payloadJson: const {
+          'toolName': 'search_chat_history',
+          'arguments': {'query': ''},
+          'status': 'awaitingConfirmation',
+          'summary': '准备执行工具：搜索历史记录',
+          'requiresConfirmation': true,
+          'agentTurnId': 13,
+        },
+      );
+      final confirmationMessageId =
+          await databaseHelper.insertMessage(confirmationMessage, groupId);
+      confirmationMessage.id = confirmationMessageId;
+      container
+          .read(messagesProvider.notifier)
+          .setMessages([confirmationMessage]);
+
+      await container
+          .read(chatControllerProvider)
+          .confirmToolInvocation(confirmationMessage, trustTool: true);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final messages = container.read(messagesProvider);
+      final toolMessage = messages.firstWhere(
+        (message) => message.contentType == MessageContentType.toolResult,
+      );
+
+      expect(toolMessage.text, '搜索历史记录失败');
+      expect(toolMessage.payloadJson?['executionPolicy'], 'blocked');
+      expect(
+        toolMessage.payloadJson?['toolAccess']?['executionPolicy'],
+        'blocked',
+      );
+      expect(toolMessage.payloadJson?['errorMessage'], 'empty_query');
+      expect(
+        messages.any(
+          (message) =>
+              message.isAssistant &&
+              message.status == MessageStatus.completed &&
+              message.text == '我改用直接回答继续完成本轮。',
+        ),
+        isTrue,
+      );
+    });
+
     test('agent loop confirmation 后若下一步仍需确认，会展示新的确认卡并替换旧卡状态',
         () async {
       final databaseHelper = _createTestDatabaseHelper();
-      final orchestrator = _FakeAgentTurnOrchestrator(
+      final orchestrator = _FakeTurnHarness(
         databaseHelper: databaseHelper,
         events: [],
         resumedEvents: [
@@ -766,7 +883,7 @@ void main() {
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: _FakeChatService(),
-        orchestrator: orchestrator,
+        harness: orchestrator,
       );
       addTearDown(container.dispose);
 
@@ -826,7 +943,7 @@ void main() {
 
     test('agent loop delta 只会追加一次，避免流式文本重复', () async {
       final databaseHelper = _createTestDatabaseHelper();
-      final orchestrator = _FakeAgentTurnOrchestrator(
+      final orchestrator = _FakeTurnHarness(
         databaseHelper: databaseHelper,
         events: [],
         resumedEvents: [
@@ -851,7 +968,7 @@ void main() {
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: _FakeChatService(),
-        orchestrator: orchestrator,
+        harness: orchestrator,
       );
       addTearDown(container.dispose);
 
@@ -897,7 +1014,7 @@ void main() {
       final traceRecorder = ChatTraceRecorder(
         logger: (entry) => traceLogs.add(entry),
       );
-      final orchestrator = _FakeAgentTurnOrchestrator(
+      final orchestrator = _FakeTurnHarness(
         databaseHelper: databaseHelper,
         events: [
           ChatEvent(
@@ -918,7 +1035,7 @@ void main() {
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: chatService,
-        orchestrator: orchestrator,
+        harness: orchestrator,
         traceRecorder: traceRecorder,
       );
       addTearDown(container.dispose);
@@ -965,7 +1082,7 @@ void main() {
     test('发送时会立即进入 preparing 并插入用户消息，不等待工具准备完成', () async {
       final databaseHelper = _createTestDatabaseHelper();
       final runTurnGate = Completer<void>();
-      final orchestrator = _FakeAgentTurnOrchestrator(
+      final orchestrator = _FakeTurnHarness(
         databaseHelper: databaseHelper,
         events: [
           ChatEvent(
@@ -982,7 +1099,7 @@ void main() {
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: _FakeChatService(),
-        orchestrator: orchestrator,
+        harness: orchestrator,
       );
       addTearDown(container.dispose);
 
@@ -1021,7 +1138,7 @@ void main() {
 
     test('agent loop 失败时会显示可见错误消息并复位发送状态', () async {
       final databaseHelper = _createTestDatabaseHelper();
-      final orchestrator = _FakeAgentTurnOrchestrator(
+      final orchestrator = _FakeTurnHarness(
         databaseHelper: databaseHelper,
         events: const [],
         runTurnError: Exception('请先在设置页配置 API Key'),
@@ -1029,7 +1146,7 @@ void main() {
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: _FakeChatService(),
-        orchestrator: orchestrator,
+        harness: orchestrator,
       );
       addTearDown(container.dispose);
 
@@ -1060,7 +1177,7 @@ void main() {
       final traceRecorder = ChatTraceRecorder(
         logger: (entry) => traceLogs.add(entry),
       );
-      final orchestrator = _FakeAgentTurnOrchestrator(
+      final orchestrator = _FakeTurnHarness(
         databaseHelper: databaseHelper,
         events: [
           ChatEvent(
@@ -1076,7 +1193,7 @@ void main() {
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: _FakeChatService(),
-        orchestrator: orchestrator,
+        harness: orchestrator,
         traceRecorder: traceRecorder,
       );
       addTearDown(container.dispose);
@@ -1285,7 +1402,7 @@ void main() {
 
     test('需要确认的工具会让发送事务停留在 awaitingConfirmation', () async {
       final databaseHelper = _createTestDatabaseHelper();
-      final orchestrator = _FakeAgentTurnOrchestrator(
+      final orchestrator = _FakeTurnHarness(
         databaseHelper: databaseHelper,
         events: [
           ChatEvent(
@@ -1305,7 +1422,7 @@ void main() {
       final container = _createContainer(
         databaseHelper: databaseHelper,
         chatService: _FakeChatService(),
-        orchestrator: orchestrator,
+        harness: orchestrator,
       );
       addTearDown(container.dispose);
 
@@ -1346,7 +1463,7 @@ ProviderContainer _createContainer({
   required ChatService chatService,
   ChatTraceRecorder? traceRecorder,
   ChatSendCoordinator? coordinator,
-  AgentTurnOrchestrator? orchestrator,
+  TurnHarness? harness,
   ChatSessionCoordinator? sessionCoordinator,
   ChatSummaryController? summaryController,
   ChatDebugController? debugController,
@@ -1358,8 +1475,8 @@ ProviderContainer _createContainer({
       chatServiceProvider.overrideWith((ref) => chatService),
       if (coordinator != null)
         chatSendCoordinatorProvider.overrideWith((ref) => coordinator),
-      if (orchestrator != null)
-        agentTurnOrchestratorProvider.overrideWith((ref) => orchestrator),
+      if (harness != null)
+        turnHarnessProvider.overrideWith((ref) => harness),
       if (sessionCoordinator != null)
         chatSessionCoordinatorProvider
             .overrideWith((ref) => sessionCoordinator),
@@ -1401,7 +1518,7 @@ class _FakeChatService extends ChatService {
   }
 }
 
-class _FakeAgentTurnOrchestrator extends AgentTurnOrchestrator {
+class _FakeTurnHarness extends TurnHarness {
   final List<ChatEvent> events;
   final List<ChatEvent> resumedEvents;
   final List<ChatTurn> recordedTurns = [];
@@ -1410,7 +1527,7 @@ class _FakeAgentTurnOrchestrator extends AgentTurnOrchestrator {
   final Completer<void>? runTurnGate;
   final Object? runTurnError;
 
-  _FakeAgentTurnOrchestrator({
+  _FakeTurnHarness({
     required DatabaseHelper databaseHelper,
     required this.events,
     this.resumedEvents = const [],
@@ -1423,7 +1540,7 @@ class _FakeAgentTurnOrchestrator extends AgentTurnOrchestrator {
           transcriptBuilderService: TranscriptBuilderService(
             eventRepository: ChatEventRepository(databaseHelper),
           ),
-          stopVerifierService: StopVerifierService(),
+          turnVerifier: TurnVerifier(),
           chatService: ChatService(llm: _NoopBaseLLM()),
           toolCallService: ToolCallService(
             toolExecutor: ToolExecutor(chatStorage: databaseHelper),

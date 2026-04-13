@@ -1,6 +1,8 @@
 import 'package:ai_chat/models/tool/tool_argument_property.dart';
+import 'package:ai_chat/models/tool/tool_access_snapshot.dart';
 import 'package:ai_chat/models/tool/tool_argument_schema.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
+import 'package:ai_chat/models/tool/tool_policy.dart';
 import 'package:ai_chat/services/planner_tool_exposure_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -8,13 +10,13 @@ void main() {
   group('PlannerToolExposureService', () {
     test('返回全部可用工具，不按用户文案做额外裁剪', () {
       final service = PlannerToolExposureService();
-      final visible = service.selectVisibleTools(
+      final visible = service.selectVisibleToolAccess(
         userInput: '请帮我读一下 https://example.com 这篇文章',
-        allTools: _definitions,
+        allTools: _snapshotsFromDefinitions(_definitions),
       );
 
       expect(
-          visible.map((tool) => tool.name),
+          visible.map((tool) => tool.definition.name),
           containsAll([
             'fetch_webpage',
             'share_result',
@@ -26,13 +28,13 @@ void main() {
 
     test('纯检索问题也不在这里隐藏写工具', () {
       final service = PlannerToolExposureService();
-      final visible = service.selectVisibleTools(
+      final visible = service.selectVisibleToolAccess(
         userInput: '帮我查一下 OpenAI 最近的发布',
-        allTools: _definitions,
+        allTools: _snapshotsFromDefinitions(_definitions),
       );
 
       expect(
-          visible.map((tool) => tool.name),
+          visible.map((tool) => tool.definition.name),
           containsAll([
             'web_search',
             'create_reminder',
@@ -44,13 +46,13 @@ void main() {
 
     test('文件查看问题不在这里排除写工具', () {
       final service = PlannerToolExposureService();
-      final visible = service.selectVisibleTools(
+      final visible = service.selectVisibleToolAccess(
         userInput: '帮我读取文件内容，先看看有哪些文件',
-        allTools: _definitions,
+        allTools: _snapshotsFromDefinitions(_definitions),
       );
 
       expect(
-          visible.map((tool) => tool.name),
+          visible.map((tool) => tool.definition.name),
           containsAll([
             'Glob',
             'Grep',
@@ -62,9 +64,9 @@ void main() {
 
     test('保留去重行为', () {
       final service = PlannerToolExposureService();
-      final visible = service.selectVisibleTools(
+      final visible = service.selectVisibleToolAccess(
         userInput: '随便什么问题',
-        allTools: const [
+        allTools: _snapshotsFromDefinitions(const [
           ToolDefinition(
             name: 'Read',
             title: '读取文件',
@@ -83,12 +85,163 @@ void main() {
             description: '写入文件内容',
             category: ToolCategory.productivity,
           ),
+        ]),
+      );
+
+      expect(
+        visible.map((tool) => tool.definition.name).toList(),
+        ['Read', 'Write'],
+      );
+    });
+
+    test('隐藏被 policy block 的工具', () {
+      final service = PlannerToolExposureService();
+      final visible = service.selectVisibleToolAccess(
+        userInput: '提醒我明天开会',
+        allTools: _snapshotsFromDefinitions(
+          _definitions,
+          blockedToolNames: const {'create_reminder', 'share_result'},
+        ),
+      );
+
+      expect(
+        visible.map((tool) => tool.definition.name),
+        isNot(contains('create_reminder')),
+      );
+      expect(
+        visible.map((tool) => tool.definition.name),
+        isNot(contains('share_result')),
+      );
+      expect(visible.map((tool) => tool.definition.name), contains('web_search'));
+    });
+
+    test('selectVisibleToolAccess 保留 access snapshot 语义', () {
+      final service = PlannerToolExposureService();
+      final visible = service.selectVisibleToolAccess(
+        userInput: '提醒我明天开会',
+        allTools: const [
+          ToolAccessSnapshot(
+            definition: ToolDefinition(
+              name: 'web_search',
+              title: '联网搜索',
+              description: '搜索外部网页',
+            ),
+            executionDecision: ToolPolicyDecision.autoRun,
+            executionPolicyLabel: 'auto_run',
+            isVisibleToPlanner: true,
+          ),
+          ToolAccessSnapshot(
+            definition: ToolDefinition(
+              name: 'create_reminder',
+              title: '创建提醒',
+              description: '创建系统提醒',
+            ),
+            executionDecision: ToolPolicyDecision.requireConfirmation,
+            executionPolicyLabel: 'require_confirmation',
+            isVisibleToPlanner: true,
+          ),
+          ToolAccessSnapshot(
+            definition: ToolDefinition(
+              name: 'create_reminder',
+              title: '创建提醒-重复',
+              description: '重复定义',
+            ),
+            executionDecision: ToolPolicyDecision.requireConfirmation,
+            executionPolicyLabel: 'require_confirmation',
+            isVisibleToPlanner: true,
+          ),
+          ToolAccessSnapshot(
+            definition: ToolDefinition(
+              name: 'share_result',
+              title: '分享结果',
+              description: '分享文本',
+            ),
+            executionDecision: ToolPolicyDecision.blocked,
+            executionPolicyLabel: 'blocked',
+            isVisibleToPlanner: false,
+          ),
         ],
       );
 
-      expect(visible.map((tool) => tool.name).toList(), ['Read', 'Write']);
+      expect(visible.map((tool) => tool.definition.name).toList(), [
+        'web_search',
+        'create_reminder',
+      ]);
+      expect(
+        visible.last.executionPolicyLabel,
+        'require_confirmation',
+      );
+    });
+
+    test('planner exposure 只消费 ToolAccessSnapshot，不再额外依赖 blocked name set', () {
+      final service = PlannerToolExposureService();
+      final visible = service.selectVisibleToolAccess(
+        userInput: '提醒我明天开会',
+        allTools: const [
+          ToolAccessSnapshot(
+            definition: ToolDefinition(
+              name: 'create_reminder',
+              title: '创建提醒',
+              description: '创建系统提醒',
+            ),
+            executionDecision: ToolPolicyDecision.blocked,
+            executionPolicyLabel: 'blocked',
+            isVisibleToPlanner: true,
+          ),
+          ToolAccessSnapshot(
+            definition: ToolDefinition(
+              name: 'web_search',
+              title: '联网搜索',
+              description: '搜索外部网页',
+            ),
+            executionDecision: ToolPolicyDecision.autoRun,
+            executionPolicyLabel: 'auto_run',
+            isVisibleToPlanner: true,
+          ),
+        ],
+      );
+
+      expect(
+        visible.map((tool) => tool.definition.name).toList(),
+        ['create_reminder', 'web_search'],
+      );
+      expect(
+        visible.first.executionDecision,
+        ToolPolicyDecision.blocked,
+      );
+    });
+
+    test('snapshot 输入可显式承接 blocked 策略', () {
+      final service = PlannerToolExposureService();
+      final visible = service.selectVisibleToolAccess(
+        userInput: '提醒我明天开会',
+        allTools: _snapshotsFromDefinitions(
+          _definitions,
+          blockedToolNames: const {'create_reminder'},
+        ),
+      );
+
+      expect(
+        visible.map((tool) => tool.definition.name),
+        isNot(contains('create_reminder')),
+      );
+      expect(visible.map((tool) => tool.definition.name), contains('web_search'));
     });
   });
+}
+
+List<ToolAccessSnapshot> _snapshotsFromDefinitions(
+  List<ToolDefinition> definitions, {
+  Set<String> blockedToolNames = const {},
+}) {
+  return definitions
+      .map(
+        (tool) => ToolAccessSnapshot.fromLegacyDefinition(
+          definition: tool,
+          isBlocked: blockedToolNames.contains(tool.name),
+        ),
+      )
+      .toList(growable: false);
 }
 
 const _definitions = [

@@ -5,6 +5,7 @@ import '../models/agent/agent_loop_limits.dart';
 import '../models/chat_event.dart';
 import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
+import '../models/tool/tool_access_snapshot.dart';
 import '../models/tool/tool_invocation.dart';
 import '../models/tool/tool_result.dart';
 import '../repositories/chat_event_repository.dart';
@@ -14,25 +15,25 @@ import '../tools/core/tool_display_names.dart';
 import '../utils/logger.dart';
 import 'agent_planner_service.dart';
 import 'chat_service.dart';
-import 'stop_verifier_service.dart';
+import 'turn_verifier.dart';
 import 'turn_ledger_builder_service.dart';
 import 'tool_call_service.dart';
 import 'transcript_builder_service.dart';
 
-class AgentTurnOrchestrator {
-  static const _tag = 'AgentTurnOrchestrator';
+class TurnHarness {
+  static const _tag = 'TurnHarness';
   final AgentPlannerService _plannerService;
   final ChatTurnRepository _turnRepository;
   final ChatTurnStepRepository? _stepRepository;
   final ChatEventRepository _eventRepository;
   final TranscriptBuilderService _transcriptBuilderService;
   final TurnLedgerBuilderService _turnLedgerBuilder;
-  final StopVerifierService _stopVerifierService;
+  final TurnVerifier _turnVerifier;
   final ChatService _chatService;
   final ToolCallService _toolCallService;
   final AgentLoopLimits _limits;
 
-  AgentTurnOrchestrator({
+  TurnHarness({
     required AgentPlannerService plannerService,
     required ChatTurnRepository turnRepository,
     ChatTurnStepRepository? turnStepRepository,
@@ -40,7 +41,7 @@ class AgentTurnOrchestrator {
     required TranscriptBuilderService transcriptBuilderService,
     TurnLedgerBuilderService turnLedgerBuilder =
         const TurnLedgerBuilderService(),
-    required StopVerifierService stopVerifierService,
+    required TurnVerifier turnVerifier,
     required ChatService chatService,
     required ToolCallService toolCallService,
     AgentLoopLimits limits = const AgentLoopLimits(),
@@ -50,7 +51,7 @@ class AgentTurnOrchestrator {
         _eventRepository = eventRepository,
         _transcriptBuilderService = transcriptBuilderService,
         _turnLedgerBuilder = turnLedgerBuilder,
-        _stopVerifierService = stopVerifierService,
+        _turnVerifier = turnVerifier,
         _chatService = chatService,
         _toolCallService = toolCallService,
         _limits = limits;
@@ -87,6 +88,7 @@ class AgentTurnOrchestrator {
     bool trustTool = false,
   }) async* {
     final currentTurn = await _requireTurn(turnId);
+    await _turnRepository.markRunning(turnId);
     final execution = await _toolCallService.executeToolInvocation(
       groupId: currentTurn.groupId,
       invocation: invocation,
@@ -99,6 +101,7 @@ class AgentTurnOrchestrator {
       execution: execution,
       consecutiveFailures: 0,
       config: config,
+      stepId: invocation.stepId,
     );
   }
 
@@ -309,9 +312,12 @@ class AgentTurnOrchestrator {
           ),
         );
 
-        final verifyResult = await _stopVerifierService.verifyCanStop(
+        final verifyResult = await _turnVerifier.verifyCanStop(
           turn: runtimeTurn,
           transcript: await _transcriptBuilderService.loadTranscript(turnId),
+          steps: _stepRepository == null
+              ? const []
+              : await _stepRepository!.listSteps(turnId),
           latestAssistantText: finalText,
           limits: _limits,
         );
@@ -438,6 +444,7 @@ class AgentTurnOrchestrator {
       status: ToolInvocationStatus.running,
       summary: '正在执行工具：$toolDisplayName',
       requiresConfirmation: false,
+      stepId: stepId,
     );
     final execution = await _toolCallService.executeToolInvocation(
       groupId: turn.groupId,
@@ -469,6 +476,10 @@ class AgentTurnOrchestrator {
     final turnId = turn.id!;
     final groupId = turn.groupId;
     final toolInvocation = execution.toolInvocation;
+    final toolPayload = _buildToolInvocationPayload(
+      invocation: toolInvocation ?? invocation,
+      toolAccess: execution.toolAccess,
+    );
 
     if (toolInvocation != null && toolInvocation.requiresConfirmation) {
       await _turnRepository.markAwaitingToolConfirmation(turnId);
@@ -480,6 +491,7 @@ class AgentTurnOrchestrator {
           toolName: toolInvocation.toolName,
           arguments: toolInvocation.arguments,
           summary: toolInvocation.summary,
+          payloadJson: toolPayload,
         ),
       );
       return;
@@ -491,7 +503,7 @@ class AgentTurnOrchestrator {
         turnId: turnId,
         groupId: groupId,
         content: toolInvocation?.summary ?? invocation.summary,
-        payloadJson: toolInvocation?.toJson() ?? invocation.toJson(),
+        payloadJson: toolPayload,
       ),
     );
     if (stepId != null) {
@@ -638,5 +650,15 @@ class AgentTurnOrchestrator {
       return '';
     }
     return toolResult.summary;
+  }
+
+  Map<String, dynamic> _buildToolInvocationPayload({
+    required ToolInvocation invocation,
+    required ToolAccessSnapshot? toolAccess,
+  }) {
+    return {
+      ...invocation.toJson(),
+      if (toolAccess != null) 'toolAccess': toolAccess.toJson(),
+    };
   }
 }

@@ -12,9 +12,12 @@ import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/tool/tool_argument_property.dart';
 import 'package:ai_chat/models/tool/tool_argument_schema.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
+import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/services/agent_planner_service.dart';
 import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/services/tool_policy_service.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('AgentPlannerService', () {
@@ -44,6 +47,22 @@ void main() {
           plannerResponse:
               '{"action":"call_tool","toolName":"search_chat_history","arguments":{"query":"数据库","maxResults":3}}',
         ),
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [
+          ToolDefinition(
+            name: 'search_chat_history',
+            title: '搜索聊天记录',
+            description: '搜索聊天记录',
+            descriptionForModel: '当用户要求从历史记录找结论时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'query': ToolArgumentProperty.string(description: '查询词'),
+                'maxResults': ToolArgumentProperty.integer(description: '数量'),
+              },
+              required: ['query'],
+            ),
+          ),
+        ],
       );
 
       final result = await service.planNextAction(
@@ -69,6 +88,21 @@ void main() {
               '{"action":"call_tool","toolName":"web_search","arguments":{"query":"Claude 最新进展","top_k":5}}'
               '{"action":"call_tool","toolName":"web_search","arguments":{"query":"Claude 最新进展","top_k":5}}',
         ),
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [
+          ToolDefinition(
+            name: 'web_search',
+            title: '联网搜索',
+            description: '搜索外部网页',
+            descriptionForModel: '当用户需要最新外部资料时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'query': ToolArgumentProperty.string(description: '搜索词'),
+              },
+              required: ['query'],
+            ),
+          ),
+        ],
       );
 
       final result = await service.planNextAction(
@@ -92,6 +126,21 @@ void main() {
           plannerResponse:
               '{\n  "action":" call_tool\\n",\n  "toolName":" web_search\\t",\n  "arguments":{"query":"OpenAI 最新新闻"}\n}',
         ),
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [
+          ToolDefinition(
+            name: 'web_search',
+            title: '联网搜索',
+            description: '搜索外部网页',
+            descriptionForModel: '当用户需要最新外部资料时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'query': ToolArgumentProperty.string(description: '搜索词'),
+              },
+              required: ['query'],
+            ),
+          ),
+        ],
       );
 
       final result = await service.planNextAction(
@@ -133,6 +182,7 @@ void main() {
       );
       final service = AgentPlannerService(
         llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
         availableTools: const [
           ToolDefinition(
             name: 'web_search',
@@ -217,6 +267,175 @@ void main() {
       );
     });
 
+    test('planNextDecision includes tool execution policy in planner prompt',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final policyService = ToolPolicyService(
+        repository: AppSettingsRepository(
+          preferences,
+          localDefaultsLoader: () async => null,
+        ),
+      );
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: 'ok',
+          providerState: {},
+          isTerminal: true,
+        ),
+      );
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: policyService,
+        availableTools: const [
+          ToolDefinition(
+            name: 'web_search',
+            title: '联网搜索',
+            description: '搜索外部网页',
+            descriptionForModel: '当用户需要最新外部资料时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'query': ToolArgumentProperty.string(description: '搜索词'),
+              },
+              required: ['query'],
+            ),
+          ),
+          ToolDefinition(
+            name: 'create_reminder',
+            title: '创建提醒',
+            description: '创建系统提醒',
+            descriptionForModel: '当用户明确要求提醒时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'title': ToolArgumentProperty.string(description: '标题'),
+              },
+              required: ['title'],
+            ),
+            requiresConfirmation: true,
+            riskLevel: 'medium',
+          ),
+        ],
+      );
+
+      await service.planNextDecision(
+        turn: _turn(),
+        transcript: [_userEvent()],
+        steps: const [],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(llm.lastMessages.first.text, contains('执行策略：auto_run'));
+      expect(
+        llm.lastMessages.first.text,
+        contains('执行策略：require_confirmation'),
+      );
+    });
+
+    test('planNextDecision annotates structured planner tool options with policy',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final policyService = ToolPolicyService(
+        repository: AppSettingsRepository(
+          preferences,
+          localDefaultsLoader: () async => null,
+        ),
+      );
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: 'ok',
+          providerState: {},
+          isTerminal: true,
+        ),
+      );
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: policyService,
+        availableTools: const [
+          ToolDefinition(
+            name: 'create_reminder',
+            title: '创建提醒',
+            description: '创建系统提醒',
+            descriptionForModel: '当用户明确要求提醒时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'title': ToolArgumentProperty.string(description: '标题'),
+              },
+              required: ['title'],
+            ),
+            requiresConfirmation: true,
+            riskLevel: 'medium',
+          ),
+        ],
+      );
+
+      await service.planNextDecision(
+        turn: _turn(),
+        transcript: [_userEvent()],
+        steps: const [],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(llm.lastToolOptions, isNotNull);
+      expect(
+        llm.lastToolOptions!.single.description,
+        contains('Execution policy: require_confirmation'),
+      );
+    });
+
+    test(
+        'planNextDecision requires tool policy service when resolving visible tools',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: 'ok',
+          providerState: {},
+          isTerminal: true,
+        ),
+      );
+      final service = AgentPlannerService(
+        llm: llm,
+        availableTools: const [
+          ToolDefinition(
+            name: 'create_reminder',
+            title: '创建提醒',
+            description: '创建系统提醒',
+            descriptionForModel: '当用户明确要求提醒时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'title': ToolArgumentProperty.string(description: '标题'),
+              },
+              required: ['title'],
+            ),
+            requiresConfirmation: true,
+            riskLevel: 'medium',
+          ),
+        ],
+      );
+
+      await expectLater(
+        () => service.planNextDecision(
+          turn: _turn(),
+          transcript: [_userEvent()],
+          steps: const [],
+          config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          limits: const AgentLoopLimits(),
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains('toolPolicyService is required'),
+          ),
+        ),
+      );
+    });
+
     test('falls back to respond when planner emits an unknown tool name',
         () async {
       final service = AgentPlannerService(
@@ -262,7 +481,24 @@ void main() {
       final llm = _FakePlannerLLM(
         plannerResponse: '{"action":"respond","response":"ok"}',
       );
-      final service = AgentPlannerService(llm: llm);
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [
+          ToolDefinition(
+            name: 'search_chat_history',
+            title: '搜索聊天记录',
+            description: '搜索聊天记录',
+            descriptionForModel: '当用户要求从历史记录找结论时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'query': ToolArgumentProperty.string(description: '查询词'),
+              },
+              required: ['query'],
+            ),
+          ),
+        ],
+      );
 
       await service.planNextAction(
         turn: ChatTurn(
@@ -336,6 +572,7 @@ void main() {
       );
       final service = AgentPlannerService(
         llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
         availableTools: const [
           ToolDefinition(
             name: 'search_chat_history',
@@ -408,9 +645,9 @@ void main() {
       );
 
       expect(decision, isNotNull);
-      expect(decision!.toolCalls, hasLength(1));
-      expect(decision.toolCalls.single.toolName, 'search_chat_history');
-      expect(decision.providerState, containsPair('response_id', 'resp_123'));
+      expect(decision!.toolCalls, isEmpty);
+      expect(decision.diagnosticCode, 'planner_duplicate_tool_call');
+      expect(decision.isTerminal, isTrue);
       expect(llm.lastMessages[1].text, contains('已完成步骤：'));
       expect(llm.lastMessages[1].text, contains('search_chat_history'));
       expect(llm.lastMessages[1].text, contains('"matchCount":1'));
@@ -426,7 +663,37 @@ void main() {
           isTerminal: true,
         ),
       );
-      final service = AgentPlannerService(llm: llm);
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [
+          ToolDefinition(
+            name: 'search_chat_history',
+            title: '搜索聊天记录',
+            description: '搜索聊天记录',
+            descriptionForModel: '当用户要求从历史记录找结论时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'query': ToolArgumentProperty.string(description: '查询词'),
+              },
+              required: ['query'],
+            ),
+          ),
+          ToolDefinition(
+            name: 'save_note',
+            title: '保存笔记',
+            description: '保存笔记',
+            descriptionForModel: '当用户要求沉淀结论时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'title': ToolArgumentProperty.string(description: '标题'),
+                'content': ToolArgumentProperty.string(description: '正文'),
+              },
+              required: ['title', 'content'],
+            ),
+          ),
+        ],
+      );
 
       await service.planNextDecision(
         turn: ChatTurn(
@@ -458,7 +725,24 @@ void main() {
           isTerminal: true,
         ),
       );
-      final service = AgentPlannerService(llm: llm);
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [
+          ToolDefinition(
+            name: 'search_chat_history',
+            title: '搜索聊天记录',
+            description: '搜索聊天记录',
+            descriptionForModel: '当用户要求从历史记录找结论时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'query': ToolArgumentProperty.string(description: '查询词'),
+              },
+              required: ['query'],
+            ),
+          ),
+        ],
+      );
 
       await service.planNextDecision(
         turn: ChatTurn(
@@ -525,7 +809,24 @@ void main() {
         plannerResponse:
             '{"action":"call_tool","toolName":"search_chat_history","arguments":{"query":"数据库版本"}}',
       );
-      final service = AgentPlannerService(llm: llm);
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [
+          ToolDefinition(
+            name: 'search_chat_history',
+            title: '搜索聊天记录',
+            description: '搜索聊天记录',
+            descriptionForModel: '当用户要求从历史记录找结论时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'query': ToolArgumentProperty.string(description: '查询词'),
+              },
+              required: ['query'],
+            ),
+          ),
+        ],
+      );
 
       final decision = await service.planNextDecision(
         turn: _turn(),
@@ -543,6 +844,160 @@ void main() {
       expect(llm.legacyAttempts, 1);
     });
 
+    test('planNextDecision does not fall back to a static tool allowlist',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [
+            ModelToolCall(
+              toolName: 'search_chat_history',
+              arguments: {'query': '数据库版本'},
+              sequence: 1,
+            ),
+          ],
+          assistantMessage: null,
+          providerState: {},
+          isTerminal: false,
+        ),
+      );
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [],
+      );
+
+      final decision = await service.planNextDecision(
+        turn: _turn(),
+        transcript: [_userEvent()],
+        steps: const [],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, isEmpty);
+      expect(decision.diagnosticCode, 'planner_unsupported_tool');
+      expect(decision.isTerminal, isTrue);
+    });
+
+    test('planNextDecision only accepts tools from the visible tool set',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [
+            ModelToolCall(
+              toolName: 'save_note',
+              arguments: {'title': '数据库版本确认', 'content': '数据库版本是 7'},
+              sequence: 1,
+            ),
+          ],
+          assistantMessage: null,
+          providerState: {},
+          isTerminal: false,
+        ),
+      );
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [
+          ToolDefinition(
+            name: 'search_chat_history',
+            title: '搜索聊天记录',
+            description: '搜索聊天记录',
+            descriptionForModel: '当用户要求从历史记录找结论时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'query': ToolArgumentProperty.string(description: '查询词'),
+              },
+              required: ['query'],
+            ),
+          ),
+        ],
+      );
+
+      final decision = await service.planNextDecision(
+        turn: _turn(),
+        transcript: [_userEvent()],
+        steps: const [],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, isEmpty);
+      expect(decision.diagnosticCode, 'planner_unsupported_tool');
+      expect(decision.isTerminal, isTrue);
+    });
+
+    test('planNextDecision filters duplicate tool calls already completed in the same turn',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [
+            ModelToolCall(
+              toolName: 'search_chat_history',
+              arguments: {'query': 'agent loop', 'maxResults': 5},
+              sequence: 1,
+            ),
+          ],
+          assistantMessage: null,
+          providerState: {},
+          isTerminal: false,
+        ),
+      );
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [
+          ToolDefinition(
+            name: 'search_chat_history',
+            title: '搜索聊天记录',
+            description: '搜索聊天记录',
+            descriptionForModel: '当用户要求从历史记录找结论时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'query': ToolArgumentProperty.string(description: '查询词'),
+                'maxResults': ToolArgumentProperty.integer(description: '数量'),
+              },
+              required: ['query'],
+            ),
+          ),
+        ],
+      );
+
+      final decision = await service.planNextDecision(
+        turn: ChatTurn(
+          id: 1,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '继续查 agent loop',
+        ),
+        transcript: [_userEvent()],
+        steps: [
+          ChatTurnStep(
+            id: 1,
+            turnId: 1,
+            stepIndex: 1,
+            toolName: 'search_chat_history',
+            toolArgsJson: const {'maxResults': 5, 'query': 'agent loop'},
+            status: ChatTurnStepStatus.completed,
+            resultSummary: '已执行：搜索历史记录',
+            resultJson: const {
+              'query': 'agent loop',
+              'matchCount': 1,
+            },
+          ),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, isEmpty);
+      expect(decision.diagnosticCode, 'planner_duplicate_tool_call');
+      expect(decision.isTerminal, isTrue);
+    });
+
     test(
         'planNextDecision converts concatenated legacy tool actions into multi-tool decision',
         () async {
@@ -551,7 +1006,37 @@ void main() {
             '{"action":"call_tool","toolName":"search_chat_history","arguments":{"query":"数据库版本 时间 确认","maxResults":5}}'
             '{"action":"call_tool","toolName":"save_note","arguments":{"title":"数据库版本确认","content":"数据库版本 7，发版时间 2026-04-12 10:00"}}',
       );
-      final service = AgentPlannerService(llm: llm);
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [
+          ToolDefinition(
+            name: 'search_chat_history',
+            title: '搜索聊天记录',
+            description: '搜索聊天记录',
+            descriptionForModel: '当用户要求从历史记录找结论时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'query': ToolArgumentProperty.string(description: '查询词'),
+              },
+              required: ['query'],
+            ),
+          ),
+          ToolDefinition(
+            name: 'save_note',
+            title: '保存笔记',
+            description: '保存笔记',
+            descriptionForModel: '当用户要求沉淀结论时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'title': ToolArgumentProperty.string(description: '标题'),
+                'content': ToolArgumentProperty.string(description: '正文'),
+              },
+              required: ['title', 'content'],
+            ),
+          ),
+        ],
+      );
 
       final decision = await service.planNextDecision(
         turn: ChatTurn(
@@ -589,13 +1074,30 @@ void main() {
     });
 
     test(
-        'planNextDecision stops repeated empty retrieval when legacy fallback repeats same tool call',
+        'planNextDecision filters repeated legacy retrieval with identical arguments in the same turn',
         () async {
       final llm = _NativeThenLegacyPlannerLLM(
         plannerResponse:
             '{"action":"call_tool","toolName":"search_chat_history","arguments":{"query":"数据库版本 确认 时间","maxResults":5}}',
       );
-      final service = AgentPlannerService(llm: llm);
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [
+          ToolDefinition(
+            name: 'search_chat_history',
+            title: '搜索聊天记录',
+            description: '搜索聊天记录',
+            descriptionForModel: '当用户要求从历史记录找结论时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'query': ToolArgumentProperty.string(description: '查询词'),
+              },
+              required: ['query'],
+            ),
+          ),
+        ],
+      );
 
       final decision = await service.planNextDecision(
         turn: _turn(),
@@ -626,11 +1128,7 @@ void main() {
       expect(decision, isNotNull);
       expect(decision!.toolCalls, isEmpty);
       expect(decision.isTerminal, isTrue);
-      expect(
-        decision.assistantMessage,
-        contains('我刚才没有在当前聊天记录里找到相关信息'),
-      );
-      expect(decision.diagnosticCode, 'planner_repeated_empty_retrieval');
+      expect(decision.diagnosticCode, 'planner_duplicate_tool_call');
       expect(llm.nativeAttempts, 1);
       expect(llm.legacyAttempts, 1);
     });
@@ -647,6 +1145,7 @@ void main() {
       );
       final service = AgentPlannerService(
         llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
         availableTools: const [
           ToolDefinition(
             name: 'web_search',
@@ -699,6 +1198,7 @@ void main() {
       );
       final service = AgentPlannerService(
         llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
         availableTools: const [
           ToolDefinition(
             name: 'fetch_webpage',
@@ -744,6 +1244,7 @@ void main() {
       );
       final service = AgentPlannerService(
         llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
         availableTools: const [
           ToolDefinition(
             name: 'web_search',
@@ -795,6 +1296,17 @@ ChatEvent _userEvent() => ChatEvent(
       role: MessageRole.user,
       content: '帮我回忆刚才聊到的数据库版本',
     );
+
+Future<ToolPolicyService> _createToolPolicyService() async {
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
+  return ToolPolicyService(
+    repository: AppSettingsRepository(
+      preferences,
+      localDefaultsLoader: () async => null,
+    ),
+  );
+}
 
 class _FakePlannerLLM implements BaseLLM {
   final String plannerResponse;

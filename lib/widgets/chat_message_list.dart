@@ -94,6 +94,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final scrollController = ref.watch(scrollControllerProvider);
     final colors = Theme.of(context).extension<AppColors>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final textController = ref.read(textControllerProvider);
+    final focusNode = ref.read(focusNodeProvider);
 
     if (isGenerating && autoScrollToBottom) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -111,7 +113,15 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final itemCount = timelineItems.length + (hasMoreMessages ? 1 : 0);
 
     if (messages.isEmpty) {
-      return const ChatEmptyState();
+      return ChatEmptyState(
+        onSuggestionSelected: (prompt) {
+          textController.value = TextEditingValue(
+            text: prompt,
+            selection: TextSelection.collapsed(offset: prompt.length),
+          );
+          focusNode.requestFocus();
+        },
+      );
     }
 
     return Stack(
@@ -139,7 +149,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
             return Align(
               alignment: Alignment.topCenter,
               child: ConstrainedBox(
-                constraints: BoxConstraints(
+                constraints: const BoxConstraints(
                   maxWidth: kIsWeb ? 860 : 720,
                 ),
                 child: Padding(
@@ -380,6 +390,10 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
         summary: json['summary'] as String? ?? '',
         status: status,
         requiresConfirmation: json['requiresConfirmation'] as bool? ?? false,
+        executionPolicy: json['executionPolicy'] as String?,
+        toolAccess: json['toolAccess'] is Map
+            ? Map<String, dynamic>.from(json['toolAccess'] as Map)
+            : null,
         details: json['details'] is Map
             ? Map<String, dynamic>.from(json['details'] as Map)
             : const {},

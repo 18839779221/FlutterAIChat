@@ -69,6 +69,7 @@ class ChatEventRepository {
     required String toolName,
     required Map<String, dynamic> arguments,
     required String summary,
+    Map<String, dynamic>? payloadJson,
   }) {
     return _appendEvent(
       turnId: turnId,
@@ -76,13 +77,14 @@ class ChatEventRepository {
       eventType: ChatEventType.assistantToolConfirmation,
       role: MessageRole.assistant,
       content: summary,
-      payloadJson: {
-        'toolName': toolName,
-        'arguments': arguments,
-        'status': ToolInvocationStatus.awaitingConfirmation.name,
-        'summary': summary,
-        'requiresConfirmation': true,
-      },
+      payloadJson: payloadJson ??
+          {
+            'toolName': toolName,
+            'arguments': arguments,
+            'status': ToolInvocationStatus.awaitingConfirmation.name,
+            'summary': summary,
+            'requiresConfirmation': true,
+          },
     );
   }
 

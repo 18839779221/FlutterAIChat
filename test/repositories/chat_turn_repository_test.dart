@@ -83,6 +83,30 @@ void main() {
       await storage.deleteGroup(groupId);
     });
 
+    test('can resume awaiting confirmation turn back to running', () async {
+      final storage = DatabaseHelper(
+          databaseName: 'chat_turn_repository_running_test_v8.db');
+      final repository = ChatTurnRepository(storage);
+      final groupId =
+          await storage.insertGroup(ChatGroup(title: 'turn repo group'));
+
+      final turnId = await repository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.awaitingToolConfirmation,
+          userInput: '确认后继续执行',
+        ),
+      );
+
+      await repository.markRunning(turnId);
+
+      final updated = await repository.getTurn(turnId);
+      expect(updated, isNotNull);
+      expect(updated!.status, ChatTurnStatus.running);
+
+      await storage.deleteGroup(groupId);
+    });
+
     test('can update runtime provider state for an existing turn', () async {
       final storage = DatabaseHelper(
           databaseName: 'chat_turn_repository_runtime_state_test_v8.db');

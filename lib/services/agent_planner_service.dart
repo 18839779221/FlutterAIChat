@@ -11,31 +11,25 @@ import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/llm/base_llm.dart';
 import '../models/tool/tool_call.dart';
+import '../models/tool/tool_access_snapshot.dart';
 import '../models/tool/tool_definition.dart';
 import 'chat_service.dart';
 import 'planner_prompt_builder.dart';
 import 'planner_tool_exposure_service.dart';
+import 'tool_policy_service.dart';
 import 'turn_ledger_builder_service.dart';
 import 'transcript_builder_service.dart';
 import '../utils/logger.dart';
 
 class AgentPlannerService {
   static const _tag = 'AgentPlannerService';
-  static const _legacyAllowedToolNames = [
-    'search_chat_history',
-    'web_search',
-    'fetch_webpage',
-    'save_note',
-    'create_reminder',
-    'create_calendar_event',
-    'share_result',
-  ];
 
   final BaseLLM _llm;
   final List<ToolDefinition> _availableTools;
   final PlannerToolExposureService _toolExposureService;
   final PlannerPromptBuilder _promptBuilder;
   final TurnLedgerBuilderService _turnLedgerBuilder;
+  final ToolPolicyService? _toolPolicyService;
 
   AgentPlannerService({
     required BaseLLM llm,
@@ -43,13 +37,15 @@ class AgentPlannerService {
     PlannerToolExposureService? toolExposureService,
     PlannerPromptBuilder? promptBuilder,
     TurnLedgerBuilderService? turnLedgerBuilder,
+    ToolPolicyService? toolPolicyService,
   })  : _llm = llm,
         _availableTools = availableTools,
         _toolExposureService =
             toolExposureService ?? PlannerToolExposureService(),
         _promptBuilder = promptBuilder ?? PlannerPromptBuilder(),
         _turnLedgerBuilder =
-            turnLedgerBuilder ?? const TurnLedgerBuilderService();
+            turnLedgerBuilder ?? const TurnLedgerBuilderService(),
+        _toolPolicyService = toolPolicyService;
 
   Future<ModelTurnDecision?> planNextDecision({
     required ChatTurn turn,
@@ -58,21 +54,19 @@ class AgentPlannerService {
     required ChatConfig config,
     required AgentLoopLimits limits,
   }) async {
-    final visibleTools = _resolveVisibleTools(turn.userInput);
-    final allowedToolNames = _resolveAllowedToolNames(visibleTools);
-    final plannerToolOptions = visibleTools
-        .map(
-          (tool) => PlannerToolOption(
-            name: tool.name,
-            description: tool.descriptionForModel,
-            inputSchema: tool.toPlannerJsonSchema(),
-          ),
-        )
+    final visibleToolAccess =
+        await _resolveVisibleToolAccess(turn.userInput);
+    final visibleTools = visibleToolAccess
+        .map((access) => access.definition)
         .toList(growable: false);
+    final plannerPromptTools =
+        _buildPlannerPromptTools(visibleToolAccess);
+    final allowedToolNames = _resolveAllowedToolNames(visibleTools);
+    final plannerToolOptions = _buildPlannerToolOptions(visibleToolAccess);
     final messages = <ChatMessage>[
       ChatMessage(
         text: _promptBuilder.buildSystemPrompt(
-          visibleTools: visibleTools,
+          visibleTools: plannerPromptTools,
           allowMultiToolPlanning: true,
         ),
         role: MessageRole.system,
@@ -110,6 +104,7 @@ class AgentPlannerService {
         return _sanitizeDecision(
           decision,
           allowedToolNames: allowedToolNames,
+          steps: steps,
         );
       }
       Logger.w(
@@ -130,19 +125,14 @@ class AgentPlannerService {
         config: config,
         limits: limits,
       );
-      final decision = _parseLegacyDecision(
-        raw,
+      return _sanitizeDecision(
+        _parseLegacyDecision(
+          raw,
+          allowedToolNames: allowedToolNames,
+        ),
         allowedToolNames: allowedToolNames,
-      );
-      final repeatedEmptyRetrievalDecision =
-          _buildRepeatedEmptyRetrievalDecision(
-        decision: decision,
         steps: steps,
       );
-      if (repeatedEmptyRetrievalDecision != null) {
-        return repeatedEmptyRetrievalDecision;
-      }
-      return decision;
     } catch (_) {
       return const ModelTurnDecision(
         toolCalls: [],
@@ -167,7 +157,11 @@ class AgentPlannerService {
         config: config,
         limits: limits,
       );
-      final visibleTools = _resolveVisibleTools(turn.userInput);
+      final visibleToolAccess =
+          await _resolveVisibleToolAccess(turn.userInput);
+      final visibleTools = visibleToolAccess
+          .map((access) => access.definition)
+          .toList(growable: false);
       final allowedToolNames = _resolveAllowedToolNames(visibleTools);
       return _parseAction(raw, allowedToolNames: allowedToolNames);
     } catch (_) {
@@ -184,11 +178,12 @@ class AgentPlannerService {
     required ChatConfig config,
     required AgentLoopLimits limits,
   }) async {
-    final visibleTools = _resolveVisibleTools(turn.userInput);
+    final visibleToolAccess = await _resolveVisibleToolAccess(turn.userInput);
+    final plannerPromptTools = _buildPlannerPromptTools(visibleToolAccess);
     final messages = <ChatMessage>[
       ChatMessage(
         text: _promptBuilder.buildSystemPrompt(
-          visibleTools: visibleTools,
+          visibleTools: plannerPromptTools,
         ),
         role: MessageRole.system,
       ),
@@ -226,12 +221,21 @@ class AgentPlannerService {
   ModelTurnDecision _sanitizeDecision(
     ModelTurnDecision decision, {
     required List<String> allowedToolNames,
+    required List<ChatTurnStep> steps,
   }) {
     if (decision.toolCalls.isEmpty) {
       return decision;
     }
 
+    final seenToolCalls = steps
+        .where((step) =>
+            step.status == ChatTurnStepStatus.planned ||
+            step.status == ChatTurnStepStatus.running ||
+            step.status == ChatTurnStepStatus.completed)
+        .map((step) => _toolCallFingerprint(step.toolName, step.toolArgsJson))
+        .toSet();
     final filteredCalls = <ModelToolCall>[];
+    final blockedDuplicates = <String>[];
     for (final toolCall in decision.toolCalls) {
       if (!allowedToolNames.contains(toolCall.toolName.trim())) {
         Logger.w(
@@ -240,10 +244,32 @@ class AgentPlannerService {
         );
         continue;
       }
+      final fingerprint =
+          _toolCallFingerprint(toolCall.toolName, toolCall.arguments);
+      if (seenToolCalls.contains(fingerprint)) {
+        blockedDuplicates.add(fingerprint);
+        Logger.w(
+          _tag,
+          'native planner emitted duplicate tool call in same turn: ${toolCall.toolName} args=${_compactJson(toolCall.arguments)}',
+        );
+        continue;
+      }
+      seenToolCalls.add(fingerprint);
       filteredCalls.add(toolCall);
     }
 
     if (filteredCalls.isEmpty) {
+      if (blockedDuplicates.isNotEmpty) {
+        return ModelTurnDecision(
+          toolCalls: const [],
+          assistantMessage: '当前回合里相同工具调用已经执行过，请基于现有结果总结，或改用其他工具。',
+          diagnosticCode: 'planner_duplicate_tool_call',
+          providerState: decision.providerState,
+          providerStyle: decision.providerStyle,
+          modelName: decision.modelName,
+          isTerminal: true,
+        );
+      }
       return const ModelTurnDecision(
         toolCalls: [],
         assistantMessage: '抱歉，我暂时无法规划下一步动作，请直接重试。',
@@ -264,105 +290,29 @@ class AgentPlannerService {
     );
   }
 
-  ModelTurnDecision? _buildRepeatedEmptyRetrievalDecision({
-    required ModelTurnDecision decision,
-    required List<ChatTurnStep> steps,
-  }) {
-    if (decision.toolCalls.length != 1) {
-      return null;
-    }
-    final toolCall = decision.toolCalls.single;
-
-    final latestCompletedStep = _findLatestCompletedStep(steps);
-    if (latestCompletedStep == null) {
-      return null;
-    }
-
-    if (latestCompletedStep.toolName != toolCall.toolName) {
-      return null;
-    }
-    if (!_deepEquals(latestCompletedStep.toolArgsJson, toolCall.arguments)) {
-      return null;
-    }
-    if (!_isEmptyRetrievalResult(latestCompletedStep)) {
-      return null;
-    }
-
-    Logger.w(
-      _tag,
-      'legacy planner repeated empty retrieval, short-circuiting tool loop: ${toolCall.toolName} args=${toolCall.arguments}',
-    );
-    return const ModelTurnDecision(
-      toolCalls: [],
-      assistantMessage:
-          '我刚才没有在当前聊天记录里找到相关信息。请补充更明确的关键词，或者直接告诉我数据库版本和确认时间，我再继续帮你整理笔记和提醒。',
-      diagnosticCode: 'planner_repeated_empty_retrieval',
-      providerState: {},
-      isTerminal: true,
-    );
+  String _toolCallFingerprint(
+    String toolName,
+    Map<String, dynamic> arguments,
+  ) {
+    return '$toolName:${_compactJson(arguments)}';
   }
 
-  ChatTurnStep? _findLatestCompletedStep(List<ChatTurnStep> steps) {
-    for (var index = steps.length - 1; index >= 0; index--) {
-      final step = steps[index];
-      if (step.status == ChatTurnStepStatus.completed) {
-        return step;
-      }
-    }
-    return null;
+  String _compactJson(Map<String, dynamic> value) {
+    return jsonEncode(_normalizeJsonValue(value));
   }
 
-  bool _isEmptyRetrievalResult(ChatTurnStep step) {
-    final result = step.resultJson;
-    if (result == null) {
-      return false;
+  Object? _normalizeJsonValue(Object? value) {
+    if (value is Map) {
+      final sortedKeys = value.keys.map((key) => key.toString()).toList()..sort();
+      return {
+        for (final key in sortedKeys)
+          key: _normalizeJsonValue(value[key]),
+      };
     }
-
-    switch (step.toolName) {
-      case 'search_chat_history':
-        return (result['matchCount'] is int ? result['matchCount'] as int : -1) ==
-                0 &&
-            result['matches'] is List &&
-            (result['matches'] as List).isEmpty;
-      case 'web_search':
-        return result['results'] is List && (result['results'] as List).isEmpty;
-      case 'fetch_webpage':
-        final content = result['content'];
-        return content is String && content.trim().isEmpty;
-      default:
-        return false;
+    if (value is List) {
+      return value.map(_normalizeJsonValue).toList(growable: false);
     }
-  }
-
-  bool _deepEquals(dynamic left, dynamic right) {
-    if (left is Map && right is Map) {
-      if (left.length != right.length) {
-        return false;
-      }
-      for (final entry in left.entries) {
-        if (!right.containsKey(entry.key)) {
-          return false;
-        }
-        if (!_deepEquals(entry.value, right[entry.key])) {
-          return false;
-        }
-      }
-      return true;
-    }
-
-    if (left is List && right is List) {
-      if (left.length != right.length) {
-        return false;
-      }
-      for (var index = 0; index < left.length; index++) {
-        if (!_deepEquals(left[index], right[index])) {
-          return false;
-        }
-      }
-      return true;
-    }
-
-    return left == right;
+    return value;
   }
 
   ModelTurnDecision _parseLegacyDecision(
@@ -562,21 +512,63 @@ class AgentPlannerService {
     );
   }
 
-  List<ToolDefinition> _resolveVisibleTools(String userInput) {
+  Future<List<ToolAccessSnapshot>> _resolveVisibleToolAccess(
+    String userInput,
+  ) async {
     if (_availableTools.isEmpty) {
       return const [];
     }
-    return _toolExposureService.selectVisibleTools(
+    final accessSnapshots = <ToolAccessSnapshot>[];
+    for (final tool in _availableTools) {
+      accessSnapshots.add(await _resolveToolAccess(tool));
+    }
+    return _toolExposureService.selectVisibleToolAccess(
       userInput: userInput,
-      allTools: _availableTools,
+      allTools: accessSnapshots,
     );
   }
 
-  List<String> _resolveAllowedToolNames(List<ToolDefinition> visibleTools) {
-    if (visibleTools.isNotEmpty) {
-      return visibleTools.map((tool) => tool.name).toList(growable: false);
+  List<PlannerPromptTool> _buildPlannerPromptTools(
+    List<ToolAccessSnapshot> visibleToolAccess,
+  ) {
+    return visibleToolAccess
+        .map(
+          (access) => PlannerPromptTool(
+            definition: access.definition,
+            executionPolicy: access.executionPolicyLabel,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  List<PlannerToolOption> _buildPlannerToolOptions(
+    List<ToolAccessSnapshot> visibleToolAccess,
+  ) {
+    return visibleToolAccess
+        .map(
+          (access) => PlannerToolOption(
+            name: access.definition.name,
+            description:
+                '${access.definition.descriptionForModel}\nExecution policy: ${access.executionPolicyLabel}',
+            inputSchema: access.definition.toPlannerJsonSchema(),
+            executionPolicy: access.executionPolicyLabel,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<ToolAccessSnapshot> _resolveToolAccess(ToolDefinition tool) async {
+    final toolPolicyService = _toolPolicyService;
+    if (toolPolicyService == null) {
+      throw StateError(
+        'toolPolicyService is required when planner resolves tool access',
+      );
     }
-    return _legacyAllowedToolNames;
+    return toolPolicyService.resolveToolAccess(tool);
+  }
+
+  List<String> _resolveAllowedToolNames(List<ToolDefinition> visibleTools) {
+    return visibleTools.map((tool) => tool.name).toList(growable: false);
   }
 
   String? _normalizeStringField(dynamic value) {

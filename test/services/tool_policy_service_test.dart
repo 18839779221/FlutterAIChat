@@ -1,4 +1,5 @@
 import 'package:ai_chat/models/tool/tool_definition.dart';
+import 'package:ai_chat/models/tool/tool_access_snapshot.dart';
 import 'package:ai_chat/models/tool/tool_policy.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/services/tool_policy_service.dart';
@@ -97,6 +98,128 @@ void main() {
         ToolPolicyDecision.requireConfirmation,
       );
       expect(await repository.getTrustedToolNames(), isNot(contains(reminderTool.name)));
+    });
+
+    test('blocking a tool returns blocked policy decision', () async {
+      const reminderTool = ToolDefinition(
+        name: 'create_reminder',
+        title: '创建提醒',
+        description: '创建系统提醒',
+        parameters: {'title': 'string'},
+        requiresConfirmation: true,
+        riskLevel: 'medium',
+      );
+
+      await service.blockTool(reminderTool.name);
+
+      expect(
+        await service.resolveExecutionMode(reminderTool),
+        ToolPolicyDecision.blocked,
+      );
+      expect(
+        await repository.getBlockedToolNames(),
+        contains(reminderTool.name),
+      );
+    });
+
+    test('resolveToolAccess returns shared planner and runtime policy snapshot',
+        () async {
+      const reminderTool = ToolDefinition(
+        name: 'create_reminder',
+        title: '创建提醒',
+        description: '创建系统提醒',
+        parameters: {'title': 'string'},
+        requiresConfirmation: true,
+        riskLevel: 'medium',
+      );
+
+      final confirmationAccess = await service.resolveToolAccess(reminderTool);
+      expect(
+        confirmationAccess.executionDecision,
+        ToolPolicyDecision.requireConfirmation,
+      );
+      expect(confirmationAccess.executionPolicyLabel, 'require_confirmation');
+      expect(confirmationAccess.isVisibleToPlanner, isTrue);
+
+      await service.blockTool(reminderTool.name);
+
+      final blockedAccess = await service.resolveToolAccess(reminderTool);
+      expect(blockedAccess.executionDecision, ToolPolicyDecision.blocked);
+      expect(blockedAccess.executionPolicyLabel, 'blocked');
+      expect(blockedAccess.isVisibleToPlanner, isFalse);
+    });
+
+    test('tool policy outputs stable blocked/require_confirmation/auto_run labels', () async {
+      const readTool = ToolDefinition(
+        name: 'search_chat_history',
+        title: '搜索聊天记录',
+        description: '搜索历史消息',
+        parameters: {'query': 'string'},
+      );
+      const riskyTool = ToolDefinition(
+        name: 'create_reminder',
+        title: '创建提醒',
+        description: '创建系统提醒',
+        parameters: {'title': 'string'},
+        requiresConfirmation: true,
+        riskLevel: 'medium',
+      );
+
+      final autoRunAccess = await service.resolveToolAccess(readTool);
+      final confirmationAccess = await service.resolveToolAccess(riskyTool);
+      await service.blockTool(riskyTool.name);
+      final blockedAccess = await service.resolveToolAccess(riskyTool);
+
+      expect(autoRunAccess.executionPolicyLabel, 'auto_run');
+      expect(autoRunAccess.executionDecision, ToolPolicyDecision.autoRun);
+
+      expect(
+        confirmationAccess.executionPolicyLabel,
+        'require_confirmation',
+      );
+      expect(
+        confirmationAccess.executionDecision,
+        ToolPolicyDecision.requireConfirmation,
+      );
+
+      expect(blockedAccess.executionPolicyLabel, 'blocked');
+      expect(blockedAccess.executionDecision, ToolPolicyDecision.blocked);
+    });
+
+    test('tool policy planner visibility stays consistent with execution policy', () async {
+      const readTool = ToolDefinition(
+        name: 'search_chat_history',
+        title: '搜索聊天记录',
+        description: '搜索历史消息',
+        parameters: {'query': 'string'},
+      );
+      const riskyTool = ToolDefinition(
+        name: 'create_reminder',
+        title: '创建提醒',
+        description: '创建系统提醒',
+        parameters: {'title': 'string'},
+        requiresConfirmation: true,
+        riskLevel: 'medium',
+      );
+
+      final visibleAccess = <ToolAccessSnapshot>[
+        await service.resolveToolAccess(readTool),
+        await service.resolveToolAccess(riskyTool),
+      ];
+      for (final access in visibleAccess) {
+        expect(access.isVisibleToPlanner, isTrue);
+        expect(
+          access.executionDecision,
+          isNot(ToolPolicyDecision.blocked),
+        );
+        expect(access.executionPolicyLabel, isNot('blocked'));
+      }
+
+      await service.blockTool(riskyTool.name);
+      final blockedAccess = await service.resolveToolAccess(riskyTool);
+      expect(blockedAccess.isVisibleToPlanner, isFalse);
+      expect(blockedAccess.executionDecision, ToolPolicyDecision.blocked);
+      expect(blockedAccess.executionPolicyLabel, 'blocked');
     });
   });
 }

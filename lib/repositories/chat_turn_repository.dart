@@ -61,6 +61,16 @@ class ChatTurnRepository {
     );
   }
 
+  Future<void> markRunning(int turnId) async {
+    final turn = await _requireTurn(turnId);
+    await _storage.updateTurn(
+      turn.copyWith(
+        status: ChatTurnStatus.running,
+        updatedAt: DateTime.now(),
+      ),
+    );
+  }
+
   Future<void> markCancelled(int turnId, {String? stopReason}) async {
     final turn = await _requireTurn(turnId);
     await _storage.updateTurn(
