@@ -6,14 +6,17 @@ import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
+import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/services/tool_call_service.dart';
 import 'package:ai_chat/services/tool_executor.dart';
+import 'package:ai_chat/services/tool_policy_service.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:ai_chat/tools/core/tool_argument_resolution.dart';
 import 'package:ai_chat/tools/core/tool_execution_context.dart';
 import 'package:ai_chat/tools/core/tool_handler.dart';
 import 'package:ai_chat/tools/core/tool_runtime_registry.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('ToolCallService.executeToolInvocation', () {
@@ -27,6 +30,7 @@ void main() {
         toolExecutor: ToolExecutor(
           chatStorage: const _FakeChatStorage(messages: []),
         ),
+        toolPolicyService: await _createToolPolicyService(),
       );
 
       final result = await service.executeToolInvocation(
@@ -48,6 +52,17 @@ void main() {
       expect(result.additionalContextMessages.single.text, 'runtime-debug-ok');
     });
   });
+}
+
+Future<ToolPolicyService> _createToolPolicyService() async {
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
+  return ToolPolicyService(
+    repository: AppSettingsRepository(
+      preferences,
+      localDefaultsLoader: () async => null,
+    ),
+  );
 }
 
 class _FakeRuntimeToolHandler implements ToolHandler {

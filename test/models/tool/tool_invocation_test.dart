@@ -44,6 +44,13 @@ void main() {
         data: {
           'url': 'https://example.com',
         },
+        executionPolicy: 'auto_run',
+        toolAccess: {
+          'toolName': 'fetch_webpage',
+          'executionDecision': 'autoRun',
+          'executionPolicy': 'auto_run',
+          'isVisibleToPlanner': true,
+        },
         errorMessage: null,
       );
 
@@ -53,7 +60,31 @@ void main() {
       expect(decoded.status, ToolExecutionStatus.success);
       expect(decoded.summary, '已读取网页');
       expect(decoded.data, containsPair('url', 'https://example.com'));
+      expect(decoded.executionPolicy, 'auto_run');
+      expect(decoded.toolAccess, containsPair('executionPolicy', 'auto_run'));
       expect(decoded.errorMessage, isNull);
+    });
+
+    test('serializes policy from toolAccess without duplicating top-level field', () {
+      const result = ToolResult(
+        toolName: 'fetch_webpage',
+        status: ToolExecutionStatus.success,
+        summary: '已读取网页',
+        toolAccess: {
+          'toolName': 'fetch_webpage',
+          'executionDecision': 'autoRun',
+          'executionPolicy': 'auto_run',
+          'isVisibleToPlanner': true,
+        },
+      );
+
+      final json = result.toJson();
+
+      expect(json['executionPolicy'], isNull);
+      expect(
+        (json['toolAccess'] as Map<String, dynamic>)['executionPolicy'],
+        'auto_run',
+      );
     });
   });
 

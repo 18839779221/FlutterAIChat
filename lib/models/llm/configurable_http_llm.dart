@@ -378,6 +378,16 @@ class ConfigurableHttpLLM implements BaseLLM {
         );
         return null;
       }
+      if (decision.toolCalls.length > 1) {
+        Logger.i(
+          _tag,
+          'native planner multi-tool raw response: ${_previewBody(responseText)}',
+        );
+        Logger.i(
+          _tag,
+          'native planner multi-tool parsed calls: ${decision.toolCalls.map((call) => '${call.toolName}:${jsonEncode(call.arguments)}').join(' | ')}',
+        );
+      }
       return decision.copyWith(
         providerStyle: _toProviderStyle(apiStyle),
         modelName: modelName,

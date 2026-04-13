@@ -1,4 +1,5 @@
 import '../models/chat_message.dart';
+import '../models/tool/tool_access_snapshot.dart';
 import '../models/tool/tool_invocation.dart';
 import 'chat_trace_recorder.dart';
 import 'tool_executor.dart';
@@ -15,6 +16,9 @@ class ToolPreparationResult {
   /// Final tool execution result once a tool has actually run.
   final ToolResult? toolResult;
 
+  /// Shared access snapshot used by planner/runtime/event projection.
+  final ToolAccessSnapshot? toolAccess;
+
   /// Tool-handler-produced raw context kept for diagnostics and future adapters.
   /// The orchestrator should not inject these messages verbatim into planner or
   /// final-answer prompts.
@@ -22,12 +26,14 @@ class ToolPreparationResult {
 
   const ToolPreparationResult({
     this.toolInvocation,
+    this.toolAccess,
     required this.toolResult,
     required this.additionalContextMessages,
   });
 
   const ToolPreparationResult.noTool()
       : toolInvocation = null,
+        toolAccess = null,
         toolResult = null,
         additionalContextMessages = const [];
 }

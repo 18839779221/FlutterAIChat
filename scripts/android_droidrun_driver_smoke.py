@@ -191,9 +191,49 @@ def contains_message(ui_state, message: str) -> bool:
     for element in ui_state.elements:
         if element.get("className") == "EditText":
             continue
+        if any(message in text for text in _element_texts(element)):
+            return True
+    return False
+
+
+def contains_message_in_input_field(ui_state, message: str) -> bool:
+    for element in ui_state.elements:
+        if element.get("className") != "EditText":
+            continue
         if message in _element_texts(element):
             return True
     return False
+
+
+def normalize_text_for_adb_input(text: str) -> str:
+    return (
+        text.replace("%", "\\%")
+        .replace(" ", "%s")
+        .replace("&", "\\&")
+        .replace("(", "\\(")
+        .replace(")", "\\)")
+        .replace("<", "\\<")
+        .replace(">", "\\>")
+        .replace('"', '\\"')
+        .replace("'", "\\'")
+    )
+
+
+def adb_input_text(serial: str, text: str) -> None:
+    subprocess.run(
+        [
+            "adb",
+            "-s",
+            serial,
+            "shell",
+            "input",
+            "text",
+            normalize_text_for_adb_input(text),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 def contains_confirmation_controls(ui_state) -> bool:
@@ -302,7 +342,24 @@ async def main() -> int:
         typed = await driver.input_text(message, clear=True)
         print(f"Attempt {attempt}: input_text returned {typed}")
         await asyncio.sleep(0.3)
-        await driver.tap(send_button.center_x, send_button.center_y)
+
+        typed_state = await _get_state_snapshot(driver, serial)
+        if not contains_message_in_input_field(typed_state, message):
+            print(
+                "input_text did not populate the Flutter input field; "
+                "falling back to adb shell input text",
+            )
+            adb_input_text(serial, message)
+            await asyncio.sleep(0.6)
+            typed_state = await _get_state_snapshot(driver, serial)
+
+        current_send_button = find_send_button(typed_state)
+        print(
+            f"Attempt {attempt}: using send button index={current_send_button.index} "
+            f"at ({current_send_button.center_x}, {current_send_button.center_y})",
+        )
+
+        await driver.tap(current_send_button.center_x, current_send_button.center_y)
         await asyncio.sleep(1.5)
 
         current_state = await _get_state_snapshot(driver, serial)

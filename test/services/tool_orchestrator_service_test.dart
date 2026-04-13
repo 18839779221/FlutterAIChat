@@ -2,6 +2,7 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/trace/chat_trace_event.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
+import 'package:ai_chat/models/tool/tool_policy.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/file_tools/file_tool_budget_service.dart';
@@ -58,6 +59,45 @@ void main() {
         ToolInvocationStatus.awaitingConfirmation,
       );
       expect(result.toolInvocation!.requiresConfirmation, isTrue);
+      expect(result.toolAccess, isNotNull);
+      expect(result.toolAccess!.executionPolicyLabel, 'require_confirmation');
+    });
+
+    test('returns blocked result with shared policy metadata', () async {
+      final service = await _createService(
+        runtimeRegistry: ToolRuntimeRegistry(
+          handlers: [
+            _FakeReminderToolHandler(),
+          ],
+        ),
+        blockedToolNames: const {'create_reminder'},
+      );
+
+      final result = await service.executeToolInvocation(
+        groupId: 1,
+        invocation: const ToolInvocation(
+          toolName: 'create_reminder',
+          arguments: {
+            'title': '交周报',
+            'dueAt': '2026-03-31T20:00:00+08:00',
+          },
+          status: ToolInvocationStatus.running,
+          summary: '准备执行工具：创建提醒',
+          requiresConfirmation: false,
+        ),
+      );
+
+      expect(result.toolAccess, isNotNull);
+      expect(result.toolAccess!.executionDecision, ToolPolicyDecision.blocked);
+      expect(result.toolAccess!.isVisibleToPlanner, isFalse);
+      expect(result.toolResult, isNotNull);
+      expect(result.toolResult!.status, ToolExecutionStatus.failure);
+      expect(result.toolResult!.executionPolicy, 'blocked');
+      expect(
+        result.toolResult!.toolAccess?['executionPolicy'],
+        'blocked',
+      );
+      expect(result.toolInvocation!.status, ToolInvocationStatus.cancelled);
     });
 
     test('executes runtime handler and builds structured context', () async {
@@ -88,6 +128,11 @@ void main() {
 
       expect(result.toolResult, isNotNull);
       expect(result.toolResult!.toolName, 'share_result');
+      expect(result.toolResult!.executionPolicy, 'require_confirmation');
+      expect(
+        result.toolResult!.toolAccess?['executionPolicy'],
+        'require_confirmation',
+      );
       expect(result.additionalContextMessages.single.text,
           contains('分享状态：success'));
 
@@ -249,6 +294,40 @@ void main() {
 
       await tempDirectory.delete(recursive: true);
     });
+
+    test('requires tool policy service before resolving runtime tool access',
+        () async {
+      final service = ToolOrchestratorService(
+        runtimeRegistry: ToolRuntimeRegistry(
+          handlers: [
+            _FakeShareToolHandler(),
+          ],
+        ),
+      );
+
+      await expectLater(
+        () => service.executeToolInvocation(
+          groupId: 1,
+          invocation: const ToolInvocation(
+            toolName: 'share_result',
+            arguments: {
+              'text': '这是一段要分享的内容',
+              'subject': '分享标题',
+            },
+            status: ToolInvocationStatus.running,
+            summary: '准备执行工具：分享结果',
+            requiresConfirmation: false,
+          ),
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains('toolPolicyService is required'),
+          ),
+        ),
+      );
+    });
   });
 }
 
@@ -256,8 +335,11 @@ Future<ToolOrchestratorService> _createService({
   required ToolRuntimeRegistry runtimeRegistry,
   ChatTraceRecorder? traceRecorder,
   ToolHostAdapters hostAdapters = const ToolHostAdapters(),
+  Set<String> blockedToolNames = const {},
 }) async {
-  SharedPreferences.setMockInitialValues({});
+  SharedPreferences.setMockInitialValues({
+    if (blockedToolNames.isNotEmpty) 'tool.blocked_names': blockedToolNames.toList(),
+  });
   final preferences = await SharedPreferences.getInstance();
   return ToolOrchestratorService(
     runtimeRegistry: runtimeRegistry,

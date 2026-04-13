@@ -539,6 +539,90 @@ void main() {
       expect(client.lastRequestBody?['previous_response_id'], 'resp_prev');
     });
 
+    test('chat completions decision preserves duplicate multi-tool calls as parsed',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'role': 'assistant',
+                  'tool_calls': [
+                    {
+                      'id': 'call_1',
+                      'type': 'function',
+                      'function': {
+                        'name': 'search_chat_history',
+                        'arguments': jsonEncode({
+                          'query': '数据库版本',
+                          'maxResults': 5,
+                        }),
+                      },
+                    },
+                    {
+                      'id': 'call_2',
+                      'type': 'function',
+                      'function': {
+                        'name': 'search_chat_history',
+                        'arguments': jsonEncode({
+                          'query': '数据库版本',
+                          'maxResults': 5,
+                        }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '查数据库版本并继续下一步', role: MessageRole.user),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        availableTools: const [
+          PlannerToolOption(
+            name: 'search_chat_history',
+            description: '搜索聊天历史',
+            inputSchema: {
+              'type': 'object',
+              'properties': {
+                'query': {'type': 'string'},
+                'maxResults': {'type': 'number'},
+              },
+              'required': ['query'],
+            },
+          ),
+        ],
+      );
+
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, hasLength(2));
+      expect(
+        decision.toolCalls[0].toolName,
+        'search_chat_history',
+      );
+      expect(
+        decision.toolCalls[1].toolName,
+        'search_chat_history',
+      );
+      expect(
+        decision.toolCalls[0].arguments,
+        decision.toolCalls[1].arguments,
+      );
+    });
+
     test('chat completions decision does not carry responses continuation id',
         () async {
       final client = _RecordingHttpClient(

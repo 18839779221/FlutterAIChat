@@ -1,4 +1,6 @@
 import '../models/chat_message.dart';
+import '../models/tool/tool_access_snapshot.dart';
+import '../models/tool/tool_definition.dart';
 import '../models/tool/tool_policy.dart';
 import '../models/tool/tool_invocation.dart';
 import '../models/tool/tool_result.dart';
@@ -55,11 +57,10 @@ class ToolOrchestratorService {
     final toolDefinition = runtimeHandler.definition;
     final alreadyConfirmed =
         invocation.status == ToolInvocationStatus.awaitingConfirmation;
-    final policyDecision =
-        await _toolPolicyService?.resolveExecutionMode(toolDefinition) ??
-            ToolPolicyDecision.autoRun;
+    final toolAccess = await _resolveToolAccess(toolDefinition);
     if (!alreadyConfirmed &&
-        policyDecision == ToolPolicyDecision.requireConfirmation) {
+        toolAccess.executionDecision ==
+            ToolPolicyDecision.requireConfirmation) {
       Logger.i(
         _tag,
         'tool requires confirmation before execution tool=${invocation.toolName}',
@@ -70,23 +71,27 @@ class ToolOrchestratorService {
           summary: '请确认执行工具：${toolDefinition.title}',
           requiresConfirmation: true,
         ),
+        toolAccess: toolAccess,
         toolResult: null,
         additionalContextMessages: const [],
       );
     }
-    if (policyDecision == ToolPolicyDecision.blocked) {
+    if (toolAccess.executionDecision == ToolPolicyDecision.blocked) {
       Logger.w(
         _tag,
         'tool execution blocked by policy tool=${invocation.toolName}',
       );
-      final failureResult = ToolResult(
-        toolName: invocation.toolName,
-        status: ToolExecutionStatus.failure,
-        summary: '工具执行被策略阻止',
-        errorMessage: 'tool_blocked',
-        data: {
-          'reason': 'tool_blocked',
-        },
+      final failureResult = _attachToolAccess(
+        ToolResult(
+          toolName: invocation.toolName,
+          status: ToolExecutionStatus.failure,
+          summary: '工具执行被策略阻止',
+          errorMessage: 'tool_blocked',
+          data: {
+            'reason': 'tool_blocked',
+          },
+        ),
+        toolAccess,
       );
       return ToolPreparationResult(
         toolInvocation: invocation.copyWith(
@@ -94,6 +99,7 @@ class ToolOrchestratorService {
           summary: '工具执行已阻止：${toolDefinition.title}',
           requiresConfirmation: false,
         ),
+        toolAccess: toolAccess,
         toolResult: failureResult,
         additionalContextMessages: const [],
       );
@@ -105,14 +111,17 @@ class ToolOrchestratorService {
       now: DateTime.now(),
     );
     if (!normalizedArguments.isValid) {
-      final failureResult = ToolResult(
-        toolName: invocation.toolName,
-        status: ToolExecutionStatus.failure,
-        summary: normalizedArguments.errorSummary ?? '工具执行失败：参数无效',
-        errorMessage: normalizedArguments.errorCode ?? 'invalid_arguments',
-        data: {
-          'reason': normalizedArguments.errorCode ?? 'invalid_arguments',
-        },
+      final failureResult = _attachToolAccess(
+        ToolResult(
+          toolName: invocation.toolName,
+          status: ToolExecutionStatus.failure,
+          summary: normalizedArguments.errorSummary ?? '工具执行失败：参数无效',
+          errorMessage: normalizedArguments.errorCode ?? 'invalid_arguments',
+          data: {
+            'reason': normalizedArguments.errorCode ?? 'invalid_arguments',
+          },
+        ),
+        toolAccess,
       );
       Logger.w(
         _tag,
@@ -135,6 +144,7 @@ class ToolOrchestratorService {
           summary: '正在执行工具：${toolDefinition.title}',
           requiresConfirmation: false,
         ),
+        toolAccess: toolAccess,
         toolResult: failureResult,
         additionalContextMessages: const [],
       );
@@ -152,7 +162,10 @@ class ToolOrchestratorService {
       _tag,
       'tool normalized arguments tool=${invocation.toolName} args=${normalizedArguments.normalizedArguments}',
     );
-    final toolResult = await runtimeHandler.execute(executionContext);
+    final toolResult = _attachToolAccess(
+      await runtimeHandler.execute(executionContext),
+      toolAccess,
+    );
     Logger.i(
       _tag,
       'tool execution finished tool=${invocation.toolName} status=${toolResult.status.name} summary=${toolResult.summary}',
@@ -194,6 +207,7 @@ class ToolOrchestratorService {
         summary: '正在执行工具：${toolDefinition.title}',
         requiresConfirmation: false,
       ),
+      toolAccess: toolAccess,
       toolResult: toolResult,
       additionalContextMessages: contextMessages,
     );
@@ -216,6 +230,31 @@ class ToolOrchestratorService {
       status: status,
       summary: summary,
       data: data,
+    );
+  }
+
+  Future<ToolAccessSnapshot> _resolveToolAccess(ToolDefinition tool) async {
+    final toolPolicyService = _toolPolicyService;
+    if (toolPolicyService == null) {
+      throw StateError(
+        'toolPolicyService is required when runtime resolves tool access',
+      );
+    }
+    return toolPolicyService.resolveToolAccess(tool);
+  }
+
+  ToolResult _attachToolAccess(
+    ToolResult result,
+    ToolAccessSnapshot toolAccess,
+  ) {
+    return ToolResult(
+      toolName: result.toolName,
+      status: result.status,
+      summary: result.summary,
+      data: result.data,
+      errorMessage: result.errorMessage,
+      executionPolicy: toolAccess.executionPolicyLabel,
+      toolAccess: toolAccess.toJson(),
     );
   }
 }
