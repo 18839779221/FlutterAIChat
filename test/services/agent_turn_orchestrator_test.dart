@@ -3,7 +3,12 @@ import 'dart:collection';
 
 import 'package:ai_chat/models/agent/agent_action.dart';
 import 'package:ai_chat/models/agent/agent_loop_limits.dart';
+import 'package:ai_chat/models/agent/model_tool_call.dart';
+import 'package:ai_chat/models/agent/model_turn_decision.dart';
+import 'package:ai_chat/models/agent/planner_tool_choice.dart';
+import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/agent/stop_verification_result.dart';
+import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -13,6 +18,7 @@ import 'package:ai_chat/models/tool/tool_call.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
+import 'package:ai_chat/repositories/chat_turn_step_repository.dart';
 import 'package:ai_chat/services/agent_planner_service.dart';
 import 'package:ai_chat/services/agent_turn_orchestrator.dart';
 import 'package:ai_chat/services/chat_service.dart';
@@ -25,7 +31,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('AgentTurnOrchestrator', () {
-    test('runs tool call, records tool result, then streams final answer', () async {
+    test('runs tool call, records tool result, then streams final answer',
+        () async {
       final eventRepository = _InMemoryChatEventRepository();
       final turnRepository = _InMemoryChatTurnRepository();
       final turnId = await turnRepository.createTurn(
@@ -45,8 +52,12 @@ void main() {
               toolName: 'search_chat_history',
               arguments: {'query': '数据库'},
             ),
+            diagnosticCode: 'planner_action_call_tool',
           ),
-          const AgentAction.respond('根据工具结果生成最终回答'),
+          const AgentAction.respond(
+            '根据工具结果生成最终回答',
+            diagnosticCode: 'planner_action_respond',
+          ),
         ]),
         turnRepository: turnRepository,
         eventRepository: eventRepository,
@@ -73,7 +84,8 @@ void main() {
             ),
             additionalContextMessages: [
               ChatMessage(
-                text: '已找到数据库版本是 7',
+                text:
+                    '以下是工具 `search_chat_history` 的执行结果，请结合这些信息回答用户。\n状态：success\n查询词：数据库\n命中历史消息：\n- [assistant] 数据库版本是 7',
                 role: MessageRole.system,
                 status: MessageStatus.completed,
               ),
@@ -83,25 +95,60 @@ void main() {
         limits: const AgentLoopLimits(maxIterations: 4),
       );
 
-      final emitted = await orchestrator.runTurn(
-        turn: turn,
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
-      ).toList();
+      final emitted = await orchestrator
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          )
+          .toList();
 
       expect(
         emitted.map((event) => event.eventType),
         containsAllInOrder([
           ChatEventType.userMessage,
+          ChatEventType.turnStatus,
           ChatEventType.assistantToolCall,
           ChatEventType.toolExecutionStarted,
           ChatEventType.toolResult,
+          ChatEventType.turnStatus,
           ChatEventType.assistantTextDelta,
           ChatEventType.assistantTextDelta,
           ChatEventType.assistantTextFinal,
           ChatEventType.finalAnswer,
         ]),
       );
-      expect((await turnRepository.getTurn(turnId))!.status, ChatTurnStatus.completed);
+      expect((await turnRepository.getTurn(turnId))!.status,
+          ChatTurnStatus.completed);
+      final turnStatusContents = emitted
+          .where((event) => event.eventType == ChatEventType.turnStatus)
+          .map((event) => event.content)
+          .toList();
+      expect(
+        turnStatusContents,
+        containsAll([
+          'planner_action_call_tool:search_chat_history',
+          'planner_action_respond',
+        ]),
+      );
+      final toolCallEvent = emitted.firstWhere(
+        (event) => event.eventType == ChatEventType.assistantToolCall,
+      );
+      expect(toolCallEvent.content, '准备执行工具：搜索聊天记录');
+      expect(toolCallEvent.payloadJson?['toolName'], 'search_chat_history');
+      expect(toolCallEvent.payloadJson?['status'], 'proposed');
+      expect(toolCallEvent.payloadJson?['summary'], '准备执行工具：搜索聊天记录');
+      final executionStartedEvent = emitted.firstWhere(
+        (event) => event.eventType == ChatEventType.toolExecutionStarted,
+      );
+      expect(executionStartedEvent.content, '正在执行工具：搜索历史');
+      expect(executionStartedEvent.payloadJson?['toolName'],
+          'search_chat_history');
+      expect(executionStartedEvent.payloadJson?['status'], 'running');
+      final toolResultEvent = emitted.firstWhere(
+        (event) => event.eventType == ChatEventType.toolResult,
+      );
+      expect(toolResultEvent.content, '已找到数据库版本是 7');
+      expect(toolResultEvent.content, isNot(contains('命中历史消息')));
     });
 
     test('pauses turn when tool requires confirmation', () async {
@@ -132,8 +179,8 @@ void main() {
         stopVerifierService: _AlwaysStopVerifier(),
         chatService: _FakeChatService(chunks: const []),
         toolCallService: _FakeToolCallService(
-          executeResult: ToolPreparationResult(
-            toolInvocation: const ToolInvocation(
+          executeResult: const ToolPreparationResult(
+            toolInvocation: ToolInvocation(
               toolName: 'create_reminder',
               arguments: {'title': '交周报'},
               status: ToolInvocationStatus.awaitingConfirmation,
@@ -141,19 +188,23 @@ void main() {
               requiresConfirmation: true,
             ),
             toolResult: null,
-            additionalContextMessages: const [],
+            additionalContextMessages: [],
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
       );
 
-      final emitted = await orchestrator.runTurn(
-        turn: turn,
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
-      ).toList();
+      final emitted = await orchestrator
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          )
+          .toList();
 
-      expect(emitted.map((event) => event.eventType), contains(ChatEventType.assistantToolConfirmation));
-      expect((await turnRepository.getTurn(2))!.status, ChatTurnStatus.awaitingToolConfirmation);
+      expect(emitted.map((event) => event.eventType),
+          contains(ChatEventType.assistantToolConfirmation));
+      expect((await turnRepository.getTurn(2))!.status,
+          ChatTurnStatus.awaitingToolConfirmation);
     });
 
     test('fails turn when tool execution keeps failing beyond limit', () async {
@@ -190,36 +241,41 @@ void main() {
         stopVerifierService: _AlwaysStopVerifier(),
         chatService: _FakeChatService(chunks: const []),
         toolCallService: _FakeToolCallService(
-          executeResult: ToolPreparationResult(
-            toolInvocation: const ToolInvocation(
+          executeResult: const ToolPreparationResult(
+            toolInvocation: ToolInvocation(
               toolName: 'search_chat_history',
               arguments: {'query': '数据库'},
               status: ToolInvocationStatus.running,
               summary: '正在执行工具：搜索历史',
               requiresConfirmation: false,
             ),
-            toolResult: const ToolResult(
+            toolResult: ToolResult(
               toolName: 'search_chat_history',
               status: ToolExecutionStatus.failure,
               summary: '搜索失败',
               errorMessage: 'search_failed',
             ),
-            additionalContextMessages: const [],
+            additionalContextMessages: [],
           ),
         ),
-        limits: const AgentLoopLimits(maxIterations: 4, maxConsecutiveFailures: 1),
+        limits:
+            const AgentLoopLimits(maxIterations: 4, maxConsecutiveFailures: 1),
       );
 
-      final emitted = await orchestrator.runTurn(
-        turn: turn,
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
-      ).toList();
+      final emitted = await orchestrator
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          )
+          .toList();
 
-      expect(emitted.map((event) => event.eventType), contains(ChatEventType.toolError));
+      expect(emitted.map((event) => event.eventType),
+          contains(ChatEventType.toolError));
       expect((await turnRepository.getTurn(3))!.status, ChatTurnStatus.failed);
     });
 
-    test('resumes awaiting confirmation turn, executes tool, then streams final answer',
+    test(
+        'resumes awaiting confirmation turn, executes tool, then streams final answer',
         () async {
       final eventRepository = _InMemoryChatEventRepository();
       final turnRepository = _InMemoryChatTurnRepository();
@@ -252,20 +308,20 @@ void main() {
           chunks: const ['提醒', '已创建'],
         ),
         toolCallService: _FakeToolCallService(
-          executeResult: ToolPreparationResult(
-            toolInvocation: const ToolInvocation(
+          executeResult: const ToolPreparationResult(
+            toolInvocation: ToolInvocation(
               toolName: 'create_reminder',
               arguments: {'title': '交周报'},
               status: ToolInvocationStatus.running,
               summary: '正在执行工具：创建提醒',
               requiresConfirmation: false,
             ),
-            toolResult: const ToolResult(
+            toolResult: ToolResult(
               toolName: 'create_reminder',
               status: ToolExecutionStatus.success,
               summary: '已创建提醒：交周报',
             ),
-            additionalContextMessages: const [],
+            additionalContextMessages: [],
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
@@ -297,10 +353,12 @@ void main() {
           ChatEventType.finalAnswer,
         ]),
       );
-      expect((await turnRepository.getTurn(4))!.status, ChatTurnStatus.completed);
+      expect(
+          (await turnRepository.getTurn(4))!.status, ChatTurnStatus.completed);
     });
 
-    test('stops turn with max_iterations_reached when stop verifier keeps rejecting',
+    test(
+        'stops turn with max_iterations_reached when stop verifier keeps rejecting',
         () async {
       final eventRepository = _InMemoryChatEventRepository();
       final turnRepository = _InMemoryChatTurnRepository();
@@ -332,10 +390,12 @@ void main() {
         limits: const AgentLoopLimits(maxIterations: 1),
       );
 
-      final emitted = await orchestrator.runTurn(
-        turn: turn,
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
-      ).toList();
+      final emitted = await orchestrator
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          )
+          .toList();
 
       expect(
         emitted.map((event) => event.eventType),
@@ -349,14 +409,18 @@ void main() {
       expect(
         emitted.last,
         isA<ChatEvent>()
-            .having((event) => event.eventType, 'eventType', ChatEventType.turnStatus)
-            .having((event) => event.content, 'content', 'max_iterations_reached'),
+            .having((event) => event.eventType, 'eventType',
+                ChatEventType.turnStatus)
+            .having(
+                (event) => event.content, 'content', 'max_iterations_reached'),
       );
       expect((await turnRepository.getTurn(5))!.status, ChatTurnStatus.failed);
-      expect((await turnRepository.getTurn(5))!.errorMessage, 'max_iterations_reached');
+      expect((await turnRepository.getTurn(5))!.errorMessage,
+          'max_iterations_reached');
     });
 
-    test('pauses on a later tool after an earlier tool already succeeded', () async {
+    test('pauses on a later tool after an earlier tool already succeeded',
+        () async {
       final eventRepository = _InMemoryChatEventRepository();
       final turnRepository = _InMemoryChatTurnRepository();
       final turn = ChatTurn(
@@ -411,8 +475,8 @@ void main() {
               ),
             ],
           ),
-          ToolPreparationResult(
-            toolInvocation: const ToolInvocation(
+          const ToolPreparationResult(
+            toolInvocation: ToolInvocation(
               toolName: 'create_reminder',
               arguments: {'title': '同步 schema 变更'},
               status: ToolInvocationStatus.awaitingConfirmation,
@@ -420,16 +484,18 @@ void main() {
               requiresConfirmation: true,
             ),
             toolResult: null,
-            additionalContextMessages: const [],
+            additionalContextMessages: [],
           ),
         ]),
         limits: const AgentLoopLimits(maxIterations: 4),
       );
 
-      final emitted = await orchestrator.runTurn(
-        turn: turn,
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
-      ).toList();
+      final emitted = await orchestrator
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          )
+          .toList();
 
       expect(
         emitted.map((event) => event.eventType),
@@ -442,18 +508,388 @@ void main() {
           ChatEventType.assistantToolConfirmation,
         ]),
       );
-      expect((await turnRepository.getTurn(6))!.status, ChatTurnStatus.awaitingToolConfirmation);
+      expect((await turnRepository.getTurn(6))!.status,
+          ChatTurnStatus.awaitingToolConfirmation);
       expect((await turnRepository.getTurn(6))!.toolCallCount, 1);
+    });
+
+    test(
+        'records planner request failure as turn status before falling back to final answer',
+        () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      final turn = ChatTurn(
+        id: 7,
+        groupId: 1,
+        status: ChatTurnStatus.running,
+        userInput: '帮我联网查最新进展',
+      );
+      await turnRepository.createTurn(turn);
+
+      final orchestrator = AgentTurnOrchestrator(
+        plannerService: _FakePlannerService([
+          const AgentAction.respond(
+            '抱歉，我暂时无法规划下一步动作，请直接重试。',
+            diagnosticCode: 'planner_request_failed',
+          ),
+        ]),
+        turnRepository: turnRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        stopVerifierService: _AlwaysStopVerifier(),
+        chatService: _FakeChatService(
+          chunks: const ['最终回答'],
+        ),
+        toolCallService: _FakeToolCallService(
+          executeResult: const ToolPreparationResult.noTool(),
+        ),
+        limits: const AgentLoopLimits(maxIterations: 4),
+      );
+
+      final emitted = await orchestrator
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          )
+          .toList();
+
+      expect(
+        emitted.map((event) => event.eventType),
+        containsAllInOrder([
+          ChatEventType.userMessage,
+          ChatEventType.turnStatus,
+          ChatEventType.assistantTextDelta,
+          ChatEventType.assistantTextFinal,
+          ChatEventType.finalAnswer,
+        ]),
+      );
+      expect(
+        emitted
+            .where((event) => event.eventType == ChatEventType.turnStatus)
+            .map((event) => event.content),
+        contains('planner_request_failed'),
+      );
+    });
+
+    test(
+        'passes compact tool summary into the next planner iteration transcript',
+        () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          id: 8,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '帮我联网搜索 Claude 最新进展',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+      final plannerService = _FakePlannerService([
+        const AgentAction.callTool(
+          ToolCall(
+            toolName: 'web_search',
+            arguments: {'query': 'Claude latest news'},
+          ),
+          diagnosticCode: 'planner_action_call_tool',
+        ),
+        const AgentAction.respond(
+          '基于搜索结果总结',
+          diagnosticCode: 'planner_action_respond',
+        ),
+      ]);
+
+      final orchestrator = AgentTurnOrchestrator(
+        plannerService: plannerService,
+        turnRepository: turnRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        stopVerifierService: _AlwaysStopVerifier(),
+        chatService: _FakeChatService(
+          chunks: const ['最终回答'],
+        ),
+        toolCallService: _FakeToolCallService(
+          executeResult: ToolPreparationResult(
+            toolInvocation: const ToolInvocation(
+              toolName: 'web_search',
+              arguments: {'query': 'Claude latest news'},
+              status: ToolInvocationStatus.running,
+              summary: '正在执行工具：联网搜索',
+              requiresConfirmation: false,
+            ),
+            toolResult: const ToolResult(
+              toolName: 'web_search',
+              status: ToolExecutionStatus.success,
+              summary: '已执行联网搜索',
+              data: {
+                'query': 'Claude latest news',
+                'results': [
+                  {
+                    'title': 'Claude 3.7 Sonnet announced',
+                    'snippet': 'Anthropic introduced a hybrid reasoning model.',
+                    'url': 'https://example.com/claude-3-7',
+                    'source': 'example.com',
+                  },
+                ],
+              },
+            ),
+            additionalContextMessages: [
+              ChatMessage(
+                text:
+                    '以下是工具 `web_search` 的执行结果，请结合这些信息回答用户。\n状态：success\n查询词：Claude latest news\n联网搜索结果：\n- [example.com] Claude 3.7 Sonnet announced\n  摘要：Anthropic introduced a hybrid reasoning model.\n  链接：https://example.com/claude-3-7',
+                role: MessageRole.system,
+                status: MessageStatus.completed,
+              ),
+            ],
+          ),
+        ),
+        limits: const AgentLoopLimits(maxIterations: 4),
+      );
+
+      await orchestrator
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          )
+          .toList();
+
+      expect(plannerService.capturedTranscripts, hasLength(2));
+      final toolResultContent = plannerService.capturedTranscripts[1]
+          .where((event) => event.eventType == ChatEventType.toolResult)
+          .single
+          .content;
+      expect(toolResultContent, '已执行联网搜索');
+      expect(toolResultContent, isNot(contains('Claude 3.7 Sonnet announced')));
+      expect(
+        toolResultContent,
+        isNot(contains('Anthropic introduced a hybrid reasoning model.')),
+      );
+    });
+
+    test(
+        'executes multiple provider-native tool calls and sends ledger summary',
+        () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      final stepRepository = _InMemoryChatTurnStepRepository();
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          id: 9,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '先从聊天记录里找出数据库版本和发版时间，保存成笔记，再提醒我今晚 8 点同步给测试同学',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+      final plannerService = _NativeDecisionPlannerService([
+        const ModelTurnDecision(
+          toolCalls: [
+            ModelToolCall(
+              providerCallId: 'call_1',
+              toolName: 'search_chat_history',
+              arguments: {'query': '数据库版本 发版时间'},
+              sequence: 1,
+            ),
+            ModelToolCall(
+              providerCallId: 'call_2',
+              toolName: 'save_note',
+              arguments: {
+                'title': '数据库版本确认',
+                'content': '数据库版本 7，发版时间 2026-04-12 10:00',
+              },
+              sequence: 2,
+            ),
+            ModelToolCall(
+              providerCallId: 'call_3',
+              toolName: 'create_reminder',
+              arguments: {
+                'title': '同步数据库版本确认给测试同学',
+                'dueAt': '2026-04-13T20:00:00+08:00',
+              },
+              sequence: 3,
+            ),
+          ],
+          assistantMessage: null,
+          providerState: {'response_id': 'resp_1'},
+          isTerminal: false,
+        ),
+        const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: '全部步骤已完成，请整理最终答复',
+          providerState: {'response_id': 'resp_2'},
+          isTerminal: true,
+        ),
+      ]);
+      final chatService = _FakeChatService(
+        chunks: const ['最终回答'],
+      );
+
+      final orchestrator = AgentTurnOrchestrator(
+        plannerService: plannerService,
+        turnRepository: turnRepository,
+        turnStepRepository: stepRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        stopVerifierService: _AlwaysStopVerifier(),
+        chatService: chatService,
+        toolCallService: _SequencedToolCallService([
+          ToolPreparationResult(
+            toolInvocation: const ToolInvocation(
+              toolName: 'search_chat_history',
+              arguments: {'query': '数据库版本 发版时间'},
+              status: ToolInvocationStatus.running,
+              summary: '正在执行工具：搜索历史',
+              requiresConfirmation: false,
+            ),
+            toolResult: const ToolResult(
+              toolName: 'search_chat_history',
+              status: ToolExecutionStatus.success,
+              summary: '已执行：搜索历史记录',
+              data: {
+                'query': '数据库版本 发版时间',
+                'matchCount': 1,
+                'matches': [
+                  {
+                    'text': '数据库版本是 7，发版时间是 2026-04-12 10:00',
+                    'role': 'assistant',
+                    'timestamp': '2026-04-12T10:00:00+08:00',
+                  },
+                ],
+              },
+            ),
+            additionalContextMessages: [
+              ChatMessage(
+                text:
+                    '以下是工具 `search_chat_history` 的执行结果，请结合这些信息回答用户。\n命中历史消息：数据库版本是 7，发版时间是 2026-04-12 10:00',
+                role: MessageRole.system,
+                status: MessageStatus.completed,
+              ),
+            ],
+          ),
+          const ToolPreparationResult(
+            toolInvocation: ToolInvocation(
+              toolName: 'save_note',
+              arguments: {
+                'title': '数据库版本确认',
+                'content': '数据库版本 7，发版时间 2026-04-12 10:00',
+              },
+              status: ToolInvocationStatus.running,
+              summary: '正在执行工具：保存笔记',
+              requiresConfirmation: false,
+            ),
+            toolResult: ToolResult(
+              toolName: 'save_note',
+              status: ToolExecutionStatus.success,
+              summary: '已保存笔记《数据库版本确认》',
+              data: {
+                'title': '数据库版本确认',
+                'folder': '默认',
+              },
+            ),
+            additionalContextMessages: [],
+          ),
+          const ToolPreparationResult(
+            toolInvocation: ToolInvocation(
+              toolName: 'create_reminder',
+              arguments: {
+                'title': '同步数据库版本确认给测试同学',
+                'dueAt': '2026-04-13T20:00:00+08:00',
+              },
+              status: ToolInvocationStatus.running,
+              summary: '正在执行工具：创建提醒',
+              requiresConfirmation: false,
+            ),
+            toolResult: ToolResult(
+              toolName: 'create_reminder',
+              status: ToolExecutionStatus.success,
+              summary: '已创建提醒：今晚 8 点同步给测试同学',
+              data: {
+                'title': '同步数据库版本确认给测试同学',
+                'dueAt': '2026-04-13T20:00:00+08:00',
+              },
+            ),
+            additionalContextMessages: [],
+          ),
+        ]),
+        limits: const AgentLoopLimits(maxIterations: 4),
+      );
+
+      final emitted = await orchestrator
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          )
+          .toList();
+
+      expect(plannerService.nativeDecisionCalls, 2);
+      expect(plannerService.legacyActionCalls, 0);
+      final toolResults = emitted
+          .where((event) => event.eventType == ChatEventType.toolResult)
+          .toList(growable: false);
+      expect(toolResults, hasLength(3));
+      expect(toolResults.map((event) => event.content), [
+        '已执行：搜索历史记录',
+        '已保存笔记《数据库版本确认》',
+        '已创建提醒：今晚 8 点同步给测试同学',
+      ]);
+      expect(
+        toolResults.map((event) => event.content).join('\n'),
+        isNot(contains('命中历史消息')),
+      );
+
+      final finalAnswerMessages =
+          chatService.capturedFinalAnswerMessages.single;
+      final finalAnswerPrompt =
+          finalAnswerMessages.map((message) => message.text).join('\n');
+      expect(finalAnswerPrompt, contains('本轮工具执行总结：'));
+      expect(finalAnswerPrompt, contains('1. search_chat_history'));
+      expect(finalAnswerPrompt, contains('2. save_note'));
+      expect(finalAnswerPrompt, contains('3. create_reminder'));
+      expect(finalAnswerPrompt, contains('"matchCount":1'));
+      expect(finalAnswerPrompt, contains('数据库版本确认'));
+      expect(finalAnswerPrompt, contains('数据库版本 7，发版时间 2026-04-12 10:00'));
+      expect(finalAnswerPrompt, isNot(contains('命中历史消息')));
+      expect(await stepRepository.listSteps(turnId), hasLength(3));
+
+      final persistedTurn = (await turnRepository.getTurn(turnId))!;
+      expect(
+        persistedTurn.providerStyle,
+        ChatTurnProviderStyle.openaiResponses,
+      );
+      expect(persistedTurn.modelName, 'gpt-5.4');
+      expect(
+        persistedTurn.providerStateJson,
+        containsPair('response_id', 'resp_2'),
+      );
     });
   });
 }
 
 class _FakePlannerService extends AgentPlannerService {
   final Queue<AgentAction> actions;
+  final List<List<ChatEvent>> capturedTranscripts = [];
 
   _FakePlannerService(List<AgentAction> actions)
       : actions = Queue<AgentAction>.from(actions),
         super(llm: _NoopBaseLLM());
+
+  @override
+  Future<ModelTurnDecision?> planNextDecision({
+    required ChatTurn turn,
+    required List<ChatEvent> transcript,
+    required List<ChatTurnStep> steps,
+    required ChatConfig config,
+    required AgentLoopLimits limits,
+  }) async {
+    capturedTranscripts.add(List<ChatEvent>.from(transcript));
+    return _decisionFromAction(actions.removeFirst());
+  }
 
   @override
   Future<AgentAction> planNextAction({
@@ -462,8 +898,76 @@ class _FakePlannerService extends AgentPlannerService {
     required ChatConfig config,
     required AgentLoopLimits limits,
   }) async {
-    return actions.removeFirst();
+    throw StateError('legacy planner path should not be used');
   }
+}
+
+class _NativeDecisionPlannerService extends AgentPlannerService {
+  final Queue<ModelTurnDecision> decisions;
+  int nativeDecisionCalls = 0;
+  int legacyActionCalls = 0;
+
+  _NativeDecisionPlannerService(List<ModelTurnDecision> decisions)
+      : decisions = Queue<ModelTurnDecision>.from(decisions),
+        super(llm: _NoopBaseLLM());
+
+  @override
+  Future<ModelTurnDecision?> planNextDecision({
+    required ChatTurn turn,
+    required List<ChatEvent> transcript,
+    required List<ChatTurnStep> steps,
+    required ChatConfig config,
+    required AgentLoopLimits limits,
+  }) async {
+    nativeDecisionCalls += 1;
+    final decision = decisions.removeFirst();
+    return decision.copyWith(
+      providerStyle:
+          decision.providerStyle ?? ChatTurnProviderStyle.openaiResponses,
+      modelName: decision.modelName ?? 'gpt-5.4',
+    );
+  }
+
+  @override
+  Future<AgentAction> planNextAction({
+    required ChatTurn turn,
+    required List<ChatEvent> transcript,
+    required ChatConfig config,
+    required AgentLoopLimits limits,
+  }) async {
+    legacyActionCalls += 1;
+    throw StateError('legacy planner path should not be used');
+  }
+}
+
+ModelTurnDecision _decisionFromAction(AgentAction action) {
+  if (action.type == AgentActionType.callTool && action.toolCall != null) {
+    return ModelTurnDecision(
+      toolCalls: [
+        ModelToolCall(
+          toolName: action.toolCall!.toolName,
+          arguments: action.toolCall!.arguments,
+          sequence: 1,
+        ),
+      ],
+      assistantMessage: null,
+      diagnosticCode: action.diagnosticCode ?? 'planner_action_call_tool',
+      providerState: const {},
+      providerStyle: null,
+      modelName: null,
+      isTerminal: false,
+    );
+  }
+
+  return ModelTurnDecision(
+    toolCalls: const [],
+    assistantMessage: action.response,
+    diagnosticCode: action.diagnosticCode ?? 'planner_action_respond',
+    providerState: const {},
+    providerStyle: null,
+    modelName: null,
+    isTerminal: true,
+  );
 }
 
 class _AlwaysStopVerifier extends StopVerifierService {
@@ -495,6 +999,7 @@ class _NeverStopVerifier extends StopVerifierService {
 
 class _FakeChatService extends ChatService {
   final List<String> chunks;
+  final List<List<ChatMessage>> capturedFinalAnswerMessages = [];
 
   _FakeChatService({required this.chunks}) : super(llm: _NoopBaseLLM());
 
@@ -503,6 +1008,7 @@ class _FakeChatService extends ChatService {
     required List<ChatMessage> messages,
     required ChatConfig config,
   }) async* {
+    capturedFinalAnswerMessages.add(List<ChatMessage>.from(messages));
     for (final chunk in chunks) {
       yield chunk;
     }
@@ -583,11 +1089,25 @@ class _InMemoryChatTurnRepository extends ChatTurnRepository {
   }
 
   @override
-  Future<void> markCompleted(int turnId, {String? stopReason}) async {
+  Future<void> incrementToolCallCount(int turnId, {int by = 1}) async {
+    final turn = turns[turnId]!;
+    turns[turnId] = turn.copyWith(
+      toolCallCount: turn.toolCallCount + by,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  @override
+  Future<void> markCompleted(
+    int turnId, {
+    String? stopReason,
+    String? finalResponseText,
+  }) async {
     final turn = turns[turnId]!;
     turns[turnId] = turn.copyWith(
       status: ChatTurnStatus.completed,
       stopReason: stopReason,
+      finalResponseText: finalResponseText,
       completedAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
@@ -609,6 +1129,89 @@ class _InMemoryChatTurnRepository extends ChatTurnRepository {
     turns[turnId] = turn.copyWith(
       iterationCount: turn.iterationCount + 1,
       updatedAt: DateTime.now(),
+    );
+  }
+
+  @override
+  Future<void> updateRuntimeState(
+    int turnId, {
+    ChatTurnProviderStyle? providerStyle,
+    String? modelName,
+    Map<String, dynamic>? providerStateJson,
+  }) async {
+    final turn = turns[turnId]!;
+    turns[turnId] = turn.copyWith(
+      providerStyle: providerStyle ?? turn.providerStyle,
+      modelName: modelName ?? turn.modelName,
+      providerStateJson: providerStateJson ?? turn.providerStateJson,
+      updatedAt: DateTime.now(),
+    );
+  }
+}
+
+class _InMemoryChatTurnStepRepository extends ChatTurnStepRepository {
+  final Map<int, ChatTurnStep> steps = {};
+
+  _InMemoryChatTurnStepRepository() : super(_NoopChatStorage());
+
+  @override
+  Future<int> createStep(ChatTurnStep step) async {
+    final id = step.id ?? steps.length + 1;
+    steps[id] = step.copyWith(id: id);
+    return id;
+  }
+
+  @override
+  Future<List<ChatTurnStep>> listSteps(int turnId) async {
+    final matching =
+        steps.values.where((step) => step.turnId == turnId).toList();
+    matching.sort((left, right) => left.stepIndex.compareTo(right.stepIndex));
+    return matching;
+  }
+
+  @override
+  Future<ChatTurnStep?> getStep(int id) async => steps[id];
+
+  @override
+  Future<void> markRunning(int stepId) async {
+    final step = steps[stepId]!;
+    steps[stepId] = step.copyWith(
+      status: ChatTurnStepStatus.running,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  @override
+  Future<void> markCompleted(
+    int stepId, {
+    required String resultSummary,
+    Map<String, dynamic>? resultJson,
+  }) async {
+    final step = steps[stepId]!;
+    steps[stepId] = step.copyWith(
+      status: ChatTurnStepStatus.completed,
+      resultSummary: resultSummary,
+      resultJson: resultJson ?? step.resultJson,
+      updatedAt: DateTime.now(),
+      completedAt: DateTime.now(),
+    );
+  }
+
+  @override
+  Future<void> markFailed(
+    int stepId, {
+    required String errorCode,
+    String? resultSummary,
+    Map<String, dynamic>? resultJson,
+  }) async {
+    final step = steps[stepId]!;
+    steps[stepId] = step.copyWith(
+      status: ChatTurnStepStatus.failed,
+      errorCode: errorCode,
+      resultSummary: resultSummary ?? step.resultSummary,
+      resultJson: resultJson ?? step.resultJson,
+      updatedAt: DateTime.now(),
+      completedAt: DateTime.now(),
     );
   }
 }
@@ -657,6 +1260,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
     required String toolName,
     required Map<String, dynamic> arguments,
     required String summary,
+    Map<String, dynamic>? payloadJson,
   }) async {
     return _append(
       turnId: turnId,
@@ -664,10 +1268,11 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
       eventType: ChatEventType.assistantToolCall,
       role: MessageRole.assistant,
       content: summary,
-      payloadJson: {
-        'toolName': toolName,
-        'arguments': arguments,
-      },
+      payloadJson: payloadJson ??
+          {
+            'toolName': toolName,
+            'arguments': arguments,
+          },
     );
   }
 
@@ -697,6 +1302,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
     required int turnId,
     required int groupId,
     required String content,
+    Map<String, dynamic>? payloadJson,
   }) async {
     return _append(
       turnId: turnId,
@@ -704,6 +1310,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
       eventType: ChatEventType.toolExecutionStarted,
       role: MessageRole.system,
       content: content,
+      payloadJson: payloadJson,
     );
   }
 
@@ -823,7 +1430,8 @@ class _NoopBaseLLM implements BaseLLM {
   Map<String, dynamic> get config => const {};
 
   @override
-  Stream<String> chatStream(List<ChatMessage> messages, ChatConfig config) async* {}
+  Stream<String> chatStream(
+      List<ChatMessage> messages, ChatConfig config) async* {}
 
   @override
   String getModelName(ChatConfig config) => 'noop';
@@ -832,7 +1440,27 @@ class _NoopBaseLLM implements BaseLLM {
   Future<String> planNextAction({
     required List<ChatMessage> messages,
     required ChatConfig config,
-  }) async => '{"action":"respond","response":"noop"}';
+  }) async =>
+      '{"action":"respond","response":"noop"}';
+
+  @override
+  Future<PlannerToolChoice?> planNextToolChoice({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+  }) async =>
+      null;
+
+  @override
+  Future<ModelTurnDecision?> planTurnDecision({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+    ChatTurnProviderStyle? providerStyle,
+    Map<String, dynamic>? providerState,
+    List<Map<String, dynamic>> providerContinuationItems = const [],
+  }) async =>
+      null;
 
   @override
   Future<String> structureSummaryCard(String sourceText) async => '{}';
@@ -881,6 +1509,12 @@ class _NoopChatStorage implements ChatStorage {
   Future<ChatTurn?> getTurn(int id) async => null;
 
   @override
+  Future<ChatTurnStep?> getTurnStep(int id) async => null;
+
+  @override
+  Future<List<ChatTurnStep>> getTurnSteps(int turnId) async => const [];
+
+  @override
   Future<int> insertEvent(ChatEvent event) => throw UnimplementedError();
 
   @override
@@ -892,6 +1526,9 @@ class _NoopChatStorage implements ChatStorage {
 
   @override
   Future<int> insertTurn(ChatTurn turn) => throw UnimplementedError();
+
+  @override
+  Future<int> insertTurnStep(ChatTurnStep step) => throw UnimplementedError();
 
   @override
   Future<bool> testDatabaseConnection() async => true;
@@ -933,4 +1570,7 @@ class _NoopChatStorage implements ChatStorage {
 
   @override
   Future<void> updateTurn(ChatTurn turn) => throw UnimplementedError();
+
+  @override
+  Future<void> updateTurnStep(ChatTurnStep step) => throw UnimplementedError();
 }

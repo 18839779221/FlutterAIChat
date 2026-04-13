@@ -1,10 +1,13 @@
 import 'package:ai_chat/database/database_helper.dart';
+import 'package:ai_chat/models/agent/model_turn_decision.dart';
+import 'package:ai_chat/models/agent/planner_tool_choice.dart';
+import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/response/structured_summary_card.dart';
-import 'package:ai_chat/models/tool/tool_definition.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/response_parser_service.dart';
@@ -253,7 +256,27 @@ class _NoopBaseLLM implements BaseLLM {
   Future<String> planNextAction({
     required List<ChatMessage> messages,
     required ChatConfig config,
-  }) async => '{"action":"respond","response":"stub"}';
+  }) async =>
+      '{"action":"respond","response":"stub"}';
+
+  @override
+  Future<PlannerToolChoice?> planNextToolChoice({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+  }) async =>
+      null;
+
+  @override
+  Future<ModelTurnDecision?> planTurnDecision({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+    ChatTurnProviderStyle? providerStyle,
+    Map<String, dynamic>? providerState,
+    List<Map<String, dynamic>> providerContinuationItems = const [],
+  }) async =>
+      null;
 
   @override
   String getModelName(ChatConfig config) => 'noop';

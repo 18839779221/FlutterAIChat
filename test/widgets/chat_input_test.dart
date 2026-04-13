@@ -64,4 +64,31 @@ void main() {
 
     expect(find.text('等待工具确认'), findsOneWidget);
   });
+
+  testWidgets('chat input shows planner hint while preparing', (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSendStateProvider.overrideWith(
+          (ref) => ChatSendStateNotifier()
+            ..update(
+              phase: ChatSendPhase.preparing,
+              isGenerating: false,
+            ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+
+    expect(find.text('正在规划下一步'), findsOneWidget);
+  });
 }

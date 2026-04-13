@@ -18,6 +18,30 @@ class TranscriptBuilderService {
     required ChatTurn turn,
     required List<ChatEvent> transcript,
   }) async {
+    return buildPlannerContextText(
+      turn: turn,
+      transcript: transcript,
+    );
+  }
+
+  /// Builds a compact planner-facing summary from the raw event transcript.
+  static String buildPlannerContextText({
+    required ChatTurn turn,
+    required List<ChatEvent> transcript,
+  }) {
+    final lines = <String>[
+      '用户目标：${turn.userInput}',
+    ];
+
+    final attemptedTools = transcript
+        .where((event) => event.eventType == ChatEventType.assistantToolCall)
+        .map((event) => event.payloadJson?['toolName'])
+        .whereType<String>()
+        .toList(growable: false);
+    if (attemptedTools.isNotEmpty) {
+      lines.add('已尝试工具：${attemptedTools.join(', ')}');
+    }
+
     final latestToolResult = transcript.lastWhere(
       (event) => event.eventType == ChatEventType.toolResult,
       orElse: () => ChatEvent(
@@ -27,13 +51,24 @@ class TranscriptBuilderService {
         eventType: ChatEventType.error,
       ),
     );
-
-    final lines = <String>[
-      '用户目标：${turn.userInput}',
-    ];
     if ((latestToolResult.content ?? '').isNotEmpty) {
-      lines.add('最新工具结果：${latestToolResult.content}');
+      lines.add('最近一次工具结果：${latestToolResult.content}');
     }
+
+    final latestToolError = transcript.lastWhere(
+      (event) => event.eventType == ChatEventType.toolError,
+      orElse: () => ChatEvent(
+        turnId: turn.id ?? 0,
+        groupId: turn.groupId,
+        sequence: 0,
+        eventType: ChatEventType.error,
+      ),
+    );
+    final latestToolErrorCode = latestToolError.status?.trim() ?? '';
+    if (latestToolErrorCode.isNotEmpty) {
+      lines.add('最近一次工具失败：$latestToolErrorCode');
+    }
+
     return lines.join('\n');
   }
 

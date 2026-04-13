@@ -43,7 +43,7 @@ class ChatBlockBuilder {
         turnId: currentTurnId,
         sequence: nextSequence,
       );
-      blocks.add(block);
+      _appendBlock(blocks, block);
 
       if (block.type == AssistantTurnBlockType.analysis) {
         lastAnalysisIndexByTurn[currentTurnId] = blocks.length - 1;
@@ -240,5 +240,63 @@ class ChatBlockBuilder {
       'requiresConfirmation': step.requiresConfirmation,
       'details': step.details,
     };
+  }
+
+  void _appendBlock(
+    List<AssistantTurnBlock> blocks,
+    AssistantTurnBlock block,
+  ) {
+    if (block.type != AssistantTurnBlockType.toolWorkflow || blocks.isEmpty) {
+      blocks.add(block);
+      return;
+    }
+
+    final previous = blocks.last;
+    if (previous.type != AssistantTurnBlockType.toolWorkflow ||
+        previous.turnId != block.turnId) {
+      blocks.add(block);
+      return;
+    }
+
+    final previousSteps = (previous.payload?['steps'] as List?)
+            ?.whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList() ??
+        const <Map<String, dynamic>>[];
+    final nextSteps = (block.payload?['steps'] as List?)
+            ?.whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList() ??
+        const <Map<String, dynamic>>[];
+    if (previousSteps.isEmpty || nextSteps.isEmpty) {
+      blocks.add(block);
+      return;
+    }
+
+    final previousToolName = (previousSteps.last['toolName'] ?? '').toString();
+    final nextToolName = (nextSteps.first['toolName'] ?? '').toString();
+    if (previousToolName.isEmpty ||
+        nextToolName.isEmpty ||
+        previousToolName != nextToolName) {
+      blocks.add(block);
+      return;
+    }
+
+    blocks[blocks.length - 1] = previous.copyWith(
+      updatedAt: block.updatedAt,
+      status: block.status,
+      title: block.title,
+      text: block.text,
+      payload: {
+        ...?previous.payload,
+        ...?block.payload,
+        'sourceMessageId':
+            block.payload?['sourceMessageId'] ?? previous.payload?['sourceMessageId'],
+        'steps': [
+          ...previousSteps,
+          ...nextSteps,
+        ],
+      },
+    );
   }
 }

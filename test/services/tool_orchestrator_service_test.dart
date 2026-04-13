@@ -4,18 +4,62 @@ import 'package:ai_chat/models/tool/tool_definition.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
+import 'package:ai_chat/services/file_tools/file_tool_budget_service.dart';
+import 'package:ai_chat/services/file_tools/file_tool_discovery_service.dart';
+import 'package:ai_chat/services/file_tools/file_tool_host_adapters.dart';
+import 'package:ai_chat/services/file_tools/file_tool_path_policy.dart';
+import 'package:ai_chat/services/file_tools/file_tool_read_formatter.dart';
+import 'package:ai_chat/services/file_tools/file_tool_root_service.dart';
+import 'package:ai_chat/services/file_tools/file_tool_session_guard.dart';
 import 'package:ai_chat/services/tool_orchestrator_service.dart';
 import 'package:ai_chat/services/tool_policy_service.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
+import 'package:ai_chat/tools/adapters/tool_host_adapters.dart';
 import 'package:ai_chat/tools/core/tool_argument_resolution.dart';
 import 'package:ai_chat/tools/core/tool_execution_context.dart';
 import 'package:ai_chat/tools/core/tool_handler.dart';
 import 'package:ai_chat/tools/core/tool_runtime_registry.dart';
+import 'package:ai_chat/tools/handlers/read_tool_handler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io';
 
 void main() {
   group('ToolOrchestratorService.executeToolInvocation', () {
+    test('returns confirmation request before running high-risk tool',
+        () async {
+      final service = await _createService(
+        runtimeRegistry: ToolRuntimeRegistry(
+          handlers: [
+            _FakeShareToolHandler(),
+          ],
+        ),
+      );
+
+      final result = await service.executeToolInvocation(
+        groupId: 1,
+        invocation: const ToolInvocation(
+          toolName: 'share_result',
+          arguments: {
+            'text': '这是一段要分享的内容',
+            'subject': '分享标题',
+          },
+          status: ToolInvocationStatus.running,
+          summary: '准备执行工具：分享结果',
+          requiresConfirmation: false,
+        ),
+      );
+
+      expect(result.toolResult, isNull);
+      expect(result.additionalContextMessages, isEmpty);
+      expect(result.toolInvocation, isNotNull);
+      expect(
+        result.toolInvocation!.status,
+        ToolInvocationStatus.awaitingConfirmation,
+      );
+      expect(result.toolInvocation!.requiresConfirmation, isTrue);
+    });
+
     test('executes runtime handler and builds structured context', () async {
       final traceRecorder = ChatTraceRecorder();
       final service = await _createService(
@@ -44,7 +88,8 @@ void main() {
 
       expect(result.toolResult, isNotNull);
       expect(result.toolResult!.toolName, 'share_result');
-      expect(result.additionalContextMessages.single.text, contains('分享状态：success'));
+      expect(result.additionalContextMessages.single.text,
+          contains('分享状态：success'));
 
       final stages = traceRecorder
           .eventsForTurn('turn-tool-1')
@@ -131,7 +176,8 @@ void main() {
       expect(result.toolResult!.status, ToolExecutionStatus.success);
     });
 
-    test('returns failure result when normalized arguments are invalid', () async {
+    test('returns failure result when normalized arguments are invalid',
+        () async {
       final service = await _createService(
         runtimeRegistry: ToolRuntimeRegistry(
           handlers: [_InvalidNormalizeToolHandler()],
@@ -154,18 +200,69 @@ void main() {
       expect(result.toolResult!.errorMessage, 'invalid_query');
       expect(result.additionalContextMessages, isEmpty);
     });
+
+    test('passes host adapters through execution context for file tools',
+        () async {
+      final tempDirectory = await Directory.systemTemp.createTemp(
+        'tool-orchestrator-read-',
+      );
+      final rootService = FileToolRootService(
+        rootDirectory: Directory('${tempDirectory.path}/agent'),
+      );
+      await rootService.ensureReady();
+      await rootService.resolveDirectory('memories').create(recursive: true);
+      await File('${rootService.rootPath}/memories/demo.md')
+          .writeAsString('alpha\nbeta');
+
+      final service = await _createService(
+        runtimeRegistry: ToolRuntimeRegistry(
+          handlers: [ReadToolHandler()],
+        ),
+        hostAdapters: ToolHostAdapters(
+          fileTools: FileToolHostAdapters(
+            rootService: rootService,
+            pathPolicy: FileToolPathPolicy(rootService: rootService),
+            sessionGuard: FileToolSessionGuard(),
+            budgetService: const FileToolBudgetService(),
+            readFormatter: const FileToolReadFormatter(),
+            discoveryService: FileToolDiscoveryService(
+              rootService: rootService,
+              pathPolicy: FileToolPathPolicy(rootService: rootService),
+            ),
+          ),
+        ),
+      );
+
+      final result = await service.executeToolInvocation(
+        groupId: 1,
+        invocation: const ToolInvocation(
+          toolName: 'Read',
+          arguments: {'file_path': 'memories/demo.md'},
+          status: ToolInvocationStatus.running,
+          summary: '准备执行工具：读取文件',
+          requiresConfirmation: false,
+        ),
+      );
+
+      expect(result.toolResult?.status, ToolExecutionStatus.success);
+      expect(result.toolResult?.data['content'], contains('alpha'));
+
+      await tempDirectory.delete(recursive: true);
+    });
   });
 }
 
 Future<ToolOrchestratorService> _createService({
   required ToolRuntimeRegistry runtimeRegistry,
   ChatTraceRecorder? traceRecorder,
+  ToolHostAdapters hostAdapters = const ToolHostAdapters(),
 }) async {
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
   return ToolOrchestratorService(
     runtimeRegistry: runtimeRegistry,
     traceRecorder: traceRecorder,
+    hostAdapters: hostAdapters,
     toolPolicyService: ToolPolicyService(
       repository: AppSettingsRepository(
         preferences,

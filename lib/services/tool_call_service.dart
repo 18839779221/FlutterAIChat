@@ -4,6 +4,7 @@ import 'chat_trace_recorder.dart';
 import 'tool_executor.dart';
 import 'tool_orchestrator_service.dart';
 import 'tool_policy_service.dart';
+import '../tools/adapters/tool_host_adapters.dart';
 import '../tools/core/tool_runtime_registry.dart';
 import '../tools/default_tool_runtime_registry.dart';
 
@@ -14,7 +15,9 @@ class ToolPreparationResult {
   /// Final tool execution result once a tool has actually run.
   final ToolResult? toolResult;
 
-  /// Additional system messages that should be merged into the next LLM context.
+  /// Tool-handler-produced raw context kept for diagnostics and future adapters.
+  /// The orchestrator should not inject these messages verbatim into planner or
+  /// final-answer prompts.
   final List<ChatMessage> additionalContextMessages;
 
   const ToolPreparationResult({
@@ -37,12 +40,13 @@ class ToolCallService {
     required ToolExecutor toolExecutor,
     ToolPolicyService? toolPolicyService,
     ChatTraceRecorder? traceRecorder,
+    ToolHostAdapters hostAdapters = const ToolHostAdapters(),
   }) : _orchestrator = ToolOrchestratorService(
-          runtimeRegistry:
-              runtimeRegistry ??
+          runtimeRegistry: runtimeRegistry ??
               buildDefaultToolRuntimeRegistry(toolExecutor: toolExecutor),
           toolPolicyService: toolPolicyService,
           traceRecorder: traceRecorder,
+          hostAdapters: hostAdapters,
         );
 
   final ToolOrchestratorService _orchestrator;

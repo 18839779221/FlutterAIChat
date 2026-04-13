@@ -1,4 +1,6 @@
 import '../../models/chat_message.dart';
+import '../../models/tool/tool_argument_property.dart';
+import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
 import '../../services/tool_executor.dart';
 import '../core/tool_argument_resolution.dart';
@@ -23,6 +25,17 @@ class CreateCalendarEventToolHandler implements ToolHandler {
         name: 'create_calendar_event',
         title: '创建日历事件',
         description: '创建系统日历事件。',
+        descriptionForModel:
+            '当用户明确要求安排日程、创建日历事件或加入日历时使用。必须具备标题和开始时间；结束时间、地点、备注可选。该工具会写入系统日历，属于高风险写操作，需要确认。',
+        category: ToolCategory.productivity,
+        capabilities: [ToolCapability.calendarCreate],
+        whenToUse: [
+          '用户要求创建日程、加入日历、安排会议',
+        ],
+        whenNotToUse: [
+          '用户只是讨论计划，但没有要求实际创建日历事件',
+          '缺少可解析的开始时间',
+        ],
         parameters: {
           'title': 'string',
           'startAt': 'string',
@@ -30,6 +43,28 @@ class CreateCalendarEventToolHandler implements ToolHandler {
           'location': 'string?',
           'notes': 'string?',
         },
+        argumentSchema: ToolArgumentSchema(
+          properties: {
+            'title': ToolArgumentProperty.string(
+              description: '日历事件标题。',
+            ),
+            'startAt': ToolArgumentProperty.string(
+              description: '事件开始时间，建议使用 ISO 时间字符串或明确的日期时间。',
+              format: 'date-time',
+            ),
+            'endAt': ToolArgumentProperty.string(
+              description: '可选的结束时间。',
+              format: 'date-time',
+            ),
+            'location': ToolArgumentProperty.string(
+              description: '可选的地点信息。',
+            ),
+            'notes': ToolArgumentProperty.string(
+              description: '可选备注，用于补充议程细节。',
+            ),
+          },
+          required: ['title', 'startAt'],
+        ),
         requiresConfirmation: true,
         riskLevel: 'high',
       );
@@ -94,7 +129,8 @@ class CreateCalendarEventToolHandler implements ToolHandler {
       'title': title.trim(),
       'startAt': normalizedStartAt,
       if (normalizedEndAt != null) 'endAt': normalizedEndAt,
-      if (rawArguments['location'] is String) 'location': rawArguments['location'],
+      if (rawArguments['location'] is String)
+        'location': rawArguments['location'],
       if (rawArguments['notes'] is String) 'notes': rawArguments['notes'],
     });
   }

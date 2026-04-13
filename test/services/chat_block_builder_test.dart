@@ -125,5 +125,56 @@ void main() {
       expect(blocks.single.title, 'search_chat_history');
       expect(blocks.single.payload?['data']['matchCount'], 1);
     });
+
+    test('merges adjacent workflow messages for the same tool into one card', () {
+      final blocks = builder.buildAssistantBlocks(
+        messages: [
+          ChatMessage(
+            id: 7,
+            text: '帮我联网查最新 Claude 进展',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 3, 29, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 8,
+            text: '准备执行工具：联网搜索',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const {
+              'toolName': 'web_search',
+              'arguments': {'query': 'Claude latest'},
+              'status': 'proposed',
+              'summary': '准备执行工具：联网搜索',
+              'requiresConfirmation': false,
+            },
+            timestamp: DateTime(2026, 3, 29, 10, 0, 1),
+          ),
+          ChatMessage(
+            id: 9,
+            text: '正在执行工具：联网搜索',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const {
+              'toolName': 'web_search',
+              'arguments': {'query': 'Claude latest'},
+              'status': 'running',
+              'summary': '正在执行工具：联网搜索',
+              'requiresConfirmation': false,
+            },
+            timestamp: DateTime(2026, 3, 29, 10, 0, 2),
+          ),
+        ],
+      );
+
+      expect(blocks, hasLength(1));
+      expect(blocks.single.type, AssistantTurnBlockType.toolWorkflow);
+      expect(blocks.single.status, 'running');
+      expect(blocks.single.title, '正在执行工具：联网搜索');
+      expect(blocks.single.payload?['steps'], hasLength(2));
+      expect(blocks.single.payload?['steps'][0]['status'], 'proposed');
+      expect(blocks.single.payload?['steps'][1]['status'], 'running');
+      expect(blocks.single.payload?['steps'][0]['toolName'], 'web_search');
+      expect(blocks.single.payload?['steps'][1]['toolName'], 'web_search');
+    });
   });
 }

@@ -40,7 +40,68 @@ void main() {
       );
 
       expect(context, contains('用户目标：帮我查数据库版本'));
-      expect(context, contains('最新工具结果：已找到数据库版本是 7'));
+      expect(context, contains('最近一次工具结果：已找到数据库版本是 7'));
+    });
+
+    test('buildPlannerContext includes attempted tools and latest tool error', () async {
+      final service = TranscriptBuilderService(
+        eventRepository: _FakeChatEventRepository([
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '帮我安排提醒',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.assistantToolCall,
+            role: MessageRole.assistant,
+            content: '准备执行工具：web_search',
+            payloadJson: {
+              'toolName': 'web_search',
+              'arguments': {'query': '提醒时间格式'},
+            },
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.assistantToolCall,
+            role: MessageRole.assistant,
+            content: '准备执行工具：fetch_webpage',
+            payloadJson: {
+              'toolName': 'fetch_webpage',
+              'arguments': {'url': 'https://example.com'},
+            },
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 4,
+            eventType: ChatEventType.toolError,
+            role: MessageRole.system,
+            content: '创建提醒失败：时间格式无效',
+            status: 'invalid_due_at',
+          ),
+        ]),
+      );
+
+      final context = await service.buildPlannerContext(
+        turn: ChatTurn(
+          id: 1,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '帮我安排提醒',
+        ),
+        transcript: await service.loadTranscript(1),
+      );
+
+      expect(context, contains('已尝试工具：web_search, fetch_webpage'));
+      expect(context, contains('最近一次工具失败：invalid_due_at'));
     });
 
     test('buildFinalAnswerMessages adds system prompt before transcript-derived messages', () async {
@@ -133,6 +194,7 @@ class _FakeChatEventRepository implements ChatEventRepository {
     required String toolName,
     required Map<String, dynamic> arguments,
     required String summary,
+    Map<String, dynamic>? payloadJson,
   }) {
     throw UnimplementedError();
   }
@@ -163,6 +225,7 @@ class _FakeChatEventRepository implements ChatEventRepository {
     required int turnId,
     required int groupId,
     required String content,
+    Map<String, dynamic>? payloadJson,
   }) {
     throw UnimplementedError();
   }

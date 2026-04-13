@@ -1,4 +1,6 @@
 import '../../models/chat_message.dart';
+import '../../models/tool/tool_argument_property.dart';
+import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
 import '../../services/tool_executor.dart';
 import '../core/tool_argument_resolution.dart';
@@ -18,10 +20,32 @@ class ShareResultToolHandler implements ToolHandler {
         name: 'share_result',
         title: '分享结果',
         description: '调用系统分享面板分享文本结果。',
+        descriptionForModel:
+            '当用户明确要求把结果分享、发送、转发到其他应用时使用。它会打开系统分享面板，属于输出动作；如果用户只是想查看结果，不要自动调用。',
+        category: ToolCategory.outputAction,
+        capabilities: [ToolCapability.shareResult],
+        whenToUse: [
+          '用户明确说分享、发送给别人、导出到外部应用',
+        ],
+        whenNotToUse: [
+          '用户只是想继续阅读或总结内容',
+          '用户没有表达对外分享意图',
+        ],
         parameters: {
           'text': 'string',
           'subject': 'string?',
         },
+        argumentSchema: ToolArgumentSchema(
+          properties: {
+            'text': ToolArgumentProperty.string(
+              description: '要分享的正文内容。',
+            ),
+            'subject': ToolArgumentProperty.string(
+              description: '可选分享主题。',
+            ),
+          },
+          required: ['text'],
+        ),
         requiresConfirmation: true,
         riskLevel: 'high',
       );
@@ -44,7 +68,8 @@ class ShareResultToolHandler implements ToolHandler {
     final subject = rawArguments['subject'];
     return ToolArgumentResolution.valid({
       'text': text.trim(),
-      if (subject is String && subject.trim().isNotEmpty) 'subject': subject.trim(),
+      if (subject is String && subject.trim().isNotEmpty)
+        'subject': subject.trim(),
     });
   }
 
@@ -80,7 +105,8 @@ class ShareResultToolHandler implements ToolHandler {
     }
 
     final payload = toolResult.payload;
-    if (payload['subject'] is String && (payload['subject'] as String).trim().isNotEmpty) {
+    if (payload['subject'] is String &&
+        (payload['subject'] as String).trim().isNotEmpty) {
       buffer.writeln('分享主题：${payload['subject']}');
     }
     if (payload['shareStatus'] is String) {

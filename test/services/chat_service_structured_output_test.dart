@@ -1,7 +1,10 @@
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/agent/model_turn_decision.dart';
+import 'package:ai_chat/models/agent/planner_tool_choice.dart';
+import 'package:ai_chat/models/agent/planner_tool_option.dart';
+import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/response/structured_summary_card.dart';
-import 'package:ai_chat/models/tool/tool_definition.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -11,44 +14,41 @@ void main() {
       final llm = _CapturingBaseLLM();
       final service = ChatService(llm: llm);
 
-      final chunks = await service
-          .streamFinalAnswer(
-            messages: [
-              ChatMessage(
-                text: '系统提示',
-                role: MessageRole.system,
-                status: MessageStatus.completed,
-              ),
-              ChatMessage(
-                text: '帮我总结',
-                role: MessageRole.user,
-                status: MessageStatus.completed,
-              ),
-            ],
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
-          )
-          .toList();
+      final chunks = await service.streamFinalAnswer(
+        messages: [
+          ChatMessage(
+            text: '系统提示',
+            role: MessageRole.system,
+            status: MessageStatus.completed,
+          ),
+          ChatMessage(
+            text: '帮我总结',
+            role: MessageRole.user,
+            status: MessageStatus.completed,
+          ),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+      ).toList();
 
       expect(chunks, ['第一段', '第二段']);
       expect(llm.lastMessages, isNotNull);
-      expect(llm.lastMessages!.map((message) => message.text), ['系统提示', '帮我总结']);
+      expect(
+          llm.lastMessages!.map((message) => message.text), ['系统提示', '帮我总结']);
     });
 
     test('当模型返回原始文本时直接透传非空内容', () async {
       final service = ChatService(llm: _RawTextBaseLLM());
 
-      final chunks = await service
-          .streamFinalAnswer(
-            messages: [
-              ChatMessage(
-                text: '直接回答',
-                role: MessageRole.user,
-                status: MessageStatus.completed,
-              ),
-            ],
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
-          )
-          .toList();
+      final chunks = await service.streamFinalAnswer(
+        messages: [
+          ChatMessage(
+            text: '直接回答',
+            role: MessageRole.user,
+            status: MessageStatus.completed,
+          ),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+      ).toList();
 
       expect(chunks, ['纯文本响应']);
     });
@@ -126,7 +126,27 @@ class _FakeBaseLLM implements BaseLLM {
   Future<String> planNextAction({
     required List<ChatMessage> messages,
     required ChatConfig config,
-  }) async => '{"action":"respond","response":"stub"}';
+  }) async =>
+      '{"action":"respond","response":"stub"}';
+
+  @override
+  Future<PlannerToolChoice?> planNextToolChoice({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+  }) async =>
+      null;
+
+  @override
+  Future<ModelTurnDecision?> planTurnDecision({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+    ChatTurnProviderStyle? providerStyle,
+    Map<String, dynamic>? providerState,
+    List<Map<String, dynamic>> providerContinuationItems = const [],
+  }) async =>
+      null;
 
   @override
   String getModelName(ChatConfig config) => 'fake-model';
@@ -155,7 +175,8 @@ class _CapturingBaseLLM implements BaseLLM {
   Map<String, dynamic> get config => const {};
 
   @override
-  Stream<String> chatStream(List<ChatMessage> messages, ChatConfig config) async* {
+  Stream<String> chatStream(
+      List<ChatMessage> messages, ChatConfig config) async* {
     lastMessages = List<ChatMessage>.from(messages);
     yield '{"type":"reasoning","content":"先思考"}';
     yield '{"type":"content","content":"第一段"}';
@@ -166,7 +187,27 @@ class _CapturingBaseLLM implements BaseLLM {
   Future<String> planNextAction({
     required List<ChatMessage> messages,
     required ChatConfig config,
-  }) async => '{"action":"respond","response":"stub"}';
+  }) async =>
+      '{"action":"respond","response":"stub"}';
+
+  @override
+  Future<PlannerToolChoice?> planNextToolChoice({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+  }) async =>
+      null;
+
+  @override
+  Future<ModelTurnDecision?> planTurnDecision({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+    ChatTurnProviderStyle? providerStyle,
+    Map<String, dynamic>? providerState,
+    List<Map<String, dynamic>> providerContinuationItems = const [],
+  }) async =>
+      null;
 
   @override
   String getModelName(ChatConfig config) => 'capture-model';
@@ -189,7 +230,8 @@ class _RawTextBaseLLM implements BaseLLM {
   Map<String, dynamic> get config => const {};
 
   @override
-  Stream<String> chatStream(List<ChatMessage> messages, ChatConfig config) async* {
+  Stream<String> chatStream(
+      List<ChatMessage> messages, ChatConfig config) async* {
     yield '纯文本响应';
   }
 
@@ -197,7 +239,27 @@ class _RawTextBaseLLM implements BaseLLM {
   Future<String> planNextAction({
     required List<ChatMessage> messages,
     required ChatConfig config,
-  }) async => '{"action":"respond","response":"stub"}';
+  }) async =>
+      '{"action":"respond","response":"stub"}';
+
+  @override
+  Future<PlannerToolChoice?> planNextToolChoice({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+  }) async =>
+      null;
+
+  @override
+  Future<ModelTurnDecision?> planTurnDecision({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+    ChatTurnProviderStyle? providerStyle,
+    Map<String, dynamic>? providerState,
+    List<Map<String, dynamic>> providerContinuationItems = const [],
+  }) async =>
+      null;
 
   @override
   String getModelName(ChatConfig config) => 'raw-text-model';

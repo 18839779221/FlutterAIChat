@@ -239,6 +239,10 @@ class ChatInput extends ConsumerWidget {
   String? _buildHelperText({
     required ChatSendPhase sendPhase,
   }) {
+    if (sendPhase == ChatSendPhase.preparing) {
+      return '正在规划下一步';
+    }
+
     if (sendPhase == ChatSendPhase.awaitingConfirmation) {
       return '等待工具确认';
     }

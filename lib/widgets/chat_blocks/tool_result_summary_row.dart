@@ -2,6 +2,7 @@ import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/theme/app_colors.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
+import 'package:ai_chat/tools/core/tool_display_names.dart';
 import 'package:flutter/material.dart';
 
 /// Collapsed one-row-ish summary surface for completed tool work.
@@ -48,7 +49,7 @@ class ToolResultSummaryRow extends StatelessWidget {
               SizedBox(width: spacing.sm),
               Expanded(
                 child: Text(
-                  result.toolName,
+                  resolveToolDisplayName(result.toolName),
                   style: TextStyle(
                     color: colors.primaryText,
                     fontSize: 11.5,

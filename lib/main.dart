@@ -3,8 +3,10 @@ import 'package:ai_chat/pages/test_page.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
+import 'package:ai_chat/repositories/chat_turn_step_repository.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:ai_chat/storage/chat_storage_factory.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,12 +19,14 @@ import 'services/chat_service.dart';
 import 'services/chat_trace_recorder.dart';
 import 'services/agent_planner_service.dart';
 import 'services/agent_turn_orchestrator.dart';
+import 'services/default_file_tool_adapters.dart';
 import 'services/stop_verifier_service.dart';
 import 'services/tool_call_service.dart';
 import 'services/default_tool_adapters.dart';
 import 'services/transcript_builder_service.dart';
 import 'services/tool_executor.dart';
 import 'services/tool_policy_service.dart';
+import 'tools/adapters/tool_host_adapters.dart';
 import 'tools/default_tool_runtime_registry.dart';
 import 'theme/app_theme.dart';
 
@@ -38,13 +42,15 @@ void main() async {
     late final ChatService chatService;
     late final AgentTurnOrchestrator agentTurnOrchestrator;
     traceRecorder = ChatTraceRecorder(
-      logger: (entry) => Logger.i('ChatTrace', traceRecorder.formatLogLine(entry)),
+      logger: (entry) =>
+          Logger.i('ChatTrace', traceRecorder.formatLogLine(entry)),
     );
     await storage.testDatabaseConnection();
     final llm = LLMFactory.createLLM(
       LLMType.configurable,
       settingsRepository: settingsRepository,
     );
+    final fileToolAdapters = await buildDefaultFileToolHostAdapters();
     final tavilyWebSearcher = buildTavilyWebSearcher();
     final toolExecutor = ToolExecutor(
       chatStorage: storage,
@@ -54,7 +60,8 @@ void main() async {
       }) async {
         final config = await settingsRepository.getLlmConfig();
         final provider =
-            (config.additionalConfig['web_search.provider'] as String?)?.trim() ??
+            (config.additionalConfig['web_search.provider'] as String?)
+                    ?.trim() ??
                 'tavily';
         if (provider != 'tavily') {
           return ToolResult(
@@ -72,8 +79,10 @@ void main() async {
         return tavilyWebSearcher(
           query: query,
           maxResults: maxResults,
-          apiKey: config.additionalConfig['web_search.tavily_api_key'] as String?,
-          baseUrl: config.additionalConfig['web_search.tavily_base_url'] as String?,
+          apiKey:
+              config.additionalConfig['web_search.tavily_api_key'] as String?,
+          baseUrl:
+              config.additionalConfig['web_search.tavily_base_url'] as String?,
         );
       },
       webpageFetcher: buildDefaultWebpageFetcher(),
@@ -93,16 +102,24 @@ void main() async {
       traceRecorder: traceRecorder,
       toolExecutor: toolExecutor,
       toolPolicyService: toolPolicyService,
+      hostAdapters: ToolHostAdapters(fileTools: fileToolAdapters),
     );
     chatService = ChatService(
       llm: llm,
       toolCallService: toolCallService,
     );
     final turnRepository = ChatTurnRepository(storage);
+    final turnStepRepository = ChatTurnStepRepository(storage);
     final eventRepository = ChatEventRepository(storage);
     agentTurnOrchestrator = AgentTurnOrchestrator(
-      plannerService: AgentPlannerService(llm: llm),
+      plannerService: AgentPlannerService(
+        llm: llm,
+        availableTools: runtimeRegistry.getDefinitionsForPlatform(
+          _resolveRuntimePlatform(),
+        ),
+      ),
       turnRepository: turnRepository,
+      turnStepRepository: turnStepRepository,
       eventRepository: eventRepository,
       transcriptBuilderService: TranscriptBuilderService(
         eventRepository: eventRepository,
@@ -166,5 +183,25 @@ class MyApp extends ConsumerWidget {
       RouteConstant.settingsPage: (context) => const SettingsPage(),
       RouteConstant.testPage: (context) => const TestPage()
     };
+  }
+}
+
+String _resolveRuntimePlatform() {
+  if (kIsWeb) {
+    return 'web';
+  }
+  switch (defaultTargetPlatform) {
+    case TargetPlatform.android:
+      return 'android';
+    case TargetPlatform.iOS:
+      return 'ios';
+    case TargetPlatform.macOS:
+      return 'macos';
+    case TargetPlatform.windows:
+      return 'windows';
+    case TargetPlatform.linux:
+      return 'linux';
+    case TargetPlatform.fuchsia:
+      return 'android';
   }
 }

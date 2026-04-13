@@ -1,9 +1,12 @@
 import '../models/chat_message.dart';
+import '../models/tool/tool_policy.dart';
 import '../models/tool/tool_invocation.dart';
 import '../models/tool/tool_result.dart';
 import '../models/trace/chat_trace_event.dart';
+import '../tools/adapters/tool_host_adapters.dart';
 import '../tools/core/tool_execution_context.dart';
 import '../tools/core/tool_runtime_registry.dart';
+import '../utils/logger.dart';
 import 'chat_trace_recorder.dart';
 import 'tool_call_service.dart';
 import 'tool_policy_service.dart';
@@ -11,17 +14,21 @@ import 'tool_policy_service.dart';
 /// Executes already-decided tool invocations and packages runtime context back
 /// to the caller.
 class ToolOrchestratorService {
+  static const _tag = 'ToolOrchestratorService';
   ToolOrchestratorService({
     ToolRuntimeRegistry? runtimeRegistry,
     ToolPolicyService? toolPolicyService,
     ChatTraceRecorder? traceRecorder,
+    ToolHostAdapters hostAdapters = const ToolHostAdapters(),
   })  : _runtimeRegistry = runtimeRegistry,
         _toolPolicyService = toolPolicyService,
-        _traceRecorder = traceRecorder;
+        _traceRecorder = traceRecorder,
+        _hostAdapters = hostAdapters;
 
   final ToolRuntimeRegistry? _runtimeRegistry;
   final ToolPolicyService? _toolPolicyService;
   final ChatTraceRecorder? _traceRecorder;
+  final ToolHostAdapters _hostAdapters;
 
   Future<ToolPreparationResult> executeToolInvocation({
     required int groupId,
@@ -33,11 +40,64 @@ class ToolOrchestratorService {
       await _toolPolicyService?.trustTool(invocation.toolName);
     }
 
+    Logger.i(
+      _tag,
+      'executeToolInvocation start groupId=$groupId tool=${invocation.toolName} trustTool=$trustTool rawArgs=${invocation.arguments}',
+    );
     final runtimeHandler = _runtimeRegistry?.findHandler(invocation.toolName);
     if (runtimeHandler == null) {
+      Logger.w(
+        _tag,
+        'no runtime handler found for tool=${invocation.toolName}',
+      );
       return const ToolPreparationResult.noTool();
     }
     final toolDefinition = runtimeHandler.definition;
+    final alreadyConfirmed =
+        invocation.status == ToolInvocationStatus.awaitingConfirmation;
+    final policyDecision =
+        await _toolPolicyService?.resolveExecutionMode(toolDefinition) ??
+            ToolPolicyDecision.autoRun;
+    if (!alreadyConfirmed &&
+        policyDecision == ToolPolicyDecision.requireConfirmation) {
+      Logger.i(
+        _tag,
+        'tool requires confirmation before execution tool=${invocation.toolName}',
+      );
+      return ToolPreparationResult(
+        toolInvocation: invocation.copyWith(
+          status: ToolInvocationStatus.awaitingConfirmation,
+          summary: '请确认执行工具：${toolDefinition.title}',
+          requiresConfirmation: true,
+        ),
+        toolResult: null,
+        additionalContextMessages: const [],
+      );
+    }
+    if (policyDecision == ToolPolicyDecision.blocked) {
+      Logger.w(
+        _tag,
+        'tool execution blocked by policy tool=${invocation.toolName}',
+      );
+      final failureResult = ToolResult(
+        toolName: invocation.toolName,
+        status: ToolExecutionStatus.failure,
+        summary: '工具执行被策略阻止',
+        errorMessage: 'tool_blocked',
+        data: {
+          'reason': 'tool_blocked',
+        },
+      );
+      return ToolPreparationResult(
+        toolInvocation: invocation.copyWith(
+          status: ToolInvocationStatus.cancelled,
+          summary: '工具执行已阻止：${toolDefinition.title}',
+          requiresConfirmation: false,
+        ),
+        toolResult: failureResult,
+        additionalContextMessages: const [],
+      );
+    }
     final normalizedArguments = await runtimeHandler.normalizeArguments(
       rawArguments: invocation.arguments,
       userMessage: invocation.summary,
@@ -48,12 +108,15 @@ class ToolOrchestratorService {
       final failureResult = ToolResult(
         toolName: invocation.toolName,
         status: ToolExecutionStatus.failure,
-        summary:
-            normalizedArguments.errorSummary ?? '工具执行失败：参数无效',
+        summary: normalizedArguments.errorSummary ?? '工具执行失败：参数无效',
         errorMessage: normalizedArguments.errorCode ?? 'invalid_arguments',
         data: {
           'reason': normalizedArguments.errorCode ?? 'invalid_arguments',
         },
+      );
+      Logger.w(
+        _tag,
+        'tool argument validation failed tool=${invocation.toolName} error=${normalizedArguments.errorCode ?? 'invalid_arguments'} rawArgs=${invocation.arguments}',
       );
       _recordTrace(
         turnId: turnId,
@@ -83,8 +146,17 @@ class ToolOrchestratorService {
       arguments: normalizedArguments.normalizedArguments,
       history: const <ChatMessage>[],
       now: DateTime.now(),
+      hostAdapters: _hostAdapters,
+    );
+    Logger.i(
+      _tag,
+      'tool normalized arguments tool=${invocation.toolName} args=${normalizedArguments.normalizedArguments}',
     );
     final toolResult = await runtimeHandler.execute(executionContext);
+    Logger.i(
+      _tag,
+      'tool execution finished tool=${invocation.toolName} status=${toolResult.status.name} summary=${toolResult.summary}',
+    );
     _recordTrace(
       turnId: turnId,
       stage: ChatTraceStage.toolExecuteDone,
@@ -108,8 +180,11 @@ class ToolOrchestratorService {
       summary: '工具上下文构建完成',
       data: {
         'toolName': invocation.toolName,
-        'contextLength':
-            contextMessages.map((message) => message.text).join('\n').trim().length,
+        'contextLength': contextMessages
+            .map((message) => message.text)
+            .join('\n')
+            .trim()
+            .length,
       },
     );
 

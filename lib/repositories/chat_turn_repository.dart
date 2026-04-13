@@ -24,6 +24,33 @@ class ChatTurnRepository {
     );
   }
 
+  Future<void> incrementToolCallCount(int turnId, {int by = 1}) async {
+    final turn = await _requireTurn(turnId);
+    await _storage.updateTurn(
+      turn.copyWith(
+        toolCallCount: turn.toolCallCount + by,
+        updatedAt: DateTime.now(),
+      ),
+    );
+  }
+
+  Future<void> updateRuntimeState(
+    int turnId, {
+    ChatTurnProviderStyle? providerStyle,
+    String? modelName,
+    Map<String, dynamic>? providerStateJson,
+  }) async {
+    final turn = await _requireTurn(turnId);
+    await _storage.updateTurn(
+      turn.copyWith(
+        providerStyle: providerStyle ?? turn.providerStyle,
+        modelName: modelName ?? turn.modelName,
+        providerStateJson: providerStateJson ?? turn.providerStateJson,
+        updatedAt: DateTime.now(),
+      ),
+    );
+  }
+
   Future<void> markAwaitingToolConfirmation(int turnId) async {
     final turn = await _requireTurn(turnId);
     await _storage.updateTurn(
@@ -57,12 +84,17 @@ class ChatTurnRepository {
     );
   }
 
-  Future<void> markCompleted(int turnId, {String? stopReason}) async {
+  Future<void> markCompleted(
+    int turnId, {
+    String? stopReason,
+    String? finalResponseText,
+  }) async {
     final turn = await _requireTurn(turnId);
     await _storage.updateTurn(
       turn.copyWith(
         status: ChatTurnStatus.completed,
         stopReason: stopReason ?? turn.stopReason,
+        finalResponseText: finalResponseText ?? turn.finalResponseText,
         completedAt: DateTime.now(),
         updatedAt: DateTime.now(),
       ),

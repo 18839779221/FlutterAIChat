@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:ai_chat/database/database_helper.dart';
+import 'package:ai_chat/models/agent/model_turn_decision.dart';
+import 'package:ai_chat/models/agent/planner_tool_choice.dart';
+import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -139,7 +142,8 @@ void main() {
     });
 
     test('agent loop 可在最终回答前连续消费多次工具事件', () async {
-      final databaseHelper = DatabaseHelper(databaseName: 'chat_controller_agent_loop_test.db');
+      final databaseHelper =
+          DatabaseHelper(databaseName: 'chat_controller_agent_loop_test.db');
       final orchestrator = _FakeAgentTurnOrchestrator(
         databaseHelper: databaseHelper,
         events: [
@@ -220,18 +224,22 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final groupId = await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       container.read(currentGroupProvider.notifier).state = ChatGroup(
         id: groupId,
         title: 'group',
       );
 
-      await container.read(chatControllerProvider).sendMessage('先搜数据库版本，再查最新 schema');
+      await container
+          .read(chatControllerProvider)
+          .sendMessage('先搜数据库版本，再查最新 schema');
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
       final messages = container.read(messagesProvider);
       final toolResults = messages
-          .where((message) => message.contentType == MessageContentType.toolResult)
+          .where(
+              (message) => message.contentType == MessageContentType.toolResult)
           .toList();
 
       expect(toolResults, hasLength(2));
@@ -246,7 +254,8 @@ void main() {
         ),
         isTrue,
       );
-      expect(orchestrator.recordedTurns.single.userInput, '先搜数据库版本，再查最新 schema');
+      expect(
+          orchestrator.recordedTurns.single.userInput, '先搜数据库版本，再查最新 schema');
     });
 
     test('不需要工具时不会新增 toolResult 消息', () async {
@@ -418,7 +427,8 @@ void main() {
 
       final messages = container.read(messagesProvider);
       final confirmationMessage = messages.firstWhere(
-        (message) => message.contentType == MessageContentType.actionConfirmation,
+        (message) =>
+            message.contentType == MessageContentType.actionConfirmation,
       );
 
       expect(confirmationMessage.text, '准备执行工具：创建提醒');
@@ -517,9 +527,7 @@ void main() {
       await container.read(chatControllerProvider).sendMessage('提醒我交周报');
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
-      final confirmationMessage = container
-          .read(messagesProvider)
-          .firstWhere(
+      final confirmationMessage = container.read(messagesProvider).firstWhere(
             (message) =>
                 message.contentType == MessageContentType.actionConfirmation,
           );
@@ -546,9 +554,8 @@ void main() {
         isTrue,
       );
       expect(orchestrator.resumedTrustFlags, [true]);
-      final initialTurnId = traceLogs
-          .firstWhere((entry) => entry['stage'] == ChatTraceStage.sendStart.name)['turnId']
-          as String;
+      final initialTurnId = traceLogs.firstWhere((entry) =>
+          entry['stage'] == ChatTraceStage.sendStart.name)['turnId'] as String;
       expect(
         traceLogs.any(
           (entry) =>
@@ -626,7 +633,8 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final groupId = await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       container.read(currentGroupProvider.notifier).state =
           ChatGroup(id: groupId, title: 'group');
       final confirmationMessage = ChatMessage(
@@ -646,7 +654,9 @@ void main() {
       final confirmationMessageId =
           await databaseHelper.insertMessage(confirmationMessage, groupId);
       confirmationMessage.id = confirmationMessageId;
-      container.read(messagesProvider.notifier).setMessages([confirmationMessage]);
+      container
+          .read(messagesProvider.notifier)
+          .setMessages([confirmationMessage]);
 
       await container
           .read(chatControllerProvider)
@@ -683,6 +693,137 @@ void main() {
       expect(chatService.confirmedTurnIds, isEmpty);
     });
 
+    test('agent loop confirmation 后若下一步仍需确认，会展示新的确认卡并替换旧卡状态',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final orchestrator = _FakeAgentTurnOrchestrator(
+        databaseHelper: databaseHelper,
+        events: [],
+        resumedEvents: [
+          ChatEvent(
+            turnId: 12,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.toolExecutionStarted,
+            role: MessageRole.system,
+            content: '正在执行工具：保存笔记',
+            payloadJson: const {
+              'toolName': 'save_note',
+              'arguments': {
+                'title': '数据库版本确认',
+                'content': '数据库版本：7',
+              },
+              'status': 'running',
+              'summary': '正在执行工具：保存笔记',
+              'requiresConfirmation': false,
+            },
+          ),
+          ChatEvent(
+            turnId: 12,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: '已保存笔记：数据库版本确认',
+            payloadJson: const {
+              'toolName': 'save_note',
+              'status': 'success',
+              'summary': '已保存笔记：数据库版本确认',
+            },
+          ),
+          ChatEvent(
+            turnId: 12,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.assistantToolCall,
+            role: MessageRole.assistant,
+            content: '准备执行工具：创建提醒',
+            payloadJson: const {
+              'toolName': 'create_reminder',
+              'arguments': {'title': '给测试同学'},
+              'status': 'proposed',
+              'summary': '准备执行工具：创建提醒',
+              'requiresConfirmation': false,
+            },
+          ),
+          ChatEvent(
+            turnId: 12,
+            groupId: 1,
+            sequence: 4,
+            eventType: ChatEventType.assistantToolConfirmation,
+            role: MessageRole.assistant,
+            content: '请确认执行工具：创建提醒',
+            payloadJson: const {
+              'toolName': 'create_reminder',
+              'arguments': {'title': '给测试同学'},
+              'status': 'awaitingConfirmation',
+              'summary': '请确认执行工具：创建提醒',
+              'requiresConfirmation': true,
+            },
+          ),
+        ],
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(),
+        orchestrator: orchestrator,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+      final confirmationMessage = ChatMessage(
+        text: '请确认执行工具：保存笔记',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.actionConfirmation,
+        payloadJson: const {
+          'toolName': 'save_note',
+          'arguments': {
+            'title': '数据库版本确认',
+            'content': '数据库版本：7',
+          },
+          'status': 'awaitingConfirmation',
+          'summary': '请确认执行工具：保存笔记',
+          'requiresConfirmation': true,
+          'agentTurnId': 12,
+        },
+      );
+      final confirmationMessageId =
+          await databaseHelper.insertMessage(confirmationMessage, groupId);
+      confirmationMessage.id = confirmationMessageId;
+      container
+          .read(messagesProvider.notifier)
+          .setMessages([confirmationMessage]);
+
+      await container
+          .read(chatControllerProvider)
+          .confirmToolInvocation(confirmationMessage, trustTool: true);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final messages = container.read(messagesProvider);
+      final replacedMessage = messages.firstWhere(
+        (message) => message.id == confirmationMessageId,
+      );
+      expect(replacedMessage.text, '正在执行工具：保存笔记');
+      expect(replacedMessage.contentType, MessageContentType.toolInvocation);
+      expect(replacedMessage.payloadJson?['status'], 'running');
+      expect(replacedMessage.payloadJson?['requiresConfirmation'], isFalse);
+
+      final followupConfirmation = messages.firstWhere(
+        (message) =>
+            message.id != confirmationMessageId &&
+            message.contentType == MessageContentType.actionConfirmation,
+      );
+      expect(followupConfirmation.text, '请确认执行工具：创建提醒');
+      expect(followupConfirmation.payloadJson?['toolName'], 'create_reminder');
+      expect(followupConfirmation.payloadJson?['status'], 'awaitingConfirmation');
+
+      expect(container.read(sendPhaseProvider), ChatSendPhase.awaitingConfirmation);
+    });
+
     test('agent loop delta 只会追加一次，避免流式文本重复', () async {
       final databaseHelper = _createTestDatabaseHelper();
       final orchestrator = _FakeAgentTurnOrchestrator(
@@ -714,7 +855,8 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final groupId = await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       container.read(currentGroupProvider.notifier).state =
           ChatGroup(id: groupId, title: 'group');
       final confirmationMessage = ChatMessage(
@@ -734,16 +876,18 @@ void main() {
       final confirmationMessageId =
           await databaseHelper.insertMessage(confirmationMessage, groupId);
       confirmationMessage.id = confirmationMessageId;
-      container.read(messagesProvider.notifier).setMessages([confirmationMessage]);
+      container
+          .read(messagesProvider.notifier)
+          .setMessages([confirmationMessage]);
 
       await container
           .read(chatControllerProvider)
           .confirmToolInvocation(confirmationMessage, trustTool: true);
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
-      final assistantMessage = container
-          .read(messagesProvider)
-          .firstWhere((message) => message.isAssistant && message.id != confirmationMessageId);
+      final assistantMessage = container.read(messagesProvider).firstWhere(
+          (message) =>
+              message.isAssistant && message.id != confirmationMessageId);
       expect(assistantMessage.text, '我先搜索，再总结');
     });
 
@@ -787,9 +931,7 @@ void main() {
       await container.read(chatControllerProvider).sendMessage('提醒我交周报');
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
-      final confirmationMessage = container
-          .read(messagesProvider)
-          .firstWhere(
+      final confirmationMessage = container.read(messagesProvider).firstWhere(
             (message) =>
                 message.contentType == MessageContentType.actionConfirmation,
           );
@@ -804,9 +946,8 @@ void main() {
       expect(updatedMessage.text, '已取消工具执行');
       expect(updatedMessage.contentType, MessageContentType.plainText);
 
-      final initialTurnId = traceLogs
-          .firstWhere((entry) => entry['stage'] == ChatTraceStage.sendStart.name)['turnId']
-          as String;
+      final initialTurnId = traceLogs.firstWhere((entry) =>
+          entry['stage'] == ChatTraceStage.sendStart.name)['turnId'] as String;
       expect(
         traceLogs.any(
           (entry) =>
@@ -859,12 +1000,12 @@ void main() {
         container.read(sendPhaseProvider),
         ChatSendPhase.preparing,
       );
-      expect(container.read(chatSendStateProvider).phase, ChatSendPhase.preparing);
+      expect(
+          container.read(chatSendStateProvider).phase, ChatSendPhase.preparing);
       expect(container.read(chatSendStateProvider).isGenerating, isFalse);
       expect(
         container.read(messagesProvider).any(
-              (message) =>
-                  message.isUser && message.text == '立即显示这条消息',
+              (message) => message.isUser && message.text == '立即显示这条消息',
             ),
         isTrue,
       );
@@ -912,7 +1053,8 @@ void main() {
       await databaseHelper.deleteGroup(groupId);
     });
 
-    test('sendMessage records controller trace boundary events in order', () async {
+    test('sendMessage records controller trace boundary events in order',
+        () async {
       final databaseHelper = _createTestDatabaseHelper();
       final traceLogs = <Map<String, dynamic>>[];
       final traceRecorder = ChatTraceRecorder(
@@ -947,10 +1089,8 @@ void main() {
       await container.read(chatControllerProvider).sendMessage('测试发送 trace');
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
-      final traceTurnIds = traceLogs
-          .map((entry) => entry['turnId'])
-          .whereType<String>()
-          .toSet();
+      final traceTurnIds =
+          traceLogs.map((entry) => entry['turnId']).whereType<String>().toSet();
       expect(traceTurnIds, hasLength(1));
 
       final stages = traceLogs
@@ -988,7 +1128,8 @@ void main() {
       expect(coordinator.sentMessages, ['委托发送测试']);
     });
 
-    test('chat controller delegates confirm and cancel tool actions to coordinator',
+    test(
+        'chat controller delegates confirm and cancel tool actions to coordinator',
         () async {
       final databaseHelper = _createTestDatabaseHelper();
       final coordinator = _FakeChatSendCoordinator();
@@ -1019,7 +1160,9 @@ void main() {
       await container
           .read(chatControllerProvider)
           .confirmToolInvocation(message, trustTool: true);
-      await container.read(chatControllerProvider).cancelToolInvocation(message);
+      await container
+          .read(chatControllerProvider)
+          .cancelToolInvocation(message);
 
       expect(coordinator.confirmedMessages, [message]);
       expect(coordinator.confirmedTrustFlags, [true]);
@@ -1027,7 +1170,8 @@ void main() {
       expect(sessionCoordinator.loadGroupsCalls, 0);
     });
 
-    test('chat controller delegates session lifecycle actions to session coordinator',
+    test(
+        'chat controller delegates session lifecycle actions to session coordinator',
         () async {
       final databaseHelper = _createTestDatabaseHelper();
       final sessionCoordinator = _FakeChatSessionCoordinator();
@@ -1082,8 +1226,9 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final summary =
-          await container.read(chatControllerProvider).summarizeAndUpdateTitle();
+      final summary = await container
+          .read(chatControllerProvider)
+          .summarizeAndUpdateTitle();
       container.read(chatControllerProvider).cancelAutoSummaryTimer();
 
       expect(summary, 'fake-summary');
@@ -1108,12 +1253,15 @@ void main() {
         status: MessageStatus.completed,
       );
 
-      await container.read(chatControllerProvider).structureMessageForDebug(message);
+      await container
+          .read(chatControllerProvider)
+          .structureMessageForDebug(message);
 
       expect(debugController.messages, [message]);
     });
 
-    test('chat controller delegates preferences lifecycle to preferences controller',
+    test(
+        'chat controller delegates preferences lifecycle to preferences controller',
         () async {
       final databaseHelper = _createTestDatabaseHelper();
       final preferencesController = _FakeChatPreferencesController();
@@ -1124,7 +1272,9 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      await container.read(chatControllerProvider).setSystemPrompt('new prompt');
+      await container
+          .read(chatControllerProvider)
+          .setSystemPrompt('new prompt');
       container.read(chatControllerProvider).setUseReasoning(true);
       container.read(chatControllerProvider).setUseConciseMode(true);
 
@@ -1179,7 +1329,6 @@ void main() {
 
       await databaseHelper.deleteGroup(groupId);
     });
-
   });
 }
 
@@ -1212,7 +1361,8 @@ ProviderContainer _createContainer({
       if (orchestrator != null)
         agentTurnOrchestratorProvider.overrideWith((ref) => orchestrator),
       if (sessionCoordinator != null)
-        chatSessionCoordinatorProvider.overrideWith((ref) => sessionCoordinator),
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => sessionCoordinator),
       if (summaryController != null)
         chatSummaryControllerProvider.overrideWith((ref) => summaryController),
       if (debugController != null)
@@ -1236,8 +1386,7 @@ class _FakeChatService extends ChatService {
 
   _FakeChatService({
     this.confirmedToolResult,
-  })
-      : super(llm: _NoopBaseLLM());
+  }) : super(llm: _NoopBaseLLM());
 
   @override
   Future<ToolPreparationResult> executeToolInvocation({
@@ -1267,8 +1416,7 @@ class _FakeAgentTurnOrchestrator extends AgentTurnOrchestrator {
     this.resumedEvents = const [],
     this.runTurnGate,
     this.runTurnError,
-  })
-      : super(
+  }) : super(
           plannerService: AgentPlannerService(llm: _NoopBaseLLM()),
           turnRepository: ChatTurnRepository(databaseHelper),
           eventRepository: ChatEventRepository(databaseHelper),
@@ -1348,7 +1496,27 @@ class _NoopBaseLLM implements BaseLLM {
   Future<String> planNextAction({
     required List<ChatMessage> messages,
     required ChatConfig config,
-  }) async => '{"action":"respond","response":"stub"}';
+  }) async =>
+      '{"action":"respond","response":"stub"}';
+
+  @override
+  Future<PlannerToolChoice?> planNextToolChoice({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+  }) async =>
+      null;
+
+  @override
+  Future<ModelTurnDecision?> planTurnDecision({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+    ChatTurnProviderStyle? providerStyle,
+    Map<String, dynamic>? providerState,
+    List<Map<String, dynamic>> providerContinuationItems = const [],
+  }) async =>
+      null;
 
   @override
   String getModelName(ChatConfig config) => 'noop';
