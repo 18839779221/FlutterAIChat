@@ -5,7 +5,10 @@ import '../models/agent/agent_loop_limits.dart';
 import '../models/chat_event.dart';
 import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
+import '../models/interaction/ask_user_question_request.dart';
+import '../models/interaction/ask_user_question_response.dart';
 import '../models/tool/tool_access_snapshot.dart';
+import '../models/tool/tool_definition.dart';
 import '../models/tool/tool_invocation.dart';
 import '../models/tool/tool_result.dart';
 import '../repositories/chat_event_repository.dart';
@@ -102,6 +105,39 @@ class TurnHarness {
       consecutiveFailures: 0,
       config: config,
       stepId: invocation.stepId,
+    );
+  }
+
+  Stream<ChatEvent> resumeAfterQuestionAnswered({
+    required int turnId,
+    required AskUserQuestionRequest request,
+    required AskUserQuestionResponse response,
+    required ChatConfig config,
+  }) async* {
+    final currentTurn = await _requireTurn(turnId);
+    await _turnRepository.markRunning(turnId);
+    yield await _appendAndLoad(
+      turnId,
+      () => _eventRepository.appendUserInteractionResult(
+        turnId: turnId,
+        groupId: currentTurn.groupId,
+        response: response,
+        content: _formatUserInteractionTranscript(request, response),
+      ),
+    );
+    if (request.stepId != null) {
+      await _stepRepository?.markCompleted(
+        request.stepId!,
+        resultSummary: 'user_answered',
+        resultJson: response.toJson(),
+      );
+    }
+
+    final resumedTurn = await _turnRepository.getTurn(turnId) ?? currentTurn;
+    yield* _continueTurnLoop(
+      turn: resumedTurn,
+      config: config,
+      consecutiveFailures: 0,
     );
   }
 
@@ -218,6 +254,7 @@ class TurnHarness {
           final refreshedTurn =
               await _turnRepository.getTurn(turnId) ?? currentTurn;
           if (refreshedTurn.status == ChatTurnStatus.awaitingToolConfirmation ||
+              refreshedTurn.status == ChatTurnStatus.awaitingUserInteraction ||
               refreshedTurn.status == ChatTurnStatus.failed ||
               refreshedTurn.status == ChatTurnStatus.completed ||
               refreshedTurn.status == ChatTurnStatus.cancelled) {
@@ -437,6 +474,28 @@ class TurnHarness {
         },
       ),
     );
+
+    final definition = _toolCallService.findDefinition(toolCall.toolName);
+    if (definition?.resolvedRuntimeKind == ToolRuntimeKind.userInteraction) {
+      final request = AskUserQuestionRequest.fromJson({
+        ...toolCall.arguments,
+        'agentTurnId': turn.id!,
+        if (stepId != null) 'stepId': stepId,
+        if ((toolCall.providerCallId ?? '').trim().isNotEmpty)
+          'providerCallId': toolCall.providerCallId,
+      });
+      await _turnRepository.markAwaitingUserInteraction(turn.id!);
+      yield await _appendAndLoad(
+        turn.id!,
+        () => _eventRepository.appendAssistantQuestionPrompt(
+          turnId: turn.id!,
+          groupId: turn.groupId,
+          request: request,
+          content: _buildQuestionPromptSummary(request),
+        ),
+      );
+      return;
+    }
 
     final invocation = ToolInvocation(
       toolName: toolCall.toolName,
@@ -660,5 +719,28 @@ class TurnHarness {
       ...invocation.toJson(),
       if (toolAccess != null) 'toolAccess': toolAccess.toJson(),
     };
+  }
+
+  String _buildQuestionPromptSummary(AskUserQuestionRequest request) {
+    if (request.questions.length == 1) {
+      return request.questions.single.question;
+    }
+    return '请先回答这 ${request.questions.length} 个问题';
+  }
+
+  String _formatUserInteractionTranscript(
+    AskUserQuestionRequest request,
+    AskUserQuestionResponse response,
+  ) {
+    final lines = <String>['User answered AskUserQuestion:'];
+    for (final question in request.questions) {
+      final answer = response.answersByQuestionId[question.id];
+      if (answer == null || answer.trim().isEmpty) {
+        continue;
+      }
+      final title = question.header.trim().isEmpty ? question.id : question.header;
+      lines.add('- $title: ${answer.trim()}');
+    }
+    return lines.join('\n');
   }
 }

@@ -58,5 +58,22 @@ void main() {
 
       expect(restored.eventType, ChatEventType.error);
     });
+
+    test('fromMap can restore interaction event types', () {
+      final restored = ChatEvent.fromMap({
+        'id': 2,
+        'turn_id': 1,
+        'group_id': 1,
+        'sequence': 2,
+        'event_type': 'assistantQuestionPrompt',
+        'role': 'assistant',
+        'status': null,
+        'content': '请先回答几个问题',
+        'payload_json': null,
+        'created_at': 1712900000000,
+      });
+
+      expect(restored.eventType, ChatEventType.assistantQuestionPrompt);
+    });
   });
 }

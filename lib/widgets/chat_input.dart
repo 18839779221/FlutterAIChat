@@ -202,7 +202,13 @@ class ChatInput extends ConsumerWidget {
                             },
                             child: AnimatedSwitcher(
                               duration: const Duration(milliseconds: 200),
-                              child: isBlockingPhase
+                              child: isStreamingResponse
+                                  ? const Icon(
+                                      Icons.stop_rounded,
+                                      key: ValueKey('chat-input-stop-icon'),
+                                      size: 18,
+                                    )
+                                  : isBlockingPhase
                                   ? const SizedBox(
                                       width: 16,
                                       height: 16,

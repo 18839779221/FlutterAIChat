@@ -194,6 +194,71 @@ void main() {
       );
     });
 
+    test('maps ask user question prompt message to structured output block', () {
+      final blocks = builder.buildAssistantBlocks(
+        messages: [
+          ChatMessage(
+            id: 41,
+            text: 'Which storage layer should we use?',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.askUserQuestionPrompt,
+            payloadJson: const {
+              'type': 'prompt',
+              'agentTurnId': 42,
+              'status': 'awaitingResponse',
+              'questions': [
+                {
+                  'id': 'storage_layer',
+                  'header': 'Storage',
+                  'question': 'Which storage layer should we use?',
+                  'multiSelect': false,
+                  'options': [
+                    {
+                      'label': 'SQLite',
+                      'description': 'Local relational store',
+                    },
+                  ],
+                },
+              ],
+            },
+            timestamp: DateTime(2026, 4, 15, 10, 0, 1),
+          ),
+        ],
+      );
+
+      expect(blocks.single.type, AssistantTurnBlockType.structuredOutput);
+      expect(blocks.single.title, 'Question');
+      expect(blocks.single.payload?['type'], 'prompt');
+    });
+
+    test('maps ask user question result message to structured output block', () {
+      final blocks = builder.buildAssistantBlocks(
+        messages: [
+          ChatMessage(
+            id: 42,
+            text: 'User answered AskUserQuestion:\n- Storage: SQLite',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.askUserQuestionResult,
+            payloadJson: const {
+              'type': 'result',
+              'agentTurnId': 42,
+              'status': 'submitted',
+              'submittedAnswers': {
+                'answersByQuestionId': {
+                  'storage_layer': 'SQLite',
+                },
+              },
+            },
+            timestamp: DateTime(2026, 4, 15, 10, 0, 2),
+          ),
+        ],
+      );
+
+      expect(blocks.single.type, AssistantTurnBlockType.structuredOutput);
+      expect(blocks.single.title, 'Answer');
+      expect(blocks.single.payload?['type'], 'result');
+    });
+
     test('maps blocked workflow payload without re-deriving policy from message type', () {
       final blocks = builder.buildAssistantBlocks(
         messages: [

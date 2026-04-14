@@ -83,5 +83,58 @@ void main() {
 
       await storage.deleteGroup(groupId);
     });
+
+    test('completed interaction step keeps provider continuation fields', () async {
+      final storage = DatabaseHelper(
+          databaseName: 'chat_turn_step_repository_interaction_test_v8.db');
+      final turnRepository = ChatTurnRepository(storage);
+      final stepRepository = ChatTurnStepRepository(storage);
+      final groupId =
+          await storage.insertGroup(ChatGroup(title: 'turn step repo group'));
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.awaitingUserInteraction,
+          userInput: '请补充偏好信息',
+          providerStyle: ChatTurnProviderStyle.openaiResponses,
+          modelName: 'gpt-5.4',
+        ),
+      );
+
+      final stepId = await stepRepository.createStep(
+        ChatTurnStep(
+          turnId: turnId,
+          stepIndex: 1,
+          providerResponseId: 'resp_ask_1',
+          providerCallId: 'call_ask_1',
+          toolName: 'ask_user_question',
+          toolArgsJson: const {'questions': []},
+          status: ChatTurnStepStatus.planned,
+        ),
+      );
+
+      await stepRepository.markCompleted(
+        stepId,
+        resultSummary: 'user_answered',
+        resultJson: const {
+          'answersByQuestionId': {
+            'storage_layer': 'SQLite',
+          },
+        },
+      );
+
+      final restored = await stepRepository.getStep(stepId);
+
+      expect(restored, isNotNull);
+      expect(restored!.providerResponseId, 'resp_ask_1');
+      expect(restored.providerCallId, 'call_ask_1');
+      expect(restored.status, ChatTurnStepStatus.completed);
+      expect(
+        restored.resultJson?['answersByQuestionId'],
+        containsPair('storage_layer', 'SQLite'),
+      );
+
+      await storage.deleteGroup(groupId);
+    });
   });
 }

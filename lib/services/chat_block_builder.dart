@@ -78,6 +78,30 @@ class ChatBlockBuilder {
           text: message.text,
           payload: message.payloadJson,
         );
+      case MessageContentType.askUserQuestionPrompt:
+        return AssistantTurnBlock(
+          id: '$turnId-question-prompt-$sequence',
+          turnId: turnId,
+          type: AssistantTurnBlockType.structuredOutput,
+          sequence: sequence,
+          createdAt: message.timestamp,
+          updatedAt: message.timestamp,
+          title: 'Question',
+          text: message.text,
+          payload: message.payloadJson,
+        );
+      case MessageContentType.askUserQuestionResult:
+        return AssistantTurnBlock(
+          id: '$turnId-question-result-$sequence',
+          turnId: turnId,
+          type: AssistantTurnBlockType.structuredOutput,
+          sequence: sequence,
+          createdAt: message.timestamp,
+          updatedAt: message.timestamp,
+          title: 'Answer',
+          text: message.text,
+          payload: message.payloadJson,
+        );
       case MessageContentType.toolInvocation:
       case MessageContentType.actionConfirmation:
         final invocation = _readToolInvocation(message);

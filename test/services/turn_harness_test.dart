@@ -16,6 +16,8 @@ import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
+import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/tool/tool_call.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
@@ -791,6 +793,230 @@ void main() {
     });
 
     test(
+        'suspends turn for ask user question and emits assistant question prompt',
+        () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      final stepRepository = _InMemoryChatTurnStepRepository();
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          id: 42,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '帮我设计存储方案',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+
+      final harness = TurnHarness(
+        plannerService: _NativeDecisionPlannerService([
+          const ModelTurnDecision(
+            toolCalls: [
+              ModelToolCall(
+                providerCallId: 'call_ask_1',
+                toolName: 'ask_user_question',
+                arguments: {
+                  'questions': [
+                    {
+                      'id': 'storage_layer',
+                      'header': 'Storage',
+                      'question': 'Which storage layer should we use?',
+                      'multiSelect': false,
+                      'options': [
+                        {
+                          'label': 'SQLite',
+                          'description': 'Local relational store',
+                        },
+                      ],
+                    },
+                  ],
+                },
+                sequence: 1,
+              ),
+            ],
+            assistantMessage: null,
+            diagnosticCode: 'planner_action_call_tool',
+            providerState: {'response_id': 'resp_ask_1'},
+            providerStyle: ChatTurnProviderStyle.openaiResponses,
+            modelName: 'gpt-5.4',
+            isTerminal: false,
+          ),
+        ]),
+        turnRepository: turnRepository,
+        turnStepRepository: stepRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        turnVerifier: _AlwaysStopVerifier(),
+        chatService: _FakeChatService(chunks: const ['unused']),
+        toolCallService: _FakeToolCallService(
+          executeResult: const ToolPreparationResult.noTool(),
+          definitionsByName: const {
+            'ask_user_question': ToolDefinition(
+              name: 'ask_user_question',
+              title: '向用户提问',
+              description: '向用户发起结构化问题',
+              runtimeKind: ToolRuntimeKind.userInteraction,
+            ),
+          },
+        ),
+        limits: const AgentLoopLimits(maxIterations: 4),
+      );
+
+      final emitted = await harness
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          )
+          .toList();
+
+      expect(
+        emitted.map((event) => event.eventType),
+        contains(ChatEventType.assistantQuestionPrompt),
+      );
+      expect(
+        (await turnRepository.getTurn(turnId))!.status,
+        ChatTurnStatus.awaitingUserInteraction,
+      );
+      final step = (await stepRepository.listSteps(turnId)).single;
+      expect(step.providerCallId, 'call_ask_1');
+      expect(step.providerResponseId, 'resp_ask_1');
+    });
+
+    test(
+        'resumeAfterQuestionAnswered records interaction result, completes step, and continues loop',
+        () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      final stepRepository = _InMemoryChatTurnStepRepository();
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          id: 43,
+          groupId: 1,
+          status: ChatTurnStatus.awaitingUserInteraction,
+          userInput: '帮我设计存储方案',
+          providerStyle: ChatTurnProviderStyle.openaiResponses,
+          modelName: 'gpt-5.4',
+          providerStateJson: const {'response_id': 'resp_ask_1'},
+        ),
+      );
+      await stepRepository.createStep(
+        ChatTurnStep(
+          id: 9,
+          turnId: turnId,
+          stepIndex: 1,
+          providerResponseId: 'resp_ask_1',
+          providerCallId: 'call_ask_1',
+          toolName: 'ask_user_question',
+          toolArgsJson: const {
+            'questions': [
+              {
+                'id': 'storage_layer',
+                'header': 'Storage',
+                'question': 'Which storage layer should we use?',
+                'multiSelect': false,
+                'options': [
+                  {
+                    'label': 'SQLite',
+                    'description': 'Local relational store',
+                  },
+                ],
+              },
+            ],
+          },
+          status: ChatTurnStepStatus.planned,
+        ),
+      );
+
+      final toolCallService = _FakeToolCallService(
+        executeResult: const ToolPreparationResult.noTool(),
+      );
+      final harness = TurnHarness(
+        plannerService: _NativeDecisionPlannerService([
+          const ModelTurnDecision(
+            toolCalls: [],
+            assistantMessage: '建议先用 SQLite。',
+            diagnosticCode: 'planner_action_respond',
+            providerState: {'response_id': 'resp_ask_2'},
+            providerStyle: ChatTurnProviderStyle.openaiResponses,
+            modelName: 'gpt-5.4',
+            isTerminal: true,
+          ),
+        ]),
+        turnRepository: turnRepository,
+        turnStepRepository: stepRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        turnVerifier: _AlwaysStopVerifier(),
+        chatService: _FakeChatService(
+          chunks: const ['建议先用 SQLite。'],
+        ),
+        toolCallService: toolCallService,
+        limits: const AgentLoopLimits(maxIterations: 4),
+      );
+
+      final emitted = await harness
+          .resumeAfterQuestionAnswered(
+            turnId: turnId,
+            request: AskUserQuestionRequest.fromJson(const {
+              'questions': [
+                {
+                  'id': 'storage_layer',
+                  'header': 'Storage',
+                  'question': 'Which storage layer should we use?',
+                  'multiSelect': false,
+                  'options': [
+                    {
+                      'label': 'SQLite',
+                      'description': 'Local relational store',
+                    },
+                  ],
+                },
+              ],
+              'agentTurnId': 43,
+              'stepId': 9,
+              'providerCallId': 'call_ask_1',
+            }),
+            response: AskUserQuestionResponse.fromJson(const {
+              'answersByQuestionId': {
+                'storage_layer': 'SQLite',
+              },
+              'selectedOptionLabelsByQuestionId': {
+                'storage_layer': ['SQLite'],
+              },
+              'freeTextAnswersByQuestionId': {},
+            }),
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          )
+          .toList();
+
+      expect(toolCallService.executeInvocationCount, 0);
+      expect(
+        emitted.map((event) => event.eventType),
+        containsAllInOrder([
+          ChatEventType.userInteractionResult,
+          ChatEventType.assistantTextDelta,
+          ChatEventType.assistantTextFinal,
+          ChatEventType.finalAnswer,
+        ]),
+      );
+      final step = (await stepRepository.getStep(9))!;
+      expect(step.status, ChatTurnStepStatus.completed);
+      expect(step.providerCallId, 'call_ask_1');
+      expect(
+        step.resultJson?['answersByQuestionId'],
+        containsPair('storage_layer', 'SQLite'),
+      );
+      expect(
+        (await turnRepository.getTurn(turnId))!.status,
+        ChatTurnStatus.completed,
+      );
+    });
+
+    test(
         'stops turn with max_iterations_reached when stop verifier keeps rejecting',
         () async {
       final eventRepository = _InMemoryChatEventRepository();
@@ -1522,11 +1748,21 @@ class _FakeChatService extends ChatService {
 
 class _FakeToolCallService extends ToolCallService {
   final ToolPreparationResult executeResult;
+  final Map<String, ToolDefinition> definitionsByName;
+  int executeInvocationCount = 0;
 
-  _FakeToolCallService({required this.executeResult})
+  _FakeToolCallService({
+    required this.executeResult,
+    this.definitionsByName = const {},
+  })
       : super(
           toolExecutor: ToolExecutor(chatStorage: _NoopChatStorage()),
         );
+
+  @override
+  ToolDefinition? findDefinition(String toolName) {
+    return definitionsByName[toolName] ?? super.findDefinition(toolName);
+  }
 
   @override
   Future<ToolPreparationResult> executeToolInvocation({
@@ -1535,6 +1771,7 @@ class _FakeToolCallService extends ToolCallService {
     bool trustTool = false,
     String? turnId,
   }) async {
+    executeInvocationCount += 1;
     return executeResult;
   }
 }
@@ -1579,6 +1816,15 @@ class _InMemoryChatTurnRepository extends ChatTurnRepository {
     final turn = turns[turnId]!;
     turns[turnId] = turn.copyWith(
       status: ChatTurnStatus.awaitingToolConfirmation,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  @override
+  Future<void> markAwaitingUserInteraction(int turnId) async {
+    final turn = turns[turnId]!;
+    turns[turnId] = turn.copyWith(
+      status: ChatTurnStatus.awaitingUserInteraction,
       updatedAt: DateTime.now(),
     );
   }
@@ -1827,6 +2073,40 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
       role: MessageRole.system,
       content: content,
       payloadJson: payloadJson,
+    );
+  }
+
+  @override
+  Future<int> appendAssistantQuestionPrompt({
+    required int turnId,
+    required int groupId,
+    required AskUserQuestionRequest request,
+    required String content,
+  }) async {
+    return _append(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.assistantQuestionPrompt,
+      role: MessageRole.assistant,
+      content: content,
+      payloadJson: request.toJson(),
+    );
+  }
+
+  @override
+  Future<int> appendUserInteractionResult({
+    required int turnId,
+    required int groupId,
+    required AskUserQuestionResponse response,
+    required String content,
+  }) async {
+    return _append(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.userInteractionResult,
+      role: MessageRole.system,
+      content: content,
+      payloadJson: response.toJson(),
     );
   }
 

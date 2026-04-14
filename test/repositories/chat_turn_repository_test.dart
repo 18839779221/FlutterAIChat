@@ -107,6 +107,29 @@ void main() {
       await storage.deleteGroup(groupId);
     });
 
+    test('can persist awaiting user interaction turn status', () async {
+      final storage = DatabaseHelper(
+          databaseName: 'chat_turn_repository_user_interaction_test_v8.db');
+      final repository = ChatTurnRepository(storage);
+      final groupId =
+          await storage.insertGroup(ChatGroup(title: 'turn repo group'));
+
+      final turnId = await repository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.awaitingUserInteraction,
+          userInput: '请先回答几个问题',
+        ),
+      );
+
+      final restored = await repository.getTurn(turnId);
+
+      expect(restored, isNotNull);
+      expect(restored!.status, ChatTurnStatus.awaitingUserInteraction);
+
+      await storage.deleteGroup(groupId);
+    });
+
     test('can update runtime provider state for an existing turn', () async {
       final storage = DatabaseHelper(
           databaseName: 'chat_turn_repository_runtime_state_test_v8.db');

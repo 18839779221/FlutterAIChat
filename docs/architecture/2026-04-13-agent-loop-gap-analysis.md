@@ -15,6 +15,7 @@
 - tool call loop 主编排链路
 - tool exposure / tool policy / verifier
 - transcript / step / turn 持久化边界
+- human-in-the-loop interaction checkpoint
 
 ## 总体判断
 
@@ -26,6 +27,7 @@
 - 运行时 registry / handler 模型已经替代了早期的大型 `switch`
 - `TurnVerifier`、`ToolAccessSnapshot`、`ToolPolicyService` 已成为主链术语与主实现
 - planner / runtime / UI payload 已开始围绕 `toolAccess` 共享快照收敛
+- interaction checkpoint 已从单一 tool confirmation 扩展到 `AskUserQuestion`
 
 但从基线视角看，当前实现仍然存在四类关键问题：
 
@@ -195,6 +197,24 @@ harness 的整体控制权是对的，但部分状态表达与中断语义仍偏
 ### 结论
 
 human-in-the-loop 主路径与 policy 主契约已经成立，剩余工作主要是继续去除兼容重复字段并强化文档约束。
+
+## 五点五、Interaction Checkpoint
+
+### 已对齐部分
+
+- `TurnHarness` 已能识别 interaction-style tool，并在 `AskUserQuestion` 上进入 `awaitingUserInteraction`
+- 用户答案恢复不再经过 `ToolOrchestratorService.executeToolInvocation()`，而是直接写入 interaction result 后继续 loop
+- interaction step 完成后会把结构化结果写入 `ChatTurnStep.resultJson`，从而支撑 provider continuation item
+- UI 侧已经有独立的 `ChatInteractionCoordinator` 与消息卡片入口，不再把所有交互继续塞进 `ChatSendCoordinator` 的表层按钮语义
+
+### 当前差异点
+
+- 当前问题卡片已支持最小可用单题 / 多题草稿与提交，但展示层仍偏基础，尚未演进到更完整的 wizard 体验
+- `ChatBlockBuilder` 目前将 ask-user-question prompt/result 暂时映射为 structured-output block 家族；后续如果交互类型继续增多，建议升级为独立 block 类型
+
+### 结论
+
+interaction checkpoint 主路径已经成立，并且已覆盖 runtime、step ledger、provider continuation、controller、UI 卡片这几条关键链路。剩余更多是产品层和展示层打磨，而不是架构主干缺失。
 
 ## 六、Verifier 与停止条件
 

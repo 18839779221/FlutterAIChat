@@ -1,5 +1,6 @@
 import '../services/tool_executor.dart';
 import 'core/tool_runtime_registry.dart';
+import 'handlers/ask_user_question_tool_handler.dart';
 import 'handlers/create_calendar_event_tool_handler.dart';
 import 'handlers/create_reminder_tool_handler.dart';
 import 'handlers/edit_tool_handler.dart';
@@ -21,6 +22,7 @@ ToolRuntimeRegistry buildDefaultToolRuntimeRegistry({
 }) {
   return ToolRuntimeRegistry(
     handlers: [
+      AskUserQuestionToolHandler(),
       SearchChatHistoryToolHandler(
         searcher: ({
           required groupId,

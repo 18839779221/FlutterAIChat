@@ -55,5 +55,21 @@ void main() {
 
       expect(restored.status, ChatTurnStatus.running);
     });
+
+    test('fromMap can restore awaiting user interaction status', () {
+      final restored = ChatTurn.fromMap({
+        'id': 2,
+        'group_id': 9,
+        'status': 'awaitingUserInteraction',
+        'user_input': '需要更多信息',
+        'iteration_count': 1,
+        'tool_call_count': 1,
+        'created_at': 1712900000000,
+        'updated_at': 1712900000000,
+        'completed_at': null,
+      });
+
+      expect(restored.status, ChatTurnStatus.awaitingUserInteraction);
+    });
   });
 }

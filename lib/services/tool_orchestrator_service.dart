@@ -55,6 +55,11 @@ class ToolOrchestratorService {
       return const ToolPreparationResult.noTool();
     }
     final toolDefinition = runtimeHandler.definition;
+    if (toolDefinition.resolvedRuntimeKind == ToolRuntimeKind.userInteraction) {
+      throw UnsupportedError(
+        'user interaction tools must suspend the turn before runtime execution',
+      );
+    }
     final alreadyConfirmed =
         invocation.status == ToolInvocationStatus.awaitingConfirmation;
     final toolAccess = await _resolveToolAccess(toolDefinition);

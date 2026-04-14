@@ -188,10 +188,16 @@ TurnHarness.resumeAfterQuestionAnswered(...)
 
 字段建议：
 
+- `id: String`
 - `question: String`
 - `header: String`
 - `multiSelect: bool`
 - `options: List<AskUserQuestionOption>`
+
+说明：
+
+- `id` 应为稳定 question id，不建议用 question 文本本身作为 response key
+- transcript、step result、provider continuation 都应基于 question id 恢复结构化答案
 
 ### AskUserQuestionOption
 
@@ -218,9 +224,9 @@ TurnHarness.resumeAfterQuestionAnswered(...)
 
 字段建议：
 
-- `answers: Map<String, String>`
-- `selectedOptionLabelsByQuestion: Map<String, List<String>>`
-- `freeTextAnswers: Map<String, String>`
+- `answersByQuestionId: Map<String, String>`
+- `selectedOptionLabelsByQuestionId: Map<String, List<String>>`
+- `freeTextAnswersByQuestionId: Map<String, String>`
 
 说明：
 
@@ -284,7 +290,7 @@ TurnHarness.resumeAfterQuestionAnswered(...)
 
 建议给 `ToolDefinition` 增加执行模式字段，例如：
 
-- `executionMode: immediate | requiresConfirmation | userInteraction`
+- `runtimeKind: immediate | requiresConfirmation | userInteraction`
 
 或：
 
@@ -295,6 +301,7 @@ TurnHarness.resumeAfterQuestionAnswered(...)
 - 避免在 `TurnHarness` 里硬编码工具名分支
 - 让 planner/runtime 元数据更完整
 - 后续如果再加其他 interaction-style tool，扩展点更自然
+- 不要与现有用户策略层 `ToolExecutionMode(conservative|balanced|aggressive)` 重名
 
 ## 服务层设计
 
@@ -327,6 +334,12 @@ Stream<ChatEvent> resumeAfterQuestionAnswered({
 })
 ```
 
+恢复链路约束：
+
+- `resumeAfterQuestionAnswered(...)` 不应再经过 `ToolOrchestratorService.executeToolInvocation()`
+- 用户提交的结构化答案本身就是 AskUserQuestion 这次 tool call 的 result
+- 恢复时应直接写入 interaction result event、完成对应 step，然后回到 `_continueTurnLoop()`
+
 ### ToolOrchestratorService
 
 保持职责不变：
@@ -340,6 +353,11 @@ Stream<ChatEvent> resumeAfterQuestionAnswered({
 - interaction payload formatting
 
 如果让 `ToolOrchestratorService` 处理 AskUserQuestion，会把“工具执行”和“等待用户输入”这两种语义混在一起，后续维护成本会越来越高。
+
+额外约束：
+
+- AskUserQuestion 不应进入 `ToolHandler.execute()` 普通执行路径
+- 如果 runtime 侧需要 blocked / policy guard，应在 `TurnHarness` 识别 interaction tool 时显式处理，而不是伪装成一次普通工具执行
 
 ### ChatSendCoordinator
 
@@ -446,6 +464,12 @@ User answered AskUserQuestion:
 
 同时保留结构化 payload，供后续 planner/ledger 使用。
 
+这里建议明确双轨保存：
+
+- `ChatEvent.content` 保存稳定、低噪音的人类可读 transcript 文本
+- `ChatEvent.payloadJson` 保存结构化 answer payload，供 UI / trace / debug / replay 使用
+- `ChatTurnStep.resultJson` 同步保存结构化结果，供 provider continuation item 生成使用
+
 ### 为什么不走普通 user message
 
 因为那会导致：
@@ -463,6 +487,12 @@ User answered AskUserQuestion:
 - prompt 消息 payload
 - 当前 pending interaction 对应的 turn / step 状态
 - 用户最终提交的答案结果
+- interaction step 的 `providerResponseId` / `providerCallId` / `resultJson`
+
+补充说明：
+
+- 当前 native tool-calling provider continuation 由 step ledger 构建，而不是直接从 message 或 event 反推
+- 因此 AskUserQuestion 对应 step 在用户提交后必须写成 completed/failed，并带上稳定的结构化 `resultJson`
 
 ### 不建议立即持久化的内容
 
@@ -503,10 +533,12 @@ User answered AskUserQuestion:
 - 支持 `Other`
 - 新增 `submitQuestionAnswers(...)`
 - `resumeAfterQuestionAnswered(...)` 恢复当前 turn
+- 恢复后 provider continuation 仍能生成对应的 `function_call_output`
 
 验收：
 
 - 单题问答后模型能继续当前 turn 并输出 final answer
+- OpenAI Responses 风格 continuation 不会丢失 AskUserQuestion 的 call output
 
 ### Task 3：多题 wizard
 
