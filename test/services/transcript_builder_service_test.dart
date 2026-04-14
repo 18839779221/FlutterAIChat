@@ -1,6 +1,8 @@
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
+import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/services/transcript_builder_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -206,6 +208,27 @@ class _FakeChatEventRepository implements ChatEventRepository {
     required String toolName,
     required Map<String, dynamic> arguments,
     required String summary,
+    Map<String, dynamic>? payloadJson,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<int> appendAssistantQuestionPrompt({
+    required int turnId,
+    required int groupId,
+    required AskUserQuestionRequest request,
+    required String content,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<int> appendUserInteractionResult({
+    required int turnId,
+    required int groupId,
+    required AskUserQuestionResponse response,
+    required String content,
   }) {
     throw UnimplementedError();
   }

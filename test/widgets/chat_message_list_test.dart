@@ -20,8 +20,8 @@ void main() {
 
       expect(find.text('开始一段新的对话'), findsOneWidget);
       expect(find.text('从一个问题开始，或让助手帮你推进下一步。'), findsOneWidget);
-      expect(find.text('确认链路'), findsOneWidget);
-      expect(find.text('多轮 Tool Call'), findsOneWidget);
+      expect(find.text('单题问答'), findsOneWidget);
+      expect(find.text('多题澄清'), findsOneWidget);
     });
 
     testWidgets('empty state suggestion fills the composer without auto sending',
@@ -38,12 +38,12 @@ void main() {
         focusNode: focusNode,
       );
 
-      await tester.tap(find.text('单轮多工具'));
+      await tester.tap(find.text('单题问答'));
       await tester.pump();
 
       expect(
         textController.text,
-        '先搜索当前聊天记录里和 agent loop 相关的内容，再读取相关代码文件，最后把发现整理成简短结论。能在一轮里规划多个工具就直接规划。',
+        '帮我设计一个本地 AI 聊天 App 的存储方案，但我现在还没决定用哪种数据库。请先向我提一个关键澄清问题，再继续给方案。',
       );
       expect(
         textController.selection,
@@ -65,12 +65,12 @@ void main() {
         focusNode: focusNode,
       );
 
-      await tester.tap(find.text('多轮 Tool Call'));
+      await tester.tap(find.text('多题澄清'));
       await tester.pump();
 
       expect(
         textController.text,
-        '先搜索当前聊天记录里和 agent loop 相关的内容；如果只命中我这条提问，继续读取 turn harness 或 planner 相关代码文件确认实现，再给出简短结论。不要在信息不足时直接结束。',
+        '我要做一个新的 AI Chat 产品方案，但我还没决定目标平台、数据存储、以及是否支持离线模式。不要自己猜，请把这些关键问题一次性问我，然后再给最终建议。',
       );
       expect(
         textController.selection,
