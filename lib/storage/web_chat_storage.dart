@@ -2,16 +2,22 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/agent/chat_turn_step.dart';
 import '../models/chat_group.dart';
+import '../models/chat_event.dart';
 import '../models/chat_message.dart';
+import '../models/chat_turn.dart';
 import '../models/response/message_content_type.dart';
 import '../utils/logger.dart';
 import 'chat_storage.dart';
 
 class WebChatStorage implements ChatStorage {
   static const String _tag = 'WebChatStorage';
+  static const String _eventsKey = 'web.chat_events';
   static const String _groupsKey = 'web.chat_groups';
   static const String _messagesKey = 'web.chat_messages';
+  static const String _turnsKey = 'web.chat_turns';
+  static const String _turnStepsKey = 'web.chat_turn_steps';
 
   final SharedPreferences _preferences;
 
@@ -60,7 +66,8 @@ class WebChatStorage implements ChatStorage {
   }
 
   @override
-  Future<void> updateGroupSystemPrompt(int groupId, String? systemPrompt) async {
+  Future<void> updateGroupSystemPrompt(
+      int groupId, String? systemPrompt) async {
     final groups = await _readGroups();
     final updated = groups.map((group) {
       if (group['id'] != groupId) {
@@ -75,7 +82,8 @@ class WebChatStorage implements ChatStorage {
   }
 
   @override
-  Future<void> updateGroupTitle(int groupId, String title, {bool isSummarized = true}) async {
+  Future<void> updateGroupTitle(int groupId, String title,
+      {bool isSummarized = true}) async {
     final groups = await _readGroups();
     final updated = groups.map((group) {
       if (group['id'] != groupId) {
@@ -92,10 +100,127 @@ class WebChatStorage implements ChatStorage {
 
   @override
   Future<void> deleteGroup(int groupId) async {
+    final events = await _readEvents();
     final groups = await _readGroups();
     final messages = await _readMessages();
-    await _writeGroups(groups.where((group) => group['id'] != groupId).toList());
-    await _writeMessages(messages.where((message) => message['group_id'] != groupId).toList());
+    final turns = await _readTurns();
+    final turnSteps = await _readTurnSteps();
+    await _writeEvents(
+        events.where((event) => event['group_id'] != groupId).toList());
+    await _writeGroups(
+        groups.where((group) => group['id'] != groupId).toList());
+    await _writeMessages(
+        messages.where((message) => message['group_id'] != groupId).toList());
+    await _writeTurns(
+        turns.where((turn) => turn['group_id'] != groupId).toList());
+    final deletedTurnIds = turns
+        .where((turn) => turn['group_id'] == groupId)
+        .map((turn) => turn['id'])
+        .toSet();
+    await _writeTurnSteps(
+      turnSteps
+          .where((step) => !deletedTurnIds.contains(step['turn_id']))
+          .toList(),
+    );
+  }
+
+  @override
+  Future<int> insertTurn(ChatTurn turn) async {
+    final turns = await _readTurns();
+    final nextId = _nextId(turns.map((item) => item['id'] as int?));
+    turns.add({
+      ...turn.toMap(),
+      'id': nextId,
+    });
+    await _writeTurns(turns);
+    return nextId;
+  }
+
+  @override
+  Future<ChatTurn?> getTurn(int id) async {
+    final turns = await _readTurns();
+    final match = turns.where((turn) => turn['id'] == id);
+    if (match.isEmpty) {
+      return null;
+    }
+    return ChatTurn.fromMap(match.first);
+  }
+
+  @override
+  Future<void> updateTurn(ChatTurn turn) async {
+    final turns = await _readTurns();
+    final updated = turns.map((storedTurn) {
+      if (storedTurn['id'] != turn.id) {
+        return storedTurn;
+      }
+      return turn.toMap();
+    }).toList();
+    await _writeTurns(updated);
+  }
+
+  @override
+  Future<int> insertTurnStep(ChatTurnStep step) async {
+    final steps = await _readTurnSteps();
+    final nextId = _nextId(steps.map((item) => item['id'] as int?));
+    steps.add({
+      ...step.toMap(),
+      'id': nextId,
+    });
+    await _writeTurnSteps(steps);
+    return nextId;
+  }
+
+  @override
+  Future<ChatTurnStep?> getTurnStep(int id) async {
+    final steps = await _readTurnSteps();
+    final match = steps.where((step) => step['id'] == id);
+    if (match.isEmpty) {
+      return null;
+    }
+    return ChatTurnStep.fromMap(match.first);
+  }
+
+  @override
+  Future<List<ChatTurnStep>> getTurnSteps(int turnId) async {
+    final steps = await _readTurnSteps();
+    final filtered = steps.where((step) => step['turn_id'] == turnId).toList()
+      ..sort(
+          (a, b) => (a['step_index'] as int).compareTo(b['step_index'] as int));
+    return filtered.map(ChatTurnStep.fromMap).toList();
+  }
+
+  @override
+  Future<void> updateTurnStep(ChatTurnStep step) async {
+    final steps = await _readTurnSteps();
+    final updated = steps.map((storedStep) {
+      if (storedStep['id'] != step.id) {
+        return storedStep;
+      }
+      return step.toMap();
+    }).toList();
+    await _writeTurnSteps(updated);
+  }
+
+  @override
+  Future<int> insertEvent(ChatEvent event) async {
+    final events = await _readEvents();
+    final nextId = _nextId(events.map((item) => item['id'] as int?));
+    events.add({
+      ...event.toMap(),
+      'id': nextId,
+    });
+    await _writeEvents(events);
+    return nextId;
+  }
+
+  @override
+  Future<List<ChatEvent>> getEventsByTurn(int turnId) async {
+    final events = await _readEvents();
+    final filtered = events
+        .where((event) => event['turn_id'] == turnId)
+        .toList()
+      ..sort((a, b) => (a['sequence'] as int).compareTo(b['sequence'] as int));
+    return filtered.map(ChatEvent.fromMap).toList();
   }
 
   @override
@@ -115,7 +240,8 @@ class WebChatStorage implements ChatStorage {
   @override
   Future<List<ChatMessage>> getMessagesByGroup(int groupId) async {
     final messages = await _groupMessages(groupId);
-    messages.sort((a, b) => (a['timestamp'] as int).compareTo(b['timestamp'] as int));
+    messages.sort(
+        (a, b) => (a['timestamp'] as int).compareTo(b['timestamp'] as int));
     return messages.map(ChatMessage.fromMap).toList();
   }
 
@@ -142,7 +268,8 @@ class WebChatStorage implements ChatStorage {
   @override
   Future<void> deleteGroupMessages(int groupId) async {
     final messages = await _readMessages();
-    await _writeMessages(messages.where((message) => message['group_id'] != groupId).toList());
+    await _writeMessages(
+        messages.where((message) => message['group_id'] != groupId).toList());
   }
 
   @override
@@ -160,7 +287,8 @@ class WebChatStorage implements ChatStorage {
 
   @override
   Future<void> updateMessageStatus(int id, MessageStatus status) async {
-    await _updateMessageRecord(id, {'status': status.toString().split('.').last});
+    await _updateMessageRecord(
+        id, {'status': status.toString().split('.').last});
   }
 
   @override
@@ -182,7 +310,8 @@ class WebChatStorage implements ChatStorage {
   @override
   Future<void> deleteMessage(int id) async {
     final messages = await _readMessages();
-    await _writeMessages(messages.where((message) => message['id'] != id).toList());
+    await _writeMessages(
+        messages.where((message) => message['id'] != id).toList());
   }
 
   Future<void> _updateMessageRecord(int id, Map<String, dynamic> patch) async {
@@ -210,6 +339,18 @@ class WebChatStorage implements ChatStorage {
 
   Future<List<Map<String, dynamic>>> _readMessages() async {
     return _readList(_messagesKey);
+  }
+
+  Future<List<Map<String, dynamic>>> _readTurns() async {
+    return _readList(_turnsKey);
+  }
+
+  Future<List<Map<String, dynamic>>> _readTurnSteps() async {
+    return _readList(_turnStepsKey);
+  }
+
+  Future<List<Map<String, dynamic>>> _readEvents() async {
+    return _readList(_eventsKey);
   }
 
   Future<List<Map<String, dynamic>>> _readList(String key) async {
@@ -240,6 +381,18 @@ class WebChatStorage implements ChatStorage {
 
   Future<void> _writeMessages(List<Map<String, dynamic>> messages) async {
     await _preferences.setString(_messagesKey, jsonEncode(messages));
+  }
+
+  Future<void> _writeTurns(List<Map<String, dynamic>> turns) async {
+    await _preferences.setString(_turnsKey, jsonEncode(turns));
+  }
+
+  Future<void> _writeTurnSteps(List<Map<String, dynamic>> turnSteps) async {
+    await _preferences.setString(_turnStepsKey, jsonEncode(turnSteps));
+  }
+
+  Future<void> _writeEvents(List<Map<String, dynamic>> events) async {
+    await _preferences.setString(_eventsKey, jsonEncode(events));
   }
 
   int _nextId(Iterable<int?> ids) {

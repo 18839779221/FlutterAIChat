@@ -14,10 +14,6 @@ enum ChatTraceStage {
   llmFirstToken,
   /// The LLM request completed (success or failure).
   llmDone,
-  /// Tool preparation (e.g., search context gathering) started.
-  toolPrepareStart,
-  /// The tool decision logic finished.
-  toolDecisionDone,
   /// The tool execution phase finished.
   toolExecuteDone,
   /// The tool context builder completed.

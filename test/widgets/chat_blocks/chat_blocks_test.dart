@@ -1,6 +1,7 @@
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/theme/app_theme.dart';
+import 'package:ai_chat/tools/core/tool_display_names.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
@@ -160,6 +161,42 @@ void main() {
       expect(find.text('继续，以后不再确认'), findsOneWidget);
     });
 
+    testWidgets(
+        'workflow confirmation actions can be driven by execution policy snapshot',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: ToolWorkflowCard(
+              title: 'Tool Workflow',
+              expandedStepId: 'confirm-step',
+              steps: [
+                ToolWorkflowStep(
+                  stepId: 'confirm-step',
+                  turnId: 'turn-1',
+                  toolName: 'create_reminder',
+                  title: '创建提醒',
+                  summary: '准备执行工具：创建提醒',
+                  status: ToolWorkflowStepStatus.awaitingConfirmation,
+                  requiresConfirmation: false,
+                  toolAccess: {
+                    'toolName': 'create_reminder',
+                    'executionPolicy': 'require_confirmation',
+                    'isVisibleToPlanner': true,
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('继续'), findsOneWidget);
+      expect(find.text('取消'), findsOneWidget);
+      expect(find.text('继续，以后不再确认'), findsOneWidget);
+    });
+
     testWidgets('tool result summary shows compact status and summary',
         (tester) async {
       await tester.pumpWidget(
@@ -177,7 +214,10 @@ void main() {
         ),
       );
 
-      expect(find.text('search_chat_history'), findsOneWidget);
+      expect(
+        find.text(resolveToolDisplayName('search_chat_history')),
+        findsOneWidget,
+      );
       expect(find.text('完成'), findsOneWidget);
       expect(find.text('命中 4 条历史消息'), findsOneWidget);
     });

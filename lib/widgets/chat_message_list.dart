@@ -15,6 +15,7 @@ import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
 import 'package:ai_chat/widgets/chat_empty_state.dart';
+import 'package:ai_chat/widgets/interaction/ask_user_question_card.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -94,6 +95,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final scrollController = ref.watch(scrollControllerProvider);
     final colors = Theme.of(context).extension<AppColors>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final textController = ref.read(textControllerProvider);
+    final focusNode = ref.read(focusNodeProvider);
 
     if (isGenerating && autoScrollToBottom) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -111,7 +114,15 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final itemCount = timelineItems.length + (hasMoreMessages ? 1 : 0);
 
     if (messages.isEmpty) {
-      return const ChatEmptyState();
+      return ChatEmptyState(
+        onSuggestionSelected: (prompt) {
+          textController.value = TextEditingValue(
+            text: prompt,
+            selection: TextSelection.collapsed(offset: prompt.length),
+          );
+          focusNode.requestFocus();
+        },
+      );
     }
 
     return Stack(
@@ -138,7 +149,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
             final item = timelineItems[hasMoreMessages ? index - 1 : index];
             return Align(
               alignment: Alignment.topCenter,
-                child: ConstrainedBox(
+              child: ConstrainedBox(
                 constraints: const BoxConstraints(
                   maxWidth: kIsWeb ? 860 : 720,
                 ),
@@ -250,13 +261,17 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
                   ? null
                   : () => _showMessageOptionMenu(sourceMessage),
               child: FinalResponseBlock(
-                title: block.title ?? 'Final Response',
+                title: block.title ?? '最终回答',
                 text: block.text ?? '',
               ),
             ),
           );
           break;
         case AssistantTurnBlockType.structuredOutput:
+          if (sourceMessage?.contentType == MessageContentType.askUserQuestionPrompt) {
+            widgets.add(AskUserQuestionCard(message: sourceMessage!));
+            break;
+          }
           widgets.add(
             GestureDetector(
               onLongPress: sourceMessage == null
@@ -383,6 +398,10 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
         summary: json['summary'] as String? ?? '',
         status: status,
         requiresConfirmation: json['requiresConfirmation'] as bool? ?? false,
+        executionPolicy: json['executionPolicy'] as String?,
+        toolAccess: json['toolAccess'] is Map
+            ? Map<String, dynamic>.from(json['toolAccess'] as Map)
+            : null,
         details: json['details'] is Map
             ? Map<String, dynamic>.from(json['details'] as Map)
             : const {},

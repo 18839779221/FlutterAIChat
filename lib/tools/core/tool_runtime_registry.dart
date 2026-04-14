@@ -6,8 +6,8 @@ class ToolRuntimeRegistry {
   ToolRuntimeRegistry({
     required List<ToolHandler> handlers,
   }) : _handlersByName = {
-          for (final handler in handlers) handler.definition.name: handler,
-        };
+         for (final handler in handlers) handler.definition.name: handler,
+       };
 
   final Map<String, ToolHandler> _handlersByName;
 
@@ -20,6 +20,14 @@ class ToolRuntimeRegistry {
   List<ToolDefinition> getAllDefinitions() {
     return _handlersByName.values
         .map((handler) => handler.definition)
+        .toList(growable: false);
+  }
+
+  /// Returns tool definitions available on the requested runtime platform.
+  List<ToolDefinition> getDefinitionsForPlatform(String platform) {
+    return _handlersByName.values
+        .map((handler) => handler.definition)
+        .where((definition) => definition.supportedPlatforms.contains(platform))
         .toList(growable: false);
   }
 }

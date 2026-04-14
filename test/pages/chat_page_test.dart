@@ -1,5 +1,6 @@
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/pages/chat_page.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/theme/app_theme.dart';
@@ -63,6 +64,12 @@ class _StubSendCoordinator implements ChatSendCoordinator {
     String text, {
     required void Function() scheduleAutoSummary,
     required void Function() cancelActiveStream,
+  }) async {}
+
+  @override
+  Future<void> submitQuestionAnswers(
+    ChatMessage message, {
+    required AskUserQuestionResponse response,
   }) async {}
 }
 

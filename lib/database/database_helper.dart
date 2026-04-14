@@ -1,19 +1,32 @@
+import 'dart:convert';
+
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import '../models/agent/chat_turn_step.dart';
+import '../models/chat_event.dart';
 import '../models/chat_message.dart';
 import '../models/response/message_content_type.dart';
 import '../models/chat_group.dart';
+import '../models/chat_turn.dart';
 import '../storage/chat_storage.dart';
 import '../utils/logger.dart';
 
 class DatabaseHelper implements ChatStorage {
   static const String _tag = 'DatabaseHelper';
   static final DatabaseHelper _instance = DatabaseHelper._internal();
-  static Database? _database;
+  final String _databaseName;
+  Database? _database;
 
-  factory DatabaseHelper() => _instance;
+  factory DatabaseHelper({String databaseName = 'chat_history.db'}) {
+    if (databaseName == 'chat_history.db') {
+      return _instance;
+    }
+    return DatabaseHelper._named(databaseName);
+  }
 
-  DatabaseHelper._internal();
+  DatabaseHelper._internal() : _databaseName = 'chat_history.db';
+
+  DatabaseHelper._named(this._databaseName);
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -24,12 +37,12 @@ class DatabaseHelper implements ChatStorage {
 
   Future<Database> _initDatabase() async {
     try {
-      String path = join(await getDatabasesPath(), 'chat_history.db');
+      String path = join(await getDatabasesPath(), _databaseName);
       Logger.d(_tag, '数据库路径: $path');
-      
+
       return await openDatabase(
         path,
-        version: 6,
+        version: 9,
         onCreate: (Database db, int version) async {
           Logger.i(_tag, '创建数据库表...');
           // 创建分组表
@@ -60,6 +73,7 @@ class DatabaseHelper implements ChatStorage {
               FOREIGN KEY (group_id) REFERENCES chat_groups (id) ON DELETE CASCADE
             )
           ''');
+          await _createAgentLoopTables(db);
           Logger.i(_tag, '数据库表创建成功');
         },
         onUpgrade: (Database db, int oldVersion, int newVersion) async {
@@ -142,6 +156,67 @@ class DatabaseHelper implements ChatStorage {
               ADD COLUMN reference_json TEXT
             ''');
           }
+          if (oldVersion < 7) {
+            await _createAgentLoopTables(db);
+          }
+          if (oldVersion < 8) {
+            await db.execute('''
+              ALTER TABLE chat_turns
+              ADD COLUMN goal_summary TEXT
+            ''');
+            await db.execute('''
+              ALTER TABLE chat_turns
+              ADD COLUMN provider_style TEXT
+            ''');
+            await db.execute('''
+              ALTER TABLE chat_turns
+              ADD COLUMN model_name TEXT
+            ''');
+            await db.execute('''
+              ALTER TABLE chat_turns
+              ADD COLUMN provider_state_json TEXT
+            ''');
+            await db.execute('''
+              ALTER TABLE chat_turns
+              ADD COLUMN final_response_text TEXT
+            ''');
+            await db.execute('''
+              CREATE TABLE IF NOT EXISTS chat_turn_steps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                turn_id INTEGER NOT NULL,
+                step_index INTEGER NOT NULL,
+                provider_response_id TEXT,
+                provider_call_id TEXT,
+                tool_name TEXT NOT NULL,
+                tool_args_json TEXT NOT NULL,
+                status TEXT NOT NULL,
+                result_summary TEXT,
+                result_json TEXT,
+                error_code TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                completed_at INTEGER,
+                FOREIGN KEY (turn_id) REFERENCES chat_turns (id) ON DELETE CASCADE
+              )
+            ''');
+            await db.execute('''
+              CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_turn_steps_turn_id_step_index
+              ON chat_turn_steps(turn_id, step_index)
+            ''');
+          }
+          if (oldVersion < 9) {
+            final hasProviderResponseId = await _tableHasColumn(
+              db,
+              tableName: 'chat_turn_steps',
+              columnName: 'provider_response_id',
+            );
+            if (!hasProviderResponseId) {
+              await db.execute('''
+                ALTER TABLE chat_turn_steps
+                ADD COLUMN provider_response_id TEXT
+              ''');
+            }
+          }
         },
       );
     } catch (e, stackTrace) {
@@ -149,6 +224,90 @@ class DatabaseHelper implements ChatStorage {
       Logger.e(_tag, '堆栈跟踪', stackTrace);
       rethrow;
     }
+  }
+
+  Future<void> _createAgentLoopTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE chat_turns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        user_input TEXT NOT NULL,
+        goal_summary TEXT,
+        iteration_count INTEGER NOT NULL DEFAULT 0,
+        tool_call_count INTEGER NOT NULL DEFAULT 0,
+        provider_style TEXT,
+        model_name TEXT,
+        provider_state_json TEXT,
+        final_response_text TEXT,
+        stop_reason TEXT,
+        error_message TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        FOREIGN KEY (group_id) REFERENCES chat_groups (id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE chat_turn_steps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        turn_id INTEGER NOT NULL,
+        step_index INTEGER NOT NULL,
+        provider_response_id TEXT,
+        provider_call_id TEXT,
+        tool_name TEXT NOT NULL,
+        tool_args_json TEXT NOT NULL,
+        status TEXT NOT NULL,
+        result_summary TEXT,
+        result_json TEXT,
+        error_code TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        FOREIGN KEY (turn_id) REFERENCES chat_turns (id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE chat_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        turn_id INTEGER NOT NULL,
+        group_id INTEGER NOT NULL,
+        sequence INTEGER NOT NULL,
+        event_type TEXT NOT NULL,
+        role TEXT,
+        status TEXT,
+        content TEXT,
+        payload_json TEXT,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (turn_id) REFERENCES chat_turns (id) ON DELETE CASCADE,
+        FOREIGN KEY (group_id) REFERENCES chat_groups (id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute('''
+      CREATE UNIQUE INDEX idx_chat_turn_steps_turn_id_step_index
+      ON chat_turn_steps(turn_id, step_index)
+    ''');
+    await db.execute('''
+      CREATE UNIQUE INDEX idx_chat_events_turn_id_sequence
+      ON chat_events(turn_id, sequence)
+    ''');
+    await db.execute('''
+      CREATE INDEX idx_chat_turns_group_id_created_at
+      ON chat_turns(group_id, created_at DESC)
+    ''');
+    await db.execute('''
+      CREATE INDEX idx_chat_events_group_id_created_at
+      ON chat_events(group_id, created_at DESC)
+    ''');
+  }
+
+  Future<bool> _tableHasColumn(
+    Database db, {
+    required String tableName,
+    required String columnName,
+  }) async {
+    final result = await db.rawQuery('PRAGMA table_info($tableName)');
+    return result.any((row) => row['name'] == columnName);
   }
 
   // 分组相关操作
@@ -207,7 +366,8 @@ class DatabaseHelper implements ChatStorage {
     }
   }
 
-  Future<void> updateGroupSystemPrompt(int groupId, String? systemPrompt) async {
+  Future<void> updateGroupSystemPrompt(
+      int groupId, String? systemPrompt) async {
     try {
       final db = await database;
       await db.update(
@@ -222,7 +382,8 @@ class DatabaseHelper implements ChatStorage {
     }
   }
 
-  Future<void> updateGroupTitle(int groupId, String title, {bool isSummarized = true}) async {
+  Future<void> updateGroupTitle(int groupId, String title,
+      {bool isSummarized = true}) async {
     try {
       final db = await database;
       await db.update(
@@ -255,22 +416,173 @@ class DatabaseHelper implements ChatStorage {
     }
   }
 
+  @override
+  Future<int> insertTurn(ChatTurn turn) async {
+    try {
+      final db = await database;
+      return await db.insert(
+        'chat_turns',
+        _encodeTurnMap(turn.toMap()),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (e) {
+      Logger.e(_tag, '插入 turn 失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<ChatTurn?> getTurn(int id) async {
+    try {
+      final db = await database;
+      final maps = await db.query(
+        'chat_turns',
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (maps.isEmpty) {
+        return null;
+      }
+      return ChatTurn.fromMap(_decodeTurnMap(maps.first));
+    } catch (e) {
+      Logger.e(_tag, '获取 turn 失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> updateTurn(ChatTurn turn) async {
+    try {
+      final db = await database;
+      await db.update(
+        'chat_turns',
+        _encodeTurnMap(turn.toMap()),
+        where: 'id = ?',
+        whereArgs: [turn.id],
+      );
+    } catch (e) {
+      Logger.e(_tag, '更新 turn 失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<int> insertTurnStep(ChatTurnStep step) async {
+    try {
+      final db = await database;
+      return await db.insert(
+        'chat_turn_steps',
+        step.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (e) {
+      Logger.e(_tag, '插入 turn step 失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<ChatTurnStep?> getTurnStep(int id) async {
+    try {
+      final db = await database;
+      final maps = await db.query(
+        'chat_turn_steps',
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (maps.isEmpty) {
+        return null;
+      }
+      return ChatTurnStep.fromMap(maps.first);
+    } catch (e) {
+      Logger.e(_tag, '获取 turn step 失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<List<ChatTurnStep>> getTurnSteps(int turnId) async {
+    try {
+      final db = await database;
+      final maps = await db.query(
+        'chat_turn_steps',
+        where: 'turn_id = ?',
+        whereArgs: [turnId],
+        orderBy: 'step_index ASC',
+      );
+      return maps.map(ChatTurnStep.fromMap).toList();
+    } catch (e) {
+      Logger.e(_tag, '获取 turn steps 失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> updateTurnStep(ChatTurnStep step) async {
+    try {
+      final db = await database;
+      await db.update(
+        'chat_turn_steps',
+        step.toMap(),
+        where: 'id = ?',
+        whereArgs: [step.id],
+      );
+    } catch (e) {
+      Logger.e(_tag, '更新 turn step 失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<int> insertEvent(ChatEvent event) async {
+    try {
+      final db = await database;
+      return await db.insert(
+        'chat_events',
+        event.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (e) {
+      Logger.e(_tag, '插入 event 失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<List<ChatEvent>> getEventsByTurn(int turnId) async {
+    try {
+      final db = await database;
+      final maps = await db.query(
+        'chat_events',
+        where: 'turn_id = ?',
+        whereArgs: [turnId],
+        orderBy: 'sequence ASC',
+      );
+      return maps.map(ChatEvent.fromMap).toList();
+    } catch (e) {
+      Logger.e(_tag, '获取 turn events 失败', e);
+      rethrow;
+    }
+  }
+
   // 消息相关操作（更新为支持分组）
   Future<int> insertMessage(ChatMessage message, int groupId) async {
     try {
       final db = await database;
       final map = message.toMap();
       map['group_id'] = groupId;
-      
+
       final id = await db.insert(
         'messages',
         map,
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
-      
+
       // 更新分组的最后消息时间
       await updateGroupLastMessageTime(groupId);
-      
+
       return id;
     } catch (e) {
       Logger.e(_tag, '插入消息失败', e);
@@ -398,7 +710,8 @@ class DatabaseHelper implements ChatStorage {
   Future<int> getTotalMessageCount() async {
     try {
       final db = await database;
-      final result = await db.rawQuery('SELECT COUNT(*) as count FROM messages');
+      final result =
+          await db.rawQuery('SELECT COUNT(*) as count FROM messages');
       return Sqflite.firstIntValue(result) ?? 0;
     } catch (e) {
       Logger.e(_tag, '获取消息总数失败', e);
@@ -422,8 +735,9 @@ class DatabaseHelper implements ChatStorage {
   Future<void> updateMessage(int id, String newText) async {
     try {
       Logger.d(_tag, '更新消息 ID: $id');
-      Logger.d(_tag, '新内容: ${newText.substring(0, newText.length.clamp(0, 50))}...');
-      
+      Logger.d(
+          _tag, '新内容: ${newText.substring(0, newText.length.clamp(0, 50))}...');
+
       final db = await database;
       await db.update(
         'messages',
@@ -431,7 +745,7 @@ class DatabaseHelper implements ChatStorage {
         where: 'id = ?',
         whereArgs: [id],
       );
-      
+
       Logger.i(_tag, '消息更新成功');
     } catch (e, stackTrace) {
       Logger.e(_tag, '更新消息失败', e);
@@ -443,8 +757,9 @@ class DatabaseHelper implements ChatStorage {
   Future<void> updateMessageReasoning(int id, String? reasoningContent) async {
     try {
       Logger.d(_tag, '更新消息推理内容 ID: $id');
-      Logger.d(_tag, '新推理内容: ${reasoningContent?.substring(0, reasoningContent.length.clamp(0, 50))}...');
-      
+      Logger.d(_tag,
+          '新推理内容: ${reasoningContent?.substring(0, reasoningContent.length.clamp(0, 50))}...');
+
       final db = await database;
       await db.update(
         'messages',
@@ -452,7 +767,7 @@ class DatabaseHelper implements ChatStorage {
         where: 'id = ?',
         whereArgs: [id],
       );
-      
+
       Logger.i(_tag, '消息推理内容更新成功');
     } catch (e, stackTrace) {
       Logger.e(_tag, '更新消息推理内容失败', e);
@@ -473,18 +788,36 @@ class DatabaseHelper implements ChatStorage {
     }
   }
 
+  Map<String, dynamic> _encodeTurnMap(Map<String, dynamic> map) {
+    final encoded = Map<String, dynamic>.from(map);
+    final providerState = encoded['provider_state_json'];
+    if (providerState is Map) {
+      encoded['provider_state_json'] = jsonEncode(providerState);
+    }
+    return encoded;
+  }
+
+  Map<String, dynamic> _decodeTurnMap(Map<String, dynamic> map) {
+    final decoded = Map<String, dynamic>.from(map);
+    final providerState = decoded['provider_state_json'];
+    if (providerState is String && providerState.trim().isNotEmpty) {
+      decoded['provider_state_json'] = jsonDecode(providerState);
+    }
+    return decoded;
+  }
+
   Future<void> updateMessageStatus(int id, MessageStatus status) async {
     try {
       final db = await database;
       Logger.d(_tag, '更新消息状态: ID=$id, 状态=$status');
-      
+
       await db.update(
         'messages',
         {'status': status.toString().split('.').last},
         where: 'id = ?',
         whereArgs: [id],
       );
-      
+
       Logger.i(_tag, '消息状态更新成功');
     } catch (e, stackTrace) {
       Logger.e(_tag, '更新消息状态失败', e);
@@ -536,4 +869,4 @@ class DatabaseHelper implements ChatStorage {
       rethrow;
     }
   }
-} 
+}

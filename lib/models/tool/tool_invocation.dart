@@ -24,6 +24,10 @@ class ToolInvocation {
   /// Optional explanation describing why the tool was selected.
   final String? decisionReason;
 
+  /// Persistent turn step id used to resume and close the same step after
+  /// confirmation.
+  final int? stepId;
+
   const ToolInvocation({
     required this.toolName,
     required this.arguments,
@@ -31,6 +35,7 @@ class ToolInvocation {
     required this.summary,
     required this.requiresConfirmation,
     this.decisionReason,
+    this.stepId,
   });
 
   factory ToolInvocation.fromJson(Map<String, dynamic> json) {
@@ -61,6 +66,7 @@ class ToolInvocation {
       summary: json['summary'] as String? ?? '',
       requiresConfirmation: json['requiresConfirmation'] as bool? ?? false,
       decisionReason: json['decisionReason'] as String?,
+      stepId: json['stepId'] as int?,
     );
   }
 
@@ -72,6 +78,7 @@ class ToolInvocation {
       'summary': summary,
       'requiresConfirmation': requiresConfirmation,
       if (decisionReason != null) 'decisionReason': decisionReason,
+      if (stepId != null) 'stepId': stepId,
     };
   }
 
@@ -82,6 +89,7 @@ class ToolInvocation {
     String? summary,
     bool? requiresConfirmation,
     String? decisionReason,
+    int? stepId,
   }) {
     return ToolInvocation(
       toolName: toolName ?? this.toolName,
@@ -90,6 +98,7 @@ class ToolInvocation {
       summary: summary ?? this.summary,
       requiresConfirmation: requiresConfirmation ?? this.requiresConfirmation,
       decisionReason: decisionReason ?? this.decisionReason,
+      stepId: stepId ?? this.stepId,
     );
   }
 }

@@ -1,4 +1,6 @@
 import '../../models/chat_message.dart';
+import '../../models/tool/tool_argument_property.dart';
+import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
 import '../../services/tool_executor.dart';
 import '../core/tool_argument_resolution.dart';
@@ -18,10 +20,34 @@ class FetchWebpageToolHandler implements ToolHandler {
         name: 'fetch_webpage',
         title: '读取网页',
         description: '读取网页正文并返回可供总结的文本内容。',
+        descriptionForModel:
+            '当用户已经提供 URL，或者搜索结果里已经有明确网页链接，需要直接读取网页正文时使用。不要把它用于“先去网上找资料”的场景；那种情况应先用 web_search。',
+        category: ToolCategory.retrieval,
+        capabilities: [ToolCapability.webUrlReader],
+        whenToUse: [
+          '用户消息里已经包含 URL',
+          '上一轮工具结果已经给出了明确网页链接，需要继续打开读取',
+        ],
+        whenNotToUse: [
+          '用户只是笼统要求联网查资料，但没有给 URL',
+          '问题只依赖聊天记录，不需要网页内容',
+        ],
         parameters: {
           'url': 'string',
           'extractMode': 'string?',
         },
+        argumentSchema: ToolArgumentSchema(
+          properties: {
+            'url': ToolArgumentProperty.string(
+              description: '要读取的网页链接。',
+              format: 'uri',
+            ),
+            'extractMode': ToolArgumentProperty.string(
+              description: '可选的正文提取模式；不确定时留空。',
+            ),
+          },
+          required: ['url'],
+        ),
       );
 
   @override
@@ -75,10 +101,12 @@ class FetchWebpageToolHandler implements ToolHandler {
       ..writeln('状态：${toolResult.status.name}');
 
     final payload = toolResult.payload;
-    if (payload['title'] is String && (payload['title'] as String).trim().isNotEmpty) {
+    if (payload['title'] is String &&
+        (payload['title'] as String).trim().isNotEmpty) {
       buffer.writeln('网页标题：${payload['title']}');
     }
-    if (payload['url'] is String && (payload['url'] as String).trim().isNotEmpty) {
+    if (payload['url'] is String &&
+        (payload['url'] as String).trim().isNotEmpty) {
       buffer.writeln('网页链接：${payload['url']}');
     }
 

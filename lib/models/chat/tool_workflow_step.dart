@@ -10,6 +10,9 @@ enum ToolWorkflowStepStatus {
 
 /// Represents one visible step in a tool workflow timeline.
 class ToolWorkflowStep {
+  static const String requireConfirmationPolicy = 'require_confirmation';
+  static const String executionPolicyKey = 'executionPolicy';
+
   /// Stable identifier within the current assistant turn.
   final String stepId;
 
@@ -31,6 +34,12 @@ class ToolWorkflowStep {
   /// Whether this step requires explicit confirmation from the user.
   final bool requiresConfirmation;
 
+  /// Stable policy label projected from runtime tool access.
+  final String? executionPolicy;
+
+  /// Shared access snapshot projected from runtime payload.
+  final Map<String, dynamic>? toolAccess;
+
   /// Optional structured details for future workflow rendering.
   final Map<String, dynamic> details;
 
@@ -42,6 +51,28 @@ class ToolWorkflowStep {
     required this.summary,
     required this.status,
     required this.requiresConfirmation,
+    this.executionPolicy,
+    this.toolAccess,
     this.details = const {},
   });
+
+  /// Effective policy label projected from the shared tool access snapshot.
+  String? get resolvedExecutionPolicy {
+    final snapshotPolicy = toolAccess?[executionPolicyKey];
+    if (snapshotPolicy is String && snapshotPolicy.trim().isNotEmpty) {
+      return snapshotPolicy.trim();
+    }
+    if (executionPolicy == null || executionPolicy!.trim().isEmpty) {
+      return null;
+    }
+    return executionPolicy!.trim();
+  }
+
+  /// Whether the UI should expose confirmation actions for this step.
+  bool get showsConfirmationActions {
+    if (requiresConfirmation) {
+      return true;
+    }
+    return resolvedExecutionPolicy == requireConfirmationPolicy;
+  }
 }

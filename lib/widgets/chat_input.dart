@@ -204,7 +204,13 @@ class ChatInput extends ConsumerWidget {
                             },
                             child: AnimatedSwitcher(
                               duration: const Duration(milliseconds: 200),
-                              child: isBlockingPhase
+                              child: isStreamingResponse
+                                  ? const Icon(
+                                      Icons.stop_rounded,
+                                      key: ValueKey('chat-input-stop-icon'),
+                                      size: 18,
+                                    )
+                                  : isBlockingPhase
                                   ? const SizedBox(
                                       width: 16,
                                       height: 16,
@@ -241,6 +247,10 @@ class ChatInput extends ConsumerWidget {
   String? _buildHelperText({
     required ChatSendPhase sendPhase,
   }) {
+    if (sendPhase == ChatSendPhase.preparing) {
+      return '正在规划下一步';
+    }
+
     if (sendPhase == ChatSendPhase.awaitingConfirmation) {
       return '等待工具确认';
     }

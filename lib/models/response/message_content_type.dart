@@ -5,6 +5,8 @@ enum MessageContentType {
   toolInvocation,
   toolResult,
   actionConfirmation,
+  askUserQuestionPrompt,
+  askUserQuestionResult,
 }
 
 extension MessageContentTypeParsing on MessageContentType {
@@ -26,6 +28,10 @@ extension MessageContentTypeParsing on MessageContentType {
         return MessageContentType.toolResult;
       case 'actionConfirmation':
         return MessageContentType.actionConfirmation;
+      case 'askUserQuestionPrompt':
+        return MessageContentType.askUserQuestionPrompt;
+      case 'askUserQuestionResult':
+        return MessageContentType.askUserQuestionResult;
       case 'plainText':
       default:
         return MessageContentType.plainText;
@@ -45,6 +51,10 @@ extension MessageContentTypeParsing on MessageContentType {
         return 'toolResult';
       case MessageContentType.actionConfirmation:
         return 'actionConfirmation';
+      case MessageContentType.askUserQuestionPrompt:
+        return 'askUserQuestionPrompt';
+      case MessageContentType.askUserQuestionResult:
+        return 'askUserQuestionResult';
     }
   }
 }
