@@ -1,5 +1,8 @@
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/agent/chat_turn_step.dart';
+import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/services/tool_executor.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -125,7 +128,8 @@ void main() {
       expect((result.data['results'] as List).single['source'], 'example.com');
     });
 
-    test('fetch_webpage returns structured success with stub fetcher', () async {
+    test('fetch_webpage returns structured success with stub fetcher',
+        () async {
       final executor = ToolExecutor(
         chatStorage: const _FakeChatStorage(messages: []),
         webpageFetcher: ({required url, extractMode}) async => const ToolResult(
@@ -152,7 +156,8 @@ void main() {
     test('save_note returns success with stub note saver', () async {
       final executor = ToolExecutor(
         chatStorage: const _FakeChatStorage(messages: []),
-        noteSaver: ({required title, required content, folder}) async => ToolResult(
+        noteSaver: ({required title, required content, folder}) async =>
+            ToolResult(
           toolName: 'save_note',
           status: ToolExecutionStatus.success,
           summary: '已保存笔记：$title',
@@ -173,7 +178,8 @@ void main() {
       expect(result.summary, contains('ToolCall 设计'));
     });
 
-    test('create_reminder returns failure when adapter is unavailable', () async {
+    test('create_reminder returns failure when adapter is unavailable',
+        () async {
       final executor = ToolExecutor(
         chatStorage: const _FakeChatStorage(messages: []),
       );
@@ -290,6 +296,35 @@ class _FakeChatStorage implements ChatStorage {
 
   @override
   Future<void> deleteGroup(int groupId) => throw UnimplementedError();
+
+  @override
+  Future<int> insertTurn(ChatTurn turn) => throw UnimplementedError();
+
+  @override
+  Future<ChatTurn?> getTurn(int id) => throw UnimplementedError();
+
+  @override
+  Future<ChatTurnStep?> getTurnStep(int id) => throw UnimplementedError();
+
+  @override
+  Future<List<ChatTurnStep>> getTurnSteps(int turnId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> updateTurn(ChatTurn turn) => throw UnimplementedError();
+
+  @override
+  Future<int> insertTurnStep(ChatTurnStep step) => throw UnimplementedError();
+
+  @override
+  Future<void> updateTurnStep(ChatTurnStep step) => throw UnimplementedError();
+
+  @override
+  Future<int> insertEvent(ChatEvent event) => throw UnimplementedError();
+
+  @override
+  Future<List<ChatEvent>> getEventsByTurn(int turnId) =>
+      throw UnimplementedError();
 
   @override
   Future<int> insertMessage(ChatMessage message, int groupId) =>

@@ -2,10 +2,12 @@ import unittest
 from types import SimpleNamespace
 
 from scripts.android_droidrun_driver_smoke import (
+    contains_message_in_input_field,
     contains_confirmation_controls,
     contains_message,
     find_chat_input_target,
     find_send_button,
+    normalize_text_for_adb_input,
     parse_uiautomator_dump,
     should_fallback_to_uiautomator,
 )
@@ -122,6 +124,24 @@ class AndroidDroidrunDriverSmokeTest(unittest.TestCase):
             )
         )
 
+    def test_contains_message_matches_substring_inside_longer_accessibility_text(self):
+        ui_state = SimpleNamespace(
+            elements=[
+                {
+                    "className": "View",
+                    "text": "",
+                    "contentDescription": (
+                        "droidrun driver smoke 20260414-020808"
+                        "droidrun driver smoke 20260414-020948"
+                    ),
+                },
+            ],
+        )
+
+        self.assertTrue(
+            contains_message(ui_state, "droidrun driver smoke 20260414-020948")
+        )
+
     def test_contains_message_ignores_text_still_inside_input_field(self):
         ui_state = SimpleNamespace(
             screen_height=2292,
@@ -140,6 +160,31 @@ class AndroidDroidrunDriverSmokeTest(unittest.TestCase):
                 ui_state,
                 "create a reminder for today at 8pm to submit weekly report",
             )
+        )
+
+    def test_contains_message_in_input_field_detects_text_inside_edit_text(self):
+        ui_state = SimpleNamespace(
+            elements=[
+                {
+                    "className": "EditText",
+                    "text": "android e2e reminder smoke",
+                    "contentDescription": "",
+                },
+            ],
+        )
+
+        self.assertTrue(
+            contains_message_in_input_field(ui_state, "android e2e reminder smoke")
+        )
+
+    def test_normalize_text_for_adb_input_rewrites_spaces_and_special_chars(self):
+        normalized = normalize_text_for_adb_input(
+            "remind me & summarize (today) 100%"
+        )
+
+        self.assertEqual(
+            "remind%sme%s\\&%ssummarize%s\\(today\\)%s100\\%",
+            normalized,
         )
 
 

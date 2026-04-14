@@ -1,148 +1,68 @@
-import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
-import 'package:ai_chat/models/llm/base_llm.dart';
+import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/agent/chat_turn_step.dart';
+import 'package:ai_chat/models/chat_event.dart';
+import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
-import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/models/tool/tool_invocation.dart';
+import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/services/tool_call_service.dart';
 import 'package:ai_chat/services/tool_executor.dart';
-import 'package:ai_chat/services/tool_registry.dart';
+import 'package:ai_chat/services/tool_policy_service.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:ai_chat/tools/core/tool_argument_resolution.dart';
 import 'package:ai_chat/tools/core/tool_execution_context.dart';
 import 'package:ai_chat/tools/core/tool_handler.dart';
 import 'package:ai_chat/tools/core/tool_runtime_registry.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  group('ToolCallService.prepareToolContext', () {
-    test('模型返回合法工具调用 json 时执行工具并产出附加上下文', () async {
+  group('ToolCallService.executeToolInvocation', () {
+    test(
+        'delegates confirmed invocation to runtime handler and returns context',
+        () async {
       final service = ToolCallService(
-        llm: _FakeBaseLLM(
-          decisionResponse:
-              '{"toolName":"search_chat_history","arguments":{"query":"数据库","maxResults":2}}',
-        ),
-        toolRegistry: ToolRegistry(),
-        toolExecutor: ToolExecutor(
-          chatStorage: _FakeChatStorage(
-            messages: [
-              ChatMessage(
-                id: 1,
-                text: '数据库版本已经升级到 6',
-                role: MessageRole.assistant,
-                timestamp: DateTime(2026, 3, 27, 10, 0),
-                status: MessageStatus.completed,
-              ),
-            ],
-          ),
-        ),
-      );
-
-      final result = await service.prepareToolContext(
-        groupId: 10,
-        userMessage: '我刚才提过数据库版本吗？',
-        history: const [],
-      );
-
-      expect(result.toolResult, isNotNull);
-      expect(result.toolResult!.toolName, 'search_chat_history');
-      expect(result.toolResult!.status, ToolExecutionStatus.success);
-      expect(result.additionalContextMessages, isNotEmpty);
-      expect(result.additionalContextMessages.single.role, MessageRole.system);
-      expect(result.additionalContextMessages.single.text,
-          contains('数据库版本已经升级到 6'));
-    });
-
-    test('模型返回 none 时不触发工具执行', () async {
-      final service = ToolCallService(
-        llm: _FakeBaseLLM(
-          decisionResponse: '{"toolName":"none"}',
-        ),
-        toolRegistry: ToolRegistry(),
-        toolExecutor: ToolExecutor(
-          chatStorage: const _FakeChatStorage(messages: []),
-        ),
-      );
-
-      final result = await service.prepareToolContext(
-        groupId: 10,
-        userMessage: '直接回答这个问题',
-        history: const [],
-      );
-
-      expect(result.toolResult, isNull);
-      expect(result.additionalContextMessages, isEmpty);
-    });
-
-    test('模型返回非法 json 时安全回退为不调用工具', () async {
-      final service = ToolCallService(
-        llm: _FakeBaseLLM(
-          decisionResponse: 'not-json',
-        ),
-        toolRegistry: ToolRegistry(),
-        toolExecutor: ToolExecutor(
-          chatStorage: const _FakeChatStorage(messages: []),
-        ),
-      );
-
-      final result = await service.prepareToolContext(
-        groupId: 10,
-        userMessage: '这个问题需要查历史吗？',
-        history: const [],
-      );
-
-      expect(result.toolResult, isNull);
-      expect(result.additionalContextMessages, isEmpty);
-    });
-
-    test('模型返回未知工具名时安全回退为不调用工具', () async {
-      final service = ToolCallService(
-        llm: _FakeBaseLLM(
-          decisionResponse:
-              '{"toolName":"extract_todos","arguments":{"query":"todo"}}',
-        ),
-        toolRegistry: ToolRegistry(),
-        toolExecutor: ToolExecutor(
-          chatStorage: const _FakeChatStorage(messages: []),
-        ),
-      );
-
-      final result = await service.prepareToolContext(
-        groupId: 10,
-        userMessage: '帮我看看 todo',
-        history: const [],
-      );
-
-      expect(result.toolResult, isNull);
-      expect(result.additionalContextMessages, isEmpty);
-    });
-
-    test('仅提供 runtime registry 时也能识别并执行运行时工具', () async {
-      final service = ToolCallService(
-        llm: _FakeBaseLLM(
-          decisionResponse:
-              '{"toolName":"debug_runtime_tool","arguments":{"topic":"runtime"}}',
-        ),
         runtimeRegistry: ToolRuntimeRegistry(
-          handlers: [
-            _FakeRuntimeToolHandler(),
-          ],
+          handlers: [_FakeRuntimeToolHandler()],
         ),
         toolExecutor: ToolExecutor(
           chatStorage: const _FakeChatStorage(messages: []),
         ),
+        toolPolicyService: await _createToolPolicyService(),
       );
 
-      final result = await service.prepareToolContext(
+      final result = await service.executeToolInvocation(
         groupId: 10,
-        userMessage: '请执行 runtime 调试工具',
-        history: const [],
+        invocation: const ToolInvocation(
+          toolName: 'debug_runtime_tool',
+          arguments: {'topic': 'runtime'},
+          status: ToolInvocationStatus.awaitingConfirmation,
+          summary: '准备执行工具：Runtime Debug Tool',
+          requiresConfirmation: true,
+        ),
       );
 
       expect(result.toolResult, isNotNull);
       expect(result.toolResult!.toolName, 'debug_runtime_tool');
-      expect(result.additionalContextMessages.single.text, contains('runtime-debug-ok'));
+      expect(result.toolResult!.status, ToolExecutionStatus.success);
+      expect(result.additionalContextMessages, isNotEmpty);
+      expect(result.additionalContextMessages.single.role, MessageRole.system);
+      expect(result.additionalContextMessages.single.text, 'runtime-debug-ok');
     });
   });
+}
+
+Future<ToolPolicyService> _createToolPolicyService() async {
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
+  return ToolPolicyService(
+    repository: AppSettingsRepository(
+      preferences,
+      localDefaultsLoader: () async => null,
+    ),
+  );
 }
 
 class _FakeRuntimeToolHandler implements ToolHandler {
@@ -189,54 +109,8 @@ class _FakeRuntimeToolHandler implements ToolHandler {
     required List<ChatMessage> history,
     required DateTime now,
   }) async {
-    final topic = rawArguments['topic'];
-    if (topic is! String || topic.trim().isEmpty) {
-      return ToolArgumentResolution.invalid(
-        errorCode: 'invalid_topic',
-        errorSummary: 'missing topic',
-      );
-    }
-    return ToolArgumentResolution.valid({
-      'topic': topic.trim(),
-    });
+    return ToolArgumentResolution.valid(rawArguments);
   }
-}
-
-class _FakeBaseLLM implements BaseLLM {
-  final String decisionResponse;
-
-  _FakeBaseLLM({required this.decisionResponse});
-
-  @override
-  Map<String, dynamic> get config => const {};
-
-  @override
-  Stream<String> chatStream(
-      List<ChatMessage> messages, ChatConfig config) async* {}
-
-  @override
-  Future<String> decideToolCall({
-    required String userMessage,
-    required List<ChatMessage> history,
-    required List<ToolDefinition> tools,
-  }) async {
-    return decisionResponse;
-  }
-
-  @override
-  String getModelName(ChatConfig config) => 'fake-model';
-
-  @override
-  Future<String> structureSummaryCard(String sourceText) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<String> summarizeConversation(List<ChatMessage> messages) async =>
-      'summary';
-
-  @override
-  Future<bool> validateApiKey(ChatConfig config) async => true;
 }
 
 class _FakeChatStorage implements ChatStorage {
@@ -273,6 +147,35 @@ class _FakeChatStorage implements ChatStorage {
   Future<void> deleteGroup(int groupId) => throw UnimplementedError();
 
   @override
+  Future<int> insertTurn(ChatTurn turn) => throw UnimplementedError();
+
+  @override
+  Future<ChatTurn?> getTurn(int id) => throw UnimplementedError();
+
+  @override
+  Future<ChatTurnStep?> getTurnStep(int id) => throw UnimplementedError();
+
+  @override
+  Future<List<ChatTurnStep>> getTurnSteps(int turnId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> updateTurn(ChatTurn turn) => throw UnimplementedError();
+
+  @override
+  Future<int> insertTurnStep(ChatTurnStep step) => throw UnimplementedError();
+
+  @override
+  Future<void> updateTurnStep(ChatTurnStep step) => throw UnimplementedError();
+
+  @override
+  Future<int> insertEvent(ChatEvent event) => throw UnimplementedError();
+
+  @override
+  Future<List<ChatEvent>> getEventsByTurn(int turnId) =>
+      throw UnimplementedError();
+
+  @override
   Future<int> insertMessage(ChatMessage message, int groupId) =>
       throw UnimplementedError();
 
@@ -299,6 +202,9 @@ class _FakeChatStorage implements ChatStorage {
       throw UnimplementedError();
 
   @override
+  Future<bool> testDatabaseConnection() => throw UnimplementedError();
+
+  @override
   Future<void> updateMessageStatus(int id, MessageStatus status) =>
       throw UnimplementedError();
 
@@ -307,14 +213,11 @@ class _FakeChatStorage implements ChatStorage {
     int id, {
     required String text,
     required MessageStatus status,
-    required contentType,
+    required MessageContentType contentType,
     String? payloadJson,
   }) =>
       throw UnimplementedError();
 
   @override
   Future<void> deleteMessage(int id) => throw UnimplementedError();
-
-  @override
-  Future<bool> testDatabaseConnection() => throw UnimplementedError();
 }

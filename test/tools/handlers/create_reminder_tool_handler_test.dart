@@ -31,5 +31,34 @@ void main() {
         '2026-03-31T20:00:00+08:00',
       );
     });
+
+    test('normalizes Chinese natural-language dueAt for tonight', () async {
+      final handler = CreateReminderToolHandler(
+        reminderCreator: ({required title, dueAt, note}) async => ToolResult(
+          toolName: 'create_reminder',
+          status: ToolExecutionStatus.success,
+          summary: '已创建提醒：$title',
+          data: {'title': title, 'dueAt': dueAt, 'note': note},
+        ),
+        nowProvider: () => DateTime.parse('2026-04-13T10:00:00+08:00'),
+      );
+
+      final resolution = await handler.normalizeArguments(
+        rawArguments: {
+          'title': '给测试同学',
+          'dueAt': '今晚9点',
+          'note': '与《数据库版本确认》相关',
+        },
+        userMessage: '记一条笔记《数据库版本确认》，然后提醒我今晚9点给测试同学',
+        history: const [],
+        now: DateTime.parse('2026-04-13T10:00:00+08:00'),
+      );
+
+      expect(resolution.isValid, isTrue);
+      expect(
+        resolution.normalizedArguments['dueAt'],
+        '2026-04-13T21:00:00',
+      );
+    });
   });
 }

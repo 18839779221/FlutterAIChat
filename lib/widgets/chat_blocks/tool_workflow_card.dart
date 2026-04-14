@@ -136,7 +136,7 @@ class ToolWorkflowCard extends StatelessWidget {
                           height: 1.42,
                         ),
                       ),
-                      if (expanded && step.requiresConfirmation) ...[
+                      if (expanded && _showsConfirmationActions(step)) ...[
                         SizedBox(height: spacing.sm),
                         Wrap(
                           spacing: spacing.xs,
@@ -201,6 +201,10 @@ class ToolWorkflowCard extends StatelessWidget {
       case ToolWorkflowStepStatus.proposed:
         return '已提议';
     }
+  }
+
+  bool _showsConfirmationActions(ToolWorkflowStep step) {
+    return step.showsConfirmationActions;
   }
 
   Color _statusColor(AppColors colors, ToolWorkflowStepStatus status) {

@@ -8,6 +8,8 @@ class ToolResult {
   final ToolExecutionStatus status;
   final String summary;
   final Map<String, dynamic> data;
+  final String? executionPolicy;
+  final Map<String, dynamic>? toolAccess;
   final String? errorMessage;
 
   const ToolResult({
@@ -15,6 +17,8 @@ class ToolResult {
     required this.status,
     String? summary,
     Map<String, dynamic>? data,
+    this.executionPolicy,
+    this.toolAccess,
     this.errorMessage,
     String? displayText,
     Map<String, dynamic>? payload,
@@ -25,12 +29,26 @@ class ToolResult {
 
   Map<String, dynamic> get payload => data;
 
+  String? get resolvedExecutionPolicy {
+    final snapshotPolicy = toolAccess?['executionPolicy'];
+    if (snapshotPolicy is String && snapshotPolicy.trim().isNotEmpty) {
+      return snapshotPolicy.trim();
+    }
+    if (executionPolicy == null || executionPolicy!.trim().isEmpty) {
+      return null;
+    }
+    return executionPolicy!.trim();
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'toolName': toolName,
       'status': status.name,
       'summary': summary,
       'data': data,
+      if (resolvedExecutionPolicy != null && toolAccess == null)
+        'executionPolicy': resolvedExecutionPolicy,
+      if (toolAccess != null) 'toolAccess': toolAccess,
       'errorMessage': errorMessage,
     };
   }
@@ -58,6 +76,18 @@ class ToolResult {
               ? Map<String, dynamic>.from(
                   json['payload'] as Map<dynamic, dynamic>)
               : const {},
+      executionPolicy: json['executionPolicy'] as String? ??
+          (json['toolAccess'] is Map
+              ? (Map<String, dynamic>.from(
+                  json['toolAccess'] as Map<dynamic, dynamic>))['executionPolicy']
+                  as String?
+              : null),
+      toolAccess: json['toolAccess'] is Map<String, dynamic>
+          ? json['toolAccess'] as Map<String, dynamic>
+          : json['toolAccess'] is Map
+              ? Map<String, dynamic>.from(
+                  json['toolAccess'] as Map<dynamic, dynamic>)
+              : null,
       errorMessage: json['errorMessage'] as String?,
     );
   }

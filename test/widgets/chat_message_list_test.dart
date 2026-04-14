@@ -20,6 +20,62 @@ void main() {
 
       expect(find.text('开始一段新的对话'), findsOneWidget);
       expect(find.text('从一个问题开始，或让助手帮你推进下一步。'), findsOneWidget);
+      expect(find.text('单题问答'), findsOneWidget);
+      expect(find.text('多题澄清'), findsOneWidget);
+    });
+
+    testWidgets('empty state suggestion fills the composer without auto sending',
+        (tester) async {
+      final textController = TextEditingController();
+      final focusNode = FocusNode();
+      addTearDown(textController.dispose);
+      addTearDown(focusNode.dispose);
+
+      await _pumpMessageList(
+        tester,
+        messages: const [],
+        textController: textController,
+        focusNode: focusNode,
+      );
+
+      await tester.tap(find.text('单题问答'));
+      await tester.pump();
+
+      expect(
+        textController.text,
+        '帮我设计一个本地 AI 聊天 App 的存储方案，但我现在还没决定用哪种数据库。请先向我提一个关键澄清问题，再继续给方案。',
+      );
+      expect(
+        textController.selection,
+        TextSelection.collapsed(offset: textController.text.length),
+      );
+    });
+
+    testWidgets('multi-round suggestion fills the updated planner prompt',
+        (tester) async {
+      final textController = TextEditingController();
+      final focusNode = FocusNode();
+      addTearDown(textController.dispose);
+      addTearDown(focusNode.dispose);
+
+      await _pumpMessageList(
+        tester,
+        messages: const [],
+        textController: textController,
+        focusNode: focusNode,
+      );
+
+      await tester.tap(find.text('多题澄清'));
+      await tester.pump();
+
+      expect(
+        textController.text,
+        '我要做一个新的 AI Chat 产品方案，但我还没决定目标平台、数据存储、以及是否支持离线模式。不要自己猜，请把这些关键问题一次性问我，然后再给最终建议。',
+      );
+      expect(
+        textController.selection,
+        TextSelection.collapsed(offset: textController.text.length),
+      );
     });
 
     testWidgets('plain assistant text stays visible in the timeline', (
@@ -134,6 +190,39 @@ void main() {
       expect(find.text('继续，以后不再确认'), findsOneWidget);
     });
 
+    testWidgets(
+        'action confirmation keeps rendering workflow actions from execution policy payload',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: 'Confirmation fallback text',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.actionConfirmation,
+            payloadJson: {
+              ...const ToolInvocation(
+                toolName: 'create_reminder',
+                arguments: {'title': '交周报'},
+                status: ToolInvocationStatus.awaitingConfirmation,
+                summary: '准备执行工具：创建提醒',
+                requiresConfirmation: false,
+              ).toJson(),
+              'executionPolicy': 'require_confirmation',
+              'toolAccess': const {
+                'toolName': 'create_reminder',
+                'executionPolicy': 'require_confirmation',
+                'isVisibleToPlanner': true,
+              },
+            },
+          ),
+        ],
+      );
+
+      expect(find.byType(ToolWorkflowCard), findsOneWidget);
+      expect(find.text('继续，以后不再确认'), findsOneWidget);
+    });
+
     testWidgets('invalid tool result payload falls back to plain text', (
       tester,
     ) async {
@@ -214,10 +303,16 @@ void main() {
 Future<void> _pumpMessageList(
   WidgetTester tester, {
   required List<ChatMessage> messages,
+  TextEditingController? textController,
+  FocusNode? focusNode,
 }) async {
   final container = ProviderContainer(
     overrides: [
       hasMoreMessagesProvider.overrideWith((ref) => false),
+      if (textController != null)
+        textControllerProvider.overrideWith((ref) => textController),
+      if (focusNode != null)
+        focusNodeProvider.overrideWith((ref) => focusNode),
       chatSendStateProvider.overrideWith(
         (ref) => ChatSendStateNotifier()
           ..update(

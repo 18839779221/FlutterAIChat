@@ -123,11 +123,42 @@ The app uses **flutter_riverpod** with a split provider/controller architecture:
 ### Controller Boundaries
 
 - `ChatController` is the page-facing facade and should stay thin
-- `ChatSendCoordinator` owns send transaction lifecycle, tool confirmation/cancel, and streaming terminal handling
+- `ChatSendCoordinator` owns send transaction lifecycle, tool confirmation/cancel, ask-user-question resume event projection, and streaming terminal handling
+- `ChatInteractionCoordinator` owns ask-user-question draft state handoff and structured answer submission
 - `ChatSessionCoordinator` owns group load/select/delete and message pagination
 - `ChatSummaryController` owns auto-summary scheduling and summary title updates
 - `ChatDebugController` owns `structureMessageForDebug` lifecycle
 - `ChatPreferencesController` owns system prompt, reasoning mode, and concise mode
+
+### Agent Planner Tooling
+
+- `ToolDefinition` is not only runtime metadata; it is also planner-facing schema metadata
+- New tools must provide:
+  - `descriptionForModel`
+  - `whenToUse`
+  - `whenNotToUse`
+  - structured `argumentSchema`
+- Prefer exposing tools to the planner dynamically from the runtime registry instead of maintaining separate hard-coded planner allowlists
+- Prefer intent-based tool exposure:
+  - retrieval turns should default to retrieval tools
+  - high-risk write tools should not be exposed unless the user intent is clearly actionable
+- Keep tool-selection heuristics weak and generic:
+  - do not hard-code tool-name routing or large keyword-to-tool rule tables as the primary decision mechanism
+  - do not use prompt shaping as the primary safety mechanism for tool misuse
+  - prefer broad intent/actionability gating plus runtime metadata over per-tool dead rules
+- Put safety and correctness in execution-time guards, not decision-time heuristics:
+  - confirmation, write-before-read, policy enforcement, and availability checks should be enforced by architecture, not only by model instructions
+  - decision-time filtering should behave like a lightweight availability filter, not a handwritten tool router
+- Planner context should include structured summaries of prior tool attempts, latest tool results, and latest tool errors when available
+- When evolving the planner path, preserve backward compatibility if the current LLM backend does not yet support native structured tool-calling
+- `AgentTurnOrchestrator` should treat `planNextDecision()` as the only execution entry for tool loops; any fallback from native provider decisions to legacy planner formats must happen inside `AgentPlannerService`
+- Do not re-inject raw `additionalContextMessages` / search hit details verbatim into the next planner or final-answer prompt; persist tool outcomes into turn-step ledger summaries and feed the model with compact structured summaries instead
+- Legacy fallback must inspect the latest persisted turn step before issuing another retrieval call; if the most recent completed retrieval already used the same arguments and returned an empty result, terminate with a user-facing clarification request instead of repeating the same tool call
+- Treat `AskUserQuestion` as an interaction-style tool:
+  - do not route it through `ToolOrchestratorService.executeToolInvocation()`
+  - do persist its structured result into `ChatTurnStep.resultJson`
+  - do allow provider continuation items to emit `function_call_output` from the completed interaction step
+  - do keep the human-readable transcript text and structured payload in sync
 
 When adding a feature, prefer extending an existing bounded controller or creating a new narrow controller instead of growing `ChatController` back into a god object.
 
@@ -232,5 +263,9 @@ Database version: 5 (includes `is_summarized` field for automatic summarization 
   - README capability/architecture docs
   - AGENTS implementation constraints
   - backlog/todo docs if the feature changes future priorities
+- For new interaction checkpoints in the agent loop:
+  - prefer message-card interactions over modal-only state
+  - keep turn status, event payload, message payload, and step ledger aligned
+  - update `TurnVerifier` whenever a new waiting state or resumable step type is introduced
 - New feature work should stay visually and architecturally consistent with the current project direction
   - Avoid one-off UI patterns or isolated architectural shortcuts that bypass the current controller/provider boundaries

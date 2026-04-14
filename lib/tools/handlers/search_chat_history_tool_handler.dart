@@ -1,4 +1,6 @@
 import '../../models/chat_message.dart';
+import '../../models/tool/tool_argument_property.dart';
+import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
 import '../../models/tool/tool_result.dart';
 import '../../services/tool_executor.dart';
@@ -26,10 +28,31 @@ class SearchChatHistoryToolHandler implements ToolHandler {
         name: 'search_chat_history',
         title: '搜索聊天记录',
         description: '搜索当前会话里的历史消息，找出和用户问题相关的内容。',
+        descriptionForModel: '当问题依赖当前聊天记录、用户此前说过的话或本会话上下文时使用。不要把它用于联网搜索，也不要用于读取用户已经提供的 URL。',
+        category: ToolCategory.retrieval,
+        whenToUse: [
+          '用户在追问本次对话之前提到的内容',
+          '需要回忆当前会话中的事实、决定或术语',
+        ],
+        whenNotToUse: [
+          '用户要求搜索互联网或查询最新信息',
+          '用户已经直接给出了要读取的网页链接',
+        ],
         parameters: {
           'query': 'string',
           'maxResults': 'int?',
         },
+        argumentSchema: ToolArgumentSchema(
+          properties: {
+            'query': ToolArgumentProperty.string(
+              description: '用于搜索当前聊天记录的短查询词，不要整句照抄用户消息。',
+            ),
+            'maxResults': ToolArgumentProperty.integer(
+              description: '最多返回多少条历史命中，通常保持较小值。',
+            ),
+          },
+          required: ['query'],
+        ),
       );
 
   @override

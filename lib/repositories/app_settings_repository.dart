@@ -9,6 +9,7 @@ class AppSettingsRepository {
   static const String _modelKey = 'llm.model';
   static const String _toolExecutionModeKey = 'tool.execution_mode';
   static const String _trustedToolNamesKey = 'tool.trusted_names';
+  static const String _blockedToolNamesKey = 'tool.blocked_names';
   static const String defaultBaseUrl = '';
   static const String defaultModel = 'deepseek-chat';
 
@@ -105,6 +106,29 @@ class AppSettingsRepository {
     await _preferences.setStringList(
       _trustedToolNamesKey,
       trustedTools.toList()..sort(),
+    );
+  }
+
+  Future<Set<String>> getBlockedToolNames() async {
+    final values = _preferences.getStringList(_blockedToolNamesKey) ?? const [];
+    return values.map((item) => item.trim()).where((item) => item.isNotEmpty).toSet();
+  }
+
+  Future<void> addBlockedToolName(String toolName) async {
+    final blockedTools = await getBlockedToolNames();
+    blockedTools.add(toolName.trim());
+    await _preferences.setStringList(
+      _blockedToolNamesKey,
+      blockedTools.toList()..sort(),
+    );
+  }
+
+  Future<void> removeBlockedToolName(String toolName) async {
+    final blockedTools = await getBlockedToolNames();
+    blockedTools.remove(toolName.trim());
+    await _preferences.setStringList(
+      _blockedToolNamesKey,
+      blockedTools.toList()..sort(),
     );
   }
 }

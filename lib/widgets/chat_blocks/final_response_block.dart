@@ -30,7 +30,7 @@ class FinalResponseBlock extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (title.trim().isNotEmpty && title != 'Final Response') ...[
+            if (title.trim().isNotEmpty && title != '最终回答') ...[
               Text(
                 title,
                 style: AppTypography.uiStyle(

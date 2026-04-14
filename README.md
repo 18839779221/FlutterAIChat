@@ -15,8 +15,15 @@
 ### Tool Call 与结构化输出
 - 支持工具决策、确认执行、执行结果展示、失败回退
 - 工具流程支持折叠卡片、结果摘要行、确认卡
+- 支持 `AskUserQuestion` interaction tool，可在同一个 turn 内挂起提问并在用户提交结构化答案后恢复
+- `AskUserQuestion` 支持单选、多选、自动追加 `Other`，并以聊天流消息卡片承载交互
 - 支持普通 assistant 消息重新结构化为调试卡片
 - 支持结构化 trace，覆盖发送、LLM、工具确认、工具执行等关键链路
+- planner 现在支持基于工具 schema 的动态工具暴露，而不是只看静态工具名白名单
+- tool result / tool error 会汇总成 planner state，参与下一轮工具决策
+- `AgentTurnOrchestrator` 现在只消费 `planNextDecision()` 的 provider-native 结果；旧的 `planNextAction()` / `planNextToolChoice()` 只保留在 `AgentPlannerService` 兼容层，不再直接参与主编排
+- turn 内多次 tool use 会持久化到 `chat_turn_steps`，最终回答与后续决策统一消费 ledger summary，而不是把原始 tool 命中明细全文回填给模型
+- 当 native planner 不可用而回退到 legacy planner 时，兼容层必须基于最近一步 ledger state 去重，避免对同一个空命中 retrieval 重复发起相同 tool call
 
 ### 自动化
 - Flutter Web 固定 origin 回归测试
@@ -34,39 +41,42 @@
 UI 只消费 Riverpod providers 和 controller 门面，不直接编排复杂业务。
 
 ### Provider 装配层
-- [lib/providers/chat_providers.dart](/Users/skka/flutterSpace/FlutterAIChat/.worktrees/codex-toolcall-ui/lib/providers/chat_providers.dart)
-- [lib/providers/chat_collection_providers.dart](/Users/skka/flutterSpace/FlutterAIChat/.worktrees/codex-toolcall-ui/lib/providers/chat_collection_providers.dart)
-- [lib/providers/chat_dependency_providers.dart](/Users/skka/flutterSpace/FlutterAIChat/.worktrees/codex-toolcall-ui/lib/providers/chat_dependency_providers.dart)
-- [lib/providers/chat_send_state_providers.dart](/Users/skka/flutterSpace/FlutterAIChat/.worktrees/codex-toolcall-ui/lib/providers/chat_send_state_providers.dart)
-- [lib/providers/chat_ui_providers.dart](/Users/skka/flutterSpace/FlutterAIChat/.worktrees/codex-toolcall-ui/lib/providers/chat_ui_providers.dart)
+- [lib/providers/chat_providers.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/providers/chat_providers.dart)
+- [lib/providers/chat_collection_providers.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/providers/chat_collection_providers.dart)
+- [lib/providers/chat_dependency_providers.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/providers/chat_dependency_providers.dart)
+- [lib/providers/chat_send_state_providers.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/providers/chat_send_state_providers.dart)
+- [lib/providers/chat_interaction_providers.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/providers/chat_interaction_providers.dart)
+- [lib/providers/chat_ui_providers.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/providers/chat_ui_providers.dart)
 
 `chat_providers.dart` 现在主要负责 controller/provider 装配与 re-export，业务逻辑已拆出。
 
 ### Controller 层
-- [lib/controllers/chat_controller.dart](/Users/skka/flutterSpace/FlutterAIChat/.worktrees/codex-toolcall-ui/lib/controllers/chat_controller.dart)
-- [lib/controllers/chat_send_coordinator.dart](/Users/skka/flutterSpace/FlutterAIChat/.worktrees/codex-toolcall-ui/lib/controllers/chat_send_coordinator.dart)
-- [lib/controllers/chat_session_coordinator.dart](/Users/skka/flutterSpace/FlutterAIChat/.worktrees/codex-toolcall-ui/lib/controllers/chat_session_coordinator.dart)
-- [lib/controllers/chat_summary_controller.dart](/Users/skka/flutterSpace/FlutterAIChat/.worktrees/codex-toolcall-ui/lib/controllers/chat_summary_controller.dart)
-- [lib/controllers/chat_debug_controller.dart](/Users/skka/flutterSpace/FlutterAIChat/.worktrees/codex-toolcall-ui/lib/controllers/chat_debug_controller.dart)
-- [lib/controllers/chat_preferences_controller.dart](/Users/skka/flutterSpace/FlutterAIChat/.worktrees/codex-toolcall-ui/lib/controllers/chat_preferences_controller.dart)
+- [lib/controllers/chat_controller.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_controller.dart)
+- [lib/controllers/chat_send_coordinator.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_send_coordinator.dart)
+- [lib/controllers/chat_session_coordinator.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_session_coordinator.dart)
+- [lib/controllers/chat_summary_controller.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_summary_controller.dart)
+- [lib/controllers/chat_debug_controller.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_debug_controller.dart)
+- [lib/controllers/chat_preferences_controller.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_preferences_controller.dart)
+- [lib/controllers/chat_interaction_coordinator.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_interaction_coordinator.dart)
 
 职责分工：
 - `ChatController`：页面门面与跨子域协调
 - `ChatSendCoordinator`：发送事务、工具确认、流式回复生命周期
+- `ChatInteractionCoordinator`：问题卡片草稿、结构化答案提交、interaction 恢复入口
 - `ChatSessionCoordinator`：会话加载、切换、删除、分页
 - `ChatSummaryController`：会话总结与自动总结定时逻辑
 - `ChatDebugController`：结构化调试入口
 - `ChatPreferencesController`：系统提示词、推理模式、简洁模式
 
 ### Service 层
-- [lib/services/chat_service.dart](/Users/skka/flutterSpace/FlutterAIChat/.worktrees/codex-toolcall-ui/lib/services/chat_service.dart)
+- [lib/services/chat_service.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/services/chat_service.dart)
 - `tool/runtime`、`trace`、`response parser` 等服务
 
 Service 层负责 LLM 通信、上下文选择、工具编排与 trace 记录。
 
 ## 消息发送链路
 
-发送入口在 `ChatInput`，发送事务主编排在 `ChatSendCoordinator`，模型请求与工具预处理在 `ChatService`。
+发送入口在 `ChatInput`，发送事务主编排在 `ChatSendCoordinator`，问题型交互由 `ChatInteractionCoordinator` 编排提交恢复，模型请求与工具预处理在 `ChatService`。
 
 ### 主流程
 
@@ -82,9 +92,14 @@ flowchart TD
     H --> I{"工具结果"}
     I -->|无工具| J["创建 assistant 占位并开始流式回复"]
     I -->|需确认| K["插入 actionConfirmation 卡片"]
+    I -->|需补充信息| Q["插入 askUserQuestion 卡片"]
     I -->|直接执行| L["插入 toolResult 后继续回复"]
     L --> J
     K --> M["awaitingConfirmation"]
+    Q --> R["awaitingUserInteraction"]
+    R --> S["用户提交结构化答案"]
+    S --> T["恢复同一个 turn"]
+    T --> J
     J --> N["streamingResponse"]
     N --> O["完成/失败/中断 -> idle"]
 ```
@@ -96,6 +111,7 @@ flowchart TD
 - `idle`
 - `preparing`
 - `awaitingConfirmation`
+- `awaitingUserInteraction`
 - `executingTool`
 - `streamingResponse`
 
@@ -108,14 +124,21 @@ flowchart TD
 - 点击发送后，输入框立即清空，用户消息立即上屏
 - `preparing`、`executingTool`、`streamingResponse` 阶段输入区锁定
 - `awaitingConfirmation` 阶段等待用户继续/取消
+- `awaitingUserInteraction` 阶段等待用户在消息卡片内补充结构化答案
 - `streamingResponse` 阶段再次点击发送按钮会中断当前流式输出
 
 ## Tool Call 与 Trace
 
 ### Tool Call 设计原则
 - Tool 定义、运行时注册、执行与展示应保持解耦
+- interaction-style tool 和 immediate tool 要分开建模，`AskUserQuestion` 不应伪装成一次普通工具执行
 - 新增 tool 时优先复用 runtime/handler 机制，而不是在多个 `switch` 里重复枚举
 - 用户可见工具操作应考虑确认策略、白名单策略与失败回退
+- `ToolDefinition` 同时承担 runtime metadata 与 planner metadata，新增 tool 时要补齐 `descriptionForModel`、`whenToUse`、`whenNotToUse`、`argumentSchema`
+- planner 默认按意图裁剪可见工具集合，纯检索轮次不应把高风险写工具全部暴露给模型
+- planner prompt 应由工具定义动态生成，避免再维护独立的硬编码工具白名单
+- 主编排层应只依赖 provider-native `ModelTurnDecision`；如果需要兼容旧模型能力，应在 `AgentPlannerService` 内部完成降级并重新包装成统一 decision，而不是在 orchestrator 中保留第二套执行分支
+- 对 native tool-calling provider，tool continuation item 由 turn-step ledger 构建；interaction tool 也必须完成对应 step 并写入结构化 `resultJson`
 
 ### Trace 设计原则
 - 新增关键 feature 时，默认评估是否需要 trace/log 覆盖
@@ -155,7 +178,7 @@ bash scripts/android_droidrun_chat_smoke.sh
 
 中长期待办放在：
 
-- [docs/feature_todo.md](/Users/skka/flutterSpace/FlutterAIChat/.worktrees/codex-toolcall-ui/docs/feature_todo.md)
+- [docs/feature_todo.md](/Users/zyb_wl/flutterSpace/FlutterAIChat/docs/feature_todo.md)
 
 当前 backlog 包括：
 - context 管理策略升级，并在达到上限时自动压缩
