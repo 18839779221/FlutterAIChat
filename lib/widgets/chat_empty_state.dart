@@ -15,23 +15,24 @@ class ChatEmptySuggestion {
 
 const defaultChatEmptySuggestions = <ChatEmptySuggestion>[
   ChatEmptySuggestion(
-    label: '确认链路',
-    prompt: 'remind me tomorrow at 9am to attend meeting',
+    label: '单题问答',
+    prompt:
+        '帮我设计一个本地 AI 聊天 App 的存储方案，但我现在还没决定用哪种数据库。请先向我提一个关键澄清问题，再继续给方案。',
   ),
   ChatEmptySuggestion(
-    label: '多轮 Tool Call',
+    label: 'Other 自定义',
     prompt:
-        '先搜索当前聊天记录里和 agent loop 相关的内容；如果只命中我这条提问，继续读取 turn harness 或 planner 相关代码文件确认实现，再给出简短结论。不要在信息不足时直接结束。',
+        '帮我规划一个 Flutter 聊天应用的本地持久化架构，但不要自己替我决定数据库类型。请先问我该选什么存储方案。',
   ),
   ChatEmptySuggestion(
-    label: '单轮多工具',
+    label: '多题澄清',
     prompt:
-        '先搜索当前聊天记录里和 agent loop 相关的内容，再读取相关代码文件，最后把发现整理成简短结论。能在一轮里规划多个工具就直接规划。',
+        '我要做一个新的 AI Chat 产品方案，但我还没决定目标平台、数据存储、以及是否支持离线模式。不要自己猜，请把这些关键问题一次性问我，然后再给最终建议。',
   ),
   ChatEmptySuggestion(
-    label: '工具失败回退',
+    label: '多选优先级',
     prompt:
-        '请帮我创建一个明天上午九点的提醒，标题是“After meeting”，如果工具不可用，就给我一个清晰的回退说明。',
+        '我要做一个聊天应用的 MVP，但还没确定第一版必须支持哪些能力。请先问我希望首发包含哪些功能，允许多选，然后再帮我排优先级。',
   ),
 ];
 

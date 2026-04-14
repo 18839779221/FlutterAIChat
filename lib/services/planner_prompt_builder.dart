@@ -24,6 +24,18 @@ class PlannerPromptBuilder {
     }
     buffer.writeln('如果已有足够信息则直接回答用户，不要为了调用工具而调用工具。');
     buffer.writeln('如果同一回合里某个工具用相同参数已经执行过，且期间没有新的用户信息，不要重复调用它。');
+    final hasUserInteractionTool = visibleTools.any(
+      (tool) =>
+          tool.definition.resolvedRuntimeKind == ToolRuntimeKind.userInteraction,
+    );
+    if (hasUserInteractionTool) {
+      buffer.writeln(
+        '如果完成任务缺少用户必须补充的关键信息，优先调用 ask_user_question，不要用普通文本直接提问。',
+      );
+      buffer.writeln(
+        '如果你已经决定要向用户提问，应通过工具参数提供结构化 questions，而不是把问题写进普通 assistant 回复。',
+      );
+    }
 
     if (visibleTools.isEmpty) {
       buffer.writeln('当前没有可用工具，只能直接回答用户。');

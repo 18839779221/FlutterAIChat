@@ -1,5 +1,7 @@
 import '../models/chat_event.dart';
 import '../models/chat_message.dart';
+import '../models/interaction/ask_user_question_request.dart';
+import '../models/interaction/ask_user_question_response.dart';
 import '../models/tool/tool_invocation.dart';
 import '../storage/chat_storage.dart';
 
@@ -101,6 +103,38 @@ class ChatEventRepository {
       role: MessageRole.system,
       content: content,
       payloadJson: payloadJson,
+    );
+  }
+
+  Future<int> appendAssistantQuestionPrompt({
+    required int turnId,
+    required int groupId,
+    required AskUserQuestionRequest request,
+    required String content,
+  }) {
+    return _appendEvent(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.assistantQuestionPrompt,
+      role: MessageRole.assistant,
+      content: content,
+      payloadJson: request.toJson(),
+    );
+  }
+
+  Future<int> appendUserInteractionResult({
+    required int turnId,
+    required int groupId,
+    required AskUserQuestionResponse response,
+    required String content,
+  }) {
+    return _appendEvent(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.userInteractionResult,
+      role: MessageRole.system,
+      content: content,
+      payloadJson: response.toJson(),
     );
   }
 

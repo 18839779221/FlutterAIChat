@@ -8,6 +8,13 @@ enum ToolCategory {
   outputAction,
 }
 
+/// Runtime handling mode used by the turn loop before invoking a tool handler.
+enum ToolRuntimeKind {
+  immediate,
+  requiresConfirmation,
+  userInteraction,
+}
+
 /// Stable capability tags used by planner/tool-policy layers to reason about
 /// a tool without hard-coding concrete tool names.
 enum ToolCapability {
@@ -36,6 +43,7 @@ class ToolDefinition {
   final ToolArgumentSchema? argumentSchema;
   final Map<String, dynamic> argumentExamples;
   final bool requiresConfirmation;
+  final ToolRuntimeKind runtimeKind;
   final String riskLevel;
   final List<String> supportedPlatforms;
 
@@ -52,6 +60,7 @@ class ToolDefinition {
     this.argumentSchema,
     this.argumentExamples = const {},
     this.requiresConfirmation = false,
+    this.runtimeKind = ToolRuntimeKind.immediate,
     this.riskLevel = 'low',
     this.supportedPlatforms = const ['android', 'ios', 'web'],
   })  : title = title ?? name,
@@ -79,9 +88,20 @@ class ToolDefinition {
       'inputSchema': toPlannerJsonSchema(),
       if (argumentExamples.isNotEmpty) 'argumentExamples': argumentExamples,
       'requiresConfirmation': requiresConfirmation,
+      'runtimeKind': resolvedRuntimeKind.name,
       'riskLevel': riskLevel,
       'supportedPlatforms': supportedPlatforms,
     };
+  }
+
+  ToolRuntimeKind get resolvedRuntimeKind {
+    if (runtimeKind != ToolRuntimeKind.immediate) {
+      return runtimeKind;
+    }
+    if (requiresConfirmation) {
+      return ToolRuntimeKind.requiresConfirmation;
+    }
+    return ToolRuntimeKind.immediate;
   }
 
   static ToolArgumentSchema _buildSchemaFromLegacyParameters(

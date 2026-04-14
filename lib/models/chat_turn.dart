@@ -9,6 +9,7 @@ enum ChatTurnProviderStyle {
 enum ChatTurnStatus {
   running,
   awaitingToolConfirmation,
+  awaitingUserInteraction,
   completed,
   failed,
   cancelled,

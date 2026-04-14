@@ -5,6 +5,49 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('ToolDefinition', () {
+    test('runtime metadata defaults to immediate and is exported to planner', () {
+      const definition = ToolDefinition(
+        name: 'ask_user_question',
+        title: '向用户提问',
+        description: '向用户发起结构化问题',
+        runtimeKind: ToolRuntimeKind.userInteraction,
+      );
+
+      expect(definition.runtimeKind, ToolRuntimeKind.userInteraction);
+      expect(
+        definition.toPlannerDescriptor(),
+        containsPair('runtimeKind', ToolRuntimeKind.userInteraction.name),
+      );
+    });
+
+    test('user interaction tools can advertise structured question schema', () {
+      const definition = ToolDefinition(
+        name: 'ask_user_question',
+        title: '向用户提问',
+        description: '向用户发起结构化问题',
+        descriptionForModel: '当完成任务缺少关键信息时，先向用户提问再继续。',
+        runtimeKind: ToolRuntimeKind.userInteraction,
+        argumentSchema: ToolArgumentSchema(
+          properties: {
+            'questions': ToolArgumentProperty(
+              type: 'array',
+              description: '需要用户回答的问题列表',
+            ),
+          },
+          required: ['questions'],
+        ),
+      );
+
+      expect(
+        definition.toPlannerDescriptor(),
+        containsPair('runtimeKind', 'userInteraction'),
+      );
+      expect(
+        definition.toPlannerJsonSchema()['required'],
+        contains('questions'),
+      );
+    });
+
     test('导出给 planner 的 json schema 包含 required 字段', () {
       const definition = ToolDefinition(
         name: 'web_search',

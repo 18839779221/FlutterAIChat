@@ -100,6 +100,33 @@ void main() {
       expect(result.toolInvocation!.status, ToolInvocationStatus.cancelled);
     });
 
+    test('rejects user interaction tools from the immediate execution path',
+        () async {
+      final service = await _createService(
+        runtimeRegistry: ToolRuntimeRegistry(
+          handlers: [
+            _FakeAskUserQuestionToolHandler(),
+          ],
+        ),
+      );
+
+      expect(
+        () => service.executeToolInvocation(
+          groupId: 1,
+          invocation: const ToolInvocation(
+            toolName: 'ask_user_question',
+            arguments: {
+              'questions': [],
+            },
+            status: ToolInvocationStatus.running,
+            summary: '请先回答几个问题',
+            requiresConfirmation: false,
+          ),
+        ),
+        throwsA(isA<UnsupportedError>()),
+      );
+    });
+
     test('executes runtime handler and builds structured context', () async {
       final traceRecorder = ChatTraceRecorder();
       final service = await _createService(
@@ -444,6 +471,39 @@ class _FakeReminderToolHandler implements ToolHandler {
         'dueAt': context.arguments['dueAt'],
       },
     );
+  }
+
+  @override
+  Future<ToolArgumentResolution> normalizeArguments({
+    required Map<String, dynamic> rawArguments,
+    required String userMessage,
+    required List<ChatMessage> history,
+    required DateTime now,
+  }) async {
+    return ToolArgumentResolution.valid(rawArguments);
+  }
+}
+
+class _FakeAskUserQuestionToolHandler implements ToolHandler {
+  @override
+  ToolDefinition get definition => const ToolDefinition(
+        name: 'ask_user_question',
+        title: '向用户提问',
+        description: '向用户发起结构化问题',
+        runtimeKind: ToolRuntimeKind.userInteraction,
+      );
+
+  @override
+  Future<ToolResult> execute(ToolExecutionContext context) async {
+    throw StateError('interaction tools should not execute via orchestrator');
+  }
+
+  @override
+  List<ChatMessage> buildContextMessages({
+    required ToolResult result,
+    required ToolExecutionContext context,
+  }) {
+    return const [];
   }
 
   @override

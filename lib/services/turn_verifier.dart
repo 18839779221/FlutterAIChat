@@ -47,6 +47,13 @@ class TurnVerifier {
       );
     }
 
+    if (turn.status == ChatTurnStatus.awaitingUserInteraction) {
+      return const StopVerificationResult(
+        canStop: false,
+        reason: 'awaiting_user_interaction',
+      );
+    }
+
     if (_hasPendingSteps(steps)) {
       return const StopVerificationResult(
         canStop: false,
@@ -98,8 +105,10 @@ class TurnVerifier {
       switch (event.eventType) {
         case ChatEventType.assistantToolCall:
         case ChatEventType.assistantToolConfirmation:
+        case ChatEventType.assistantQuestionPrompt:
         case ChatEventType.toolExecutionStarted:
         case ChatEventType.toolResult:
+        case ChatEventType.userInteractionResult:
         case ChatEventType.toolError:
           return event;
         case ChatEventType.userMessage:

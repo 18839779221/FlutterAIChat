@@ -15,6 +15,7 @@ import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
 import 'package:ai_chat/widgets/chat_empty_state.dart';
+import 'package:ai_chat/widgets/interaction/ask_user_question_card.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -264,6 +265,10 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           );
           break;
         case AssistantTurnBlockType.structuredOutput:
+          if (sourceMessage?.contentType == MessageContentType.askUserQuestionPrompt) {
+            widgets.add(AskUserQuestionCard(message: sourceMessage!));
+            break;
+          }
           widgets.add(
             GestureDetector(
               onLongPress: sourceMessage == null

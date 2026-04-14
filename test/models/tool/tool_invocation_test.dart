@@ -98,6 +98,14 @@ void main() {
         MessageContentTypeParsing.fromString('actionConfirmation'),
         MessageContentType.actionConfirmation,
       );
+      expect(
+        MessageContentTypeParsing.fromString('askUserQuestionPrompt'),
+        MessageContentType.askUserQuestionPrompt,
+      );
+      expect(
+        MessageContentTypeParsing.fromString('askUserQuestionResult'),
+        MessageContentType.askUserQuestionResult,
+      );
     });
   });
 }

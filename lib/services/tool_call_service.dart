@@ -1,5 +1,6 @@
 import '../models/chat_message.dart';
 import '../models/tool/tool_access_snapshot.dart';
+import '../models/tool/tool_definition.dart';
 import '../models/tool/tool_invocation.dart';
 import 'chat_trace_recorder.dart';
 import 'tool_executor.dart';
@@ -41,13 +42,17 @@ class ToolPreparationResult {
 /// Runtime facade for executing tool invocations that have already been
 /// decided by the agent loop.
 class ToolCallService {
+  final ToolRuntimeRegistry _runtimeRegistry;
+
   ToolCallService({
     ToolRuntimeRegistry? runtimeRegistry,
     required ToolExecutor toolExecutor,
     ToolPolicyService? toolPolicyService,
     ChatTraceRecorder? traceRecorder,
     ToolHostAdapters hostAdapters = const ToolHostAdapters(),
-  }) : _orchestrator = ToolOrchestratorService(
+  }) : _runtimeRegistry = runtimeRegistry ??
+            buildDefaultToolRuntimeRegistry(toolExecutor: toolExecutor),
+        _orchestrator = ToolOrchestratorService(
           runtimeRegistry: runtimeRegistry ??
               buildDefaultToolRuntimeRegistry(toolExecutor: toolExecutor),
           toolPolicyService: toolPolicyService,
@@ -56,6 +61,10 @@ class ToolCallService {
         );
 
   final ToolOrchestratorService _orchestrator;
+
+  ToolDefinition? findDefinition(String toolName) {
+    return _runtimeRegistry.findHandler(toolName)?.definition;
+  }
 
   Future<ToolPreparationResult> executeToolInvocation({
     required int groupId,

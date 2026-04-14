@@ -8,6 +8,8 @@ import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
+import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/trace/chat_trace_event.dart';
@@ -1170,6 +1172,86 @@ void main() {
       await databaseHelper.deleteGroup(groupId);
     });
 
+    test('submitQuestionAnswers keeps resumed loop cancellable and visible while waiting',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final resumeQuestionGate = Completer<void>();
+      final orchestrator = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: const [],
+        resumedQuestionEvents: const [],
+        resumeQuestionGate: resumeQuestionGate,
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(),
+        harness: orchestrator,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      const promptPayload = {
+        'questions': [
+          {
+            'id': 'primary-platform',
+            'header': 'Platform',
+            'question': '目标平台是什么？',
+            'multiSelect': false,
+            'options': [
+              {
+                'label': '移动端（iOS/Android）',
+                'description': '手机端优先',
+              },
+            ],
+          },
+        ],
+        'agentTurnId': 42,
+      };
+      final promptMessage = ChatMessage(
+        id: await databaseHelper.insertMessage(
+          ChatMessage(
+            text: '请先回答几个问题',
+            role: MessageRole.assistant,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.askUserQuestionPrompt,
+            payloadJson: promptPayload,
+          ),
+          groupId,
+        ),
+        text: '请先回答几个问题',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.askUserQuestionPrompt,
+        payloadJson: promptPayload,
+      );
+      container.read(messagesProvider.notifier).addMessage(promptMessage);
+
+      final future = container.read(chatSendCoordinatorProvider).submitQuestionAnswers(
+        promptMessage,
+        response: const AskUserQuestionResponse(
+          answersByQuestionId: {
+            'primary-platform': '移动端（iOS/Android）',
+          },
+          selectedOptionLabelsByQuestionId: {
+            'primary-platform': ['移动端（iOS/Android）'],
+          },
+          freeTextAnswersByQuestionId: {},
+        ),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(container.read(sendPhaseProvider), isNot(ChatSendPhase.idle));
+      expect(container.read(streamSubscriptionProvider), isNotNull);
+
+      resumeQuestionGate.complete();
+      await future;
+    });
+
     test('sendMessage records controller trace boundary events in order',
         () async {
       final databaseHelper = _createTestDatabaseHelper();
@@ -1521,17 +1603,22 @@ class _FakeChatService extends ChatService {
 class _FakeTurnHarness extends TurnHarness {
   final List<ChatEvent> events;
   final List<ChatEvent> resumedEvents;
+  final List<ChatEvent> resumedQuestionEvents;
   final List<ChatTurn> recordedTurns = [];
   final List<int> resumedTurnIds = [];
+  final List<int> resumedQuestionTurnIds = [];
   final List<bool> resumedTrustFlags = [];
   final Completer<void>? runTurnGate;
+  final Completer<void>? resumeQuestionGate;
   final Object? runTurnError;
 
   _FakeTurnHarness({
     required DatabaseHelper databaseHelper,
     required this.events,
     this.resumedEvents = const [],
+    this.resumedQuestionEvents = const [],
     this.runTurnGate,
+    this.resumeQuestionGate,
     this.runTurnError,
   }) : super(
           plannerService: AgentPlannerService(llm: _NoopBaseLLM()),
@@ -1586,6 +1673,33 @@ class _FakeTurnHarness extends TurnHarness {
     resumedTurnIds.add(turnId);
     resumedTrustFlags.add(trustTool);
     for (final event in resumedEvents) {
+      yield ChatEvent(
+        turnId: turnId,
+        groupId: event.groupId,
+        sequence: event.sequence,
+        eventType: event.eventType,
+        role: event.role,
+        status: event.status,
+        content: event.content,
+        payloadJson: event.payloadJson,
+        createdAt: event.createdAt,
+      );
+    }
+  }
+
+  @override
+  Stream<ChatEvent> resumeAfterQuestionAnswered({
+    required int turnId,
+    required AskUserQuestionRequest request,
+    required AskUserQuestionResponse response,
+    required ChatConfig config,
+  }) async* {
+    resumedQuestionTurnIds.add(turnId);
+    final gate = resumeQuestionGate;
+    if (gate != null) {
+      await gate.future;
+    }
+    for (final event in resumedQuestionEvents) {
       yield ChatEvent(
         turnId: turnId,
         groupId: event.groupId,
@@ -1655,6 +1769,7 @@ class _FakeChatSendCoordinator implements ChatSendCoordinator {
   final List<ChatMessage> confirmedMessages = [];
   final List<bool> confirmedTrustFlags = [];
   final List<ChatMessage> cancelledMessages = [];
+  final List<ChatMessage> submittedQuestionMessages = [];
 
   @override
   Future<void> sendMessage(
@@ -1677,6 +1792,14 @@ class _FakeChatSendCoordinator implements ChatSendCoordinator {
   @override
   Future<void> cancelToolInvocation(ChatMessage message) async {
     cancelledMessages.add(message);
+  }
+
+  @override
+  Future<void> submitQuestionAnswers(
+    ChatMessage message, {
+    required AskUserQuestionResponse response,
+  }) async {
+    submittedQuestionMessages.add(message);
   }
 }
 
