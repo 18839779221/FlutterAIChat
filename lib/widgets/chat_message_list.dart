@@ -10,6 +10,7 @@ import 'package:ai_chat/theme/app_colors.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/streaming_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/structured_output_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
@@ -260,10 +261,14 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
               onLongPress: sourceMessage == null
                   ? null
                   : () => _showMessageOptionMenu(sourceMessage),
-              child: FinalResponseBlock(
-                title: block.title ?? '最终回答',
-                text: block.text ?? '',
-              ),
+              child: sourceMessage?.status == MessageStatus.generating
+                  ? StreamingResponseBlock(
+                      text: block.text ?? '',
+                    )
+                  : FinalResponseBlock(
+                      title: block.title ?? '最终回答',
+                      text: block.text ?? '',
+                    ),
             ),
           );
           break;

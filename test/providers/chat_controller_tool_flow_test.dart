@@ -1010,6 +1010,96 @@ void main() {
       expect(assistantMessage.text, '我先搜索，再总结');
     });
 
+    test('agent loop delta 会延迟持久化到最终 flush，而不是每个 delta 立即写库', () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final orchestrator = _DelayedResumeTurnHarness(
+        databaseHelper: databaseHelper,
+        resumedEvents: [
+          ChatEvent(
+            turnId: 12,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.assistantTextDelta,
+            role: MessageRole.assistant,
+            content: '我先搜索',
+          ),
+          ChatEvent(
+            turnId: 12,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.assistantTextDelta,
+            role: MessageRole.assistant,
+            content: '，再总结',
+          ),
+          ChatEvent(
+            turnId: 12,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.finalAnswer,
+            role: MessageRole.assistant,
+            content: '我先搜索，再总结',
+          ),
+        ],
+        resumedEventDelays: const [
+          Duration.zero,
+          Duration.zero,
+          Duration(milliseconds: 120),
+        ],
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(),
+        harness: orchestrator,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+      final confirmationMessage = ChatMessage(
+        text: '准备执行工具：联网搜索',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.actionConfirmation,
+        payloadJson: const {
+          'toolName': 'web_search',
+          'arguments': {'query': 'OpenAI latest news'},
+          'status': 'awaitingConfirmation',
+          'summary': '准备执行工具：联网搜索',
+          'requiresConfirmation': true,
+          'agentTurnId': 12,
+        },
+      );
+      final confirmationMessageId =
+          await databaseHelper.insertMessage(confirmationMessage, groupId);
+      confirmationMessage.id = confirmationMessageId;
+      container
+          .read(messagesProvider.notifier)
+          .setMessages([confirmationMessage]);
+
+      final future = container
+          .read(chatControllerProvider)
+          .confirmToolInvocation(confirmationMessage, trustTool: true);
+
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      final earlyPersistedMessages = await databaseHelper.getMessagesByGroup(groupId);
+      final earlyAssistantMessage = earlyPersistedMessages.firstWhere(
+        (message) => message.id != confirmationMessageId && message.isAssistant,
+      );
+      expect(earlyAssistantMessage.text, isEmpty);
+
+      await future;
+
+      final persistedMessages = await databaseHelper.getMessagesByGroup(groupId);
+      final finalAssistantMessage = persistedMessages.firstWhere(
+        (message) => message.id != confirmationMessageId && message.isAssistant,
+      );
+      expect(finalAssistantMessage.text, '我先搜索，再总结');
+      expect(finalAssistantMessage.status, MessageStatus.completed);
+    });
+
     test('取消工具会记录取消 trace 并复位发送阶段', () async {
       final databaseHelper = _createTestDatabaseHelper();
       final traceLogs = <Map<String, dynamic>>[];
@@ -1700,6 +1790,49 @@ class _FakeTurnHarness extends TurnHarness {
       await gate.future;
     }
     for (final event in resumedQuestionEvents) {
+      yield ChatEvent(
+        turnId: turnId,
+        groupId: event.groupId,
+        sequence: event.sequence,
+        eventType: event.eventType,
+        role: event.role,
+        status: event.status,
+        content: event.content,
+        payloadJson: event.payloadJson,
+        createdAt: event.createdAt,
+      );
+    }
+  }
+}
+
+class _DelayedResumeTurnHarness extends _FakeTurnHarness {
+  final List<Duration> resumedEventDelays;
+
+  _DelayedResumeTurnHarness({
+    required super.databaseHelper,
+    required super.resumedEvents,
+    required this.resumedEventDelays,
+  })  : assert(resumedEvents.length == resumedEventDelays.length),
+        super(
+          events: const [],
+        );
+
+  @override
+  Stream<ChatEvent> resumeAfterConfirmation({
+    required int turnId,
+    required ToolInvocation invocation,
+    required ChatConfig config,
+    bool trustTool = false,
+  }) async* {
+    resumedTurnIds.add(turnId);
+    resumedTrustFlags.add(trustTool);
+
+    for (var index = 0; index < resumedEvents.length; index += 1) {
+      final delay = resumedEventDelays[index];
+      if (delay > Duration.zero) {
+        await Future<void>.delayed(delay);
+      }
+      final event = resumedEvents[index];
       yield ChatEvent(
         turnId: turnId,
         groupId: event.groupId,
