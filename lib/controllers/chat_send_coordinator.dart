@@ -15,6 +15,7 @@ import 'package:ai_chat/providers/chat_send_state_providers.dart';
 import 'package:ai_chat/providers/chat_ui_providers.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/services/assistant_stream_output_buffer.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/turn_harness.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
@@ -186,6 +187,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
 
     int? assistantMessageId;
     ChatMessage? assistantMessage;
+    AssistantStreamOutputBuffer? assistantStreamBuffer;
     final completion = Completer<void>();
 
     final subscription = harness
@@ -336,13 +338,14 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
               );
           final activeAssistantMessageId =
               assistantMessageId ?? (throw StateError('missing assistant message id'));
-          _ref
-              .read(messagesProvider.notifier)
-              .appendToMessage(activeAssistantMessageId, event.content ?? '');
-          await dbHelper.updateMessage(
-            activeAssistantMessageId,
-            assistantMessage?.text ?? '',
+          final activeAssistantMessage =
+              assistantMessage ?? (throw StateError('missing assistant message'));
+          assistantStreamBuffer ??= _createAssistantStreamBuffer(
+            messageId: activeAssistantMessageId,
+            message: activeAssistantMessage,
+            dbHelper: dbHelper,
           );
+          assistantStreamBuffer!.onDelta(event.content ?? '');
           break;
         case ChatEventType.assistantTextFinal:
           break;
@@ -359,19 +362,24 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
             assistantMessage = message;
             _ref.read(messagesProvider.notifier).addMessage(message);
           } else {
-            final finalText = event.content ?? assistantMessage?.text ?? '';
-            _ref
-                .read(messagesProvider.notifier)
-                .updateMessage(assistantMessageId!, finalText);
+            await _finalizeAssistantText(
+              buffer: assistantStreamBuffer,
+              messageId: assistantMessageId!,
+              message: assistantMessage,
+              dbHelper: dbHelper,
+              fallbackText: event.content ?? assistantMessage?.text ?? '',
+              explicitText: event.content,
+            );
             _ref
                 .read(messagesProvider.notifier)
                 .updateMessageStatus(assistantMessageId!, MessageStatus.completed);
-            await dbHelper.updateMessage(assistantMessageId!, finalText);
             await dbHelper.updateMessageStatus(
               assistantMessageId!,
               MessageStatus.completed,
             );
           }
+          assistantStreamBuffer?.dispose();
+          assistantStreamBuffer = null;
           _ref.read(chatSendStateProvider.notifier).update(
                 isGenerating: false,
                 phase: ChatSendPhase.idle,
@@ -395,6 +403,9 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     }).listen(
       (_) {},
       onError: (error, stackTrace) {
+        unawaited(assistantStreamBuffer?.cancel());
+        assistantStreamBuffer?.dispose();
+        assistantStreamBuffer = null;
         Logger.e(_tag, 'agent loop 发送失败', error);
         traceRecorder.record(
           turnId: turnId,
@@ -427,7 +438,12 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     );
 
     _ref.read(streamSubscriptionProvider.notifier).state = subscription;
-    await completion.future;
+    try {
+      await completion.future;
+    } finally {
+      await assistantStreamBuffer?.cancel();
+      assistantStreamBuffer?.dispose();
+    }
   }
 
   Future<void> _appendVisibleSendFailureMessage({
@@ -610,6 +626,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     final currentGroupId = currentGroup!.id!;
     int? assistantMessageId;
     ChatMessage? assistantMessage;
+    AssistantStreamOutputBuffer? assistantStreamBuffer;
     _ref.read(chatSendStateProvider.notifier).update(
           isGenerating: false,
           phase: ChatSendPhase.preparing,
@@ -740,13 +757,14 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
               );
           final activeAssistantMessageId =
               assistantMessageId ?? (throw StateError('missing assistant message id'));
-          _ref
-              .read(messagesProvider.notifier)
-              .appendToMessage(activeAssistantMessageId, event.content ?? '');
-          await dbHelper.updateMessage(
-            activeAssistantMessageId,
-            assistantMessage?.text ?? '',
+          final activeAssistantMessage =
+              assistantMessage ?? (throw StateError('missing assistant message'));
+          assistantStreamBuffer ??= _createAssistantStreamBuffer(
+            messageId: activeAssistantMessageId,
+            message: activeAssistantMessage,
+            dbHelper: dbHelper,
           );
+          assistantStreamBuffer!.onDelta(event.content ?? '');
           break;
         case ChatEventType.finalAnswer:
           if (assistantMessageId == null) {
@@ -758,26 +776,30 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
             assistantMessageId =
                 await dbHelper.insertMessage(finalMessage, currentGroupId);
             finalMessage.id = assistantMessageId;
+            assistantMessage = finalMessage;
             _ref.read(messagesProvider.notifier).addMessage(finalMessage);
           } else {
             final completedAssistantMessageId =
                 assistantMessageId ?? (throw StateError('missing assistant message id'));
-            _ref
-                .read(messagesProvider.notifier)
-                .updateMessage(completedAssistantMessageId, event.content ?? '');
+            await _finalizeAssistantText(
+              buffer: assistantStreamBuffer,
+              messageId: completedAssistantMessageId,
+              message: assistantMessage,
+              dbHelper: dbHelper,
+              fallbackText: event.content ?? assistantMessage?.text ?? '',
+              explicitText: event.content,
+            );
             _ref.read(messagesProvider.notifier).updateMessageStatus(
                   completedAssistantMessageId,
                   MessageStatus.completed,
                 );
-            await dbHelper.updateMessage(
-              completedAssistantMessageId,
-              event.content ?? '',
-            );
             await dbHelper.updateMessageStatus(
               completedAssistantMessageId,
               MessageStatus.completed,
             );
           }
+          assistantStreamBuffer?.dispose();
+          assistantStreamBuffer = null;
           _ref.read(chatSendStateProvider.notifier).update(
                 isGenerating: false,
                 phase: ChatSendPhase.idle,
@@ -802,6 +824,9 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     }).listen(
       (_) {},
       onError: (error, stackTrace) {
+        unawaited(assistantStreamBuffer?.cancel());
+        assistantStreamBuffer?.dispose();
+        assistantStreamBuffer = null;
         _ref.read(chatSendStateProvider.notifier).update(
               isGenerating: false,
               phase: ChatSendPhase.idle,
@@ -822,6 +847,8 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     try {
       await completion.future;
     } finally {
+      await assistantStreamBuffer?.cancel();
+      assistantStreamBuffer?.dispose();
       if (identical(_ref.read(streamSubscriptionProvider), subscription)) {
         _ref.read(streamSubscriptionProvider.notifier).state = null;
       }
@@ -851,6 +878,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     final dbHelper = _ref.read(databaseProvider);
     int? assistantMessageId;
     ChatMessage? assistantMessage;
+    AssistantStreamOutputBuffer? assistantStreamBuffer;
     var hasPendingConfirmation = false;
 
     await for (final event in harness.resumeAfterConfirmation(
@@ -987,14 +1015,14 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
             _ref.read(messagesProvider.notifier).addMessage(placeholder);
           }
           final activeAssistantMessageId = assistantMessageId;
-          _ref.read(messagesProvider.notifier).appendToMessage(
-                activeAssistantMessageId,
-                event.content ?? '',
-              );
-          await dbHelper.updateMessage(
-            activeAssistantMessageId,
-            assistantMessage?.text ?? '',
+          final activeAssistantMessage =
+              assistantMessage ?? (throw StateError('missing assistant message'));
+          assistantStreamBuffer ??= _createAssistantStreamBuffer(
+            messageId: activeAssistantMessageId,
+            message: activeAssistantMessage,
+            dbHelper: dbHelper,
           );
+          assistantStreamBuffer.onDelta(event.content ?? '');
           break;
         case ChatEventType.finalAnswer:
           if (assistantMessageId == null) {
@@ -1006,21 +1034,28 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
             assistantMessageId =
                 await dbHelper.insertMessage(finalMessage, currentGroupId);
             finalMessage.id = assistantMessageId;
+            assistantMessage = finalMessage;
             _ref.read(messagesProvider.notifier).addMessage(finalMessage);
           } else {
             final completedAssistantMessageId = assistantMessageId;
-            _ref
-                .read(messagesProvider.notifier)
-                .updateMessage(completedAssistantMessageId, event.content ?? '');
+            await _finalizeAssistantText(
+              buffer: assistantStreamBuffer,
+              messageId: completedAssistantMessageId,
+              message: assistantMessage,
+              dbHelper: dbHelper,
+              fallbackText: event.content ?? assistantMessage?.text ?? '',
+              explicitText: event.content,
+            );
             _ref
                 .read(messagesProvider.notifier)
                 .updateMessageStatus(completedAssistantMessageId, MessageStatus.completed);
-            await dbHelper.updateMessage(completedAssistantMessageId, event.content ?? '');
             await dbHelper.updateMessageStatus(
               completedAssistantMessageId,
               MessageStatus.completed,
             );
           }
+          assistantStreamBuffer?.dispose();
+          assistantStreamBuffer = null;
           break;
         case ChatEventType.toolError:
           await _appendToolResultMessage(
@@ -1039,6 +1074,9 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
           break;
       }
     }
+
+    await assistantStreamBuffer?.cancel();
+    assistantStreamBuffer?.dispose();
 
     _ref.read(chatSendStateProvider.notifier).setPhase(
       hasPendingConfirmation
@@ -1075,6 +1113,42 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     final messageId = await dbHelper.insertMessage(message, groupId);
     message.id = messageId;
     _ref.read(messagesProvider.notifier).addMessage(message);
+  }
+
+  AssistantStreamOutputBuffer _createAssistantStreamBuffer({
+    required int messageId,
+    required ChatMessage message,
+    required ChatStorage dbHelper,
+  }) {
+    return AssistantStreamOutputBuffer(
+      onUiFlush: (text) {
+        message.text = text;
+        _ref.read(messagesProvider.notifier).updateMessage(messageId, text);
+      },
+      onPersistFlush: (text) async {
+        message.text = text;
+        await dbHelper.updateMessage(messageId, text);
+      },
+      uiFlushInterval: const Duration(milliseconds: 16),
+    );
+  }
+
+  Future<String> _finalizeAssistantText({
+    required AssistantStreamOutputBuffer? buffer,
+    required int messageId,
+    required ChatMessage? message,
+    required ChatStorage dbHelper,
+    required String fallbackText,
+    String? explicitText,
+  }) async {
+    await buffer?.finish();
+    final finalText = explicitText ?? buffer?.fullText ?? fallbackText;
+    if (message != null && message.text != finalText) {
+      message.text = finalText;
+      _ref.read(messagesProvider.notifier).updateMessage(messageId, finalText);
+      await dbHelper.updateMessage(messageId, finalText);
+    }
+    return finalText;
   }
 
   Map<String, dynamic> _buildToolFailurePayload(ChatEvent event) {

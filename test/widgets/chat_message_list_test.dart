@@ -4,6 +4,8 @@ import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/theme/app_theme.dart';
+import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/streaming_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/structured_output_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
@@ -93,6 +95,26 @@ void main() {
       );
 
       expect(find.text('assistant reply'), findsOneWidget);
+    });
+
+    testWidgets('generating assistant text uses lightweight streaming block', (
+      tester,
+    ) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: 'streaming reply',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+            status: MessageStatus.generating,
+          ),
+        ],
+      );
+
+      expect(find.byType(StreamingResponseBlock), findsOneWidget);
+      expect(find.byType(FinalResponseBlock), findsNothing);
+      expect(find.text('streaming reply'), findsOneWidget);
     });
 
     testWidgets('structured assistant content renders as structured output block', (
@@ -347,12 +369,13 @@ ChatMessage _buildMessage({
   required String text,
   required MessageRole role,
   required MessageContentType contentType,
+  MessageStatus status = MessageStatus.completed,
   Map<String, dynamic>? payloadJson,
 }) {
   return ChatMessage(
     text: text,
     role: role,
-    status: MessageStatus.completed,
+    status: status,
     contentType: contentType,
     payloadJson: payloadJson,
   );
