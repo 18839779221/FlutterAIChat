@@ -33,7 +33,10 @@ class ChatMessageList extends ConsumerStatefulWidget {
 
 class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   final ChatBlockBuilder _blockBuilder = ChatBlockBuilder();
+  static const double _anchorThreshold = 100;
   bool _isNearBottom = true;
+  bool _isLoadingOlderHistory = false;
+  GlobalKey? _latestTurnAnchorKey;
   late final ScrollController _scrollController;
 
   @override
@@ -55,8 +58,11 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       return;
     }
 
-    final maxScroll = scrollController.position.maxScrollExtent;
-    final isNearBottom = maxScroll - scrollController.offset <= 100;
+    if (_shouldLoadOlderHistory(scrollController)) {
+      _loadOlderHistoryPreservingAnchor();
+    }
+
+    final isNearBottom = _isNearLatestAnchor(scrollController);
 
     if (_isNearBottom != isNearBottom) {
       setState(() {
@@ -64,27 +70,106 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       });
     }
 
-    final scrollingPosition = scrollController.position;
-    if (scrollingPosition.userScrollDirection == ScrollDirection.reverse) {
-      ref.read(focusNodeProvider).unfocus();
-      ref.read(autoScrollToBottomProvider.notifier).state = false;
-    } else if (scrollingPosition.userScrollDirection ==
-            ScrollDirection.forward &&
-        isNearBottom) {
-      ref.read(autoScrollToBottomProvider.notifier).state = true;
-    }
   }
 
   void _scrollToBottom() {
+    ref.read(autoScrollToBottomProvider.notifier).state = true;
+    _scrollToLatestTurn(animated: true);
+  }
+
+  bool _isNearLatestAnchor(ScrollController scrollController) {
+    final targetOffset = _latestAnchorOffset(scrollController);
+    if (targetOffset == null) {
+      return true;
+    }
+    return (scrollController.offset - targetOffset).abs() <= _anchorThreshold;
+  }
+
+  bool _shouldLoadOlderHistory(ScrollController scrollController) {
+    if (_isLoadingOlderHistory || !ref.read(hasMoreMessagesProvider)) {
+      return false;
+    }
+
+    final minScroll = scrollController.position.minScrollExtent;
+    return scrollController.offset <= minScroll + _anchorThreshold;
+  }
+
+  double? _latestAnchorOffset(ScrollController scrollController) {
+    if (!scrollController.hasClients) {
+      return null;
+    }
+
+    final anchorContext = _latestTurnAnchorKey?.currentContext;
+    if (anchorContext == null) {
+      return scrollController.position.maxScrollExtent;
+    }
+
+    final renderObject = anchorContext.findRenderObject();
+    if (renderObject == null || !renderObject.attached) {
+      return scrollController.position.maxScrollExtent;
+    }
+
+    final viewport = RenderAbstractViewport.maybeOf(renderObject);
+    if (viewport == null) {
+      return scrollController.position.maxScrollExtent;
+    }
+
+    final targetOffset = viewport.getOffsetToReveal(renderObject, 0).offset;
+    return targetOffset.clamp(
+      scrollController.position.minScrollExtent,
+      scrollController.position.maxScrollExtent,
+    );
+  }
+
+  void _scrollToLatestTurn({required bool animated}) {
+    final scrollController = ref.read(scrollControllerProvider);
+    final targetOffset = _latestAnchorOffset(scrollController);
+    if (targetOffset == null) {
+      return;
+    }
+
+    if (animated) {
+      scrollController.animateTo(
+        targetOffset,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+      return;
+    }
+
+    scrollController.jumpTo(targetOffset);
+  }
+
+  Future<void> _loadOlderHistoryPreservingAnchor() async {
     final scrollController = ref.read(scrollControllerProvider);
     if (!scrollController.hasClients) {
       return;
     }
-    scrollController.animateTo(
-      scrollController.position.maxScrollExtent,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-    );
+
+    _isLoadingOlderHistory = true;
+    final previousOffset = scrollController.offset;
+    final previousMaxScroll = scrollController.position.maxScrollExtent;
+
+    try {
+      await ref.read(chatControllerProvider).loadMoreMessages();
+      if (!mounted || !scrollController.hasClients) {
+        return;
+      }
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !scrollController.hasClients) {
+          return;
+        }
+        final newMaxScroll = scrollController.position.maxScrollExtent;
+        final extentDelta = newMaxScroll - previousMaxScroll;
+        if (extentDelta <= 0) {
+          return;
+        }
+        scrollController.jumpTo(previousOffset + extentDelta);
+      });
+    } finally {
+      _isLoadingOlderHistory = false;
+    }
   }
 
   @override
@@ -99,19 +184,19 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final textController = ref.read(textControllerProvider);
     final focusNode = ref.read(focusNodeProvider);
 
-    if (isGenerating && autoScrollToBottom) {
+    if (autoScrollToBottom && !_isNearBottom) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (scrollController.hasClients) {
-          scrollController.animateTo(
-            scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-          );
+        if (scrollController.hasClients && mounted) {
+          _scrollToLatestTurn(animated: isGenerating);
         }
       });
     }
 
-    final timelineItems = _buildTimelineItems(messages);
+    final latestUserMessage = _findLatestUserMessage(messages);
+    final timelineItems = _buildTimelineItems(
+      messages,
+      latestUserMessage: latestUserMessage,
+    );
     final itemCount = timelineItems.length + (hasMoreMessages ? 1 : 0);
 
     if (messages.isEmpty) {
@@ -128,41 +213,60 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
 
     return Stack(
       children: [
-        ListView.builder(
-          controller: scrollController,
-          padding: EdgeInsets.fromLTRB(
-            spacing.sm,
-            spacing.xl * 2 + spacing.xxs,
-            spacing.sm,
-            spacing.xl * 4.2,
-          ),
-          itemCount: itemCount,
-          itemBuilder: (context, index) {
-            if (hasMoreMessages && index == 0) {
-              return const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: CircularProgressIndicator(),
-                ),
-              );
+        NotificationListener<UserScrollNotification>(
+          onNotification: (notification) {
+            if (notification.direction == ScrollDirection.idle) {
+              return false;
             }
-
-            final item = timelineItems[hasMoreMessages ? index - 1 : index];
-            return Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: kIsWeb ? 860 : 720,
+            if (_isNearLatestAnchor(scrollController)) {
+              return false;
+            }
+            ref.read(focusNodeProvider).unfocus();
+            ref.read(autoScrollToBottomProvider.notifier).state = false;
+            return false;
+          },
+          child: CustomScrollView(
+            controller: scrollController,
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  spacing.sm,
+                  spacing.xl * 2 + spacing.xxs,
+                  spacing.sm,
+                  spacing.xl * 4.2,
                 ),
-                child: Padding(
-                  padding: EdgeInsets.only(bottom: spacing.sm),
-                  child: item,
+                sliver: SliverList.builder(
+                  itemCount: itemCount,
+                  itemBuilder: (context, index) {
+                    if (hasMoreMessages && index == timelineItems.length) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(8.0),
+                          child: CircularProgressIndicator(),
+                        ),
+                      );
+                    }
+
+                    final item = timelineItems[index];
+                    return Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          maxWidth: kIsWeb ? 860 : 720,
+                        ),
+                        child: Padding(
+                          padding: EdgeInsets.only(bottom: spacing.sm),
+                          child: item,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
-            );
-          },
+            ],
+          ),
         ),
-        if (!_isNearBottom)
+        if (!_isNearBottom || !autoScrollToBottom)
           Positioned(
             right: 16,
             bottom: 28,
@@ -179,7 +283,20 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     );
   }
 
-  List<Widget> _buildTimelineItems(List<ChatMessage> messages) {
+  ChatMessage? _findLatestUserMessage(List<ChatMessage> messages) {
+    for (var index = messages.length - 1; index >= 0; index -= 1) {
+      final message = messages[index];
+      if (message.isUser) {
+        return message;
+      }
+    }
+    return null;
+  }
+
+  List<Widget> _buildTimelineItems(
+    List<ChatMessage> messages, {
+    required ChatMessage? latestUserMessage,
+  }) {
     if (messages.isEmpty) {
       return const [];
     }
@@ -196,6 +313,11 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       if (current.isUser) {
         widgets.add(
           Padding(
+            key: identical(current, latestUserMessage)
+                ? (_latestTurnAnchorKey ??= GlobalKey(
+                    debugLabel: 'latest-turn-anchor',
+                  ))
+                : null,
             padding: const EdgeInsets.only(bottom: 2),
             child: GestureDetector(
               onLongPress: () => _showMessageOptionMenu(current),

@@ -12,7 +12,7 @@ final isLoadingMoreProvider = StateProvider<bool>((ref) => false);
 // 是否有更多消息提供者
 final hasMoreMessagesProvider = StateProvider<bool>((ref) => true);
 
-// 自动滚动提供者
+// 是否允许视口继续跟随最新消息锚点
 final autoScrollToBottomProvider = StateProvider<bool>((ref) => true);
 
 // 推理模式提供者

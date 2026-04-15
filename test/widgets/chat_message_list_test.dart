@@ -280,6 +280,125 @@ void main() {
       expect(find.text('User message'), findsOneWidget);
     });
 
+    testWidgets('multi-turn conversations keep the latest turn anchor near the top',
+      (
+      tester,
+    ) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: 'older user',
+            role: MessageRole.user,
+            contentType: MessageContentType.plainText,
+          ),
+          _buildMessage(
+            text: 'older assistant',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+          ),
+          _buildMessage(
+            text: 'newer user',
+            role: MessageRole.user,
+            contentType: MessageContentType.plainText,
+          ),
+          _buildMessage(
+            text: 'newer assistant',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+      );
+
+      final listBounds = tester.getRect(find.byType(ChatMessageList));
+      final latestTurnTop = tester.getTopLeft(find.text('newer user')).dy;
+
+      expect(latestTurnTop, lessThan(listBounds.center.dy));
+    });
+
+    testWidgets('short conversations stay in the upper half instead of docking to the bottom',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: 'Short user turn',
+            role: MessageRole.user,
+            contentType: MessageContentType.plainText,
+          ),
+          _buildMessage(
+            text: 'Short assistant turn',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+      );
+
+      final listBounds = tester.getRect(find.byType(ChatMessageList));
+      final bubbleTop = tester.getTopLeft(find.byType(UserAnchorBubble)).dy;
+
+      expect(bubbleTop, lessThan(listBounds.center.dy));
+    });
+
+    testWidgets('adding a new user message reanchors the newest turn near the top',
+        (tester) async {
+      final container = ProviderContainer(
+        overrides: [
+          hasMoreMessagesProvider.overrideWith((ref) => false),
+          chatSendStateProvider.overrideWith(
+            (ref) => ChatSendStateNotifier()
+              ..update(
+                phase: ChatSendPhase.idle,
+                isGenerating: false,
+              ),
+          ),
+          autoScrollToBottomProvider.overrideWith((ref) => true),
+        ],
+      );
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        container.dispose();
+      });
+
+      container.read(messagesProvider.notifier).setMessages([
+        _buildMessage(
+          text: 'older user',
+          role: MessageRole.user,
+          contentType: MessageContentType.plainText,
+        ),
+        _buildMessage(
+          text: 'older assistant',
+          role: MessageRole.assistant,
+          contentType: MessageContentType.plainText,
+        ),
+      ]);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const Scaffold(body: ChatMessageList()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      container.read(messagesProvider.notifier).addMessage(
+            _buildMessage(
+              text: 'new user turn',
+              role: MessageRole.user,
+              contentType: MessageContentType.plainText,
+            ),
+          );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+
+      final listBounds = tester.getRect(find.byType(ChatMessageList));
+      final latestTurnTop = tester.getTopLeft(find.text('new user turn')).dy;
+      expect(latestTurnTop, lessThan(listBounds.center.dy));
+    });
+
     testWidgets('debug mode still exposes structured output action for assistant text', (
       tester,
     ) async {

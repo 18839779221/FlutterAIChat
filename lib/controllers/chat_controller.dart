@@ -9,7 +9,6 @@ import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/providers/chat_send_state_providers.dart';
 import 'package:ai_chat/providers/chat_ui_providers.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class ChatController {
@@ -31,33 +30,7 @@ class ChatController {
         _sessionCoordinator = sessionCoordinator,
         _summaryController = summaryController,
         _debugController = debugController,
-        _preferencesController = preferencesController {
-    _initScrollListener();
-  }
-
-  void _initScrollListener() {
-    final scrollController = _ref.read(scrollControllerProvider);
-
-    scrollController.addListener(() {
-      if (scrollController.position.pixels <=
-              scrollController.position.minScrollExtent + 100 &&
-          !_ref.read(isLoadingMoreProvider)) {
-        loadMoreMessages();
-      }
-
-      if (_ref.read(isGeneratingProvider)) {
-        if (scrollController.position.userScrollDirection ==
-            ScrollDirection.reverse) {
-          _ref.read(autoScrollToBottomProvider.notifier).state = false;
-        }
-
-        if (scrollController.position.pixels >=
-            scrollController.position.maxScrollExtent - 10) {
-          _ref.read(autoScrollToBottomProvider.notifier).state = true;
-        }
-      }
-    });
-  }
+        _preferencesController = preferencesController;
 
   Future<void> loadGroups() async {
     await _sessionCoordinator.loadGroups();
