@@ -4,6 +4,7 @@ import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/pages/chat_page.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/theme/app_theme.dart';
+import 'package:ai_chat/widgets/chat_message_list.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -46,6 +47,67 @@ void main() {
 
     final headerSize = tester.getSize(find.byKey(const ValueKey('ghost-header')));
     expect(headerSize.height, lessThanOrEqualTo(56));
+  });
+
+  testWidgets('chat page renders the chat viewport with latest-message anchor semantics',
+      (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider.overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider.overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatDebugControllerProvider.overrideWith((ref) => _StubDebugController()),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.read(messagesProvider.notifier).setMessages([
+      ChatMessage(
+        id: 1,
+        text: 'Earlier user message',
+        role: MessageRole.user,
+        status: MessageStatus.completed,
+      ),
+      ChatMessage(
+        id: 2,
+        text: 'Earlier assistant message',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+      ),
+      ChatMessage(
+        id: 3,
+        text: 'Latest user message',
+        role: MessageRole.user,
+        status: MessageStatus.completed,
+      ),
+      ChatMessage(
+        id: 4,
+        text: 'Latest assistant message',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final listBounds = tester.getRect(find.byType(ChatMessageList));
+    final latestTurnTop = tester.getTopLeft(find.text('Latest user message')).dy;
+    expect(latestTurnTop, lessThan(listBounds.center.dy));
   });
 }
 

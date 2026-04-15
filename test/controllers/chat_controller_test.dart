@@ -9,10 +9,40 @@ import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('controller initialization does not attach scroll listeners directly',
+      () {
+    final scrollController = _TrackingScrollController();
+    final container = ProviderContainer(
+      overrides: [
+        scrollControllerProvider.overrideWith((ref) => scrollController),
+        databaseProvider.overrideWithValue(_FakeChatStorage()),
+        chatControllerProvider.overrideWith(
+          (ref) => ChatController(
+            ref,
+            sendCoordinator: _NoopChatSendCoordinator(),
+            sessionCoordinator: _NoopChatSessionCoordinator(),
+            summaryController: _NoopChatSummaryController(),
+            debugController: _NoopChatDebugController(),
+            preferencesController: _NoopChatPreferencesController(),
+          ),
+        ),
+      ],
+    );
+    addTearDown(() {
+      scrollController.dispose();
+      container.dispose();
+    });
+
+    container.read(chatControllerProvider);
+
+    expect(scrollController.addListenerCalls, 0);
+  });
+
   test('cancelStreamSubscription resets send state and interrupts assistant message',
       () async {
     final subscription = _FakeStreamSubscription();
@@ -86,6 +116,16 @@ class _FakeStreamSubscription implements StreamSubscription<void> {
 
   @override
   Future<E> asFuture<E>([E? futureValue]) async => futureValue as E;
+}
+
+class _TrackingScrollController extends ScrollController {
+  int addListenerCalls = 0;
+
+  @override
+  void addListener(VoidCallback listener) {
+    addListenerCalls += 1;
+    super.addListener(listener);
+  }
 }
 
 class _NoopChatSendCoordinator implements ChatSendCoordinator {
