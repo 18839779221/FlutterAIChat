@@ -29,6 +29,51 @@ class ToolResult {
 
   Map<String, dynamic> get payload => data;
 
+  /// Whether this result belongs to an external-action tool family.
+  bool get isOutcomeTool {
+    switch (toolName.trim()) {
+      case 'create_reminder':
+      case 'create_calendar_event':
+      case 'share_result':
+      case 'save_note':
+      case 'Write':
+      case 'Edit':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /// Whether the failure should be promoted to a richer exception card.
+  bool get shouldShowExceptionCard {
+    if (status != ToolExecutionStatus.failure) {
+      return false;
+    }
+
+    if (isOutcomeTool) {
+      return true;
+    }
+
+    switch ((errorMessage ?? '').trim()) {
+      case 'missing_api_key':
+      case 'invalid_due_at':
+      case 'invalid_start_at':
+      case 'invalid_end_at':
+      case 'share_unavailable':
+      case 'share_failed':
+      case 'unsupported_tool':
+      case 'tool_blocked':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /// Compact localized status label for tool result surfaces.
+  String get statusLabel {
+    return status == ToolExecutionStatus.success ? '完成' : '失败';
+  }
+
   String? get resolvedExecutionPolicy {
     final snapshotPolicy = toolAccess?['executionPolicy'];
     if (snapshotPolicy is String && snapshotPolicy.trim().isNotEmpty) {
