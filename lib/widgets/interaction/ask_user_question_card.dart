@@ -1,6 +1,9 @@
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
+import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_radius.dart';
+import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -29,6 +32,9 @@ class AskUserQuestionCard extends ConsumerWidget {
     final question = request.questions[questionIndex];
     final selected = draft.selectedOptionLabelsByQuestionId[question.id] ?? const [];
     final hasOther = selected.contains('Other');
+    final colors = Theme.of(context).extension<AppColors>() ?? AppColors.light();
+    final spacing = Theme.of(context).extension<AppSpacing>() ?? AppSpacing.base();
+    final radius = Theme.of(context).extension<AppRadius>() ?? AppRadius.base();
     final canSubmit = request.questions.every(
       (item) => isQuestionAnswered(
         draft: draft,
@@ -36,107 +42,278 @@ class AskUserQuestionCard extends ConsumerWidget {
       ),
     );
 
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              question.header.isEmpty ? 'Question' : question.header,
-              style: Theme.of(context).textTheme.titleSmall,
+    return Container(
+      margin: EdgeInsets.symmetric(vertical: spacing.xs - 2),
+      padding: EdgeInsets.all(spacing.lg),
+      decoration: BoxDecoration(
+        color: colors.structuredSurface.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(radius.md + 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '继续当前回合所需信息',
+            style: TextStyle(
+              color: colors.secondaryText,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
             ),
-            const SizedBox(height: 8),
-            Text(
-              question.question,
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-            const SizedBox(height: 12),
-            ...question.options.map(
-              (option) => CheckboxListTile(
-                value: selected.contains(option.label),
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
-                title: Text(option.label),
-                subtitle:
-                    option.description.isEmpty ? null : Text(option.description),
-                onChanged: (_) {
-                  ref.read(questionCardDraftsProvider.notifier).selectOption(
-                        messageId: messageId,
-                        questionId: question.id,
-                        label: option.label,
-                        multiSelect: question.multiSelect,
-                      );
-                },
+          ),
+          SizedBox(height: spacing.xs),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  question.header.isEmpty ? 'Question' : question.header,
+                  style: TextStyle(
+                    color: colors.primaryText,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    height: 1.24,
+                  ),
+                ),
               ),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: spacing.xs,
+                  vertical: spacing.xxs,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.workflowRunning.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(radius.pill),
+                ),
+                child: Text(
+                  '问题 ${questionIndex + 1} / ${request.questions.length}',
+                  style: TextStyle(
+                    color: colors.workflowRunning,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: spacing.sm),
+          Text(
+            question.question,
+            style: TextStyle(
+              color: colors.primaryText,
+              fontSize: 14,
+              height: 1.45,
             ),
-            CheckboxListTile(
-              value: hasOther,
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              title: const Text('Other'),
-              onChanged: (_) {
+          ),
+          SizedBox(height: spacing.sm),
+          ...question.options.map(
+            (option) => _QuestionOptionTile(
+              label: option.label,
+              description: option.description,
+              selected: selected.contains(option.label),
+              isRecommended: option.isRecommended,
+              onTap: () {
                 ref.read(questionCardDraftsProvider.notifier).selectOption(
                       messageId: messageId,
                       questionId: question.id,
-                      label: 'Other',
+                      label: option.label,
                       multiSelect: question.multiSelect,
                     );
               },
             ),
-            if (hasOther)
-              TextField(
-                onChanged: (value) {
-                  ref.read(questionCardDraftsProvider.notifier).setOtherText(
-                        messageId: messageId,
-                        questionId: question.id,
-                        value: value,
-                      );
-                },
-                decoration: const InputDecoration(
-                  hintText: 'Tell us more',
-                ),
+          ),
+          _QuestionOptionTile(
+            label: 'Other',
+            description: '',
+            selected: hasOther,
+            isRecommended: false,
+            onTap: () {
+              ref.read(questionCardDraftsProvider.notifier).selectOption(
+                    messageId: messageId,
+                    questionId: question.id,
+                    label: 'Other',
+                    multiSelect: question.multiSelect,
+                  );
+            },
+          ),
+          if (hasOther) ...[
+            SizedBox(height: spacing.xs),
+            TextField(
+              onChanged: (value) {
+                ref.read(questionCardDraftsProvider.notifier).setOtherText(
+                      messageId: messageId,
+                      questionId: question.id,
+                      value: value,
+                    );
+              },
+              decoration: const InputDecoration(
+                hintText: 'Tell us more',
               ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                if (request.questions.length > 1)
-                  TextButton(
-                    onPressed: questionIndex == 0
-                        ? null
-                        : () => ref
-                            .read(questionCardDraftsProvider.notifier)
-                            .setCurrentQuestionIndex(
-                              messageId: messageId,
-                              index: questionIndex - 1,
-                            ),
-                    child: const Text('Previous'),
-                  ),
-                if (request.questions.length > 1)
-                  TextButton(
-                    onPressed: questionIndex >= request.questions.length - 1
-                        ? null
-                        : () => ref
-                            .read(questionCardDraftsProvider.notifier)
-                            .setCurrentQuestionIndex(
-                              messageId: messageId,
-                              index: questionIndex + 1,
-                            ),
-                    child: const Text('Next'),
-                  ),
-                const Spacer(),
-                FilledButton(
-                  onPressed: canSubmit
-                      ? () => ref
-                          .read(chatInteractionCoordinatorProvider)
-                          .submitQuestionAnswers(message)
-                      : null,
-                  child: const Text('Submit'),
-                ),
-              ],
             ),
           ],
+          SizedBox(height: spacing.md),
+          Text(
+            '提交后将继续当前回合，而不是开启新对话。',
+            style: TextStyle(
+              color: colors.secondaryText,
+              fontSize: 11.5,
+              height: 1.4,
+            ),
+          ),
+          SizedBox(height: spacing.sm),
+          Row(
+            children: [
+              if (request.questions.length > 1)
+                TextButton(
+                  onPressed: questionIndex == 0
+                      ? null
+                      : () => ref
+                          .read(questionCardDraftsProvider.notifier)
+                          .setCurrentQuestionIndex(
+                            messageId: messageId,
+                            index: questionIndex - 1,
+                          ),
+                  child: const Text('上一题'),
+                ),
+              if (request.questions.length > 1)
+                TextButton(
+                  onPressed: questionIndex >= request.questions.length - 1
+                      ? null
+                      : () => ref
+                          .read(questionCardDraftsProvider.notifier)
+                          .setCurrentQuestionIndex(
+                            messageId: messageId,
+                            index: questionIndex + 1,
+                          ),
+                  child: const Text('下一题'),
+                ),
+              const Spacer(),
+              FilledButton(
+                onPressed: canSubmit
+                    ? () => ref
+                        .read(chatInteractionCoordinatorProvider)
+                        .submitQuestionAnswers(message)
+                    : null,
+                child: const Text('提交并继续'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuestionOptionTile extends StatelessWidget {
+  final String label;
+  final String description;
+  final bool selected;
+  final bool isRecommended;
+  final VoidCallback onTap;
+
+  const _QuestionOptionTile({
+    required this.label,
+    required this.description,
+    required this.selected,
+    required this.isRecommended,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppColors>() ?? AppColors.light();
+    final spacing = Theme.of(context).extension<AppSpacing>() ?? AppSpacing.base();
+    final radius = Theme.of(context).extension<AppRadius>() ?? AppRadius.base();
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: spacing.xs),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(radius.md),
+        child: Ink(
+          padding: EdgeInsets.all(spacing.sm),
+          decoration: BoxDecoration(
+            color: selected
+                ? colors.assistantSurface.withValues(alpha: 0.92)
+                : colors.chatBackground.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(radius.md),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 18,
+                height: 18,
+                margin: EdgeInsets.only(top: 1, right: spacing.sm),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? colors.workflowRunning
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: selected
+                        ? colors.workflowRunning
+                        : colors.divider.withValues(alpha: 0.9),
+                  ),
+                ),
+                child: selected
+                    ? const Icon(Icons.check, size: 12, color: Colors.white)
+                    : null,
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            label,
+                            style: TextStyle(
+                              color: colors.primaryText,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        if (isRecommended) ...[
+                          SizedBox(width: spacing.xs),
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: spacing.xs,
+                              vertical: spacing.xxs,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colors.workflowSuccess.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(radius.pill),
+                            ),
+                            child: Text(
+                              'Recommended',
+                              style: TextStyle(
+                                color: colors.workflowSuccess,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (description.isNotEmpty) ...[
+                      SizedBox(height: spacing.xxs),
+                      Text(
+                        description,
+                        style: TextStyle(
+                          color: colors.secondaryText,
+                          fontSize: 11.5,
+                          height: 1.38,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
