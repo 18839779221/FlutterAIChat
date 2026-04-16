@@ -1,4 +1,5 @@
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
+import 'package:ai_chat/models/chat/tool_card_presentation_variant.dart';
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
@@ -6,13 +7,16 @@ import 'package:ai_chat/models/response/structured_summary_card.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/chat_block_builder.dart';
+import 'package:ai_chat/services/tool_card_presentation_mapper.dart';
 import 'package:ai_chat/theme/app_colors.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/streaming_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/structured_output_block.dart';
-import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
+import 'package:ai_chat/widgets/chat_blocks/tool_exception_card.dart';
+import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
+import 'package:ai_chat/widgets/chat_blocks/tool_outcome_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
 import 'package:ai_chat/widgets/chat_empty_state.dart';
@@ -417,8 +421,22 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
             widgets.add(AssistantDocBlock(text: block.text ?? ''));
             break;
           }
-          widgets
-              .add(ToolResultSummaryRow(result: ToolResult.fromJson(payload)));
+          final result = ToolResult.fromJson(payload);
+          final presentation = ToolCardPresentationMapper.mapResult(result);
+          switch (presentation.variant) {
+            case ToolCardPresentationVariant.outcomeCard:
+              widgets.add(ToolOutcomeCard(model: presentation));
+              break;
+            case ToolCardPresentationVariant.exceptionCard:
+              widgets.add(ToolExceptionCard(model: presentation));
+              break;
+            case ToolCardPresentationVariant.inlineStep:
+            case ToolCardPresentationVariant.focusedActiveStep:
+            case ToolCardPresentationVariant.confirmationStep:
+            case ToolCardPresentationVariant.interactionCard:
+              widgets.add(ToolInlineStepRow(model: presentation));
+              break;
+          }
           break;
         case AssistantTurnBlockType.toolWorkflow:
           final steps = _extractWorkflowSteps(block);
