@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../../repositories/app_settings_repository.dart';
 import '../../utils/logger.dart';
 import '../agent/model_turn_decision.dart';
+import '../agent/planner_tool_choice.dart';
 import '../agent/planner_tool_option.dart';
 import '../chat_message.dart';
 import '../chat_turn.dart';
@@ -14,6 +15,7 @@ import 'api_protocol_resolver.dart';
 import 'api_stream_parser.dart';
 import 'base_llm.dart';
 import 'llm_config.dart';
+import 'tool_loop/anthropic_messages_tool_loop_adapter.dart';
 import 'tool_loop/openai_chat_completions_tool_loop_adapter.dart';
 import 'tool_loop/openai_responses_tool_loop_adapter.dart';
 
@@ -30,6 +32,7 @@ class ConfigurableHttpLLM implements BaseLLM {
   final Duration _plannerRequestTimeout;
   final OpenAIChatCompletionsToolLoopAdapter _chatCompletionsToolLoopAdapter;
   final OpenAIResponsesToolLoopAdapter _responsesToolLoopAdapter;
+  final AnthropicMessagesToolLoopAdapter _anthropicMessagesToolLoopAdapter;
 
   ConfigurableHttpLLM({
     required AppSettingsRepository settingsRepository,
@@ -40,6 +43,7 @@ class ConfigurableHttpLLM implements BaseLLM {
     Duration? plannerRequestTimeout,
     OpenAIChatCompletionsToolLoopAdapter? chatCompletionsToolLoopAdapter,
     OpenAIResponsesToolLoopAdapter? responsesToolLoopAdapter,
+    AnthropicMessagesToolLoopAdapter? anthropicMessagesToolLoopAdapter,
   })  : _settingsRepository = settingsRepository,
         _protocolResolver = protocolResolver ?? const ApiProtocolResolver(),
         _streamParser = streamParser ?? const ApiStreamParser(),
@@ -50,7 +54,9 @@ class ConfigurableHttpLLM implements BaseLLM {
         _chatCompletionsToolLoopAdapter = chatCompletionsToolLoopAdapter ??
             const OpenAIChatCompletionsToolLoopAdapter(),
         _responsesToolLoopAdapter =
-            responsesToolLoopAdapter ?? const OpenAIResponsesToolLoopAdapter();
+            responsesToolLoopAdapter ?? const OpenAIResponsesToolLoopAdapter(),
+        _anthropicMessagesToolLoopAdapter = anthropicMessagesToolLoopAdapter ??
+            const AnthropicMessagesToolLoopAdapter();
 
   @override
   String getModelName(ChatConfig config) {
@@ -79,12 +85,15 @@ class ConfigurableHttpLLM implements BaseLLM {
         'POST',
         _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
       );
-      request.headers.addAll(_buildHeaders(runtimeConfig));
+      request.headers.addAll(_buildHeaders(runtimeConfig, apiStyle));
       request.body = jsonEncode(
-        apiStyle == ApiStyle.responses
-            ? _buildResponsesPayload(messages, config, modelName, stream: true)
-            : _buildChatCompletionsPayload(messages, config, modelName,
-                stream: true),
+        _buildPayloadForStyle(
+          apiStyle,
+          messages,
+          config,
+          modelName,
+          stream: true,
+        ),
       );
 
       Logger.i(_tag, '请求体: ${request.body}');
@@ -115,21 +124,15 @@ class ConfigurableHttpLLM implements BaseLLM {
       final response = await _httpClient
           .post(
             _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
-            headers: _buildHeaders(runtimeConfig),
+            headers: _buildHeaders(runtimeConfig, apiStyle),
             body: jsonEncode(
-              apiStyle == ApiStyle.responses
-                  ? _buildResponsesPayload(
-                      [ChatMessage(text: 'test', role: MessageRole.user)],
-                      config,
-                      _resolveModelName(runtimeConfig, config),
-                      stream: false,
-                    )
-                  : _buildChatCompletionsPayload(
-                      [ChatMessage(text: 'test', role: MessageRole.user)],
-                      config,
-                      _resolveModelName(runtimeConfig, config),
-                      stream: false,
-                    ),
+              _buildPayloadForStyle(
+                apiStyle,
+                [ChatMessage(text: 'test', role: MessageRole.user)],
+                config,
+                _resolveModelName(runtimeConfig, config),
+                stream: false,
+              ),
             ),
           )
           .timeout(_requestTimeout);
@@ -194,6 +197,100 @@ class ConfigurableHttpLLM implements BaseLLM {
   }
 
   @override
+  Future<String> planNextAction({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+  }) async {
+    try {
+      final runtimeConfig = await _settingsRepository.getLlmConfig();
+      _validateRuntimeConfig(runtimeConfig);
+      return (await _sendTextRequest(
+        runtimeConfig,
+        config: config,
+        messages: messages,
+        timeout: _plannerRequestTimeout,
+      ))
+          .trim();
+    } catch (e, stackTrace) {
+      Logger.e(_tag, 'agent planner 请求失败', e);
+      Logger.e(_tag, '堆栈跟踪', stackTrace);
+      throw Exception('agent planner 请求失败: $e');
+    }
+  }
+
+  @override
+  Future<PlannerToolChoice?> planNextToolChoice({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+  }) async {
+    try {
+      final runtimeConfig = await _settingsRepository.getLlmConfig();
+      _validateRuntimeConfig(runtimeConfig);
+      final apiStyle = _protocolResolver.resolveStyle(runtimeConfig.apiUrl);
+      final modelName = _resolveModelName(runtimeConfig, config);
+      final payload = _buildPlannerPayloadForStyle(
+        apiStyle,
+        messages,
+        config,
+        modelName,
+        availableTools: availableTools,
+        parallelToolCalls: false,
+      );
+      Logger.i(_tag, 'structured planner 请求体: ${jsonEncode(payload)}');
+      final response = await _httpClient
+          .post(
+            _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
+            headers: _buildHeaders(runtimeConfig, apiStyle),
+            body: jsonEncode(payload),
+          )
+          .timeout(_plannerRequestTimeout);
+
+      if (response.statusCode != 200) {
+        Logger.w(
+          _tag,
+          'structured planner unsupported status=${response.statusCode} reason=${response.reasonPhrase ?? '-'} body=${_previewBody(response.body)}',
+        );
+        return null;
+      }
+
+      final responseText = utf8.decode(response.bodyBytes);
+      if (responseText.trim().isEmpty) {
+        Logger.w(
+          _tag,
+          'structured planner returned empty body, fallback to legacy planner',
+        );
+        return null;
+      }
+
+      final decoded = jsonDecode(responseText);
+      if (decoded is! Map<String, dynamic>) {
+        Logger.w(
+          _tag,
+          'structured planner returned non-object payload: ${_previewBody(responseText)}',
+        );
+        return null;
+      }
+
+      final choice = _parsePlannerChoiceForStyle(apiStyle, decoded);
+      if (choice == null) {
+        Logger.w(
+          _tag,
+          'structured planner parsed null choice. response=${_previewBody(responseText)} summary=${_summarizePlannerPayload(decoded)}',
+        );
+      }
+      return choice;
+    } catch (e, stackTrace) {
+      Logger.w(
+        _tag,
+        'structured planner 请求失败，回退到 legacy planner: ${_previewBody(e.toString())}',
+      );
+      Logger.e(_tag, 'structured planner stack trace', stackTrace);
+      return null;
+    }
+  }
+
+  @override
   Future<ModelTurnDecision?> planTurnDecision({
     required List<ChatMessage> messages,
     required ChatConfig config,
@@ -212,28 +309,21 @@ class ConfigurableHttpLLM implements BaseLLM {
         providerStyle: providerStyle,
         providerState: providerState,
       );
-      final payload = apiStyle == ApiStyle.responses
-          ? _buildPlannerResponsesPayload(
-              messages,
-              config,
-              modelName,
-              availableTools: availableTools,
-              parallelToolCalls: true,
-              previousResponseId: previousResponseId,
-              continuationItems: providerContinuationItems,
-            )
-          : _buildPlannerChatCompletionsPayload(
-              messages,
-              config,
-              modelName,
-              availableTools: availableTools,
-              parallelToolCalls: true,
-            );
+      final payload = _buildPlannerPayloadForStyle(
+        apiStyle,
+        messages,
+        config,
+        modelName,
+        availableTools: availableTools,
+        parallelToolCalls: true,
+        previousResponseId: previousResponseId,
+        continuationItems: providerContinuationItems,
+      );
       Logger.i(_tag, 'native planner 请求体: ${jsonEncode(payload)}');
       final response = await _httpClient
           .post(
             _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
-            headers: _buildHeaders(runtimeConfig),
+            headers: _buildHeaders(runtimeConfig, apiStyle),
             body: jsonEncode(payload),
           )
           .timeout(_plannerRequestTimeout);
@@ -264,9 +354,7 @@ class ConfigurableHttpLLM implements BaseLLM {
         return null;
       }
 
-      final decision = apiStyle == ApiStyle.responses
-          ? _responsesToolLoopAdapter.parseDecision(decoded)
-          : _chatCompletionsToolLoopAdapter.parseDecision(decoded);
+      final decision = _parseTurnDecisionForStyle(apiStyle, decoded);
       if (decision == null) {
         Logger.w(
           _tag,
@@ -313,7 +401,14 @@ class ConfigurableHttpLLM implements BaseLLM {
     }
   }
 
-  Map<String, String> _buildHeaders(LLMConfig config) {
+  Map<String, String> _buildHeaders(LLMConfig config, ApiStyle apiStyle) {
+    if (apiStyle == ApiStyle.anthropicMessages) {
+      return {
+        'Content-Type': 'application/json',
+        'x-api-key': config.apiKey,
+        'anthropic-version': '2023-06-01',
+      };
+    }
     return {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer ${config.apiKey}',
@@ -339,6 +434,8 @@ class ConfigurableHttpLLM implements BaseLLM {
         return ChatTurnProviderStyle.openaiResponses;
       case ApiStyle.chatCompletions:
         return ChatTurnProviderStyle.openaiChatCompletions;
+      case ApiStyle.anthropicMessages:
+        return ChatTurnProviderStyle.anthropicMessages;
     }
   }
 
@@ -383,6 +480,38 @@ class ConfigurableHttpLLM implements BaseLLM {
     };
   }
 
+  Map<String, dynamic> _buildPayloadForStyle(
+    ApiStyle apiStyle,
+    List<ChatMessage> messages,
+    ChatConfig config,
+    String modelName, {
+    required bool stream,
+  }) {
+    switch (apiStyle) {
+      case ApiStyle.responses:
+        return _buildResponsesPayload(
+          messages,
+          config,
+          modelName,
+          stream: stream,
+        );
+      case ApiStyle.chatCompletions:
+        return _buildChatCompletionsPayload(
+          messages,
+          config,
+          modelName,
+          stream: stream,
+        );
+      case ApiStyle.anthropicMessages:
+        return _buildAnthropicMessagesPayload(
+          messages,
+          config,
+          modelName,
+          stream: stream,
+        );
+    }
+  }
+
   Map<String, dynamic> _buildResponsesPayload(
     List<ChatMessage> messages,
     ChatConfig config,
@@ -409,6 +538,55 @@ class ConfigurableHttpLLM implements BaseLLM {
       'stream': stream,
       'store': false,
       if (config.useReasoning) 'reasoning': {'effort': 'medium'},
+    };
+  }
+
+  Map<String, dynamic> _buildAnthropicMessagesPayload(
+    List<ChatMessage> messages,
+    ChatConfig config,
+    String modelName, {
+    required bool stream,
+    List<Map<String, dynamic>> continuationItems = const [],
+  }) {
+    final systemSegments = <String>[];
+    final configuredSystemPrompt = config.systemPrompt.trim();
+    if (configuredSystemPrompt.isNotEmpty) {
+      systemSegments.add(configuredSystemPrompt);
+    }
+
+    final normalizedMessages = <Map<String, dynamic>>[];
+    for (final message in messages) {
+      final trimmedText = message.text.trim();
+      if (trimmedText.isEmpty) {
+        continue;
+      }
+      if (message.role == MessageRole.system) {
+        systemSegments.add(trimmedText);
+        continue;
+      }
+      normalizedMessages.add({
+        'role': message.role == MessageRole.assistant ? 'assistant' : 'user',
+        'content': [
+          {
+            'type': 'text',
+            'text': message.text,
+          },
+        ],
+      });
+    }
+
+    if (continuationItems.isNotEmpty) {
+      normalizedMessages.addAll(
+        continuationItems.map((item) => Map<String, dynamic>.from(item)),
+      );
+    }
+
+    return {
+      'model': modelName,
+      if (systemSegments.isNotEmpty) 'system': systemSegments.join('\n\n'),
+      'messages': normalizedMessages,
+      'stream': stream,
+      'max_tokens': 4096,
     };
   }
 
@@ -441,6 +619,76 @@ class ConfigurableHttpLLM implements BaseLLM {
       payload['tools'] = tools;
       payload['tool_choice'] = 'auto';
       payload['parallel_tool_calls'] = parallelToolCalls;
+    }
+    return payload;
+  }
+
+  Map<String, dynamic> _buildPlannerPayloadForStyle(
+    ApiStyle apiStyle,
+    List<ChatMessage> messages,
+    ChatConfig config,
+    String modelName, {
+    required List<PlannerToolOption> availableTools,
+    required bool parallelToolCalls,
+    String? previousResponseId,
+    List<Map<String, dynamic>> continuationItems = const [],
+  }) {
+    switch (apiStyle) {
+      case ApiStyle.responses:
+        return _buildPlannerResponsesPayload(
+          messages,
+          config,
+          modelName,
+          availableTools: availableTools,
+          parallelToolCalls: parallelToolCalls,
+          previousResponseId: previousResponseId,
+          continuationItems: continuationItems,
+        );
+      case ApiStyle.chatCompletions:
+        return _buildPlannerChatCompletionsPayload(
+          messages,
+          config,
+          modelName,
+          availableTools: availableTools,
+          parallelToolCalls: parallelToolCalls,
+        );
+      case ApiStyle.anthropicMessages:
+        return _buildPlannerAnthropicMessagesPayload(
+          messages,
+          config,
+          modelName,
+          availableTools: availableTools,
+          continuationItems: continuationItems,
+        );
+    }
+  }
+
+  Map<String, dynamic> _buildPlannerAnthropicMessagesPayload(
+    List<ChatMessage> messages,
+    ChatConfig config,
+    String modelName, {
+    required List<PlannerToolOption> availableTools,
+    List<Map<String, dynamic>> continuationItems = const [],
+  }) {
+    final payload = _buildAnthropicMessagesPayload(
+      messages,
+      config,
+      modelName,
+      stream: false,
+      continuationItems: continuationItems,
+    );
+    final tools = availableTools
+        .map(
+          (tool) => {
+            'name': tool.name,
+            'description': tool.description,
+            'input_schema': tool.inputSchema,
+          },
+        )
+        .toList(growable: false);
+    if (tools.isNotEmpty) {
+      payload['tools'] = tools;
+      payload['tool_choice'] = {'type': 'auto'};
     }
     return payload;
   }
@@ -495,6 +743,271 @@ class ConfigurableHttpLLM implements BaseLLM {
     return payload;
   }
 
+  PlannerToolChoice? _parsePlannerChatCompletionsChoice(
+    Map<String, dynamic> payload,
+  ) {
+    final choices = payload['choices'];
+    if (choices is! List || choices.isEmpty) {
+      return null;
+    }
+
+    final firstChoice = choices.first;
+    if (firstChoice is! Map) {
+      return null;
+    }
+
+    final message = firstChoice['message'];
+    if (message is! Map) {
+      return null;
+    }
+
+    final normalizedMessage = message.cast<String, dynamic>();
+    final toolCallChoice = _parseChatCompletionsToolCall(normalizedMessage);
+    if (toolCallChoice != null) {
+      return toolCallChoice;
+    }
+
+    final content = _extractChatCompletionsMessageText(normalizedMessage);
+    if (content != null) {
+      return PlannerToolChoice.respond(content);
+    }
+
+    return null;
+  }
+
+  PlannerToolChoice? _parsePlannerResponsesChoice(
+    Map<String, dynamic> payload,
+  ) {
+    final output = payload['output'];
+    if (output is List) {
+      for (final item in output) {
+        if (item is! Map) {
+          continue;
+        }
+        final normalizedItem = item.cast<String, dynamic>();
+        final type = normalizedItem['type'];
+        if (type == 'function_call') {
+          final toolCallChoice = _parseResponsesToolCall(normalizedItem);
+          if (toolCallChoice != null) {
+            return toolCallChoice;
+          }
+        }
+        if (type == 'message') {
+          final response = _extractResponsesMessageText(normalizedItem);
+          if (response != null) {
+            return PlannerToolChoice.respond(response);
+          }
+        }
+      }
+    }
+
+    final outputText = _normalizeText(payload['output_text']);
+    if (outputText != null) {
+      return PlannerToolChoice.respond(outputText);
+    }
+
+    return null;
+  }
+
+  PlannerToolChoice? _parsePlannerChoiceForStyle(
+    ApiStyle apiStyle,
+    Map<String, dynamic> payload,
+  ) {
+    switch (apiStyle) {
+      case ApiStyle.responses:
+        return _parsePlannerResponsesChoice(payload);
+      case ApiStyle.chatCompletions:
+        return _parsePlannerChatCompletionsChoice(payload);
+      case ApiStyle.anthropicMessages:
+        return _parsePlannerAnthropicChoice(payload);
+    }
+  }
+
+  PlannerToolChoice? _parsePlannerAnthropicChoice(
+    Map<String, dynamic> payload,
+  ) {
+    final content = payload['content'];
+    if (content is! List) {
+      return null;
+    }
+    for (final item in content) {
+      if (item is! Map) {
+        continue;
+      }
+      final normalizedItem = item.cast<String, dynamic>();
+      if (normalizedItem['type'] == 'tool_use') {
+        final toolName = _normalizeText(normalizedItem['name']);
+        final arguments = _decodeToolArguments(normalizedItem['input']);
+        if (toolName != null && arguments != null) {
+          return PlannerToolChoice.callTool(
+            toolName: toolName,
+            arguments: arguments,
+          );
+        }
+      }
+      final response = _extractAnthropicContentText(normalizedItem);
+      if (response != null) {
+        return PlannerToolChoice.respond(response);
+      }
+    }
+    return null;
+  }
+
+  PlannerToolChoice? _parseChatCompletionsToolCall(
+    Map<String, dynamic> message,
+  ) {
+    final toolCalls = message['tool_calls'];
+    if (toolCalls is! List || toolCalls.isEmpty) {
+      return null;
+    }
+
+    final firstToolCall = toolCalls.first;
+    if (firstToolCall is! Map) {
+      return null;
+    }
+
+    final function = firstToolCall['function'];
+    if (function is! Map) {
+      return null;
+    }
+
+    final toolName = _normalizeText(function['name']);
+    final arguments = _decodeToolArguments(function['arguments']);
+    if (toolName == null || arguments == null) {
+      return null;
+    }
+
+    return PlannerToolChoice.callTool(
+      toolName: toolName,
+      arguments: arguments,
+    );
+  }
+
+  PlannerToolChoice? _parseResponsesToolCall(
+    Map<String, dynamic> item,
+  ) {
+    final toolName = _normalizeText(item['name']);
+    final arguments = _decodeToolArguments(item['arguments']);
+    if (toolName == null || arguments == null) {
+      return null;
+    }
+
+    return PlannerToolChoice.callTool(
+      toolName: toolName,
+      arguments: arguments,
+    );
+  }
+
+  String? _extractChatCompletionsMessageText(Map<String, dynamic> message) {
+    final content = message['content'];
+    final inlineText = _normalizeText(content);
+    if (inlineText != null) {
+      return inlineText;
+    }
+
+    if (content is List) {
+      final buffer = StringBuffer();
+      for (final item in content) {
+        if (item is! Map) {
+          continue;
+        }
+        final normalizedItem = item.cast<String, dynamic>();
+        final text = _normalizeText(
+          normalizedItem['text'] ?? normalizedItem['content'],
+        );
+        if (text != null) {
+          buffer.write(text);
+        }
+      }
+      final aggregated = buffer.toString().trim();
+      if (aggregated.isNotEmpty) {
+        return aggregated;
+      }
+    }
+
+    return null;
+  }
+
+  String? _extractResponsesMessageText(Map<String, dynamic> item) {
+    final content = item['content'];
+    if (content is! List) {
+      return null;
+    }
+
+    final buffer = StringBuffer();
+    for (final part in content) {
+      if (part is! Map) {
+        continue;
+      }
+      final normalizedPart = part.cast<String, dynamic>();
+      if (normalizedPart['type'] != 'output_text') {
+        continue;
+      }
+      final text = _normalizeText(normalizedPart['text']);
+      if (text != null) {
+        buffer.write(text);
+      }
+    }
+
+    final aggregated = buffer.toString().trim();
+    if (aggregated.isEmpty) {
+      return null;
+    }
+    return aggregated;
+  }
+
+  String? _extractAnthropicContentText(Map<String, dynamic> item) {
+    final type = item['type'];
+    if (type != 'text' && type != 'thinking' && type != 'redacted_thinking') {
+      return null;
+    }
+    final text = _normalizeText(item['text'] ?? item['thinking']);
+    return text;
+  }
+
+  ModelTurnDecision? _parseTurnDecisionForStyle(
+    ApiStyle apiStyle,
+    Map<String, dynamic> payload,
+  ) {
+    switch (apiStyle) {
+      case ApiStyle.responses:
+        return _responsesToolLoopAdapter.parseDecision(payload);
+      case ApiStyle.chatCompletions:
+        return _chatCompletionsToolLoopAdapter.parseDecision(payload);
+      case ApiStyle.anthropicMessages:
+        return _anthropicMessagesToolLoopAdapter.parseDecision(payload);
+    }
+  }
+
+  Map<String, dynamic>? _decodeToolArguments(dynamic rawArguments) {
+    if (rawArguments is Map) {
+      return rawArguments.cast<String, dynamic>();
+    }
+
+    final encoded = _normalizeText(rawArguments);
+    if (encoded == null) {
+      return null;
+    }
+
+    final decoded = jsonDecode(encoded);
+    if (decoded is Map) {
+      return decoded.cast<String, dynamic>();
+    }
+
+    return null;
+  }
+
+  String? _normalizeText(dynamic value) {
+    if (value is! String) {
+      return null;
+    }
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+    return trimmed;
+  }
+
   bool _shouldUseResponsesContinuationInputOnly({
     required String? previousResponseId,
     required List<Map<String, dynamic>> continuationItems,
@@ -514,14 +1027,20 @@ class ConfigurableHttpLLM implements BaseLLM {
     final modelName = _resolveModelName(runtimeConfig, config);
     final effectiveTimeout = timeout ?? _requestTimeout;
 
-    if (apiStyle == ApiStyle.responses) {
+    if (apiStyle == ApiStyle.responses || apiStyle == ApiStyle.anthropicMessages) {
       final request = http.Request(
         'POST',
         _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
       );
-      request.headers.addAll(_buildHeaders(runtimeConfig));
+      request.headers.addAll(_buildHeaders(runtimeConfig, apiStyle));
       request.body = jsonEncode(
-        _buildResponsesPayload(messages, config, modelName, stream: true),
+        _buildPayloadForStyle(
+          apiStyle,
+          messages,
+          config,
+          modelName,
+          stream: true,
+        ),
       );
 
       final response =
@@ -546,10 +1065,15 @@ class ConfigurableHttpLLM implements BaseLLM {
     final response = await _httpClient
         .post(
           _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
-          headers: _buildHeaders(runtimeConfig),
+          headers: _buildHeaders(runtimeConfig, apiStyle),
           body: jsonEncode(
-            _buildChatCompletionsPayload(messages, config, modelName,
-                stream: false),
+            _buildPayloadForStyle(
+              apiStyle,
+              messages,
+              config,
+              modelName,
+              stream: false,
+            ),
           ),
         )
         .timeout(effectiveTimeout);
@@ -559,7 +1083,24 @@ class ConfigurableHttpLLM implements BaseLLM {
     }
 
     final data = jsonDecode(utf8.decode(response.bodyBytes));
-    return data['choices'][0]['message']['content'].toString();
+    if (apiStyle == ApiStyle.chatCompletions) {
+      return data['choices'][0]['message']['content'].toString();
+    }
+    final content = data['content'];
+    if (content is List) {
+      final buffer = StringBuffer();
+      for (final item in content) {
+        if (item is! Map) {
+          continue;
+        }
+        final text = _extractAnthropicContentText(item.cast<String, dynamic>());
+        if (text != null) {
+          buffer.write(text);
+        }
+      }
+      return buffer.toString();
+    }
+    return '';
   }
 
   void _logMessages(List<ChatMessage> messages) {
