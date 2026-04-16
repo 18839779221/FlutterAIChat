@@ -16,22 +16,13 @@ class OpenAIResponsesToolLoopAdapter {
     final output = payload['output'];
     if (output is List) {
       final toolCalls = _parseToolCalls(output);
-      if (toolCalls.isNotEmpty) {
+      final assistantMessage = _extractAssistantMessage(output);
+      if (toolCalls.isNotEmpty || assistantMessage != null) {
         return ModelTurnDecision(
           toolCalls: toolCalls,
-          assistantMessage: null,
-          providerState: providerState,
-          isTerminal: false,
-        );
-      }
-
-      final assistantMessage = _extractAssistantMessage(output);
-      if (assistantMessage != null) {
-        return ModelTurnDecision(
-          toolCalls: const [],
           assistantMessage: assistantMessage,
           providerState: providerState,
-          isTerminal: true,
+          isTerminal: toolCalls.isEmpty,
         );
       }
     }

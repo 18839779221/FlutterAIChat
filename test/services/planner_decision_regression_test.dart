@@ -1,5 +1,3 @@
-import 'package:ai_chat/models/agent/planner_tool_choice.dart';
-import 'package:ai_chat/models/agent/model_tool_call.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/agent/agent_loop_limits.dart';
@@ -82,7 +80,12 @@ void main() {
 
     test('结构化 planner choice 可以直接返回 respond', () async {
       final llm = _CapturingStructuredPlannerLLM(
-        choice: const PlannerToolChoice.respond('直接回答'),
+        decision: const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: '直接回答',
+          providerState: {},
+          isTerminal: true,
+        ),
       );
       final service = AgentPlannerService(
         llm: llm,
@@ -190,11 +193,16 @@ Future<ToolPolicyService> _createToolPolicyService() async {
 }
 
 class _CapturingStructuredPlannerLLM implements BaseLLM {
-  final PlannerToolChoice choice;
+  final ModelTurnDecision decision;
   List<String> lastToolNames = const [];
 
   _CapturingStructuredPlannerLLM({
-    this.choice = const PlannerToolChoice.respond('ok'),
+    this.decision = const ModelTurnDecision(
+      toolCalls: [],
+      assistantMessage: 'ok',
+      providerState: {},
+      isTerminal: true,
+    ),
   });
 
   @override
@@ -202,17 +210,6 @@ class _CapturingStructuredPlannerLLM implements BaseLLM {
 
   @override
   String getModelName(ChatConfig config) => 'regression-planner';
-
-  @override
-  Future<PlannerToolChoice?> planNextToolChoice({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required List<PlannerToolOption> availableTools,
-  }) async {
-    lastToolNames =
-        availableTools.map((tool) => tool.name).toList(growable: false);
-    return choice;
-  }
 
   @override
   Future<ModelTurnDecision?> planTurnDecision({
@@ -225,42 +222,8 @@ class _CapturingStructuredPlannerLLM implements BaseLLM {
   }) async {
     lastToolNames =
         availableTools.map((tool) => tool.name).toList(growable: false);
-    if (choice.isRespond) {
-      return ModelTurnDecision(
-        toolCalls: const [],
-        assistantMessage: choice.response,
-        providerState: const {},
-        isTerminal: true,
-      );
-    }
-    if (choice.isToolCall) {
-      return ModelTurnDecision(
-        toolCalls: [
-          ModelToolCall(
-            toolName: choice.toolName!,
-            arguments: choice.arguments!,
-            sequence: 1,
-          ),
-        ],
-        assistantMessage: null,
-        providerState: const {},
-        isTerminal: false,
-      );
-    }
-    return const ModelTurnDecision(
-      toolCalls: [],
-      assistantMessage: 'ok',
-      providerState: {},
-      isTerminal: true,
-    );
+    return decision;
   }
-
-  @override
-  Future<String> planNextAction({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-  }) async =>
-      '{"action":"respond","response":"fallback"}';
 
   @override
   Stream<String> chatStream(

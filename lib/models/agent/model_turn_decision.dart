@@ -2,6 +2,10 @@ import 'model_tool_call.dart';
 import '../chat_turn.dart';
 
 /// Normalized provider decision for one model turn before tool execution.
+///
+/// A single provider turn may contain both visible assistant text and one or
+/// more tool calls. `assistantMessage` therefore represents intermediate-capable
+/// model output, not only a final answer.
 class ModelTurnDecision {
   final List<ModelToolCall> toolCalls;
   final String? assistantMessage;
@@ -19,6 +23,10 @@ class ModelTurnDecision {
   /// Runtime model name used when requesting this decision.
   final String? modelName;
 
+  /// Whether the provider considers this turn terminal for planner purposes.
+  ///
+  /// Terminal means no additional planner loop is required from this decision;
+  /// it does not imply that `assistantMessage` is the final user-facing answer.
   final bool isTerminal;
 
   const ModelTurnDecision({

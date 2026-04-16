@@ -800,6 +800,75 @@ void main() {
       expect(decision.isTerminal, isTrue);
     });
 
+    test('planNextDecision preserves assistant text when duplicate tool calls are filtered',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [
+            ModelToolCall(
+              toolName: 'search_chat_history',
+              arguments: {'query': 'agent loop', 'maxResults': 5},
+              sequence: 0,
+            ),
+          ],
+          assistantMessage: '我先基于现有结果整理一下。',
+          providerState: {'response_id': 'resp_keep_text'},
+          isTerminal: false,
+        ),
+      );
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [
+          ToolDefinition(
+            name: 'search_chat_history',
+            title: '搜索聊天记录',
+            description: '搜索聊天记录',
+            descriptionForModel: '当用户要求从历史记录找结论时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'query': ToolArgumentProperty.string(description: '查询词'),
+                'maxResults': ToolArgumentProperty.integer(description: '数量'),
+              },
+              required: ['query'],
+            ),
+          ),
+        ],
+      );
+
+      final decision = await service.planNextDecision(
+        turn: ChatTurn(
+          id: 1,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '继续查 agent loop',
+        ),
+        transcript: [_userEvent()],
+        steps: [
+          ChatTurnStep(
+            id: 3,
+            turnId: 1,
+            stepIndex: 1,
+            toolName: 'search_chat_history',
+            toolArgsJson: {'query': 'agent loop', 'maxResults': 5},
+            status: ChatTurnStepStatus.completed,
+            resultSummary: '已经找到两条记录',
+          ),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, isEmpty);
+      expect(decision.assistantMessage, '我先基于现有结果整理一下。');
+      expect(
+        decision.providerState,
+        containsPair('response_id', 'resp_keep_text'),
+      );
+      expect(decision.isTerminal, isFalse);
+    });
+
     test('planNextDecision passes visible tool schemas into native planner',
         () async {
       final llm = _NativeDecisionLLM(

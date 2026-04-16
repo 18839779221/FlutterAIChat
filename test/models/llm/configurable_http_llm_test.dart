@@ -16,6 +16,134 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('ConfigurableHttpLLM.planTurnDecision', () {
+    test('chat completions decision keeps assistant text when tool calls exist',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'role': 'assistant',
+                  'content': '我先读取这个页面。',
+                  'tool_calls': [
+                    {
+                      'id': 'call_1',
+                      'type': 'function',
+                      'function': {
+                        'name': 'fetch_webpage',
+                        'arguments': jsonEncode({
+                          'url': 'https://example.com/article',
+                        }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(
+            text: '请读取 https://example.com/article',
+            role: MessageRole.user,
+          ),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        availableTools: const [
+          PlannerToolOption(
+            name: 'fetch_webpage',
+            description: '当用户已经提供 URL 时读取网页内容。',
+            inputSchema: {
+              'type': 'object',
+              'properties': {
+                'url': {'type': 'string'},
+              },
+              'required': ['url'],
+            },
+          ),
+        ],
+      );
+
+      expect(decision, isNotNull);
+      expect(decision!.assistantMessage, '我先读取这个页面。');
+      expect(decision.toolCalls.single.toolName, 'fetch_webpage');
+      expect(decision.isTerminal, isFalse);
+    });
+
+    test('responses decision keeps assistant text when output mixes message and function_call',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'id': 'resp_mixed',
+            'output': [
+              {
+                'type': 'message',
+                'content': [
+                  {
+                    'type': 'output_text',
+                    'text': '我先搜索一下。',
+                  },
+                ],
+              },
+              {
+                'type': 'function_call',
+                'call_id': 'fc_1',
+                'name': 'web_search',
+                'arguments': jsonEncode({
+                  'query': 'OpenAI 最新发布',
+                }),
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '帮我查 OpenAI 最新发布', role: MessageRole.user),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        availableTools: const [
+          PlannerToolOption(
+            name: 'web_search',
+            description: '当用户需要外部资料或最新信息时联网搜索。',
+            inputSchema: {
+              'type': 'object',
+              'properties': {
+                'query': {'type': 'string'},
+              },
+              'required': ['query'],
+            },
+          ),
+        ],
+      );
+
+      expect(decision, isNotNull);
+      expect(decision!.assistantMessage, '我先搜索一下。');
+      expect(decision.toolCalls.single.toolName, 'web_search');
+      expect(decision.providerState, containsPair('response_id', 'resp_mixed'));
+      expect(decision.isTerminal, isFalse);
+    });
+
     test('chat completions decision includes runtime provider metadata',
         () async {
       final client = _RecordingHttpClient(
