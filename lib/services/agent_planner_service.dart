@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import '../models/agent/agent_action.dart';
 import '../models/agent/agent_loop_limits.dart';
 import '../models/agent/chat_turn_step.dart';
 import '../models/agent/model_tool_call.dart';
@@ -10,15 +9,12 @@ import '../models/chat_event.dart';
 import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/llm/base_llm.dart';
-import '../models/tool/tool_call.dart';
 import '../models/tool/tool_access_snapshot.dart';
 import '../models/tool/tool_definition.dart';
 import 'chat_service.dart';
-import 'planner_prompt_builder.dart';
 import 'planner_tool_exposure_service.dart';
 import 'tool_policy_service.dart';
 import 'turn_ledger_builder_service.dart';
-import 'transcript_builder_service.dart';
 import '../utils/logger.dart';
 
 class AgentPlannerService {
@@ -27,7 +23,6 @@ class AgentPlannerService {
   final BaseLLM _llm;
   final List<ToolDefinition> _availableTools;
   final PlannerToolExposureService _toolExposureService;
-  final PlannerPromptBuilder _promptBuilder;
   final TurnLedgerBuilderService _turnLedgerBuilder;
   final ToolPolicyService? _toolPolicyService;
 
@@ -35,14 +30,12 @@ class AgentPlannerService {
     required BaseLLM llm,
     List<ToolDefinition> availableTools = const [],
     PlannerToolExposureService? toolExposureService,
-    PlannerPromptBuilder? promptBuilder,
     TurnLedgerBuilderService? turnLedgerBuilder,
     ToolPolicyService? toolPolicyService,
   })  : _llm = llm,
         _availableTools = availableTools,
         _toolExposureService =
             toolExposureService ?? PlannerToolExposureService(),
-        _promptBuilder = promptBuilder ?? PlannerPromptBuilder(),
         _turnLedgerBuilder =
             turnLedgerBuilder ?? const TurnLedgerBuilderService(),
         _toolPolicyService = toolPolicyService;
@@ -54,20 +47,19 @@ class AgentPlannerService {
     required ChatConfig config,
     required AgentLoopLimits limits,
   }) async {
-    final visibleToolAccess =
-        await _resolveVisibleToolAccess(turn.userInput);
+    final visibleToolAccess = await _resolveVisibleToolAccess(turn.userInput);
     final visibleTools = visibleToolAccess
         .map((access) => access.definition)
         .toList(growable: false);
-    final plannerPromptTools =
-        _buildPlannerPromptTools(visibleToolAccess);
     final allowedToolNames = _resolveAllowedToolNames(visibleTools);
     final plannerToolOptions = _buildPlannerToolOptions(visibleToolAccess);
+    final hasUserInteractionTool = visibleTools.any(
+      (tool) => tool.resolvedRuntimeKind == ToolRuntimeKind.userInteraction,
+    );
     final messages = <ChatMessage>[
       ChatMessage(
-        text: _promptBuilder.buildSystemPrompt(
-          visibleTools: plannerPromptTools,
-          allowMultiToolPlanning: true,
+        text: _buildPlannerInstructionMessage(
+          hasUserInteractionTool: hasUserInteractionTool,
         ),
         role: MessageRole.system,
       ),
@@ -119,80 +111,6 @@ class AgentPlannerService {
       );
       Logger.e(_tag, 'native planner decision stack trace', stackTrace);
       return _plannerRequestFailedDecision();
-    }
-  }
-
-  Future<AgentAction> planNextAction({
-    required ChatTurn turn,
-    required List<ChatEvent> transcript,
-    required ChatConfig config,
-    required AgentLoopLimits limits,
-  }) async {
-    try {
-      final raw = await _requestLegacyPlannerRaw(
-        turn: turn,
-        transcript: transcript,
-        config: config,
-        limits: limits,
-      );
-      final visibleToolAccess =
-          await _resolveVisibleToolAccess(turn.userInput);
-      final visibleTools = visibleToolAccess
-          .map((access) => access.definition)
-          .toList(growable: false);
-      final allowedToolNames = _resolveAllowedToolNames(visibleTools);
-      return _parseAction(raw, allowedToolNames: allowedToolNames);
-    } catch (_) {
-      return const AgentAction.respond(
-        '抱歉，我暂时无法规划下一步动作，请直接重试。',
-        diagnosticCode: 'planner_request_failed',
-      );
-    }
-  }
-
-  Future<String> _requestLegacyPlannerRaw({
-    required ChatTurn turn,
-    required List<ChatEvent> transcript,
-    required ChatConfig config,
-    required AgentLoopLimits limits,
-  }) async {
-    final visibleToolAccess = await _resolveVisibleToolAccess(turn.userInput);
-    final plannerPromptTools = _buildPlannerPromptTools(visibleToolAccess);
-    final messages = <ChatMessage>[
-      ChatMessage(
-        text: _promptBuilder.buildSystemPrompt(
-          visibleTools: plannerPromptTools,
-        ),
-        role: MessageRole.system,
-      ),
-      ChatMessage(
-        text: '${TranscriptBuilderService.buildPlannerContextText(
-          turn: turn,
-          transcript: transcript,
-        )}\n'
-            '当前轮次：${turn.iterationCount}\n'
-            '已调用工具数：${turn.toolCallCount}\n'
-            '最大轮次：${limits.maxIterations}',
-        role: MessageRole.system,
-      ),
-      ...transcript.map(_eventToMessage),
-    ];
-
-    try {
-      Logger.d(
-        _tag,
-        'planner start turnId=${turn.id} iteration=${turn.iterationCount} toolCalls=${turn.toolCallCount} transcriptEvents=${transcript.length} userInput=${_preview(turn.userInput)}',
-      );
-      final raw = await _llm.planNextAction(
-        messages: messages,
-        config: config,
-      );
-      Logger.d(_tag, 'planner raw output: ${_preview(raw)}');
-      return raw;
-    } catch (error, stackTrace) {
-      Logger.e(_tag, 'planner request failed for turnId=${turn.id}', error);
-      Logger.e(_tag, 'planner request stack trace', stackTrace);
-      throw Exception('planner_request_failed');
     }
   }
 
@@ -347,67 +265,6 @@ class AgentPlannerService {
     return jsonEncode(payload);
   }
 
-  AgentAction _parseAction(
-    String raw, {
-    required List<String> allowedToolNames,
-  }) {
-    try {
-      final normalized = _normalize(raw);
-      final decoded = jsonDecode(normalized);
-      if (decoded is! Map<String, dynamic>) {
-        return const AgentAction.respond('抱歉，我暂时无法规划下一步动作，请直接重试。');
-      }
-
-      final action = _normalizeStringField(decoded['action']);
-      if (action == 'respond') {
-        final response = _normalizeStringField(decoded['response']);
-        if (response != null && response.isNotEmpty) {
-          Logger.d(_tag, 'parsed respond action');
-          return AgentAction.respond(
-            response,
-            diagnosticCode: 'planner_action_respond',
-          );
-        }
-      }
-
-      if (action == 'call_tool') {
-        final toolCall = ToolCall.fromJson({
-          'toolName': _normalizeStringField(decoded['toolName']),
-          'arguments': decoded['arguments'],
-        });
-        if (!allowedToolNames.contains(toolCall.toolName)) {
-          Logger.w(
-              _tag, 'planner emitted unsupported tool: ${toolCall.toolName}');
-          return const AgentAction.respond(
-            '抱歉，我暂时无法规划下一步动作，请直接重试。',
-            diagnosticCode: 'planner_unsupported_tool',
-          );
-        }
-        Logger.d(
-          _tag,
-          'parsed call_tool action: ${toolCall.toolName} args=${toolCall.arguments}',
-        );
-        return AgentAction.callTool(
-          toolCall,
-          diagnosticCode: 'planner_action_call_tool',
-        );
-      }
-    } catch (error, stackTrace) {
-      Logger.e(
-        _tag,
-        'planner output parse failed, raw=${_preview(raw)}',
-        error,
-      );
-      Logger.e(_tag, 'planner parse stack trace', stackTrace);
-    }
-
-    Logger.w(_tag, 'planner output fell back to respond, raw=${_preview(raw)}');
-    return const AgentAction.respond(
-      '抱歉，我暂时无法规划下一步动作，请直接重试。',
-      diagnosticCode: 'planner_parse_failed',
-    );
-  }
-
   Future<List<ToolAccessSnapshot>> _resolveVisibleToolAccess(
     String userInput,
   ) async {
@@ -422,19 +279,6 @@ class AgentPlannerService {
       userInput: userInput,
       allTools: accessSnapshots,
     );
-  }
-
-  List<PlannerPromptTool> _buildPlannerPromptTools(
-    List<ToolAccessSnapshot> visibleToolAccess,
-  ) {
-    return visibleToolAccess
-        .map(
-          (access) => PlannerPromptTool(
-            definition: access.definition,
-            executionPolicy: access.executionPolicyLabel,
-          ),
-        )
-        .toList(growable: false);
   }
 
   List<PlannerToolOption> _buildPlannerToolOptions(
@@ -467,15 +311,21 @@ class AgentPlannerService {
     return visibleTools.map((tool) => tool.name).toList(growable: false);
   }
 
-  String? _normalizeStringField(dynamic value) {
-    if (value is! String) {
-      return null;
+
+  String _buildPlannerInstructionMessage({
+    required bool hasUserInteractionTool,
+  }) {
+    final buffer = StringBuffer()
+      ..writeln('你是一个对话回合规划器。')
+      ..writeln('优先使用原生工具调用来推进任务。')
+      ..writeln('如果现有信息已经足够，请结束工具规划并准备最终答复。')
+      ..writeln('如果同一回合里某个工具用相同参数已经执行过，且期间没有新的用户信息，不要重复调用它。');
+    if (hasUserInteractionTool) {
+      buffer
+        ..writeln('当完成任务缺少必须由用户补充的关键信息时，优先调用 ask_user_question。')
+        ..writeln('不要把应由 ask_user_question 承载的问题直接写成普通 assistant 回复。');
     }
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) {
-      return null;
-    }
-    return trimmed;
+    return buffer.toString().trim();
   }
 
   String _preview(String value) {
@@ -484,87 +334,6 @@ class AgentPlannerService {
       return normalized;
     }
     return '${normalized.substring(0, 240)}...';
-  }
-
-  String _normalize(String raw) {
-    final trimmed = _unwrapCodeFence(raw);
-
-    final firstObject = _extractFirstJsonObject(trimmed);
-    if (firstObject != null) {
-      return firstObject;
-    }
-
-    return trimmed;
-  }
-
-  String _unwrapCodeFence(String raw) {
-    final trimmed = raw.trim();
-    if (!trimmed.startsWith('```')) {
-      return trimmed;
-    }
-    final match = RegExp(r'```(?:json)?\s*([\s\S]*?)\s*```').firstMatch(trimmed);
-    if (match == null) {
-      return trimmed;
-    }
-    return match.group(1)!.trim();
-  }
-
-  String? _extractFirstJsonObject(String value) {
-    final objects = _extractJsonObjects(value);
-    if (objects.isEmpty) {
-      return null;
-    }
-    return objects.first;
-  }
-
-  List<String> _extractJsonObjects(String value) {
-    final objects = <String>[];
-    var start = -1;
-    var depth = 0;
-    var inString = false;
-    var isEscaped = false;
-
-    for (var index = 0; index < value.length; index++) {
-      final char = value[index];
-
-      if (inString) {
-        if (isEscaped) {
-          isEscaped = false;
-          continue;
-        }
-        if (char == r'\') {
-          isEscaped = true;
-          continue;
-        }
-        if (char == '"') {
-          inString = false;
-        }
-        continue;
-      }
-
-      if (char == '"') {
-        inString = true;
-        continue;
-      }
-
-      if (char == '{') {
-        if (depth == 0) {
-          start = index;
-        }
-        depth++;
-        continue;
-      }
-
-      if (char == '}' && depth > 0) {
-        depth--;
-        if (depth == 0 && start >= 0) {
-          objects.add(value.substring(start, index + 1).trim());
-          start = -1;
-        }
-      }
-    }
-
-    return objects;
   }
 
   ChatMessage _eventToMessage(ChatEvent event) {
