@@ -1,6 +1,7 @@
 enum ApiStyle {
   chatCompletions,
   responses,
+  anthropicMessages,
 }
 
 class ApiProtocolResolver {
@@ -8,6 +9,9 @@ class ApiProtocolResolver {
 
   ApiStyle resolveStyle(String rawUrl) {
     final path = Uri.parse(rawUrl.trim()).path.toLowerCase();
+    if (path.endsWith('/v1/messages')) {
+      return ApiStyle.anthropicMessages;
+    }
     if (path.endsWith('/chat/completions')) {
       return ApiStyle.chatCompletions;
     }
@@ -25,6 +29,13 @@ class ApiProtocolResolver {
         return uri;
       }
       return uri.replace(path: '$path/chat/completions');
+    }
+
+    if (style == ApiStyle.anthropicMessages) {
+      if (path.endsWith('/v1/messages')) {
+        return uri;
+      }
+      return uri.replace(path: '$path/v1/messages');
     }
 
     if (path.endsWith('/responses')) {

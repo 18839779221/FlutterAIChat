@@ -16,6 +16,8 @@ class ApiStreamParser {
         return _parseResponsesStream(response);
       case ApiStyle.chatCompletions:
         return _parseChatCompletionsStream(response);
+      case ApiStyle.anthropicMessages:
+        return _parseAnthropicMessagesStream(response);
     }
   }
 
@@ -91,6 +93,76 @@ class ApiStreamParser {
         Logger.e(_tag, 'Responses JSON解析错误: $e');
       }
     }
+  }
+
+  Stream<String> _parseAnthropicMessagesStream(
+    http.StreamedResponse response,
+  ) async* {
+    await for (final line
+        in response.stream.transform(utf8.decoder).transform(const LineSplitter())) {
+      if (!line.startsWith('data: ')) {
+        continue;
+      }
+      if (line.contains('[DONE]')) {
+        Logger.i(_tag, 'Anthropic 流式响应完成');
+        continue;
+      }
+
+      try {
+        final data = jsonDecode(line.substring(6));
+        if (data is! Map<String, dynamic>) {
+          continue;
+        }
+        final type = data['type'];
+        if (type == 'content_block_delta') {
+          final delta = data['delta'];
+          if (delta is! Map<String, dynamic>) {
+            continue;
+          }
+          final deltaType = delta['type'];
+          final text = _extractAnthropicTextDelta(delta);
+          if (text != null) {
+            if (deltaType == 'text_delta') {
+              yield jsonEncode({'type': 'content', 'content': text});
+            } else {
+              yield jsonEncode({'type': 'reasoning', 'content': text});
+            }
+          }
+          continue;
+        }
+
+        if (type == 'message_delta') {
+          final delta = data['delta'];
+          if (delta is! Map<String, dynamic>) {
+            continue;
+          }
+          final thinking = _extractAnthropicTextDelta(delta);
+          if (thinking != null) {
+            yield jsonEncode({'type': 'reasoning', 'content': thinking});
+          }
+        }
+      } catch (e) {
+        Logger.e(_tag, 'Anthropic JSON解析错误: $e');
+      }
+    }
+  }
+
+  String? _extractAnthropicTextDelta(Map<String, dynamic> delta) {
+    final deltaType = delta['type'];
+    if (deltaType == 'text_delta') {
+      final text = delta['text'];
+      if (text is String && text.isNotEmpty) {
+        return text;
+      }
+    }
+    if (deltaType == 'thinking_delta' ||
+        deltaType == 'redacted_thinking_delta') {
+      final thinking = delta['thinking'] ?? delta['text'];
+      if (thinking is String && thinking.isNotEmpty) {
+        return thinking;
+      }
+    }
+    return null;
   }
 
   List<String> _extractReasoningSummaries(Map<String, dynamic> item) {

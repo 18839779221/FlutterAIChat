@@ -4,6 +4,7 @@ import 'dart:convert';
 enum ChatTurnProviderStyle {
   openaiChatCompletions,
   openaiResponses,
+  anthropicMessages,
 }
 
 enum ChatTurnStatus {

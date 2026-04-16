@@ -432,7 +432,8 @@ class TurnHarness {
   }
 
   String? _resolveDecisionResponseId(ModelTurnDecision decision) {
-    final responseId = decision.providerState['response_id'];
+    final responseId =
+        decision.providerState['response_id'] ?? decision.providerState['message_id'];
     if (responseId is! String) {
       return null;
     }
