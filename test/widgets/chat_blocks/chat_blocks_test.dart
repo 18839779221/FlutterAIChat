@@ -3,6 +3,7 @@ import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/tools/core/tool_display_names.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
@@ -127,6 +128,7 @@ void main() {
       expect(find.text('完成'), findsOneWidget);
       expect(find.text('正在读取网页内容'), findsOneWidget);
       expect(find.text('命中 4 条历史消息'), findsOneWidget);
+      expect(find.byType(ToolInlineStepRow), findsOneWidget);
     });
 
     testWidgets(
