@@ -168,6 +168,22 @@ class ChatEventRepository {
     );
   }
 
+  Future<int> appendAssistantPlannerMessage({
+    required int turnId,
+    required int groupId,
+    required String content,
+    Map<String, dynamic>? payloadJson,
+  }) {
+    return _appendEvent(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.assistantPlannerMessage,
+      role: MessageRole.assistant,
+      content: content,
+      payloadJson: payloadJson,
+    );
+  }
+
   Future<int> appendAssistantTextFinal({
     required int turnId,
     required int groupId,

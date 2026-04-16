@@ -199,6 +199,26 @@ class TurnHarness {
         decision: decision,
       );
       final runtimeTurn = await _turnRepository.getTurn(turnId) ?? currentTurn;
+      final plannerAssistantMessage = (decision.assistantMessage ?? '').trim();
+      if (plannerAssistantMessage.isNotEmpty) {
+        yield await _appendAndLoad(
+          turnId,
+          () => _eventRepository.appendAssistantPlannerMessage(
+            turnId: turnId,
+            groupId: runtimeTurn.groupId,
+            content: plannerAssistantMessage,
+            payloadJson: {
+              'diagnosticCode': decision.diagnosticCode,
+              'isTerminal': decision.isTerminal,
+              if ((decision.providerState['response_id'] ?? '')
+                  .toString()
+                  .trim()
+                  .isNotEmpty)
+                'responseId': decision.providerState['response_id'],
+            },
+          ),
+        );
+      }
       final decisionResponseId = _resolveDecisionResponseId(decision);
       if (decision.toolCalls.isNotEmpty) {
         await _turnRepository.incrementIteration(turnId);

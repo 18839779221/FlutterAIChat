@@ -1,73 +1,73 @@
-# Native Planner Tool Loop Redesign Implementation Plan
+# Native Planner Tool Loop 重构实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **给执行型 agent 的要求：** 必须使用 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans` 按任务逐项执行本计划。任务步骤使用 checkbox（`- [ ]`）语法跟踪。
 
-**Goal:** Remove the legacy JSON planner and `PlannerPromptBuilder`, make provider-native `planTurnDecision()` the only planner entry, and let one model turn carry both visible assistant text and tool calls.
+**目标：** 删除 legacy JSON planner 和 `PlannerPromptBuilder`，让 provider-native `planTurnDecision()` 成为唯一 planner 入口，并让单次模型决策同时承载可见 assistant 文本与 tool calls。
 
-**Architecture:** Keep the existing tool registry, step ledger, and final-answer pipeline, but rebuild the planner loop around one native decision model. Provider adapters should parse mixed outputs, `AgentPlannerService` should sanitize without reintroducing fallback paths, and `TurnHarness` should treat planner text as intermediate assistant output instead of a final answer.
+**架构：** 保留现有 tool registry、step ledger 和 final answer pipeline，但将 planner loop 重建在统一的 native decision 语义之上。provider adapter 负责解析 mixed output，`AgentPlannerService` 负责在不回退 legacy 的前提下裁剪结果，`TurnHarness` 则把 planner 文本视为中间 assistant 输出，而不是最终答案。
 
-**Tech Stack:** Flutter 3.29.2 via `fvm flutter`, Dart, flutter_test, existing OpenAI Chat Completions / Responses adapters, current agent turn loop and repositories.
+**技术栈：** Flutter 3.29.3（用户已确认可直接使用）、Dart、flutter_test、现有 OpenAI Chat Completions / Responses adapter、当前 agent turn loop 与 repositories。
 
 ---
 
-## File Map
+## 文件地图
 
-**Planner core**
+**Planner 核心**
 
-- Modify: `lib/services/agent_planner_service.dart`
-- Delete: `lib/services/planner_prompt_builder.dart`
-- Modify: `lib/models/agent/model_turn_decision.dart`
-- Modify: `lib/models/agent/planner_tool_option.dart`
-- Delete: `lib/models/agent/planner_tool_choice.dart`
+- 修改：`lib/services/agent_planner_service.dart`
+- 删除：`lib/services/planner_prompt_builder.dart`
+- 修改：`lib/models/agent/model_turn_decision.dart`
+- 修改：`lib/models/agent/planner_tool_option.dart`
+- 删除：`lib/models/agent/planner_tool_choice.dart`
 
-**LLM interface and provider adapters**
+**LLM 接口与 provider adapter**
 
-- Modify: `lib/models/llm/base_llm.dart`
-- Modify: `lib/models/llm/configurable_http_llm.dart`
-- Modify: `lib/models/llm/tool_loop/openai_chat_completions_tool_loop_adapter.dart`
-- Modify: `lib/models/llm/tool_loop/openai_responses_tool_loop_adapter.dart`
+- 修改：`lib/models/llm/base_llm.dart`
+- 修改：`lib/models/llm/configurable_http_llm.dart`
+- 修改：`lib/models/llm/tool_loop/openai_chat_completions_tool_loop_adapter.dart`
+- 修改：`lib/models/llm/tool_loop/openai_responses_tool_loop_adapter.dart`
 
-**Turn-loop runtime**
+**Turn loop 运行时**
 
-- Modify: `lib/services/turn_harness.dart`
-- Modify: `lib/models/chat_event.dart`
-- Modify: `lib/repositories/chat_event_repository.dart`
-- Modify: `lib/services/transcript_builder_service.dart`
+- 修改：`lib/services/turn_harness.dart`
+- 修改：`lib/models/chat_event.dart`
+- 修改：`lib/repositories/chat_event_repository.dart`
+- 修改：`lib/services/transcript_builder_service.dart`
 
-**Tool metadata**
+**Tool 元数据**
 
-- Modify: `lib/models/tool/tool_definition.dart`
+- 修改：`lib/models/tool/tool_definition.dart`
 
-**Tests**
+**测试**
 
-- Delete: `test/services/planner_prompt_builder_test.dart`
-- Modify: `test/services/agent_planner_service_test.dart`
-- Modify: `test/services/planner_decision_regression_test.dart`
-- Modify: `test/models/llm/configurable_http_llm_test.dart`
-- Modify: `test/models/llm/openai_tool_loop_adapter_test.dart`
-- Modify: `test/services/turn_harness_test.dart`
-- Modify: `test/services/transcript_builder_service_test.dart`
+- 删除：`test/services/planner_prompt_builder_test.dart`
+- 修改：`test/services/agent_planner_service_test.dart`
+- 修改：`test/services/planner_decision_regression_test.dart`
+- 修改：`test/models/llm/configurable_http_llm_test.dart`
+- 修改：`test/models/llm/openai_tool_loop_adapter_test.dart`
+- 修改：`test/services/turn_harness_test.dart`
+- 修改：`test/services/transcript_builder_service_test.dart`
 
-**Docs**
+**文档**
 
-- Modify: `README.md`
-- Modify: `AGENTS.md`
+- 修改：`README.md`
+- 修改：`AGENTS.md`
 
-### Task 1: Remove legacy planner entry points
+### 任务 1：删除 legacy planner 入口
 
-**Files:**
-- Modify: `lib/models/llm/base_llm.dart`
-- Modify: `lib/services/agent_planner_service.dart`
-- Modify: `lib/models/llm/configurable_http_llm.dart`
-- Delete: `lib/services/planner_prompt_builder.dart`
-- Delete: `lib/models/agent/planner_tool_choice.dart`
-- Delete: `test/services/planner_prompt_builder_test.dart`
-- Modify: `test/services/agent_planner_service_test.dart`
+**文件：**
+- 修改：`lib/models/llm/base_llm.dart`
+- 修改：`lib/services/agent_planner_service.dart`
+- 修改：`lib/models/llm/configurable_http_llm.dart`
+- 删除：`lib/services/planner_prompt_builder.dart`
+- 删除：`lib/models/agent/planner_tool_choice.dart`
+- 删除：`test/services/planner_prompt_builder_test.dart`
+- 修改：`test/services/agent_planner_service_test.dart`
 
-- [ ] **Step 1: Write the failing cleanup tests**
+- [ ] **步骤 1：先写失败测试**
 
 ```dart
-test('planNextDecision returns planner_request_failed when native planner returns null', () async {
+test('当 native planner 返回 null 时，planNextDecision 返回 planner_request_failed', () async {
   final decision = await service.planNextDecision(
     turn: _turn(),
     transcript: [_userEvent()],
@@ -80,27 +80,27 @@ test('planNextDecision returns planner_request_failed when native planner return
 });
 ```
 
-- [ ] **Step 2: Run the focused tests and confirm they still depend on legacy code**
+- [ ] **步骤 2：运行聚焦测试，确认当前仍依赖 legacy 代码**
 
-Run: `fvm flutter test test/services/agent_planner_service_test.dart test/models/llm/configurable_http_llm_test.dart`
+运行：`flutter test test/services/agent_planner_service_test.dart test/models/llm/configurable_http_llm_test.dart`
 
-Expected: FAIL because the suite still references `planNextAction()`, `PlannerToolChoice`, or `PlannerPromptBuilder`.
+预期：FAIL，因为当前测试仍引用 `planNextAction()`、`PlannerToolChoice` 或 `PlannerPromptBuilder`。
 
-- [ ] **Step 3: Remove legacy planner APIs**
+- [ ] **步骤 3：删除 legacy planner API**
 
-Delete `planNextAction()` from `BaseLLM`, `ConfigurableHttpLLM`, and `AgentPlannerService`, along with legacy JSON parsing helpers and imports.
+从 `BaseLLM`、`ConfigurableHttpLLM` 和 `AgentPlannerService` 中删除 `planNextAction()`，并移除 legacy JSON 解析辅助逻辑与相关 import。
 
-- [ ] **Step 4: Remove old planner-only types and tests**
+- [ ] **步骤 4：删除旧的 planner 专用类型与测试**
 
-Delete `PlannerPromptBuilder`, `PlannerToolChoice`, and their dedicated tests. Update any callers to consume only `ModelTurnDecision`.
+删除 `PlannerPromptBuilder`、`PlannerToolChoice` 以及对应测试。把调用点改为只消费 `ModelTurnDecision`。
 
-- [ ] **Step 5: Re-run the focused tests**
+- [ ] **步骤 5：重新运行聚焦测试**
 
-Run: `fvm flutter test test/services/agent_planner_service_test.dart test/models/llm/configurable_http_llm_test.dart`
+运行：`flutter test test/services/agent_planner_service_test.dart test/models/llm/configurable_http_llm_test.dart`
 
-Expected: FAIL only on the next native-decision semantic gaps, not on missing legacy symbols.
+预期：仍可能 FAIL，但只会落在新的 native decision 语义缺口上，而不是 legacy 符号缺失。
 
-- [ ] **Step 6: Commit**
+- [ ] **步骤 6：提交**
 
 ```bash
 git add lib/models/llm/base_llm.dart lib/services/agent_planner_service.dart lib/models/llm/configurable_http_llm.dart test/services/agent_planner_service_test.dart test/models/llm/configurable_http_llm_test.dart
@@ -108,20 +108,20 @@ git rm lib/services/planner_prompt_builder.dart lib/models/agent/planner_tool_ch
 git commit -m "refactor: remove legacy planner entry points"
 ```
 
-### Task 2: Make tool descriptions single-sourced from ToolDefinition
+### 任务 2：让 ToolDefinition 成为唯一工具描述来源
 
-**Files:**
-- Modify: `lib/models/tool/tool_definition.dart`
-- Modify: `lib/models/agent/planner_tool_option.dart`
-- Modify: `lib/services/agent_planner_service.dart`
-- Modify: `test/models/tool/tool_definition_test.dart`
-- Modify: `test/services/planner_decision_regression_test.dart`
-- Modify: `test/services/agent_planner_service_test.dart`
+**文件：**
+- 修改：`lib/models/tool/tool_definition.dart`
+- 修改：`lib/models/agent/planner_tool_option.dart`
+- 修改：`lib/services/agent_planner_service.dart`
+- 修改：`test/models/tool/tool_definition_test.dart`
+- 修改：`test/services/planner_decision_regression_test.dart`
+- 修改：`test/services/agent_planner_service_test.dart`
 
-- [ ] **Step 1: Write the failing metadata tests**
+- [ ] **步骤 1：先写失败测试**
 
 ```dart
-test('planner tool option uses ToolDefinition.descriptionForModel as the only tool description source', () async {
+test('planner tool option 只使用 ToolDefinition.descriptionForModel 作为工具描述', () async {
   await service.planNextDecision(
     turn: _turn('请读取 https://example.com'),
     transcript: [_userEvent('请读取 https://example.com')],
@@ -134,45 +134,45 @@ test('planner tool option uses ToolDefinition.descriptionForModel as the only to
 });
 ```
 
-- [ ] **Step 2: Run metadata-focused tests**
+- [ ] **步骤 2：运行元数据测试**
 
-Run: `fvm flutter test test/models/tool/tool_definition_test.dart test/services/planner_decision_regression_test.dart test/services/agent_planner_service_test.dart`
+运行：`flutter test test/models/tool/tool_definition_test.dart test/services/planner_decision_regression_test.dart test/services/agent_planner_service_test.dart`
 
-Expected: FAIL because planner options still append extra policy prose or tests still expect prompt-expanded tool descriptions.
+预期：FAIL，因为当前 planner option 仍拼接了额外策略说明，或旧测试仍期待 prompt 内工具描述。
 
-- [ ] **Step 3: Simplify planner-facing tool metadata**
+- [ ] **步骤 3：精简 planner-facing tool metadata**
 
-Keep `ToolDefinition.descriptionForModel` as the sole semantic description. If execution policy must remain visible, represent it as a separate field or a tightly controlled derived suffix in one place only.
+保留 `ToolDefinition.descriptionForModel` 作为唯一语义描述来源。若执行策略仍需暴露，要么保留为独立字段，要么在唯一生成点里附加简短后缀。
 
-- [ ] **Step 4: Remove tool-definition rendering from system prompt construction**
+- [ ] **步骤 4：删除 system prompt 中的工具定义渲染**
 
-`AgentPlannerService` should send only minimal planner rules plus transcript/ledger context; it must stop enumerating tool definitions outside `availableTools`.
+`AgentPlannerService` 只发送最小 planner 规则与 transcript/ledger 上下文，不再在 `availableTools` 之外枚举工具定义。
 
-- [ ] **Step 5: Re-run metadata-focused tests**
+- [ ] **步骤 5：重新运行元数据测试**
 
-Run: `fvm flutter test test/models/tool/tool_definition_test.dart test/services/planner_decision_regression_test.dart test/services/agent_planner_service_test.dart`
+运行：`flutter test test/models/tool/tool_definition_test.dart test/services/planner_decision_regression_test.dart test/services/agent_planner_service_test.dart`
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 6: Commit**
+- [ ] **步骤 6：提交**
 
 ```bash
 git add lib/models/tool/tool_definition.dart lib/models/agent/planner_tool_option.dart lib/services/agent_planner_service.dart test/models/tool/tool_definition_test.dart test/services/planner_decision_regression_test.dart test/services/agent_planner_service_test.dart
 git commit -m "refactor: single-source planner tool descriptions"
 ```
 
-### Task 3: Redefine ModelTurnDecision for mixed outputs
+### 任务 3：重定义 ModelTurnDecision 的 mixed output 语义
 
-**Files:**
-- Modify: `lib/models/agent/model_turn_decision.dart`
-- Modify: `lib/services/agent_planner_service.dart`
-- Modify: `test/services/agent_planner_service_test.dart`
-- Modify: `test/services/planner_decision_regression_test.dart`
+**文件：**
+- 修改：`lib/models/agent/model_turn_decision.dart`
+- 修改：`lib/services/agent_planner_service.dart`
+- 修改：`test/services/agent_planner_service_test.dart`
+- 修改：`test/services/planner_decision_regression_test.dart`
 
-- [ ] **Step 1: Write the failing decision-semantics tests**
+- [ ] **步骤 1：先写失败测试**
 
 ```dart
-test('sanitizing duplicate tool calls preserves assistant text', () {
+test('过滤重复工具调用时会保留 assistant 文本', () {
   final sanitized = service.debugSanitizeDecision(
     const ModelTurnDecision(
       toolCalls: [ModelToolCall(toolName: 'web_search', arguments: {'query': 'x'}, sequence: 0)],
@@ -188,50 +188,50 @@ test('sanitizing duplicate tool calls preserves assistant text', () {
 });
 ```
 
-- [ ] **Step 2: Run the decision tests**
+- [ ] **步骤 2：运行 decision 测试**
 
-Run: `fvm flutter test test/services/agent_planner_service_test.dart test/services/planner_decision_regression_test.dart`
+运行：`flutter test test/services/agent_planner_service_test.dart test/services/planner_decision_regression_test.dart`
 
-Expected: FAIL because current sanitization still collapses mixed output into terminal fallback behavior.
+预期：FAIL，因为当前 sanitize 逻辑仍会把 mixed output 压回 terminal fallback。
 
-- [ ] **Step 3: Update decision semantics**
+- [ ] **步骤 3：更新 decision 语义**
 
-Clarify in `ModelTurnDecision` comments and construction sites that:
+在 `ModelTurnDecision` 的注释和构造点中明确：
 
-- assistant text is intermediate-capable
-- tool calls and assistant text can coexist
-- terminal status only means “no further planner loop required”
+- assistant 文本可以是中间态输出
+- tool calls 与 assistant 文本可以共存
+- terminal 仅表示“不再继续 planner loop”
 
-- [ ] **Step 4: Adjust sanitization**
+- [ ] **步骤 4：调整 sanitize 逻辑**
 
-When filtering duplicate or unsupported tool calls, preserve assistant text and provider state. Only synthesize fallback terminal text when the decision no longer has any useful output.
+过滤重复或不支持的工具调用时，保留 assistant 文本与 provider state。只有在 decision 已经没有任何可用输出时，才合成 terminal fallback 文本。
 
-- [ ] **Step 5: Re-run the decision tests**
+- [ ] **步骤 5：重新运行 decision 测试**
 
-Run: `fvm flutter test test/services/agent_planner_service_test.dart test/services/planner_decision_regression_test.dart`
+运行：`flutter test test/services/agent_planner_service_test.dart test/services/planner_decision_regression_test.dart`
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 6: Commit**
+- [ ] **步骤 6：提交**
 
 ```bash
 git add lib/models/agent/model_turn_decision.dart lib/services/agent_planner_service.dart test/services/agent_planner_service_test.dart test/services/planner_decision_regression_test.dart
 git commit -m "refactor: support mixed native planner decisions"
 ```
 
-### Task 4: Parse mixed assistant text and tool calls in provider adapters
+### 任务 4：让 provider adapter 正确解析 mixed output
 
-**Files:**
-- Modify: `lib/models/llm/tool_loop/openai_chat_completions_tool_loop_adapter.dart`
-- Modify: `lib/models/llm/tool_loop/openai_responses_tool_loop_adapter.dart`
-- Modify: `lib/models/llm/configurable_http_llm.dart`
-- Modify: `test/models/llm/openai_tool_loop_adapter_test.dart`
-- Modify: `test/models/llm/configurable_http_llm_test.dart`
+**文件：**
+- 修改：`lib/models/llm/tool_loop/openai_chat_completions_tool_loop_adapter.dart`
+- 修改：`lib/models/llm/tool_loop/openai_responses_tool_loop_adapter.dart`
+- 修改：`lib/models/llm/configurable_http_llm.dart`
+- 修改：`test/models/llm/openai_tool_loop_adapter_test.dart`
+- 修改：`test/models/llm/configurable_http_llm_test.dart`
 
-- [ ] **Step 1: Add failing adapter tests for mixed outputs**
+- [ ] **步骤 1：先写 mixed output 的失败测试**
 
 ```dart
-test('chat completions parser keeps assistant text when tool_calls are present', () {
+test('chat completions parser 在有 tool_calls 时仍保留 assistant 文本', () {
   final decision = adapter.parseDecision({
     'choices': [
       {
@@ -258,47 +258,47 @@ test('chat completions parser keeps assistant text when tool_calls are present',
 });
 ```
 
-- [ ] **Step 2: Run adapter-focused tests**
+- [ ] **步骤 2：运行 adapter 聚焦测试**
 
-Run: `fvm flutter test test/models/llm/openai_tool_loop_adapter_test.dart test/models/llm/configurable_http_llm_test.dart`
+运行：`flutter test test/models/llm/openai_tool_loop_adapter_test.dart test/models/llm/configurable_http_llm_test.dart`
 
-Expected: FAIL because adapters currently drop assistant text when tool calls exist.
+预期：FAIL，因为当前 adapter 在存在 tool call 时会丢掉 assistant 文本。
 
-- [ ] **Step 3: Update both adapters**
+- [ ] **步骤 3：更新两个 adapter**
 
-Parse assistant text and tool calls independently, then return one `ModelTurnDecision` containing both. Preserve `response_id` and call ids exactly as before.
+分别解析 assistant 文本与 tool calls，再组合成一个 `ModelTurnDecision` 返回，并继续保留 `response_id`、`call_id` 等 continuation 信息。
 
-- [ ] **Step 4: Remove any remaining `PlannerToolChoice` parsing code**
+- [ ] **步骤 4：清理残余的 PlannerToolChoice 解析逻辑**
 
-Trim `ConfigurableHttpLLM` down so planner parsing only feeds `ModelTurnDecision`.
+把 `ConfigurableHttpLLM` 中旧的结构化 choice 解析代码一并移除，只保留 `ModelTurnDecision` 路径。
 
-- [ ] **Step 5: Re-run adapter-focused tests**
+- [ ] **步骤 5：重新运行 adapter 聚焦测试**
 
-Run: `fvm flutter test test/models/llm/openai_tool_loop_adapter_test.dart test/models/llm/configurable_http_llm_test.dart`
+运行：`flutter test test/models/llm/openai_tool_loop_adapter_test.dart test/models/llm/configurable_http_llm_test.dart`
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 6: Commit**
+- [ ] **步骤 6：提交**
 
 ```bash
 git add lib/models/llm/tool_loop/openai_chat_completions_tool_loop_adapter.dart lib/models/llm/tool_loop/openai_responses_tool_loop_adapter.dart lib/models/llm/configurable_http_llm.dart test/models/llm/openai_tool_loop_adapter_test.dart test/models/llm/configurable_http_llm_test.dart
 git commit -m "feat: parse mixed native planner outputs"
 ```
 
-### Task 5: Teach TurnHarness to display intermediate planner text
+### 任务 5：让 TurnHarness 展示中间 planner 文本
 
-**Files:**
-- Modify: `lib/services/turn_harness.dart`
-- Modify: `lib/models/chat_event.dart`
-- Modify: `lib/repositories/chat_event_repository.dart`
-- Modify: `test/services/turn_harness_test.dart`
-- Modify: `test/repositories/chat_event_repository_test.dart`
-- Modify: `test/models/chat_event_test.dart`
+**文件：**
+- 修改：`lib/services/turn_harness.dart`
+- 修改：`lib/models/chat_event.dart`
+- 修改：`lib/repositories/chat_event_repository.dart`
+- 修改：`test/services/turn_harness_test.dart`
+- 修改：`test/repositories/chat_event_repository_test.dart`
+- 修改：`test/models/chat_event_test.dart`
 
-- [ ] **Step 1: Add failing turn-loop tests**
+- [ ] **步骤 1：先写 turn loop 的失败测试**
 
 ```dart
-test('turn harness appends intermediate assistant text before executing tool calls', () async {
+test('turn harness 会先追加中间 assistant 文本，再执行工具调用', () async {
   final events = await harness.runTurn(turnId: 1, config: _config()).toList();
 
   expect(
@@ -309,44 +309,44 @@ test('turn harness appends intermediate assistant text before executing tool cal
 });
 ```
 
-- [ ] **Step 2: Run turn-loop tests**
+- [ ] **步骤 2：运行 turn loop 测试**
 
-Run: `fvm flutter test test/services/turn_harness_test.dart test/repositories/chat_event_repository_test.dart test/models/chat_event_test.dart`
+运行：`flutter test test/services/turn_harness_test.dart test/repositories/chat_event_repository_test.dart test/models/chat_event_test.dart`
 
-Expected: FAIL because the harness currently treats assistant text as terminal or ignores it when tool calls exist.
+预期：FAIL，因为当前 harness 要么把 assistant 文本当成终态，要么在有 tool calls 时忽略它。
 
-- [ ] **Step 3: Add an explicit intermediate assistant event shape**
+- [ ] **步骤 3：增加明确的中间 assistant 事件形态**
 
-Use either a new `ChatEventType` or a stable payload marker so transcript consumers can distinguish planner/intermediate assistant output from final-answer assistant output.
+通过新的 `ChatEventType` 或稳定的 payload 标记，把 planner/intermediate assistant 输出与 final answer assistant 输出区分开来。
 
-- [ ] **Step 4: Update TurnHarness execution order**
+- [ ] **步骤 4：更新 TurnHarness 执行顺序**
 
-Persist provider state, append intermediate assistant text, then execute tools. Only enter final answer generation when no tool calls remain and the decision is terminal.
+先持久化 provider state，再追加中间 assistant 文本，然后执行工具批次。只有当当前 decision 无待执行工具且进入终态时，才进入 final answer 生成。
 
-- [ ] **Step 5: Re-run turn-loop tests**
+- [ ] **步骤 5：重新运行 turn loop 测试**
 
-Run: `fvm flutter test test/services/turn_harness_test.dart test/repositories/chat_event_repository_test.dart test/models/chat_event_test.dart`
+运行：`flutter test test/services/turn_harness_test.dart test/repositories/chat_event_repository_test.dart test/models/chat_event_test.dart`
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 6: Commit**
+- [ ] **步骤 6：提交**
 
 ```bash
 git add lib/services/turn_harness.dart lib/models/chat_event.dart lib/repositories/chat_event_repository.dart test/services/turn_harness_test.dart test/repositories/chat_event_repository_test.dart test/models/chat_event_test.dart
 git commit -m "feat: surface intermediate planner assistant messages"
 ```
 
-### Task 6: Keep transcript and final-answer building aligned
+### 任务 6：让 transcript 与 final answer 构建保持一致
 
-**Files:**
-- Modify: `lib/services/transcript_builder_service.dart`
-- Modify: `test/services/transcript_builder_service_test.dart`
-- Modify: `test/services/turn_harness_test.dart`
+**文件：**
+- 修改：`lib/services/transcript_builder_service.dart`
+- 修改：`test/services/transcript_builder_service_test.dart`
+- 修改：`test/services/turn_harness_test.dart`
 
-- [ ] **Step 1: Add failing transcript tests**
+- [ ] **步骤 1：先写 transcript 的失败测试**
 
 ```dart
-test('final answer transcript includes intermediate planner assistant messages in order', () async {
+test('final answer transcript 会按顺序包含中间 planner assistant 文本', () async {
   final messages = await service.buildFinalAnswerMessages(
     groupId: 1,
     turn: turn,
@@ -362,85 +362,85 @@ test('final answer transcript includes intermediate planner assistant messages i
 });
 ```
 
-- [ ] **Step 2: Run transcript tests**
+- [ ] **步骤 2：运行 transcript 测试**
 
-Run: `fvm flutter test test/services/transcript_builder_service_test.dart test/services/turn_harness_test.dart`
+运行：`flutter test test/services/transcript_builder_service_test.dart test/services/turn_harness_test.dart`
 
-Expected: FAIL if intermediate planner messages are filtered out or misordered.
+预期：FAIL，如果中间 planner 消息被过滤掉或顺序错误。
 
-- [ ] **Step 3: Update transcript builder rules**
+- [ ] **步骤 3：更新 transcript builder 规则**
 
-Ensure intermediate assistant events are included in planner/final-answer transcript construction without being mistaken for terminal output markers.
+确保中间 assistant 事件能进入 planner/final-answer transcript 构建，但不会被误判为 terminal output 标记。
 
-- [ ] **Step 4: Re-run transcript tests**
+- [ ] **步骤 4：重新运行 transcript 测试**
 
-Run: `fvm flutter test test/services/transcript_builder_service_test.dart test/services/turn_harness_test.dart`
+运行：`flutter test test/services/transcript_builder_service_test.dart test/services/turn_harness_test.dart`
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add lib/services/transcript_builder_service.dart test/services/transcript_builder_service_test.dart test/services/turn_harness_test.dart
 git commit -m "fix: align transcripts with intermediate planner messages"
 ```
 
-### Task 7: Run full planner/tool-loop verification
+### 任务 7：做完整的 planner/tool-loop 验证
 
-**Files:**
-- Modify as needed: any files touched in Tasks 1-6
+**文件：**
+- 视情况修改：前 1 到 6 任务中涉及的所有文件
 
-- [ ] **Step 1: Run the full targeted suite**
+- [ ] **步骤 1：运行完整的聚焦测试集**
 
-Run: `fvm flutter test test/services/agent_planner_service_test.dart test/services/planner_decision_regression_test.dart test/models/llm/configurable_http_llm_test.dart test/models/llm/openai_tool_loop_adapter_test.dart test/services/turn_harness_test.dart test/services/transcript_builder_service_test.dart test/repositories/chat_event_repository_test.dart test/models/chat_event_test.dart test/models/tool/tool_definition_test.dart`
+运行：`flutter test test/services/agent_planner_service_test.dart test/services/planner_decision_regression_test.dart test/models/llm/configurable_http_llm_test.dart test/models/llm/openai_tool_loop_adapter_test.dart test/services/turn_harness_test.dart test/services/transcript_builder_service_test.dart test/repositories/chat_event_repository_test.dart test/models/chat_event_test.dart test/models/tool/tool_definition_test.dart`
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 2: Run analyzer on touched planner/runtime code**
+- [ ] **步骤 2：对相关代码跑 analyze**
 
-Run: `fvm flutter analyze`
+运行：`flutter analyze`
 
-Expected: PASS with no new issues in planner, adapter, or turn-loop code.
+预期：PASS，planner、adapter、turn loop 相关代码没有新增问题。
 
-- [ ] **Step 3: If failures appear, fix the smallest failing slice first**
+- [ ] **步骤 3：如果有失败，先修最小闭环**
 
-Do not batch unrelated fixes. Re-run only the failing test file, then re-run the full targeted suite.
+不要把无关问题一起混修。先重跑单个失败文件，再回到完整聚焦测试集。
 
-- [ ] **Step 4: Commit verification fixes**
+- [ ] **步骤 4：提交验证修复**
 
 ```bash
 git add lib test
 git commit -m "test: stabilize native planner tool loop"
 ```
 
-### Task 8: Update project docs for the new planner model
+### 任务 8：更新项目文档
 
-**Files:**
-- Modify: `README.md`
-- Modify: `AGENTS.md`
+**文件：**
+- 修改：`README.md`
+- 修改：`AGENTS.md`
 
-- [ ] **Step 1: Add failing doc checklist comments in the plan branch**
+- [ ] **步骤 1：先列出需要覆盖的文档变更点**
 
-Record the doc deltas to cover:
+包括：
 
-- no more legacy JSON planner
-- `descriptionForModel` as the single tool description source
-- mixed assistant text + tool calls in one native decision
-- intermediate assistant messages in the turn loop
+- 不再存在 legacy JSON planner
+- `descriptionForModel` 是唯一工具描述来源
+- 单个 native decision 可以同时包含 assistant 文本与 tool calls
+- turn loop 新增中间 assistant 消息语义
 
-- [ ] **Step 2: Update `README.md`**
+- [ ] **步骤 2：更新 `README.md`**
 
-Document the new planner/tool-loop architecture and remove references to legacy planner compatibility.
+说明新的 planner/tool-loop 架构，并移除对 legacy planner 兼容路径的描述。
 
-- [ ] **Step 3: Update `AGENTS.md`**
+- [ ] **步骤 3：更新 `AGENTS.md`**
 
-Refresh the architecture and implementation notes so future work does not reintroduce `PlannerPromptBuilder`-style duplication or “tool vs text” mutual exclusivity.
+更新架构和实现约束，避免未来再次引入 `PlannerPromptBuilder` 式的重复描述，或重新把“tool vs text”压回互斥关系。
 
-- [ ] **Step 4: Verify docs and commit**
+- [ ] **步骤 4：核对文档并提交**
 
-Run: `git diff -- README.md AGENTS.md docs/superpowers/specs/2026-04-16-native-planner-tool-loop-redesign-design.md`
+运行：`git diff -- README.md AGENTS.md docs/superpowers/specs/2026-04-16-native-planner-tool-loop-redesign-design.md`
 
-Expected: Only intentional documentation changes.
+预期：只包含预期内的文档变更。
 
 ```bash
 git add README.md AGENTS.md

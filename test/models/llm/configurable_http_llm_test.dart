@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:ai_chat/models/agent/planner_tool_choice.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
@@ -16,8 +15,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('ConfigurableHttpLLM.planNextToolChoice', () {
-    test('chat completions payload includes planner tools and parses tool call',
+  group('ConfigurableHttpLLM.planTurnDecision', () {
+    test('chat completions decision keeps assistant text when tool calls exist',
         () async {
       final client = _RecordingHttpClient(
         handler: (request) => http.Response(
@@ -26,8 +25,10 @@ void main() {
               {
                 'message': {
                   'role': 'assistant',
+                  'content': '我先读取这个页面。',
                   'tool_calls': [
                     {
+                      'id': 'call_1',
                       'type': 'function',
                       'function': {
                         'name': 'fetch_webpage',
@@ -51,7 +52,7 @@ void main() {
         httpClient: client,
       );
 
-      final choice = await llm.planNextToolChoice(
+      final decision = await llm.planTurnDecision(
         messages: [
           ChatMessage(
             text: '请读取 https://example.com/article',
@@ -66,10 +67,7 @@ void main() {
             inputSchema: {
               'type': 'object',
               'properties': {
-                'url': {
-                  'type': 'string',
-                  'description': '要读取的网页链接',
-                },
+                'url': {'type': 'string'},
               },
               'required': ['url'],
             },
@@ -77,97 +75,34 @@ void main() {
         ],
       );
 
-      expect(choice, isNotNull);
-      expect(choice!.isToolCall, isTrue);
-      expect(
-        choice,
-        isA<PlannerToolChoice>()
-            .having((value) => value.toolName, 'toolName', 'fetch_webpage')
-            .having(
-          (value) => value.arguments,
-          'arguments',
-          {'url': 'https://example.com/article'},
-        ),
-      );
-      expect(client.lastRequest?.url.path, '/v1/chat/completions');
-      expect(client.lastRequestBody?['stream'], isFalse);
-      expect(client.lastRequestBody?['tool_choice'], 'auto');
-      expect(client.lastRequestBody?['parallel_tool_calls'], isFalse);
-      expect(client.lastRequestBody?['messages'], [
-        {
-          'role': 'user',
-          'content': '请读取 https://example.com/article',
-        },
-      ]);
-      expect(client.lastRequestBody?['tools'], [
-        {
-          'type': 'function',
-          'function': {
-            'name': 'fetch_webpage',
-            'description': '当用户已经提供 URL 时读取网页内容。',
-            'parameters': {
-              'type': 'object',
-              'properties': {
-                'url': {
-                  'type': 'string',
-                  'description': '要读取的网页链接',
-                },
-              },
-              'required': ['url'],
-            },
-          },
-        },
-      ]);
+      expect(decision, isNotNull);
+      expect(decision!.assistantMessage, '我先读取这个页面。');
+      expect(decision.toolCalls.single.toolName, 'fetch_webpage');
+      expect(decision.isTerminal, isFalse);
     });
 
-    test('chat completions parser falls back to direct response content',
+    test('responses decision keeps assistant text when output mixes message and function_call',
         () async {
       final client = _RecordingHttpClient(
         handler: (request) => http.Response(
           jsonEncode({
-            'choices': [
-              {
-                'message': {
-                  'role': 'assistant',
-                  'content': '我已经有足够信息，可以直接回答用户。',
-                },
-              },
-            ],
-          }),
-          200,
-          headers: {'content-type': 'application/json'},
-        ),
-      );
-
-      final llm = await _buildLlm(
-        baseUrl: 'https://planner.example/v1/chat/completions',
-        httpClient: client,
-      );
-
-      final choice = await llm.planNextToolChoice(
-        messages: [
-          ChatMessage(text: '解释一下 tool calling', role: MessageRole.user),
-        ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
-        availableTools: const [],
-      );
-
-      expect(choice, isNotNull);
-      expect(choice!.isRespond, isTrue);
-      expect(choice.response, '我已经有足够信息，可以直接回答用户。');
-    });
-
-    test('responses payload includes planner tools and parses function call',
-        () async {
-      final client = _RecordingHttpClient(
-        handler: (request) => http.Response(
-          jsonEncode({
+            'id': 'resp_mixed',
             'output': [
               {
+                'type': 'message',
+                'content': [
+                  {
+                    'type': 'output_text',
+                    'text': '我先搜索一下。',
+                  },
+                ],
+              },
+              {
                 'type': 'function_call',
+                'call_id': 'fc_1',
                 'name': 'web_search',
                 'arguments': jsonEncode({
-                  'query': 'Claude Code tool use design',
+                  'query': 'OpenAI 最新发布',
                 }),
               },
             ],
@@ -182,12 +117,9 @@ void main() {
         httpClient: client,
       );
 
-      final choice = await llm.planNextToolChoice(
+      final decision = await llm.planTurnDecision(
         messages: [
-          ChatMessage(
-            text: '帮我查 Claude Code 的 tool use 设计',
-            role: MessageRole.user,
-          ),
+          ChatMessage(text: '帮我查 OpenAI 最新发布', role: MessageRole.user),
         ],
         config: ChatConfig(useReasoning: false, systemPrompt: ''),
         availableTools: const [
@@ -197,10 +129,7 @@ void main() {
             inputSchema: {
               'type': 'object',
               'properties': {
-                'query': {
-                  'type': 'string',
-                  'description': '短而具体的搜索词',
-                },
+                'query': {'type': 'string'},
               },
               'required': ['query'],
             },
@@ -208,220 +137,13 @@ void main() {
         ],
       );
 
-      expect(choice, isNotNull);
-      expect(choice!.isToolCall, isTrue);
-      expect(choice.toolName, 'web_search');
-      expect(choice.arguments, {
-        'query': 'Claude Code tool use design',
-      });
-      expect(client.lastRequest?.url.path, '/v1/responses');
-      expect(client.lastRequestBody?['stream'], isFalse);
-      expect(client.lastRequestBody?['tool_choice'], 'auto');
-      expect(client.lastRequestBody?['parallel_tool_calls'], isFalse);
-      expect(client.lastRequestBody?['store'], isFalse);
-      expect(client.lastRequestBody?['input'], [
-        {
-          'role': 'user',
-          'content': [
-            {
-              'type': 'input_text',
-              'text': '帮我查 Claude Code 的 tool use 设计',
-            },
-          ],
-        },
-      ]);
-      expect(client.lastRequestBody?['tools'], [
-        {
-          'type': 'function',
-          'name': 'web_search',
-          'description': '当用户需要外部资料或最新信息时联网搜索。',
-          'parameters': {
-            'type': 'object',
-            'properties': {
-              'query': {
-                'type': 'string',
-                'description': '短而具体的搜索词',
-              },
-            },
-            'required': ['query'],
-          },
-        },
-      ]);
+      expect(decision, isNotNull);
+      expect(decision!.assistantMessage, '我先搜索一下。');
+      expect(decision.toolCalls.single.toolName, 'web_search');
+      expect(decision.providerState, containsPair('response_id', 'resp_mixed'));
+      expect(decision.isTerminal, isFalse);
     });
 
-    test('responses parser extracts direct assistant response', () async {
-      final client = _RecordingHttpClient(
-        handler: (request) => http.Response(
-          jsonEncode({
-            'output': [
-              {
-                'type': 'message',
-                'content': [
-                  {
-                    'type': 'output_text',
-                    'text': '不需要调用工具，直接回答即可。',
-                  },
-                ],
-              },
-            ],
-          }),
-          200,
-          headers: {'content-type': 'application/json'},
-        ),
-      );
-
-      final llm = await _buildLlm(
-        baseUrl: 'https://planner.example/v1',
-        httpClient: client,
-      );
-
-      final choice = await llm.planNextToolChoice(
-        messages: [
-          ChatMessage(text: '什么是 planner prompt', role: MessageRole.user),
-        ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
-        availableTools: const [],
-      );
-
-      expect(choice, isNotNull);
-      expect(choice!.isRespond, isTrue);
-      expect(choice.response, '不需要调用工具，直接回答即可。');
-    });
-
-    test('returns null when structured planner response is not valid json',
-        () async {
-      final client = _RecordingHttpClient(
-        handler: (request) => http.Response(
-          '',
-          200,
-          headers: {'content-type': 'application/json'},
-        ),
-      );
-
-      final llm = await _buildLlm(
-        baseUrl: 'https://planner.example/v1',
-        httpClient: client,
-      );
-
-      final choice = await llm.planNextToolChoice(
-        messages: [
-          ChatMessage(text: '帮我查 Claude 最新进展', role: MessageRole.user),
-        ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
-        availableTools: const [
-          PlannerToolOption(
-            name: 'web_search',
-            description: '当用户需要外部资料或最新信息时联网搜索。',
-            inputSchema: {
-              'type': 'object',
-              'properties': {
-                'query': {
-                  'type': 'string',
-                  'description': '短而具体的搜索词',
-                },
-              },
-              'required': ['query'],
-            },
-          ),
-        ],
-      );
-
-      expect(choice, isNull);
-    });
-
-    test('returns null quickly when structured planner request times out',
-        () async {
-      final client = _RecordingHttpClient(
-        handler: (request) async {
-          await Future<void>.delayed(const Duration(milliseconds: 200));
-          return http.Response(
-            jsonEncode({'output': []}),
-            200,
-            headers: {'content-type': 'application/json'},
-          );
-        },
-      );
-
-      final llm = await _buildLlm(
-        baseUrl: 'https://planner.example/v1',
-        httpClient: client,
-        plannerRequestTimeout: const Duration(milliseconds: 20),
-      );
-
-      final stopwatch = Stopwatch()..start();
-      final choice = await llm.planNextToolChoice(
-        messages: [
-          ChatMessage(text: '帮我查 Claude 最新进展', role: MessageRole.user),
-        ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
-        availableTools: const [
-          PlannerToolOption(
-            name: 'web_search',
-            description: '当用户需要外部资料或最新信息时联网搜索。',
-            inputSchema: {
-              'type': 'object',
-              'properties': {
-                'query': {
-                  'type': 'string',
-                  'description': '短而具体的搜索词',
-                },
-              },
-              'required': ['query'],
-            },
-          ),
-        ],
-      );
-      stopwatch.stop();
-
-      expect(choice, isNull);
-      expect(stopwatch.elapsed, lessThan(const Duration(seconds: 1)));
-    });
-  });
-
-  group('ConfigurableHttpLLM.planNextAction', () {
-    test('fails quickly when legacy planner request times out', () async {
-      final client = _RecordingHttpClient(
-        handler: (request) async {
-          await Future<void>.delayed(const Duration(milliseconds: 200));
-          return http.Response(
-            jsonEncode({
-              'choices': [
-                {
-                  'message': {
-                    'content': '{"action":"respond","response":"ok"}'
-                  },
-                },
-              ],
-            }),
-            200,
-            headers: {'content-type': 'application/json'},
-          );
-        },
-      );
-
-      final llm = await _buildLlm(
-        baseUrl: 'https://planner.example/v1/chat/completions',
-        httpClient: client,
-        plannerRequestTimeout: const Duration(milliseconds: 20),
-      );
-
-      final stopwatch = Stopwatch()..start();
-      await expectLater(
-        llm.planNextAction(
-          messages: [
-            ChatMessage(text: '帮我查 Claude 最新进展', role: MessageRole.user),
-          ],
-          config: ChatConfig(useReasoning: false, systemPrompt: ''),
-        ),
-        throwsException,
-      );
-      stopwatch.stop();
-
-      expect(stopwatch.elapsed, lessThan(const Duration(seconds: 1)));
-    });
-  });
-
-  group('ConfigurableHttpLLM.planTurnDecision', () {
     test('chat completions decision includes runtime provider metadata',
         () async {
       final client = _RecordingHttpClient(
