@@ -64,5 +64,63 @@ void main() {
       expect(model.primaryFields['title'], '设计评审');
       expect(model.primaryFields['startAt'], '2026-04-18T09:00:00Z');
     });
+
+    test('maps running fetch_webpage workflow step to focusedActiveStep', () {
+      const step = ToolWorkflowStep(
+        stepId: 'step-2',
+        turnId: 'turn-2',
+        toolName: 'fetch_webpage',
+        title: '正在读取网页',
+        summary: '正在读取 OpenAI 帮助文档',
+        status: ToolWorkflowStepStatus.running,
+        requiresConfirmation: false,
+        details: {
+          'url': 'https://example.com/help',
+          'extractMode': 'readable_text',
+        },
+      );
+
+      final model = ToolCardPresentationMapper.mapStep(step);
+
+      expect(model.variant.name, 'focusedActiveStep');
+      expect(model.primaryFields['url'], 'https://example.com/help');
+      expect(model.statusLabel, '执行中');
+    });
+
+    test('maps save_note success to outcomeCard', () {
+      final result = ToolResult(
+        toolName: 'save_note',
+        status: ToolExecutionStatus.success,
+        summary: '已保存笔记：架构结论',
+        data: const {
+          'title': '架构结论',
+          'folder': 'Research',
+        },
+      );
+
+      final model = ToolCardPresentationMapper.mapResult(result);
+
+      expect(model.variant.name, 'outcomeCard');
+      expect(model.title, '保存笔记');
+      expect(model.primaryFields['folder'], 'Research');
+    });
+
+    test('maps missing_api_key web search failure to exceptionCard', () {
+      final result = ToolResult(
+        toolName: 'web_search',
+        status: ToolExecutionStatus.failure,
+        summary: '联网搜索失败',
+        data: const {
+          'query': 'latest openai',
+          'reason': 'missing_api_key',
+        },
+        errorMessage: 'missing_api_key',
+      );
+
+      final model = ToolCardPresentationMapper.mapResult(result);
+
+      expect(model.variant.name, 'exceptionCard');
+      expect(model.statusLabel, '失败');
+    });
   });
 }

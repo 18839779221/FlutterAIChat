@@ -6,25 +6,6 @@ import 'package:ai_chat/tools/core/tool_display_names.dart';
 
 /// Maps raw workflow and result payloads into UI-facing semantic card variants.
 class ToolCardPresentationMapper {
-  static const Set<String> _contextGatheringTools = {
-    'search_chat_history',
-    'web_search',
-    'fetch_webpage',
-    'LS',
-    'Glob',
-    'Grep',
-    'Read',
-  };
-
-  static const Set<String> _outcomeTools = {
-    'create_reminder',
-    'create_calendar_event',
-    'share_result',
-    'save_note',
-    'Write',
-    'Edit',
-  };
-
   /// Maps a workflow step into its semantic presentation model.
   static ToolCardPresentationModel mapStep(ToolWorkflowStep step) {
     final variant = switch (step.status) {
