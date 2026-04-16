@@ -1173,7 +1173,7 @@ void main() {
     });
 
     test(
-        'records planner request failure as turn status before falling back to final answer',
+        'records planner request failure as turn status before streaming final answer',
         () async {
       final eventRepository = _InMemoryChatEventRepository();
       final turnRepository = _InMemoryChatTurnRepository();

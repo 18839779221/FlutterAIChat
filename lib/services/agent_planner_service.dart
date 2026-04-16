@@ -109,38 +109,16 @@ class AgentPlannerService {
       }
       Logger.w(
         _tag,
-        'native planner returned null, fallback to compatibility path',
+        'native planner returned null, terminating turn with planner_request_failed',
       );
+      return _plannerRequestFailedDecision();
     } catch (error, stackTrace) {
       Logger.w(
         _tag,
-        'native planner decision unavailable, fallback to legacy path: ${_preview(error.toString())}',
+        'native planner decision unavailable, terminating turn: ${_preview(error.toString())}',
       );
       Logger.e(_tag, 'native planner decision stack trace', stackTrace);
-    }
-    try {
-      final raw = await _requestLegacyPlannerRaw(
-        turn: turn,
-        transcript: transcript,
-        config: config,
-        limits: limits,
-      );
-      return _sanitizeDecision(
-        _parseLegacyDecision(
-          raw,
-          allowedToolNames: allowedToolNames,
-        ),
-        allowedToolNames: allowedToolNames,
-        steps: steps,
-      );
-    } catch (_) {
-      return const ModelTurnDecision(
-        toolCalls: [],
-        assistantMessage: '抱歉，我暂时无法规划下一步动作，请直接重试。',
-        diagnosticCode: 'planner_request_failed',
-        providerState: {},
-        isTerminal: true,
-      );
+      return _plannerRequestFailedDecision();
     }
   }
 
@@ -290,6 +268,16 @@ class AgentPlannerService {
     );
   }
 
+  ModelTurnDecision _plannerRequestFailedDecision() {
+    return const ModelTurnDecision(
+      toolCalls: [],
+      assistantMessage: '抱歉，我暂时无法规划下一步动作，请直接重试。',
+      diagnosticCode: 'planner_request_failed',
+      providerState: {},
+      isTerminal: true,
+    );
+  }
+
   String _toolCallFingerprint(
     String toolName,
     Map<String, dynamic> arguments,
@@ -313,98 +301,6 @@ class AgentPlannerService {
       return value.map(_normalizeJsonValue).toList(growable: false);
     }
     return value;
-  }
-
-  ModelTurnDecision _parseLegacyDecision(
-    String raw, {
-    required List<String> allowedToolNames,
-  }) {
-    try {
-      final payloads = _extractJsonObjects(_unwrapCodeFence(raw));
-      if (payloads.isEmpty) {
-        return const ModelTurnDecision(
-          toolCalls: [],
-          assistantMessage: '抱歉，我暂时无法规划下一步动作，请直接重试。',
-          diagnosticCode: 'planner_parse_failed',
-          providerState: {},
-          isTerminal: true,
-        );
-      }
-
-      final toolCalls = <ModelToolCall>[];
-      String? response;
-      for (var index = 0; index < payloads.length; index++) {
-        final decoded = jsonDecode(payloads[index]);
-        if (decoded is! Map<String, dynamic>) {
-          continue;
-        }
-        final action = _normalizeStringField(decoded['action']);
-        if (action == 'respond') {
-          response ??= _normalizeStringField(decoded['response']);
-          continue;
-        }
-        if (action != 'call_tool') {
-          continue;
-        }
-
-        final toolCall = ToolCall.fromJson({
-          'toolName': _normalizeStringField(decoded['toolName']),
-          'arguments': decoded['arguments'],
-        });
-        if (!allowedToolNames.contains(toolCall.toolName)) {
-          Logger.w(
-            _tag,
-            'planner emitted unsupported tool: ${toolCall.toolName}',
-          );
-          continue;
-        }
-        toolCalls.add(
-          ModelToolCall(
-            toolName: toolCall.toolName,
-            arguments: toolCall.arguments,
-            sequence: index + 1,
-          ),
-        );
-      }
-
-      if (toolCalls.isNotEmpty) {
-        return ModelTurnDecision(
-          toolCalls: toolCalls,
-          assistantMessage: null,
-          diagnosticCode: toolCalls.length == 1
-              ? 'planner_action_call_tool'
-              : 'planner_action_call_tools',
-          providerState: const {},
-          isTerminal: false,
-        );
-      }
-
-      if (response != null && response.isNotEmpty) {
-        return ModelTurnDecision(
-          toolCalls: const [],
-          assistantMessage: response,
-          diagnosticCode: 'planner_action_respond',
-          providerState: const {},
-          isTerminal: true,
-        );
-      }
-    } catch (error, stackTrace) {
-      Logger.e(
-        _tag,
-        'planner output parse failed, raw=${_preview(raw)}',
-        error,
-      );
-      Logger.e(_tag, 'planner parse stack trace', stackTrace);
-    }
-
-    Logger.w(_tag, 'planner output fell back to respond, raw=${_preview(raw)}');
-    return const ModelTurnDecision(
-      toolCalls: [],
-      assistantMessage: '抱歉，我暂时无法规划下一步动作，请直接重试。',
-      diagnosticCode: 'planner_parse_failed',
-      providerState: {},
-      isTerminal: true,
-    );
   }
 
   List<Map<String, dynamic>> _buildProviderContinuationItems({
