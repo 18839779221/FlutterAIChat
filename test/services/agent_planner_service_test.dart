@@ -803,7 +803,50 @@ void main() {
     });
 
     test(
-        'planNextDecision falls back to legacy planner when native planner is unavailable',
+        'planNextDecision returns terminal planner failure when native planner returns null',
+        () async {
+      final llm = _NativeNullThenLegacyPlannerLLM(
+        plannerResponse:
+            '{"action":"call_tool","toolName":"search_chat_history","arguments":{"query":"数据库版本"}}',
+      );
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [
+          ToolDefinition(
+            name: 'search_chat_history',
+            title: '搜索聊天记录',
+            description: '搜索聊天记录',
+            descriptionForModel: '当用户要求从历史记录找结论时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'query': ToolArgumentProperty.string(description: '查询词'),
+              },
+              required: ['query'],
+            ),
+          ),
+        ],
+      );
+
+      final decision = await service.planNextDecision(
+        turn: _turn(),
+        transcript: [_userEvent()],
+        steps: const [],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, isEmpty);
+      expect(decision.assistantMessage, contains('暂时无法规划'));
+      expect(decision.diagnosticCode, 'planner_request_failed');
+      expect(decision.isTerminal, isTrue);
+      expect(llm.nativeAttempts, 1);
+      expect(llm.legacyAttempts, 0);
+    });
+
+    test(
+        'planNextDecision returns terminal planner failure when native planner throws',
         () async {
       final llm = _NativeThenLegacyPlannerLLM(
         plannerResponse:
@@ -837,11 +880,12 @@ void main() {
       );
 
       expect(decision, isNotNull);
-      expect(decision!.toolCalls, hasLength(1));
-      expect(decision.toolCalls.single.toolName, 'search_chat_history');
-      expect(decision.diagnosticCode, 'planner_action_call_tool');
+      expect(decision!.toolCalls, isEmpty);
+      expect(decision.assistantMessage, contains('暂时无法规划'));
+      expect(decision.diagnosticCode, 'planner_request_failed');
+      expect(decision.isTerminal, isTrue);
       expect(llm.nativeAttempts, 1);
-      expect(llm.legacyAttempts, 1);
+      expect(llm.legacyAttempts, 0);
     });
 
     test('planNextDecision does not fall back to a static tool allowlist',
@@ -996,141 +1040,6 @@ void main() {
       expect(decision!.toolCalls, isEmpty);
       expect(decision.diagnosticCode, 'planner_duplicate_tool_call');
       expect(decision.isTerminal, isTrue);
-    });
-
-    test(
-        'planNextDecision converts concatenated legacy tool actions into multi-tool decision',
-        () async {
-      final llm = _NativeThenLegacyPlannerLLM(
-        plannerResponse:
-            '{"action":"call_tool","toolName":"search_chat_history","arguments":{"query":"数据库版本 时间 确认","maxResults":5}}'
-            '{"action":"call_tool","toolName":"save_note","arguments":{"title":"数据库版本确认","content":"数据库版本 7，发版时间 2026-04-12 10:00"}}',
-      );
-      final service = AgentPlannerService(
-        llm: llm,
-        toolPolicyService: await _createToolPolicyService(),
-        availableTools: const [
-          ToolDefinition(
-            name: 'search_chat_history',
-            title: '搜索聊天记录',
-            description: '搜索聊天记录',
-            descriptionForModel: '当用户要求从历史记录找结论时使用。',
-            argumentSchema: ToolArgumentSchema(
-              properties: {
-                'query': ToolArgumentProperty.string(description: '查询词'),
-              },
-              required: ['query'],
-            ),
-          ),
-          ToolDefinition(
-            name: 'save_note',
-            title: '保存笔记',
-            description: '保存笔记',
-            descriptionForModel: '当用户要求沉淀结论时使用。',
-            argumentSchema: ToolArgumentSchema(
-              properties: {
-                'title': ToolArgumentProperty.string(description: '标题'),
-                'content': ToolArgumentProperty.string(description: '正文'),
-              },
-              required: ['title', 'content'],
-            ),
-          ),
-        ],
-      );
-
-      final decision = await service.planNextDecision(
-        turn: ChatTurn(
-          id: 1,
-          groupId: 1,
-          status: ChatTurnStatus.running,
-          userInput: '先查聊天记录，再保存笔记',
-        ),
-        transcript: [
-          ChatEvent(
-            turnId: 1,
-            groupId: 1,
-            sequence: 1,
-            eventType: ChatEventType.userMessage,
-            role: MessageRole.user,
-            content: '先查聊天记录，再保存笔记',
-          ),
-        ],
-        steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
-        limits: const AgentLoopLimits(),
-      );
-
-      expect(decision, isNotNull);
-      expect(decision!.toolCalls, hasLength(2));
-      expect(decision.toolCalls[0].toolName, 'search_chat_history');
-      expect(decision.toolCalls[0].arguments,
-          containsPair('query', '数据库版本 时间 确认'));
-      expect(decision.toolCalls[1].toolName, 'save_note');
-      expect(decision.toolCalls[1].arguments, containsPair('title', '数据库版本确认'));
-      expect(decision.diagnosticCode, 'planner_action_call_tools');
-      expect(decision.isTerminal, isFalse);
-      expect(llm.nativeAttempts, 1);
-      expect(llm.legacyAttempts, 1);
-    });
-
-    test(
-        'planNextDecision filters repeated legacy retrieval with identical arguments in the same turn',
-        () async {
-      final llm = _NativeThenLegacyPlannerLLM(
-        plannerResponse:
-            '{"action":"call_tool","toolName":"search_chat_history","arguments":{"query":"数据库版本 确认 时间","maxResults":5}}',
-      );
-      final service = AgentPlannerService(
-        llm: llm,
-        toolPolicyService: await _createToolPolicyService(),
-        availableTools: const [
-          ToolDefinition(
-            name: 'search_chat_history',
-            title: '搜索聊天记录',
-            description: '搜索聊天记录',
-            descriptionForModel: '当用户要求从历史记录找结论时使用。',
-            argumentSchema: ToolArgumentSchema(
-              properties: {
-                'query': ToolArgumentProperty.string(description: '查询词'),
-              },
-              required: ['query'],
-            ),
-          ),
-        ],
-      );
-
-      final decision = await service.planNextDecision(
-        turn: _turn(),
-        transcript: [_userEvent()],
-        steps: [
-          ChatTurnStep(
-            id: 1,
-            turnId: 1,
-            stepIndex: 1,
-            toolName: 'search_chat_history',
-            toolArgsJson: const {
-              'query': '数据库版本 确认 时间',
-              'maxResults': 5,
-            },
-            status: ChatTurnStepStatus.completed,
-            resultSummary: '未命中相关聊天记录',
-            resultJson: const {
-              'query': '数据库版本 确认 时间',
-              'matchCount': 0,
-              'matches': [],
-            },
-          ),
-        ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
-        limits: const AgentLoopLimits(),
-      );
-
-      expect(decision, isNotNull);
-      expect(decision!.toolCalls, isEmpty);
-      expect(decision.isTerminal, isTrue);
-      expect(decision.diagnosticCode, 'planner_duplicate_tool_call');
-      expect(llm.nativeAttempts, 1);
-      expect(llm.legacyAttempts, 1);
     });
 
     test('planNextDecision passes visible tool schemas into native planner',
@@ -1511,6 +1420,64 @@ class _NativeDecisionLLM implements BaseLLM {
     required ChatConfig config,
   }) async =>
       '{"action":"respond","response":"fallback"}';
+
+  @override
+  Future<PlannerToolChoice?> planNextToolChoice({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+  }) async =>
+      null;
+
+  @override
+  Stream<String> chatStream(
+      List<ChatMessage> messages, ChatConfig config) async* {}
+
+  @override
+  Future<String> structureSummaryCard(String sourceText) async => '{}';
+
+  @override
+  Future<String> summarizeConversation(List<ChatMessage> messages) async =>
+      'summary';
+
+  @override
+  Future<bool> validateApiKey(ChatConfig config) async => true;
+}
+
+class _NativeNullThenLegacyPlannerLLM implements BaseLLM {
+  final String plannerResponse;
+  int nativeAttempts = 0;
+  int legacyAttempts = 0;
+
+  _NativeNullThenLegacyPlannerLLM({required this.plannerResponse});
+
+  @override
+  Map<String, dynamic> get config => const {};
+
+  @override
+  String getModelName(ChatConfig config) => 'native-null-then-legacy';
+
+  @override
+  Future<ModelTurnDecision?> planTurnDecision({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+    ChatTurnProviderStyle? providerStyle,
+    Map<String, dynamic>? providerState,
+    List<Map<String, dynamic>> providerContinuationItems = const [],
+  }) async {
+    nativeAttempts += 1;
+    return null;
+  }
+
+  @override
+  Future<String> planNextAction({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+  }) async {
+    legacyAttempts += 1;
+    return plannerResponse;
+  }
 
   @override
   Future<PlannerToolChoice?> planNextToolChoice({
