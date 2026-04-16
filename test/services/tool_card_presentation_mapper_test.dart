@@ -6,11 +6,11 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('ToolCardPresentationMapper', () {
     test('maps web_search success to inlineStep', () {
-      final result = ToolResult(
+      const result = ToolResult(
         toolName: 'web_search',
         status: ToolExecutionStatus.success,
         summary: '已执行联网搜索',
-        data: const {
+        data: {
           'query': 'planner',
           'results': [],
         },
@@ -24,11 +24,11 @@ void main() {
     });
 
     test('maps create_reminder success to outcomeCard', () {
-      final result = ToolResult(
+      const result = ToolResult(
         toolName: 'create_reminder',
         status: ToolExecutionStatus.success,
         summary: '已发起提醒创建：设计评审',
-        data: const {
+        data: {
           'title': '设计评审',
           'dueAt': '2026-04-18T09:00:00Z',
         },
@@ -88,11 +88,11 @@ void main() {
     });
 
     test('maps save_note success to outcomeCard', () {
-      final result = ToolResult(
+      const result = ToolResult(
         toolName: 'save_note',
         status: ToolExecutionStatus.success,
         summary: '已保存笔记：架构结论',
-        data: const {
+        data: {
           'title': '架构结论',
           'folder': 'Research',
         },
@@ -106,11 +106,11 @@ void main() {
     });
 
     test('maps missing_api_key web search failure to exceptionCard', () {
-      final result = ToolResult(
+      const result = ToolResult(
         toolName: 'web_search',
         status: ToolExecutionStatus.failure,
         summary: '联网搜索失败',
-        data: const {
+        data: {
           'query': 'latest openai',
           'reason': 'missing_api_key',
         },

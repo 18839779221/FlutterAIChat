@@ -15,9 +15,9 @@
 
 ### Tool Call 与结构化输出
 - 支持工具决策、确认执行、执行结果展示、失败回退
-- 工具流程支持折叠卡片、结果摘要行、确认卡
+- 工具流程支持语义分型展示：上下文采集类工具默认折叠为低占用 inline step，外部动作类工具保留显式 outcome card，用户可处理失败升级为 exception card
 - 支持 `AskUserQuestion` interaction tool，可在同一个 turn 内挂起提问并在用户提交结构化答案后恢复
-- `AskUserQuestion` 支持单选、多选、自动追加 `Other`，并以聊天流消息卡片承载交互
+- `AskUserQuestion` 支持单选、多选、自动追加 `Other`，并以 workflow 风格消息卡片承载交互
 - 支持普通 assistant 消息重新结构化为调试卡片
 - 支持结构化 trace，覆盖发送、LLM、工具确认、工具执行等关键链路
 - planner 只走 provider-native `planNextDecision()` 单一路径，legacy JSON planner 已移除
