@@ -269,3 +269,5 @@ Database version: 5 (includes `is_summarized` field for automatic summarization 
   - update `TurnVerifier` whenever a new waiting state or resumable step type is introduced
 - New feature work should stay visually and architecturally consistent with the current project direction
   - Avoid one-off UI patterns or isolated architectural shortcuts that bypass the current controller/provider boundaries
+  - Tool-use UI should prefer semantic presentation variants over raw message-type mirroring
+  - Context-gathering tool steps should stay compact and collapse by default; external-action results should remain explicit in the timeline
