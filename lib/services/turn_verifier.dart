@@ -112,6 +112,7 @@ class TurnVerifier {
         case ChatEventType.toolError:
           return event;
         case ChatEventType.userMessage:
+        case ChatEventType.assistantPlannerMessage:
         case ChatEventType.assistantReasoningDelta:
         case ChatEventType.assistantTextDelta:
         case ChatEventType.assistantTextFinal:

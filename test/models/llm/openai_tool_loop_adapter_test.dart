@@ -7,6 +7,36 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('OpenAIChatCompletionsToolLoopAdapter', () {
+    test('keeps assistant text when tool calls are present in same message', () {
+      const adapter = OpenAIChatCompletionsToolLoopAdapter();
+
+      final decision = adapter.parseDecision({
+        'choices': [
+          {
+            'message': {
+              'role': 'assistant',
+              'content': '我先读取这个页面。',
+              'tool_calls': [
+                {
+                  'id': 'call_1',
+                  'type': 'function',
+                  'function': {
+                    'name': 'fetch_webpage',
+                    'arguments': jsonEncode({'url': 'https://example.com'}),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
+
+      expect(decision, isNotNull);
+      expect(decision!.assistantMessage, '我先读取这个页面。');
+      expect(decision.toolCalls.single.toolName, 'fetch_webpage');
+      expect(decision.isTerminal, isFalse);
+    });
+
     test('parses multiple tool calls from one assistant message', () {
       const adapter = OpenAIChatCompletionsToolLoopAdapter();
 
@@ -82,6 +112,37 @@ void main() {
   });
 
   group('OpenAIResponsesToolLoopAdapter', () {
+    test('keeps assistant text when output mixes message and function_call', () {
+      const adapter = OpenAIResponsesToolLoopAdapter();
+
+      final decision = adapter.parseDecision({
+        'id': 'resp_mixed',
+        'output': [
+          {
+            'type': 'message',
+            'content': [
+              {
+                'type': 'output_text',
+                'text': '我先搜索一下。',
+              },
+            ],
+          },
+          {
+            'type': 'function_call',
+            'call_id': 'fc_1',
+            'name': 'web_search',
+            'arguments': jsonEncode({'query': 'OpenAI 最新发布'}),
+          },
+        ],
+      });
+
+      expect(decision, isNotNull);
+      expect(decision!.assistantMessage, '我先搜索一下。');
+      expect(decision.toolCalls.single.toolName, 'web_search');
+      expect(decision.providerState, containsPair('response_id', 'resp_mixed'));
+      expect(decision.isTerminal, isFalse);
+    });
+
     test('parses multiple function calls from one response output', () {
       const adapter = OpenAIResponsesToolLoopAdapter();
 

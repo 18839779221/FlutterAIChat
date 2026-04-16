@@ -5,7 +5,6 @@ import 'package:ai_chat/models/agent/agent_action.dart';
 import 'package:ai_chat/models/agent/agent_loop_limits.dart';
 import 'package:ai_chat/models/agent/model_tool_call.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
-import 'package:ai_chat/models/agent/planner_tool_choice.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/tool/tool_access_snapshot.dart';
 import 'package:ai_chat/models/tool/tool_argument_property.dart';
@@ -1330,6 +1329,109 @@ void main() {
     });
 
     test(
+        'records intermediate planner assistant text before executing provider-native tool calls',
+        () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          id: 8,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '帮我查数据库版本',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+      final plannerService = _NativeDecisionPlannerService([
+        const ModelTurnDecision(
+          toolCalls: [
+            ModelToolCall(
+              providerCallId: 'call_1',
+              toolName: 'search_chat_history',
+              arguments: {'query': '数据库版本'},
+              sequence: 1,
+            ),
+          ],
+          assistantMessage: '我先查一下数据库版本。',
+          providerState: {'response_id': 'resp_1'},
+          isTerminal: false,
+        ),
+        const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: '我已经拿到结果了，开始整理最终答复。',
+          providerState: {'response_id': 'resp_2'},
+          isTerminal: true,
+        ),
+      ]);
+      final chatService = _FakeChatService(chunks: const ['最终回答']);
+
+      final harness = TurnHarness(
+        plannerService: plannerService,
+        turnRepository: turnRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        turnVerifier: _AlwaysStopVerifier(),
+        chatService: chatService,
+        toolCallService: _FakeToolCallService(
+          executeResult: const ToolPreparationResult(
+            toolInvocation: ToolInvocation(
+              toolName: 'search_chat_history',
+              arguments: {'query': '数据库版本'},
+              status: ToolInvocationStatus.running,
+              summary: '正在执行工具：搜索历史',
+              requiresConfirmation: false,
+            ),
+            toolResult: ToolResult(
+              toolName: 'search_chat_history',
+              status: ToolExecutionStatus.success,
+              summary: '已找到数据库版本是 7',
+              data: {'query': '数据库版本', 'matchCount': 1},
+            ),
+            additionalContextMessages: [],
+          ),
+        ),
+        limits: const AgentLoopLimits(maxIterations: 4),
+      );
+
+      final emitted = await harness
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          )
+          .toList();
+
+      expect(
+        emitted.map((event) => event.eventType),
+        containsAllInOrder([
+          ChatEventType.userMessage,
+          ChatEventType.assistantPlannerMessage,
+          ChatEventType.turnStatus,
+          ChatEventType.assistantToolCall,
+          ChatEventType.toolExecutionStarted,
+          ChatEventType.toolResult,
+        ]),
+      );
+      final plannerMessage = emitted.firstWhere(
+        (event) => event.eventType == ChatEventType.assistantPlannerMessage,
+      );
+      expect(plannerMessage.content, '我先查一下数据库版本。');
+      final toolCallIndex = emitted.indexWhere(
+        (event) => event.eventType == ChatEventType.assistantToolCall,
+      );
+      final plannerMessageIndex = emitted.indexWhere(
+        (event) => event.eventType == ChatEventType.assistantPlannerMessage,
+      );
+      expect(plannerMessageIndex, lessThan(toolCallIndex));
+
+      final finalAnswerPrompt = chatService.capturedFinalAnswerMessages.single
+          .map((message) => message.text)
+          .join('\n');
+      expect(finalAnswerPrompt, contains('我先查一下数据库版本。'));
+    });
+
+    test(
         'executes multiple provider-native tool calls and sends ledger summary',
         () async {
       final eventRepository = _InMemoryChatEventRepository();
@@ -1487,7 +1589,6 @@ void main() {
           .toList();
 
       expect(plannerService.nativeDecisionCalls, 2);
-      expect(plannerService.legacyActionCalls, 0);
       final toolResults = emitted
           .where((event) => event.eventType == ChatEventType.toolResult)
           .toList(growable: false);
@@ -1560,22 +1661,11 @@ class _FakePlannerService extends AgentPlannerService {
     capturedTranscripts.add(List<ChatEvent>.from(transcript));
     return _decisionFromAction(actions.removeFirst());
   }
-
-  @override
-  Future<AgentAction> planNextAction({
-    required ChatTurn turn,
-    required List<ChatEvent> transcript,
-    required ChatConfig config,
-    required AgentLoopLimits limits,
-  }) async {
-    throw StateError('legacy planner path should not be used');
-  }
 }
 
 class _NativeDecisionPlannerService extends AgentPlannerService {
   final Queue<ModelTurnDecision> decisions;
   int nativeDecisionCalls = 0;
-  int legacyActionCalls = 0;
 
   _NativeDecisionPlannerService(List<ModelTurnDecision> decisions)
       : decisions = Queue<ModelTurnDecision>.from(decisions),
@@ -1596,17 +1686,6 @@ class _NativeDecisionPlannerService extends AgentPlannerService {
           decision.providerStyle ?? ChatTurnProviderStyle.openaiResponses,
       modelName: decision.modelName ?? 'gpt-5.4',
     );
-  }
-
-  @override
-  Future<AgentAction> planNextAction({
-    required ChatTurn turn,
-    required List<ChatEvent> transcript,
-    required ChatConfig config,
-    required AgentLoopLimits limits,
-  }) async {
-    legacyActionCalls += 1;
-    throw StateError('legacy planner path should not be used');
   }
 }
 
@@ -1636,21 +1715,6 @@ class _QueuedNativeDecisionLLM implements BaseLLM {
     }
     return decisions.removeFirst();
   }
-
-  @override
-  Future<String> planNextAction({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-  }) async =>
-      '{"action":"respond","response":"fallback"}';
-
-  @override
-  Future<PlannerToolChoice?> planNextToolChoice({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required List<PlannerToolOption> availableTools,
-  }) async =>
-      null;
 
   @override
   Stream<String> chatStream(
@@ -2143,6 +2207,23 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
   }
 
   @override
+  Future<int> appendAssistantPlannerMessage({
+    required int turnId,
+    required int groupId,
+    required String content,
+    Map<String, dynamic>? payloadJson,
+  }) async {
+    return _append(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.assistantPlannerMessage,
+      role: MessageRole.assistant,
+      content: content,
+      payloadJson: payloadJson,
+    );
+  }
+
+  @override
   Future<int> appendAssistantTextFinal({
     required int turnId,
     required int groupId,
@@ -2231,21 +2312,6 @@ class _NoopBaseLLM implements BaseLLM {
 
   @override
   String getModelName(ChatConfig config) => 'noop';
-
-  @override
-  Future<String> planNextAction({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-  }) async =>
-      '{"action":"respond","response":"noop"}';
-
-  @override
-  Future<PlannerToolChoice?> planNextToolChoice({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required List<PlannerToolOption> availableTools,
-  }) async =>
-      null;
 
   @override
   Future<ModelTurnDecision?> planTurnDecision({

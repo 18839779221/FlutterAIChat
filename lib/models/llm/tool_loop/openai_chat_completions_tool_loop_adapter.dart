@@ -24,25 +24,16 @@ class OpenAIChatCompletionsToolLoopAdapter {
 
     final normalizedMessage = message.cast<String, dynamic>();
     final toolCalls = _parseToolCalls(normalizedMessage);
-    if (toolCalls.isNotEmpty) {
-      return ModelTurnDecision(
-        toolCalls: toolCalls,
-        assistantMessage: null,
-        providerState: const {},
-        isTerminal: false,
-      );
-    }
-
     final content = _extractMessageText(normalizedMessage);
-    if (content == null) {
+    if (toolCalls.isEmpty && content == null) {
       return null;
     }
 
     return ModelTurnDecision(
-      toolCalls: const [],
+      toolCalls: toolCalls,
       assistantMessage: content,
       providerState: const {},
-      isTerminal: true,
+      isTerminal: toolCalls.isEmpty,
     );
   }
 

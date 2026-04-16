@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
-import 'package:ai_chat/models/agent/planner_tool_choice.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
@@ -812,8 +811,7 @@ void main() {
       );
     });
 
-    test('agent loop confirmation 后若下一步仍需确认，会展示新的确认卡并替换旧卡状态',
-        () async {
+    test('agent loop confirmation 后若下一步仍需确认，会展示新的确认卡并替换旧卡状态', () async {
       final databaseHelper = _createTestDatabaseHelper();
       final orchestrator = _FakeTurnHarness(
         databaseHelper: databaseHelper,
@@ -938,9 +936,11 @@ void main() {
       );
       expect(followupConfirmation.text, '请确认执行工具：创建提醒');
       expect(followupConfirmation.payloadJson?['toolName'], 'create_reminder');
-      expect(followupConfirmation.payloadJson?['status'], 'awaitingConfirmation');
+      expect(
+          followupConfirmation.payloadJson?['status'], 'awaitingConfirmation');
 
-      expect(container.read(sendPhaseProvider), ChatSendPhase.awaitingConfirmation);
+      expect(container.read(sendPhaseProvider),
+          ChatSendPhase.awaitingConfirmation);
     });
 
     test('agent loop delta 只会追加一次，避免流式文本重复', () async {
@@ -1084,7 +1084,8 @@ void main() {
 
       await Future<void>.delayed(const Duration(milliseconds: 10));
 
-      final earlyPersistedMessages = await databaseHelper.getMessagesByGroup(groupId);
+      final earlyPersistedMessages =
+          await databaseHelper.getMessagesByGroup(groupId);
       final earlyAssistantMessage = earlyPersistedMessages.firstWhere(
         (message) => message.id != confirmationMessageId && message.isAssistant,
       );
@@ -1092,7 +1093,8 @@ void main() {
 
       await future;
 
-      final persistedMessages = await databaseHelper.getMessagesByGroup(groupId);
+      final persistedMessages =
+          await databaseHelper.getMessagesByGroup(groupId);
       final finalAssistantMessage = persistedMessages.firstWhere(
         (message) => message.id != confirmationMessageId && message.isAssistant,
       );
@@ -1262,7 +1264,8 @@ void main() {
       await databaseHelper.deleteGroup(groupId);
     });
 
-    test('submitQuestionAnswers keeps resumed loop cancellable and visible while waiting',
+    test(
+        'submitQuestionAnswers keeps resumed loop cancellable and visible while waiting',
         () async {
       final databaseHelper = _createTestDatabaseHelper();
       final resumeQuestionGate = Completer<void>();
@@ -1320,18 +1323,19 @@ void main() {
       );
       container.read(messagesProvider.notifier).addMessage(promptMessage);
 
-      final future = container.read(chatSendCoordinatorProvider).submitQuestionAnswers(
-        promptMessage,
-        response: const AskUserQuestionResponse(
-          answersByQuestionId: {
-            'primary-platform': '移动端（iOS/Android）',
-          },
-          selectedOptionLabelsByQuestionId: {
-            'primary-platform': ['移动端（iOS/Android）'],
-          },
-          freeTextAnswersByQuestionId: {},
-        ),
-      );
+      final future =
+          container.read(chatSendCoordinatorProvider).submitQuestionAnswers(
+                promptMessage,
+                response: const AskUserQuestionResponse(
+                  answersByQuestionId: {
+                    'primary-platform': '移动端（iOS/Android）',
+                  },
+                  selectedOptionLabelsByQuestionId: {
+                    'primary-platform': ['移动端（iOS/Android）'],
+                  },
+                  freeTextAnswersByQuestionId: {},
+                ),
+              );
 
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
@@ -1647,8 +1651,7 @@ ProviderContainer _createContainer({
       chatServiceProvider.overrideWith((ref) => chatService),
       if (coordinator != null)
         chatSendCoordinatorProvider.overrideWith((ref) => coordinator),
-      if (harness != null)
-        turnHarnessProvider.overrideWith((ref) => harness),
+      if (harness != null) turnHarnessProvider.overrideWith((ref) => harness),
       if (sessionCoordinator != null)
         chatSessionCoordinatorProvider
             .overrideWith((ref) => sessionCoordinator),
@@ -1855,21 +1858,6 @@ class _NoopBaseLLM implements BaseLLM {
   @override
   Stream<String> chatStream(List<ChatMessage> messages, ChatConfig config) =>
       const Stream.empty();
-
-  @override
-  Future<String> planNextAction({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-  }) async =>
-      '{"action":"respond","response":"stub"}';
-
-  @override
-  Future<PlannerToolChoice?> planNextToolChoice({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required List<PlannerToolOption> availableTools,
-  }) async =>
-      null;
 
   @override
   Future<ModelTurnDecision?> planTurnDecision({

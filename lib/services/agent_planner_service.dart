@@ -155,6 +155,19 @@ class AgentPlannerService {
     }
 
     if (filteredCalls.isEmpty) {
+      final hasAssistantMessage =
+          (decision.assistantMessage ?? '').trim().isNotEmpty;
+      if (hasAssistantMessage) {
+        return ModelTurnDecision(
+          toolCalls: const [],
+          assistantMessage: decision.assistantMessage,
+          diagnosticCode: decision.diagnosticCode,
+          providerState: decision.providerState,
+          providerStyle: decision.providerStyle,
+          modelName: decision.modelName,
+          isTerminal: decision.isTerminal,
+        );
+      }
       if (blockedDuplicates.isNotEmpty) {
         return ModelTurnDecision(
           toolCalls: const [],
