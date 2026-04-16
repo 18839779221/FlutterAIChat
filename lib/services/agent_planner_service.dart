@@ -411,31 +411,62 @@ class AgentPlannerService {
     required ChatTurn turn,
     required List<ChatTurnStep> steps,
   }) {
-    if (turn.providerStyle != ChatTurnProviderStyle.openaiResponses) {
-      return const [];
-    }
-    final responseId = turn.providerStateJson?['response_id'];
-    if (responseId is! String || responseId.trim().isEmpty) {
-      return const [];
-    }
+    switch (turn.providerStyle) {
+      case ChatTurnProviderStyle.openaiResponses:
+        final responseId = turn.providerStateJson?['response_id'];
+        if (responseId is! String || responseId.trim().isEmpty) {
+          return const [];
+        }
 
-    final items = <Map<String, dynamic>>[];
-    for (final step in steps) {
-      if (step.providerResponseId != responseId ||
-          (step.providerCallId ?? '').trim().isEmpty) {
-        continue;
-      }
-      if (step.status != ChatTurnStepStatus.completed &&
-          step.status != ChatTurnStepStatus.failed) {
-        continue;
-      }
-      items.add({
-        'type': 'function_call_output',
-        'call_id': step.providerCallId!.trim(),
-        'output': _encodeProviderStepOutput(step),
-      });
+        final items = <Map<String, dynamic>>[];
+        for (final step in steps) {
+          if (step.providerResponseId != responseId ||
+              (step.providerCallId ?? '').trim().isEmpty) {
+            continue;
+          }
+          if (step.status != ChatTurnStepStatus.completed &&
+              step.status != ChatTurnStepStatus.failed) {
+            continue;
+          }
+          items.add({
+            'type': 'function_call_output',
+            'call_id': step.providerCallId!.trim(),
+            'output': _encodeProviderStepOutput(step),
+          });
+        }
+        return items;
+      case ChatTurnProviderStyle.anthropicMessages:
+        final messageId = turn.providerStateJson?['message_id'];
+        if (messageId is! String || messageId.trim().isEmpty) {
+          return const [];
+        }
+
+        final items = <Map<String, dynamic>>[];
+        for (final step in steps) {
+          if (step.providerResponseId != messageId ||
+              (step.providerCallId ?? '').trim().isEmpty) {
+            continue;
+          }
+          if (step.status != ChatTurnStepStatus.completed &&
+              step.status != ChatTurnStepStatus.failed) {
+            continue;
+          }
+          items.add({
+            'role': 'user',
+            'content': [
+              {
+                'type': 'tool_result',
+                'tool_use_id': step.providerCallId!.trim(),
+                'content': _encodeProviderStepOutput(step),
+              },
+            ],
+          });
+        }
+        return items;
+      case ChatTurnProviderStyle.openaiChatCompletions:
+      case null:
+        return const [];
     }
-    return items;
   }
 
   String _encodeProviderStepOutput(ChatTurnStep step) {
