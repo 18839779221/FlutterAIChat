@@ -21,6 +21,12 @@ class AppColors extends ThemeExtension<AppColors> {
   /// Surface for structured output blocks.
   final Color structuredSurface;
 
+  /// Surface for explicit tool outcome cards.
+  final Color toolOutcomeSurface;
+
+  /// Surface for actionable tool exception cards.
+  final Color toolExceptionSurface;
+
   /// Primary readable text color.
   final Color primaryText;
 
@@ -46,6 +52,8 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.userBubbleSurface,
     required this.toolWorkflowSurface,
     required this.structuredSurface,
+    required this.toolOutcomeSurface,
+    required this.toolExceptionSurface,
     required this.primaryText,
     required this.secondaryText,
     required this.divider,
@@ -62,6 +70,8 @@ class AppColors extends ThemeExtension<AppColors> {
       userBubbleSurface: Color(0xFFD6DBD2),
       toolWorkflowSurface: Color(0xFFDDE4D8),
       structuredSurface: Color(0xFFE6E1D6),
+      toolOutcomeSurface: Color(0xFFE1E8DE),
+      toolExceptionSurface: Color(0xFFEEE2D7),
       primaryText: Color(0xFF182019),
       secondaryText: Color(0xFF596259),
       divider: Color(0x2E20281F),
@@ -79,6 +89,8 @@ class AppColors extends ThemeExtension<AppColors> {
       userBubbleSurface: Color(0xFF243545),
       toolWorkflowSurface: Color(0xFF1B232B),
       structuredSurface: Color(0xFF191C20),
+      toolOutcomeSurface: Color(0xFF16201B),
+      toolExceptionSurface: Color(0xFF241C19),
       primaryText: Color(0xFFF0F3F6),
       secondaryText: Color(0xFFB2BCC8),
       divider: Color(0x24FFFFFF),
@@ -96,6 +108,8 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? userBubbleSurface,
     Color? toolWorkflowSurface,
     Color? structuredSurface,
+    Color? toolOutcomeSurface,
+    Color? toolExceptionSurface,
     Color? primaryText,
     Color? secondaryText,
     Color? divider,
@@ -111,6 +125,8 @@ class AppColors extends ThemeExtension<AppColors> {
       userBubbleSurface: userBubbleSurface ?? this.userBubbleSurface,
       toolWorkflowSurface: toolWorkflowSurface ?? this.toolWorkflowSurface,
       structuredSurface: structuredSurface ?? this.structuredSurface,
+      toolOutcomeSurface: toolOutcomeSurface ?? this.toolOutcomeSurface,
+      toolExceptionSurface: toolExceptionSurface ?? this.toolExceptionSurface,
       primaryText: primaryText ?? this.primaryText,
       secondaryText: secondaryText ?? this.secondaryText,
       divider: divider ?? this.divider,
@@ -143,6 +159,10 @@ class AppColors extends ThemeExtension<AppColors> {
           Color.lerp(toolWorkflowSurface, other.toolWorkflowSurface, t)!,
       structuredSurface:
           Color.lerp(structuredSurface, other.structuredSurface, t)!,
+      toolOutcomeSurface:
+          Color.lerp(toolOutcomeSurface, other.toolOutcomeSurface, t)!,
+      toolExceptionSurface:
+          Color.lerp(toolExceptionSurface, other.toolExceptionSurface, t)!,
       primaryText: Color.lerp(primaryText, other.primaryText, t)!,
       secondaryText: Color.lerp(secondaryText, other.secondaryText, t)!,
       divider: Color.lerp(divider, other.divider, t)!,
