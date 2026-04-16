@@ -75,4 +75,20 @@ class ToolWorkflowStep {
     }
     return resolvedExecutionPolicy == requireConfirmationPolicy;
   }
+
+  /// Whether this tool step belongs to the low-noise context-gathering family.
+  bool get isContextGatheringTool {
+    switch (toolName.trim()) {
+      case 'search_chat_history':
+      case 'web_search':
+      case 'fetch_webpage':
+      case 'LS':
+      case 'Glob':
+      case 'Grep':
+      case 'Read':
+        return true;
+      default:
+        return false;
+    }
+  }
 }
