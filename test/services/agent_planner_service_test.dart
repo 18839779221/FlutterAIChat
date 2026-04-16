@@ -19,7 +19,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('AgentPlannerService', () {
-    test('planNextDecision includes tool execution policy in planner prompt',
+    test('planNextDecision uses a minimal planner prompt instead of rendering tool policies',
         () async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
@@ -78,14 +78,12 @@ void main() {
         limits: const AgentLoopLimits(),
       );
 
-      expect(llm.lastMessages.first.text, contains('执行策略：auto_run'));
-      expect(
-        llm.lastMessages.first.text,
-        contains('执行策略：require_confirmation'),
-      );
+      expect(llm.lastMessages.first.text, contains('优先使用原生工具调用来推进任务'));
+      expect(llm.lastMessages.first.text, isNot(contains('执行策略')));
+      expect(llm.lastMessages.first.text, isNot(contains('create_reminder')));
     });
 
-    test('planNextDecision annotates structured planner tool options with policy',
+    test('planNextDecision keeps execution policy separate from tool description',
         () async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
@@ -133,10 +131,8 @@ void main() {
       );
 
       expect(llm.lastToolOptions, isNotNull);
-      expect(
-        llm.lastToolOptions!.single.description,
-        contains('Execution policy: require_confirmation'),
-      );
+      expect(llm.lastToolOptions!.single.description, '当用户明确要求提醒时使用。');
+      expect(llm.lastToolOptions!.single.executionPolicy, 'require_confirmation');
     });
 
     test(
@@ -239,7 +235,8 @@ void main() {
       expect(result.diagnosticCode, 'planner_request_failed');
     });
 
-    test('planner messages include structured tool state summary', () async {
+    test('planner messages keep minimal instructions separate from turn summary',
+        () async {
       final llm = _NativeDecisionLLM(
         decision: const ModelTurnDecision(
           toolCalls: [],
@@ -310,9 +307,10 @@ void main() {
         limits: const AgentLoopLimits(),
       );
 
-      expect(llm.lastMessages[1].text, contains('已尝试工具：web_search'));
-      expect(llm.lastMessages[1].text, contains('最近一次工具结果：已读取网页正文'));
-      expect(llm.lastMessages[1].text, contains('最近一次工具失败：network_error'));
+      expect(llm.lastMessages.first.text, contains('你是一个对话回合规划器'));
+      expect(llm.lastMessages.first.text, isNot(contains('搜索聊天记录')));
+      expect(llm.lastMessages[1].text, contains('用户目标：帮我总结网页'));
+      expect(llm.lastMessages[1].text, contains('当前轮次：0'));
     });
 
     test('planNextDecision sends ledger summary and filters unsupported tools',

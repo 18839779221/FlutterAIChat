@@ -288,8 +288,7 @@ class AgentPlannerService {
         .map(
           (access) => PlannerToolOption(
             name: access.definition.name,
-            description:
-                '${access.definition.descriptionForModel}\nExecution policy: ${access.executionPolicyLabel}',
+            description: access.definition.descriptionForModel,
             inputSchema: access.definition.toPlannerJsonSchema(),
             executionPolicy: access.executionPolicyLabel,
           ),
