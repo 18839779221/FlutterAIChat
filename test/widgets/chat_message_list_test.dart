@@ -7,6 +7,9 @@ import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/streaming_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/structured_output_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/tool_exception_card.dart';
+import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
+import 'package:ai_chat/widgets/chat_blocks/tool_outcome_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
@@ -160,8 +163,61 @@ void main() {
         ],
       );
 
-      expect(find.byType(ToolResultSummaryRow), findsOneWidget);
+      expect(find.byType(ToolInlineStepRow), findsOneWidget);
       expect(find.text('已执行：搜索历史记录'), findsOneWidget);
+    });
+
+    testWidgets('external action tool result renders as outcome card',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: 'Reminder created',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolResult,
+            payloadJson: const ToolResult(
+              toolName: 'create_reminder',
+              status: ToolExecutionStatus.success,
+              displayText: '已发起提醒创建：设计评审',
+              payload: {
+                'title': '设计评审',
+                'dueAt': '明天 09:00',
+              },
+            ).toJson(),
+          ),
+        ],
+      );
+
+      expect(find.byType(ToolOutcomeCard), findsOneWidget);
+      expect(find.text('已发起提醒创建：设计评审'), findsOneWidget);
+    });
+
+    testWidgets('actionable tool failure renders as exception card',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: 'Search failed',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolResult,
+            payloadJson: const ToolResult(
+              toolName: 'web_search',
+              status: ToolExecutionStatus.failure,
+              displayText: '联网搜索失败',
+              payload: {
+                'query': 'latest openai',
+                'reason': 'missing_api_key',
+              },
+              errorMessage: 'missing_api_key',
+            ).toJson(),
+          ),
+        ],
+      );
+
+      expect(find.byType(ToolExceptionCard), findsOneWidget);
+      expect(find.text('联网搜索失败'), findsOneWidget);
     });
 
     testWidgets('tool invocation renders as workflow card', (tester) async {
