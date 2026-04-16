@@ -20,11 +20,11 @@
 - `AskUserQuestion` 支持单选、多选、自动追加 `Other`，并以聊天流消息卡片承载交互
 - 支持普通 assistant 消息重新结构化为调试卡片
 - 支持结构化 trace，覆盖发送、LLM、工具确认、工具执行等关键链路
-- planner 现在支持基于工具 schema 的动态工具暴露，而不是只看静态工具名白名单
-- tool result / tool error 会汇总成 planner state，参与下一轮工具决策
-- `AgentTurnOrchestrator` 现在只消费 `planNextDecision()` 的 provider-native 结果；旧的 `planNextAction()` / `planNextToolChoice()` 只保留在 `AgentPlannerService` 兼容层，不再直接参与主编排
-- turn 内多次 tool use 会持久化到 `chat_turn_steps`，最终回答与后续决策统一消费 ledger summary，而不是把原始 tool 命中明细全文回填给模型
-- 当 native planner 不可用而回退到 legacy planner 时，兼容层必须基于最近一步 ledger state 去重，避免对同一个空命中 retrieval 重复发起相同 tool call
+- planner 只走 provider-native `planNextDecision()` 单一路径，legacy JSON planner 已移除
+- `ToolDefinition.descriptionForModel` 是模型侧工具描述的唯一来源，不再维护额外的 `PlannerPromptBuilder`
+- 同一个模型决策可同时包含 assistant 文本和多个 tool call，不再强制“工具调用”和“文本回复”二选一
+- turn 内多次 tool use 会持久化到 `chat_turn_steps`，后续决策统一消费 ledger summary，而不是把原始工具明细全文回填给模型
+- 中间态 assistant 文本会以 `assistantPlannerMessage` 事件落库，便于在工具执行前保留模型可见解释
 
 ### 自动化
 - Flutter Web 固定 origin 回归测试
@@ -136,9 +136,10 @@ flowchart TD
 - 新增 tool 时优先复用 runtime/handler 机制，而不是在多个 `switch` 里重复枚举
 - 用户可见工具操作应考虑确认策略、白名单策略与失败回退
 - `ToolDefinition` 同时承担 runtime metadata 与 planner metadata，新增 tool 时要补齐 `descriptionForModel`、`whenToUse`、`whenNotToUse`、`argumentSchema`
-- planner 默认按意图裁剪可见工具集合，纯检索轮次不应把高风险写工具全部暴露给模型
-- planner prompt 应由工具定义动态生成，避免再维护独立的硬编码工具白名单
-- 主编排层应只依赖 provider-native `ModelTurnDecision`；如果需要兼容旧模型能力，应在 `AgentPlannerService` 内部完成降级并重新包装成统一 decision，而不是在 orchestrator 中保留第二套执行分支
+- `descriptionForModel` 是 planner 暴露给模型的唯一工具说明来源，避免重复维护外部 prompt 模板
+- planner 工具可见性应来自 runtime registry 与 policy/filter，而不是硬编码工具名路由或独立白名单
+- 主编排层只依赖 provider-native `ModelTurnDecision`，不再保留 legacy planner 执行分支
+- 单个 `ModelTurnDecision` 可以同时携带 assistant 文本和 tool calls；assistant 文本既可能是中间解释，也可能是终态答复
 - 对 native tool-calling provider，tool continuation item 由 turn-step ledger 构建；interaction tool 也必须完成对应 step 并写入结构化 `resultJson`
 
 ### Trace 设计原则

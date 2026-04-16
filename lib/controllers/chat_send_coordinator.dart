@@ -199,6 +199,18 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       switch (event.eventType) {
         case ChatEventType.userMessage:
           return;
+        case ChatEventType.assistantPlannerMessage:
+          final plannerMessage = ChatMessage(
+            text: event.content ?? '',
+            role: MessageRole.assistant,
+            status: MessageStatus.completed,
+            payloadJson: event.payloadJson,
+          );
+          final plannerMessageId =
+              await dbHelper.insertMessage(plannerMessage, currentGroupId);
+          plannerMessage.id = plannerMessageId;
+          _ref.read(messagesProvider.notifier).addMessage(plannerMessage);
+          break;
         case ChatEventType.assistantToolCall:
           final message = ChatMessage(
             text: event.content ?? '准备执行工具',
@@ -665,6 +677,22 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
             payloadJson: jsonEncode(resultMessage.payloadJson),
           );
           break;
+        case ChatEventType.assistantPlannerMessage:
+          final plannerMessage = ChatMessage(
+            text: event.content ?? '',
+            role: MessageRole.assistant,
+            status: MessageStatus.completed,
+            payloadJson: {
+              ...?event.payloadJson,
+              'agentTurnId': turnId,
+              traceTurnIdPayloadKey: traceTurnId,
+            },
+          );
+          final plannerMessageId =
+              await dbHelper.insertMessage(plannerMessage, currentGroupId);
+          plannerMessage.id = plannerMessageId;
+          _ref.read(messagesProvider.notifier).addMessage(plannerMessage);
+          break;
         case ChatEventType.assistantQuestionPrompt:
           _ref.read(chatSendStateProvider.notifier).update(
                 isGenerating: false,
@@ -927,6 +955,22 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
               await dbHelper.insertMessage(toolCallMessage, currentGroupId);
           toolCallMessage.id = toolCallMessageId;
           _ref.read(messagesProvider.notifier).addMessage(toolCallMessage);
+          break;
+        case ChatEventType.assistantPlannerMessage:
+          final plannerMessage = ChatMessage(
+            text: event.content ?? '',
+            role: MessageRole.assistant,
+            status: MessageStatus.completed,
+            payloadJson: {
+              ...?event.payloadJson,
+              'agentTurnId': turnId,
+              traceTurnIdPayloadKey: traceTurnId,
+            },
+          );
+          final plannerMessageId =
+              await dbHelper.insertMessage(plannerMessage, currentGroupId);
+          plannerMessage.id = plannerMessageId;
+          _ref.read(messagesProvider.notifier).addMessage(plannerMessage);
           break;
         case ChatEventType.assistantToolConfirmation:
           hasPendingConfirmation = true;

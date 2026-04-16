@@ -144,6 +144,59 @@ void main() {
       expect(messages.first.text, '你是一个严谨的助手');
       expect(messages.last.text, '已找到数据库版本是 7');
     });
+
+    test('buildFinalAnswerMessages keeps intermediate planner assistant messages in transcript order',
+        () async {
+      final service = TranscriptBuilderService(
+        eventRepository: _FakeChatEventRepository([
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '帮我查数据库版本',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.assistantPlannerMessage,
+            role: MessageRole.assistant,
+            content: '我先查一下数据库版本。',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: '已找到数据库版本是 7',
+          ),
+        ]),
+      );
+
+      final messages = await service.buildFinalAnswerMessages(
+        groupId: 1,
+        turn: ChatTurn(
+          id: 1,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '帮我查数据库版本',
+        ),
+        transcript: await service.loadTranscript(1),
+        systemPrompt: '',
+      );
+
+      expect(
+        messages.map((message) => message.text),
+        containsAllInOrder([
+          '帮我查数据库版本',
+          '我先查一下数据库版本。',
+          '已找到数据库版本是 7',
+        ]),
+      );
+    });
   });
 }
 
@@ -174,8 +227,18 @@ class _FakeChatEventRepository implements ChatEventRepository {
   @override
   Future<int> appendAssistantTextFinal({
     required int turnId,
+      required int groupId,
+      required String content,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<int> appendAssistantPlannerMessage({
+    required int turnId,
     required int groupId,
     required String content,
+    Map<String, dynamic>? payloadJson,
   }) {
     throw UnimplementedError();
   }

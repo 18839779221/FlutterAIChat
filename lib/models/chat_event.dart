@@ -4,6 +4,7 @@ import 'package:ai_chat/models/chat_message.dart';
 
 enum ChatEventType {
   userMessage,
+  assistantPlannerMessage,
   assistantReasoningDelta,
   assistantTextDelta,
   assistantTextFinal,
