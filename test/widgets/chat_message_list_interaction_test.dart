@@ -6,12 +6,13 @@ import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_message_list.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_card.dart';
+import 'package:ai_chat/widgets/interaction/ask_user_question_timeline_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('ask user question prompt renders interactive card in message list',
+  testWidgets('active ask user question prompt renders full card in message list',
       (tester) async {
     final container = ProviderContainer(
       overrides: [
@@ -74,6 +75,7 @@ void main() {
     );
 
     expect(find.byType(AskUserQuestionCard), findsOneWidget);
+    expect(find.byType(AskUserQuestionTimelineCard), findsNothing);
     expect(find.text('Which storage layer should we use?'), findsOneWidget);
   });
 
@@ -211,6 +213,87 @@ void main() {
 
     expect(loadMoreController.loadMoreCalls, 1);
     expect(scrollController.offset, greaterThan(olderEdgeOffset));
+  });
+
+  testWidgets(
+      'active ask user question keeps timeline as a single scroll surface',
+      (tester) async {
+    final scrollController = ScrollController();
+    final container = ProviderContainer(
+      overrides: [
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+        scrollControllerProvider.overrideWith((ref) => scrollController),
+        chatSendStateProvider.overrideWith(
+          (ref) => ChatSendStateNotifier()
+            ..update(
+              phase: ChatSendPhase.streamingResponse,
+              isGenerating: true,
+            ),
+        ),
+        autoScrollToBottomProvider.overrideWith((ref) => true),
+        chatInteractionCoordinatorProvider.overrideWithValue(
+          _NoopChatInteractionCoordinator(),
+        ),
+      ],
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      scrollController.dispose();
+    });
+
+    final options = List.generate(
+      18,
+      (index) => {
+        'label': 'Option ${index + 1}',
+        'description': 'Description ${index + 1}',
+      },
+    );
+
+    container.read(messagesProvider.notifier).setMessages([
+      ChatMessage(
+        id: 1001,
+        text: 'Long list question',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.askUserQuestionPrompt,
+        payloadJson: {
+          'type': 'prompt',
+          'agentTurnId': 42,
+          'status': 'awaitingResponse',
+          'questions': [
+            {
+              'id': 'long_list',
+              'header': 'Long List',
+              'question': 'Choose one option',
+              'multiSelect': false,
+              'options': options,
+            },
+          ],
+        },
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatMessageList()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AskUserQuestionCard), findsOneWidget);
+    expect(find.byType(AskUserQuestionTimelineCard), findsNothing);
+    expect(container.read(autoScrollToBottomProvider), isTrue);
+
+    final outerOffsetBefore = scrollController.offset;
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -400));
+    await tester.pumpAndSettle();
+
+    expect(scrollController.offset, greaterThanOrEqualTo(outerOffsetBefore));
   });
 }
 
