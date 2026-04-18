@@ -335,7 +335,6 @@ class ConfigurableHttpLLM implements BaseLLM {
         );
         return null;
       }
-
       final responseText = utf8.decode(response.bodyBytes);
       if (responseText.trim().isEmpty) {
         Logger.w(
@@ -708,6 +707,10 @@ class ConfigurableHttpLLM implements BaseLLM {
       modelName,
       stream: false,
     );
+    // Responses tool-loop continuation relies on previous_response_id, so the
+    // planner response must remain server-addressable instead of being forced
+    // into stateless store:false mode.
+    payload['store'] = true;
     final tools = availableTools
         .map(
           (tool) => {
@@ -1027,7 +1030,8 @@ class ConfigurableHttpLLM implements BaseLLM {
     final modelName = _resolveModelName(runtimeConfig, config);
     final effectiveTimeout = timeout ?? _requestTimeout;
 
-    if (apiStyle == ApiStyle.responses || apiStyle == ApiStyle.anthropicMessages) {
+    if (apiStyle == ApiStyle.responses ||
+        apiStyle == ApiStyle.anthropicMessages) {
       final request = http.Request(
         'POST',
         _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
@@ -1137,7 +1141,8 @@ class ConfigurableHttpLLM implements BaseLLM {
       if (first is Map && first['message'] is Map) {
         final message = (first['message'] as Map).cast<String, dynamic>();
         final hasToolCalls = message['tool_calls'] is List;
-        final contentType = message['content']?.runtimeType.toString() ?? 'null';
+        final contentType =
+            message['content']?.runtimeType.toString() ?? 'null';
         return 'keys=${payload.keys.join(',')} hasToolCalls=$hasToolCalls contentType=$contentType';
       }
       return 'keys=${payload.keys.join(',')} choices=${choices.length}';
