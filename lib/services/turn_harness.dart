@@ -315,6 +315,18 @@ class TurnHarness {
           'planner chose final response path for turnId=$turnId responsePreview=${_preview(decision.assistantMessage ?? '')}',
         );
 
+        if (decision.diagnosticCode == 'planner_request_failed') {
+          Logger.w(
+            _tag,
+            'planner_request_failed short-circuits final-answer streaming for turnId=$turnId',
+          );
+          await _turnRepository.markFailed(
+            turnId,
+            errorMessage: decision.diagnosticCode ?? 'planner_request_failed',
+          );
+          break;
+        }
+
         final answerTranscript =
             await _transcriptBuilderService.loadTranscript(turnId);
         Logger.d(
@@ -452,7 +464,8 @@ class TurnHarness {
   }
 
   String? _resolveDecisionResponseId(ModelTurnDecision decision) {
-    final responseId = decision.providerState['response_id'];
+    final responseId = decision.providerState['response_id'] ??
+        decision.providerState['message_id'];
     if (responseId is! String) {
       return null;
     }
@@ -758,7 +771,8 @@ class TurnHarness {
       if (answer == null || answer.trim().isEmpty) {
         continue;
       }
-      final title = question.header.trim().isEmpty ? question.id : question.header;
+      final title =
+          question.header.trim().isEmpty ? question.id : question.header;
       lines.add('- $title: ${answer.trim()}');
     }
     return lines.join('\n');

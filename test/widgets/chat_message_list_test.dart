@@ -14,6 +14,8 @@ import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
 import 'package:ai_chat/widgets/chat_message_list.dart';
+import 'package:ai_chat/widgets/interaction/ask_user_question_result_card.dart';
+import 'package:ai_chat/widgets/interaction/ask_user_question_timeline_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -241,6 +243,67 @@ void main() {
 
       expect(find.byType(ToolWorkflowCard), findsOneWidget);
       expect(find.text('正在执行工具：读取网页'), findsWidgets);
+    });
+
+    testWidgets('ask user question prompt renders compact placeholder card',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '需要更多信息',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.askUserQuestionPrompt,
+            payloadJson: const {
+              'type': 'prompt',
+              'agentTurnId': 42,
+              'status': 'awaitingResponse',
+              'questions': [
+                {
+                  'id': 'storage_layer',
+                  'header': 'Storage',
+                  'question': 'Which storage layer should we use?',
+                  'multiSelect': false,
+                  'options': [],
+                },
+              ],
+            },
+          ),
+        ],
+      );
+
+      expect(find.byType(AskUserQuestionTimelineCard), findsOneWidget);
+      expect(find.text('等待你补充信息'), findsOneWidget);
+    });
+
+    testWidgets('ask user question result renders compact answer card',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '已提交答案',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.askUserQuestionResult,
+            payloadJson: const {
+              'type': 'result',
+              'agentTurnId': 42,
+              'status': 'submitted',
+              'submittedAnswers': {
+                'answersByQuestionId': {
+                  'storage_layer': 'SQLite',
+                  'offline_mode': 'Yes',
+                },
+              },
+            },
+          ),
+        ],
+      );
+
+      expect(find.byType(AskUserQuestionResultCard), findsOneWidget);
+      expect(find.text('已补充本回合信息'), findsOneWidget);
+      expect(find.text('SQLite'), findsOneWidget);
+      expect(find.text('Yes'), findsOneWidget);
     });
 
     testWidgets('action confirmation renders workflow card with action buttons', (
