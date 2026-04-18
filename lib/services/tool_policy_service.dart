@@ -60,20 +60,14 @@ class ToolPolicyService {
 
     final mode = await getExecutionMode();
     final executionDecision = switch (mode) {
-      ToolExecutionMode.conservative =>
-        tool.requiresConfirmation
-            ? ToolPolicyDecision.requireConfirmation
-            : ToolPolicyDecision.autoRun,
-      ToolExecutionMode.balanced =>
-        tool.requiresConfirmation
-            ? ToolPolicyDecision.requireConfirmation
-            : ToolPolicyDecision.autoRun,
+      ToolExecutionMode.conservative => tool.requiresConfirmation
+          ? ToolPolicyDecision.requireConfirmation
+          : ToolPolicyDecision.autoRun,
+      ToolExecutionMode.balanced => tool.requiresConfirmation
+          ? ToolPolicyDecision.requireConfirmation
+          : ToolPolicyDecision.autoRun,
       ToolExecutionMode.aggressive => ToolPolicyDecision.autoRun,
     };
-    Logger.i(
-      _tag,
-      'resolveToolAccess tool=${tool.name} mode=${mode.name} requiresConfirmation=${tool.requiresConfirmation} decision=${executionDecision.name}',
-    );
     return _buildToolAccess(tool, executionDecision);
   }
 

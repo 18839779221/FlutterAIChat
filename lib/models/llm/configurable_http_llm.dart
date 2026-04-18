@@ -77,7 +77,10 @@ class ConfigurableHttpLLM implements BaseLLM {
       Logger.i(_tag, '准备发送消息，消息数量: ${messages.length}');
       final runtimeConfig = await _settingsRepository.getLlmConfig();
       _validateRuntimeConfig(runtimeConfig);
-      _logMessages(messages);
+      Logger.d(
+        _tag,
+        '发送摘要 roles=${messages.map((message) => message.role.name).join(",")} totalChars=${messages.fold<int>(0, (sum, message) => sum + message.text.length)}',
+      );
 
       final apiStyle = _protocolResolver.resolveStyle(runtimeConfig.apiUrl);
       final modelName = _resolveModelName(runtimeConfig, config);
@@ -336,6 +339,7 @@ class ConfigurableHttpLLM implements BaseLLM {
         return null;
       }
       final responseText = utf8.decode(response.bodyBytes);
+      Logger.i(_tag, 'native planner 响应体: $responseText');
       if (responseText.trim().isEmpty) {
         Logger.w(
           _tag,
@@ -1105,13 +1109,6 @@ class ConfigurableHttpLLM implements BaseLLM {
       return buffer.toString();
     }
     return '';
-  }
-
-  void _logMessages(List<ChatMessage> messages) {
-    for (var i = 0; i < messages.length; i++) {
-      final msg = messages[i];
-      Logger.i(_tag, '消息[$i] ${msg.role}: ${msg.text}');
-    }
   }
 
   String _previewBody(String value) {
