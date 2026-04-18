@@ -207,6 +207,9 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
 
     if (messages.isEmpty) {
       return ChatEmptyState(
+        suggestions: buildChatEmptySuggestionsFromCases(
+          ref.watch(featuredDebugTestCasesProvider),
+        ),
         onSuggestionSelected: (prompt) {
           textController.value = TextEditingValue(
             text: prompt,

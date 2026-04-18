@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,7 @@ import '../providers/chat_providers.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/chat_drawer.dart';
+import '../widgets/debug/debug_test_case_sheet.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({super.key, required this.title});
@@ -133,6 +135,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   onMenuPressed: () => _scaffoldKey.currentState?.openDrawer(),
                   onNewChatPressed:
                       ref.read(chatControllerProvider).createNewGroup,
+                  onDebugCasesPressed:
+                      kDebugMode ? () => _showDebugTestCases(context) : null,
                   onMorePressed: () => _showHeaderActions(
                     context,
                     hasSystemPrompt:
@@ -145,6 +149,32 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _showDebugTestCases(BuildContext context) async {
+    final library = await ref.read(debugTestCaseLibraryProvider.future);
+    if (!context.mounted) {
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).extension<AppColors>()!.chatBackground,
+      builder: (sheetContext) => DebugTestCaseSheet(
+        cases: library.allCases,
+        onSelected: (item) {
+          final textController = ref.read(textControllerProvider);
+          final focusNode = ref.read(focusNodeProvider);
+          textController.value = TextEditingValue(
+            text: item.prompt,
+            selection: TextSelection.collapsed(offset: item.prompt.length),
+          );
+          Navigator.of(sheetContext).pop();
+          focusNode.requestFocus();
+        },
       ),
     );
   }
@@ -231,12 +261,14 @@ class _GhostHeader extends StatelessWidget {
   final bool isSendInFlight;
   final VoidCallback onMenuPressed;
   final VoidCallback onNewChatPressed;
+  final VoidCallback? onDebugCasesPressed;
   final VoidCallback onMorePressed;
 
   const _GhostHeader({
     required this.isSendInFlight,
     required this.onMenuPressed,
     required this.onNewChatPressed,
+    required this.onDebugCasesPressed,
     required this.onMorePressed,
   });
 
@@ -268,6 +300,15 @@ class _GhostHeader extends StatelessWidget {
               tooltip: '新建对话',
               onPressed: isSendInFlight ? null : onNewChatPressed,
             ),
+            if (onDebugCasesPressed != null) ...[
+              SizedBox(width: spacing.xs),
+              _HeaderButton(
+                buttonKey: const ValueKey('debug-test-cases-button'),
+                icon: Icons.science_outlined,
+                tooltip: '测试案例',
+                onPressed: onDebugCasesPressed,
+              ),
+            ],
             SizedBox(width: spacing.xs),
             _HeaderButton(
               icon: Icons.more_horiz,
@@ -282,12 +323,14 @@ class _GhostHeader extends StatelessWidget {
 }
 
 class _HeaderButton extends StatelessWidget {
+  final Key? buttonKey;
   final IconData icon;
   final String tooltip;
   final VoidCallback? onPressed;
   final bool filled;
 
   const _HeaderButton({
+    this.buttonKey,
     required this.icon,
     required this.tooltip,
     required this.onPressed,
@@ -329,6 +372,7 @@ class _HeaderButton extends StatelessWidget {
               ],
             ),
             child: IconButton(
+              key: buttonKey,
               constraints: const BoxConstraints.tightFor(width: 30, height: 30),
               padding: EdgeInsets.zero,
               tooltip: tooltip,

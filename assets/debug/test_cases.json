@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "agent-loop-plain-answer",
+      "group": "tool-call",
+      "title": "纯文本直答",
+      "summary": "验证无需工具时能直接结束回答。",
+      "prompt": "用一句话解释什么是 SQLite",
+      "tags": ["agent-loop", "plain-answer"],
+      "featured": true,
+      "enabled": true
+    },
+    {
+      "id": "agent-loop-memory-search",
+      "group": "tool-call",
+      "title": "单工具自动执行",
+      "summary": "验证历史检索类工具执行后再收敛回答。",
+      "prompt": "我刚才提过数据库版本吗？",
+      "tags": ["agent-loop", "memory", "tool"],
+      "featured": true,
+      "enabled": true
+    },
+    {
+      "id": "agent-loop-search-and-read",
+      "group": "tool-call",
+      "title": "多工具串行执行",
+      "summary": "验证联网搜索和网页读取串行发生。",
+      "prompt": "先搜索 OpenAI 今天的最新消息，再读取你认为最相关的一篇网页，然后总结给我",
+      "tags": ["agent-loop", "web-search", "tool-chain"],
+      "featured": true,
+      "enabled": true
+    },
+    {
+      "id": "tool-confirmation-pause",
+      "group": "confirmation",
+      "title": "需要确认的工具暂停",
+      "summary": "验证带副作用工具先进入确认状态。",
+      "prompt": "提醒我今晚 8 点提交周报",
+      "tags": ["confirmation", "side-effect"],
+      "featured": true,
+      "enabled": true
+    },
+    {
+      "id": "tool-confirmation-cancel",
+      "group": "confirmation",
+      "title": "取消确认",
+      "summary": "验证取消后不会继续执行工具。",
+      "prompt": "提醒我明天上午 10 点开会",
+      "tags": ["confirmation", "cancel"],
+      "featured": false,
+      "enabled": true
+    },
+    {
+      "id": "tool-failure-fallback",
+      "group": "failure",
+      "title": "失败后仍能收敛",
+      "summary": "验证工具失败后界面不会卡死。",
+      "prompt": "读取这个网页并总结 https://not-a-real-domain-for-agent-loop-test.invalid",
+      "tags": ["failure", "fallback"],
+      "featured": false,
+      "enabled": true
+    },
+    {
+      "id": "ask-user-question-single-follow-up",
+      "group": "ask-user-question",
+      "title": "单题问答",
+      "summary": "验证模型先提出一个关键澄清问题，再继续给方案。",
+      "prompt": "帮我设计一个本地 AI 聊天 App 的存储方案，但我现在还没决定用哪种数据库。请先向我提一个关键澄清问题，再继续给方案。",
+      "tags": ["ask-user-question", "clarification", "single-question"],
+      "featured": false,
+      "enabled": true
+    },
+    {
+      "id": "ask-user-question-other-custom",
+      "group": "ask-user-question",
+      "title": "Other 自定义",
+      "summary": "验证模型不要替用户决定数据库类型，而是先追问存储方案。",
+      "prompt": "帮我规划一个 Flutter 聊天应用的本地持久化架构，但不要自己替我决定数据库类型。请先问我该选什么存储方案。",
+      "tags": ["ask-user-question", "clarification", "other-option"],
+      "featured": false,
+      "enabled": true
+    },
+    {
+      "id": "ask-user-question-batched-clarification",
+      "group": "ask-user-question",
+      "title": "多题澄清",
+      "summary": "验证模型一次性提出多个关键澄清问题。",
+      "prompt": "我要做一个新的 AI Chat 产品方案，但我还没决定目标平台、数据存储、以及是否支持离线模式。不要自己猜，请把这些关键问题一次性问我，然后再给最终建议。",
+      "tags": ["ask-user-question", "clarification", "multi-question"],
+      "featured": false,
+      "enabled": true
+    },
+    {
+      "id": "ask-user-question-multi-select-priority",
+      "group": "ask-user-question",
+      "title": "多选优先级",
+      "summary": "验证模型先询问首发功能并允许多选，再帮助排优先级。",
+      "prompt": "我要做一个聊天应用的 MVP，但还没确定第一版必须支持哪些能力。请先问我希望首发包含哪些功能，允许多选，然后再帮我排优先级。",
+      "tags": ["ask-user-question", "multi-select", "priority"],
+      "featured": false,
+      "enabled": true
+    }
+  ]
+}

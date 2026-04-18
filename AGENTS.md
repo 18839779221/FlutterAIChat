@@ -243,6 +243,8 @@ Database version: 5 (includes `is_summarized` field for automatic summarization 
 - `lib/models/context/context_strategies.dart` - Context selection strategy implementations
 - `lib/models/llm/llm_factory.dart` - LLM factory for creating model instances
 - `lib/database/database_helper.dart` - SQLite database operations
+- `assets/debug/test_cases.json` - Debug 测试案例的唯一结构化数据源，供空状态精选案例、Debug `Cases` 面板和未来自动化共用
+- `config/local_defaults.json` - 本地运行与自动化默认配置来源，供 LLM 默认参数与 Droidrun 等脚本在运行时读取
 
 ## Important Notes
 
@@ -251,12 +253,20 @@ Database version: 5 (includes `is_summarized` field for automatic summarization 
 - History messages are filtered to only include completed AI-user message pairs before sending to the LLM
 - Auto-scrolling behavior pauses when user manually scrolls up during generation
 - The app supports Shorebird code push for over-the-air updates
+- `assets/debug/test_cases.json` is the single source of truth for debug/e2e manual test cases
+  - Do not reintroduce a second primary case list in Markdown, widget constants, or automation-only fixtures
+  - When adding or changing debug cases, consider whether empty-state featured entries, Debug `Cases` grouping, and related tests also need updates
+- `config/local_defaults.json` is a runtime-facing local defaults file
+  - Changes to its schema or semantics must consider app boot-time config loading, settings fallback behavior, and Android/Web automation scripts that read it directly
 - When generating or modifying code, add necessary comments for public interfaces, payload models, and important fields
   - This is especially required for interface fields, schema fields, DTO/model fields, and tool/message payload fields
   - Comments should explain the meaning and usage of the field, not restate the field name mechanically
   - Keep comments concise, but do not omit them for externally consumed structures just to save lines
 - When architecture changes, update `README.md` to reflect the current structure rather than the historical structure
 - When project requirements, implementation rules, or team conventions change, update `AGENTS.md`
+- Any newly added or updated spec/design/plan documentation in this repository must be written in Chinese
+  - This applies to files under `docs/superpowers/specs/`, `docs/superpowers/plans/`, and similar implementation/design docs
+  - Do not default to English for newly generated spec or implementation plan content
 - When adding a new feature, explicitly consider whether the following also need updates:
   - logging coverage defined in `docs/architecture/logging.md`
   - automated tests

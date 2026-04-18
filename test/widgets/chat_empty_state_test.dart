@@ -1,42 +1,49 @@
+import 'package:ai_chat/models/debug/debug_test_case.dart';
 import 'package:ai_chat/widgets/chat_empty_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('default empty suggestions expose ask-user-question manual test cases',
-      () {
-    expect(defaultChatEmptySuggestions, hasLength(4));
+  test('featured debug cases map to empty state suggestions', () {
+    const cases = <DebugTestCase>[
+      DebugTestCase(
+        id: 'plain-answer',
+        group: 'tool-call',
+        title: '纯文本直答',
+        summary: '验证无需工具时直接回答。',
+        prompt: '用一句话解释什么是 SQLite',
+        tags: ['agent-loop'],
+        featured: true,
+        enabled: true,
+      ),
+      DebugTestCase(
+        id: 'confirmation',
+        group: 'confirmation',
+        title: '需要确认',
+        summary: '验证副作用工具确认暂停。',
+        prompt: '提醒我今晚 8 点提交周报',
+        tags: ['confirmation'],
+        featured: true,
+        enabled: true,
+      ),
+      DebugTestCase(
+        id: 'disabled',
+        group: 'failure',
+        title: '已停用案例',
+        summary: '不应该进入空状态。',
+        prompt: 'disabled',
+        tags: ['legacy'],
+        featured: true,
+        enabled: false,
+      ),
+    ];
+
+    final suggestions = buildChatEmptySuggestionsFromCases(cases);
+
+    expect(suggestions, hasLength(2));
+    expect(suggestions.map((item) => item.label), ['纯文本直答', '需要确认']);
     expect(
-      defaultChatEmptySuggestions.map((item) => item.label),
-      containsAll(<String>[
-        '单题问答',
-        'Other 自定义',
-        '多题澄清',
-        '多选优先级',
-      ]),
-    );
-    expect(
-      defaultChatEmptySuggestions
-          .firstWhere((item) => item.label == '单题问答')
-          .prompt,
-      contains('请先向我提一个关键澄清问题'),
-    );
-    expect(
-      defaultChatEmptySuggestions
-          .firstWhere((item) => item.label == 'Other 自定义')
-          .prompt,
-      contains('请先问我该选什么存储方案'),
-    );
-    expect(
-      defaultChatEmptySuggestions
-          .firstWhere((item) => item.label == '多题澄清')
-          .prompt,
-      contains('请把这些关键问题一次性问我'),
-    );
-    expect(
-      defaultChatEmptySuggestions
-          .firstWhere((item) => item.label == '多选优先级')
-          .prompt,
-      contains('允许多选'),
+      suggestions.map((item) => item.prompt),
+      ['用一句话解释什么是 SQLite', '提醒我今晚 8 点提交周报'],
     );
   });
 }

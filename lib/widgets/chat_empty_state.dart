@@ -1,3 +1,4 @@
+import 'package:ai_chat/models/debug/debug_test_case.dart';
 import 'package:ai_chat/theme/app_colors.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
@@ -13,28 +14,21 @@ class ChatEmptySuggestion {
   });
 }
 
-const defaultChatEmptySuggestions = <ChatEmptySuggestion>[
-  ChatEmptySuggestion(
-    label: '单题问答',
-    prompt:
-        '帮我设计一个本地 AI 聊天 App 的存储方案，但我现在还没决定用哪种数据库。请先向我提一个关键澄清问题，再继续给方案。',
-  ),
-  ChatEmptySuggestion(
-    label: 'Other 自定义',
-    prompt:
-        '帮我规划一个 Flutter 聊天应用的本地持久化架构，但不要自己替我决定数据库类型。请先问我该选什么存储方案。',
-  ),
-  ChatEmptySuggestion(
-    label: '多题澄清',
-    prompt:
-        '我要做一个新的 AI Chat 产品方案，但我还没决定目标平台、数据存储、以及是否支持离线模式。不要自己猜，请把这些关键问题一次性问我，然后再给最终建议。',
-  ),
-  ChatEmptySuggestion(
-    label: '多选优先级',
-    prompt:
-        '我要做一个聊天应用的 MVP，但还没确定第一版必须支持哪些能力。请先问我希望首发包含哪些功能，允许多选，然后再帮我排优先级。',
-  ),
-];
+List<ChatEmptySuggestion> buildChatEmptySuggestionsFromCases(
+  List<DebugTestCase> cases, {
+  int maxItems = 4,
+}) {
+  return cases
+      .where((item) => item.enabled && item.featured)
+      .take(maxItems)
+      .map(
+        (item) => ChatEmptySuggestion(
+          label: item.title,
+          prompt: item.prompt,
+        ),
+      )
+      .toList(growable: false);
+}
 
 /// Calm empty state shown before the conversation begins.
 class ChatEmptyState extends StatelessWidget {
@@ -44,7 +38,7 @@ class ChatEmptyState extends StatelessWidget {
   const ChatEmptyState({
     super.key,
     this.onSuggestionSelected,
-    this.suggestions = defaultChatEmptySuggestions,
+    this.suggestions = const <ChatEmptySuggestion>[],
   });
 
   @override
