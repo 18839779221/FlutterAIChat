@@ -53,14 +53,15 @@ class OpenAIResponsesToolLoopAdapter {
       }
       final toolName = _normalizeText(normalizedItem['name']);
       final arguments = _decodeArguments(normalizedItem['arguments']);
+      final providerCallId = _normalizeText(
+        normalizedItem['call_id'] ?? normalizedItem['id'],
+      );
       if (toolName == null || arguments == null) {
         continue;
       }
       parsed.add(
         ModelToolCall(
-          providerCallId: _normalizeText(
-            normalizedItem['call_id'] ?? normalizedItem['id'],
-          ),
+          providerCallId: providerCallId,
           toolName: toolName,
           arguments: arguments,
           sequence: i,

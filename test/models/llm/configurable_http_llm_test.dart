@@ -238,7 +238,7 @@ void main() {
       expect(client.lastRequestBody?['stream'], isFalse);
       expect(client.lastRequestBody?['tool_choice'], 'auto');
       expect(client.lastRequestBody?['parallel_tool_calls'], isFalse);
-      expect(client.lastRequestBody?['store'], isFalse);
+      expect(client.lastRequestBody?['store'], isTrue);
       expect(client.lastRequestBody?['input'], [
         {
           'role': 'user',
@@ -953,6 +953,65 @@ void main() {
             ),
       );
       expect(client.lastRequestBody?['previous_response_id'], 'resp_prev');
+    });
+
+    test('responses decision stores planner responses for later continuation',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'id': 'resp_store',
+            'output': [
+              {
+                'type': 'function_call',
+                'call_id': 'fc_store',
+                'name': 'ask_user_question',
+                'arguments': jsonEncode({
+                  'questions': [
+                    {
+                      'id': 'q1',
+                      'header': '方案',
+                      'question': '请选择方案',
+                      'options': [
+                        {'label': 'A', 'description': '方案 A'},
+                      ],
+                    },
+                  ],
+                }),
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1',
+        httpClient: client,
+      );
+
+      await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '请先问我需要哪个方案', role: MessageRole.user),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        availableTools: const [
+          PlannerToolOption(
+            name: 'ask_user_question',
+            description: '当必须向用户补充关键信息时发起结构化提问。',
+            inputSchema: {
+              'type': 'object',
+              'properties': {
+                'questions': {'type': 'array'},
+              },
+              'required': ['questions'],
+            },
+          ),
+        ],
+      );
+
+      expect(client.lastRequestBody?['store'], isTrue);
     });
 
     test('anthropic decision includes runtime provider metadata', () async {
