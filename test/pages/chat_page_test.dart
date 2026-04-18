@@ -1,9 +1,11 @@
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/debug/debug_test_case.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/pages/chat_page.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
+import 'package:ai_chat/services/debug_test_case_loader.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_message_list.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_card.dart';
@@ -247,6 +249,82 @@ void main() {
 
     expect(find.byType(AskUserQuestionCard), findsNothing);
   });
+
+  testWidgets('debug cases picker populates input', (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider.overrideWith(
+          (ref) => _StubSessionCoordinator(),
+        ),
+        chatSendCoordinatorProvider.overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatDebugControllerProvider.overrideWith((ref) => _StubDebugController()),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+        debugTestCaseLoaderProvider.overrideWith(
+          (ref) => const _FakeDebugTestCaseLoader(
+            DebugTestCaseLibrary(
+              version: 1,
+              allCases: [
+                DebugTestCase(
+                  id: 'plain-answer',
+                  group: 'tool-call',
+                  title: '纯文本直答',
+                  summary: '无需工具时直接回答。',
+                  prompt: '用一句话解释什么是 SQLite',
+                  tags: ['agent-loop'],
+                  featured: true,
+                  enabled: true,
+                ),
+                DebugTestCase(
+                  id: 'single-follow-up',
+                  group: 'ask-user-question',
+                  title: '单题问答',
+                  summary: '先追问一个关键澄清问题。',
+                  prompt: '请先提一个关键澄清问题',
+                  tags: ['clarification'],
+                  featured: false,
+                  enabled: true,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('debug-test-cases-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('纯文本直答'), findsWidgets);
+    expect(find.text('无需工具时直接回答。'), findsOneWidget);
+    expect(find.text('工具调用'), findsOneWidget);
+    expect(find.text('澄清提问'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('debug-test-case-plain-answer')));
+    await tester.pumpAndSettle();
+
+    final input = tester.widget<TextField>(
+      find.byKey(const ValueKey('chat-input-field')),
+    );
+    expect(input.controller?.text, '用一句话解释什么是 SQLite');
+  });
 }
 
 class _StubSendCoordinator implements ChatSendCoordinator {
@@ -321,4 +399,13 @@ class _StubPreferencesController implements ChatPreferencesController {
 
   @override
   void setUseReasoning(bool value) {}
+}
+
+class _FakeDebugTestCaseLoader implements DebugTestCaseLoader {
+  final DebugTestCaseLibrary library;
+
+  const _FakeDebugTestCaseLoader(this.library);
+
+  @override
+  Future<DebugTestCaseLibrary> load() async => library;
 }

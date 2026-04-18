@@ -30,6 +30,8 @@
 - Flutter Web 固定 origin 回归测试
 - Android Droidrun 真机冒烟测试
 - Driver 式确定性脚本与 Agent 式脚本双轨并存
+- Debug 测试案例统一维护在 `assets/debug/test_cases.json`
+- Debug 模式下可通过聊天页顶部的 `Cases` 入口查看全量案例，并将 prompt 一键填入输入框
 
 ## 架构概览
 

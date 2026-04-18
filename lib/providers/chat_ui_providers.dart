@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/debug/debug_test_case.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
+import 'package:ai_chat/services/debug_test_case_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -49,6 +51,28 @@ final focusNodeProvider = Provider<FocusNode>((ref) {
   final focusNode = FocusNode();
   ref.onDispose(() => focusNode.dispose());
   return focusNode;
+});
+
+final debugTestCaseLoaderProvider = Provider<DebugTestCaseLoader>((ref) {
+  return AssetDebugTestCaseLoader();
+});
+
+final debugTestCaseLibraryProvider = FutureProvider<DebugTestCaseLibrary>((ref) {
+  return ref.watch(debugTestCaseLoaderProvider).load();
+});
+
+final enabledDebugTestCasesProvider = Provider<List<DebugTestCase>>((ref) {
+  return ref.watch(debugTestCaseLibraryProvider).maybeWhen(
+        data: (library) => library.allCases,
+        orElse: () => const <DebugTestCase>[],
+      );
+});
+
+final featuredDebugTestCasesProvider = Provider<List<DebugTestCase>>((ref) {
+  return ref.watch(debugTestCaseLibraryProvider).maybeWhen(
+        data: (library) => library.featuredCases,
+        orElse: () => const <DebugTestCase>[],
+      );
 });
 
 // 流订阅提供者
