@@ -1,6 +1,7 @@
 import 'package:ai_chat/models/tool/tool_argument_property.dart';
 import 'package:ai_chat/models/tool/tool_argument_schema.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
+import 'package:ai_chat/tools/handlers/ask_user_question_tool_handler.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -139,6 +140,30 @@ void main() {
           },
           'required': ['url'],
         }),
+      );
+    });
+
+    test('ask user question schema exports nested array items for strict providers',
+        () {
+      final definition = AskUserQuestionToolHandler().definition;
+      final schema = definition.toPlannerJsonSchema();
+      final questions = (schema['properties'] as Map<String, dynamic>)['questions']
+          as Map<String, dynamic>;
+      final questionItems = questions['items'] as Map<String, dynamic>;
+      final options = (questionItems['properties'] as Map<String, dynamic>)['options']
+          as Map<String, dynamic>;
+
+      expect(questions['type'], 'array');
+      expect(questionItems['type'], 'object');
+      expect(questionItems['required'], containsAll(['id', 'question']));
+      expect(options['type'], 'array');
+      expect(
+        (options['items'] as Map<String, dynamic>)['type'],
+        'object',
+      );
+      expect(
+        (options['items'] as Map<String, dynamic>)['required'],
+        contains('label'),
       );
     });
   });

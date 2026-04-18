@@ -1,5 +1,8 @@
 import 'dart:async';
 
+import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/response/message_content_type.dart';
+import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -51,3 +54,39 @@ final focusNodeProvider = Provider<FocusNode>((ref) {
 // 流订阅提供者
 final streamSubscriptionProvider =
     StateProvider<StreamSubscription?>((ref) => null);
+
+/// Returns the latest unresolved ask-user-question prompt so the timeline can
+/// render it as the active interactive card while older/resolved prompts stay
+/// compact.
+final activeAskUserQuestionMessageProvider = Provider<ChatMessage?>((ref) {
+  final messages = ref.watch(messagesProvider);
+  final resolvedTurnIds = <int>{};
+
+  for (final message in messages) {
+    if (message.contentType != MessageContentType.askUserQuestionResult) {
+      continue;
+    }
+    final turnId = message.payloadJson?['agentTurnId'];
+    if (turnId is int) {
+      resolvedTurnIds.add(turnId);
+    }
+  }
+
+  for (final message in messages.reversed) {
+    if (message.contentType != MessageContentType.askUserQuestionPrompt) {
+      continue;
+    }
+    final payload = message.payloadJson;
+    final turnId = payload?['agentTurnId'];
+    final status = payload?['status'];
+    if (turnId is! int || resolvedTurnIds.contains(turnId)) {
+      continue;
+    }
+    if (status is String && status.isNotEmpty && status != 'awaitingResponse') {
+      continue;
+    }
+    return message;
+  }
+
+  return null;
+});

@@ -12,11 +12,27 @@ class ToolArgumentProperty {
   /// Optional schema format such as `uri` or `date-time`.
   final String? format;
 
+  /// Nested object properties when this field is an object.
+  final Map<String, ToolArgumentProperty>? properties;
+
+  /// Required property names for nested object fields.
+  final List<String>? required;
+
+  /// Item schema when this field is an array.
+  final ToolArgumentProperty? items;
+
+  /// Whether nested object fields may accept unspecified keys.
+  final bool? additionalProperties;
+
   const ToolArgumentProperty({
     required this.type,
     required this.description,
     this.enumValues,
     this.format,
+    this.properties,
+    this.required,
+    this.items,
+    this.additionalProperties,
   });
 
   const ToolArgumentProperty.string({
@@ -43,6 +59,15 @@ class ToolArgumentProperty {
       'description': description,
       if (enumValues != null && enumValues!.isNotEmpty) 'enum': enumValues,
       if (format != null && format!.trim().isNotEmpty) 'format': format,
+      if (properties != null && properties!.isNotEmpty)
+        'properties': {
+          for (final entry in properties!.entries)
+            entry.key: entry.value.toJsonSchema(),
+        },
+      if (required != null && required!.isNotEmpty) 'required': required,
+      if (items != null) 'items': items!.toJsonSchema(),
+      if (additionalProperties != null)
+        'additionalProperties': additionalProperties,
     };
   }
 }

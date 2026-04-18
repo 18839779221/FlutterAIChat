@@ -14,7 +14,6 @@ import '../models/tool/tool_definition.dart';
 import 'chat_service.dart';
 import 'planner_tool_exposure_service.dart';
 import 'tool_policy_service.dart';
-import 'turn_ledger_builder_service.dart';
 import '../utils/logger.dart';
 
 class AgentPlannerService {
@@ -23,21 +22,17 @@ class AgentPlannerService {
   final BaseLLM _llm;
   final List<ToolDefinition> _availableTools;
   final PlannerToolExposureService _toolExposureService;
-  final TurnLedgerBuilderService _turnLedgerBuilder;
   final ToolPolicyService? _toolPolicyService;
 
   AgentPlannerService({
     required BaseLLM llm,
     List<ToolDefinition> availableTools = const [],
     PlannerToolExposureService? toolExposureService,
-    TurnLedgerBuilderService? turnLedgerBuilder,
     ToolPolicyService? toolPolicyService,
   })  : _llm = llm,
         _availableTools = availableTools,
         _toolExposureService =
             toolExposureService ?? PlannerToolExposureService(),
-        _turnLedgerBuilder =
-            turnLedgerBuilder ?? const TurnLedgerBuilderService(),
         _toolPolicyService = toolPolicyService;
 
   Future<ModelTurnDecision?> planNextDecision({
@@ -63,16 +58,6 @@ class AgentPlannerService {
         ),
         role: MessageRole.system,
       ),
-      ChatMessage(
-        text: '${_turnLedgerBuilder.buildPlannerSummary(
-          turn: turn,
-          steps: steps,
-        )}\n'
-            '当前轮次：${turn.iterationCount}\n'
-            '已调用工具数：${turn.toolCallCount}\n'
-            '最大轮次：${limits.maxIterations}',
-        role: MessageRole.system,
-      ),
       ...transcript.map(_eventToMessage),
     ];
 
@@ -81,16 +66,17 @@ class AgentPlannerService {
         _tag,
         'planner decision start turnId=${turn.id} iteration=${turn.iterationCount} toolCalls=${turn.toolCallCount} transcriptEvents=${transcript.length} stepCount=${steps.length} userInput=${_preview(turn.userInput)}',
       );
+      final continuationItems = _buildProviderContinuationItems(
+        turn: turn,
+        steps: steps,
+      );
       final decision = await _llm.planTurnDecision(
         messages: messages,
         config: config,
         availableTools: plannerToolOptions,
         providerStyle: turn.providerStyle,
         providerState: turn.providerStateJson,
-        providerContinuationItems: _buildProviderContinuationItems(
-          turn: turn,
-          steps: steps,
-        ),
+        providerContinuationItems: continuationItems,
       );
       if (decision != null) {
         return _sanitizeDecision(
@@ -222,10 +208,10 @@ class AgentPlannerService {
 
   Object? _normalizeJsonValue(Object? value) {
     if (value is Map) {
-      final sortedKeys = value.keys.map((key) => key.toString()).toList()..sort();
+      final sortedKeys = value.keys.map((key) => key.toString()).toList()
+        ..sort();
       return {
-        for (final key in sortedKeys)
-          key: _normalizeJsonValue(value[key]),
+        for (final key in sortedKeys) key: _normalizeJsonValue(value[key]),
       };
     }
     if (value is List) {
@@ -238,38 +224,68 @@ class AgentPlannerService {
     required ChatTurn turn,
     required List<ChatTurnStep> steps,
   }) {
-    if (turn.providerStyle != ChatTurnProviderStyle.openaiResponses) {
-      return const [];
-    }
-    final responseId = turn.providerStateJson?['response_id'];
-    if (responseId is! String || responseId.trim().isEmpty) {
-      return const [];
-    }
+    switch (turn.providerStyle) {
+      case ChatTurnProviderStyle.openaiResponses:
+        final responseId = turn.providerStateJson?['response_id'];
+        if (responseId is! String || responseId.trim().isEmpty) {
+          return const [];
+        }
 
-    final items = <Map<String, dynamic>>[];
-    for (final step in steps) {
-      if (step.providerResponseId != responseId ||
-          (step.providerCallId ?? '').trim().isEmpty) {
-        continue;
-      }
-      if (step.status != ChatTurnStepStatus.completed &&
-          step.status != ChatTurnStepStatus.failed) {
-        continue;
-      }
-      items.add({
-        'type': 'function_call_output',
-        'call_id': step.providerCallId!.trim(),
-        'output': _encodeProviderStepOutput(step),
-      });
+        final items = <Map<String, dynamic>>[];
+        for (final step in steps) {
+          if (step.providerResponseId != responseId ||
+              (step.providerCallId ?? '').trim().isEmpty) {
+            continue;
+          }
+          if (step.status != ChatTurnStepStatus.completed &&
+              step.status != ChatTurnStepStatus.failed) {
+            continue;
+          }
+          items.add({
+            'type': 'function_call_output',
+            'call_id': step.providerCallId!.trim(),
+            'output': _encodeProviderStepOutput(step),
+          });
+        }
+        return items;
+      case ChatTurnProviderStyle.anthropicMessages:
+        final messageId = turn.providerStateJson?['message_id'];
+        if (messageId is! String || messageId.trim().isEmpty) {
+          return const [];
+        }
+
+        final items = <Map<String, dynamic>>[];
+        for (final step in steps) {
+          if (step.providerResponseId != messageId ||
+              (step.providerCallId ?? '').trim().isEmpty) {
+            continue;
+          }
+          if (step.status != ChatTurnStepStatus.completed &&
+              step.status != ChatTurnStepStatus.failed) {
+            continue;
+          }
+          items.add({
+            'role': 'user',
+            'content': [
+              {
+                'type': 'tool_result',
+                'tool_use_id': step.providerCallId!.trim(),
+                'content': _encodeProviderStepOutput(step),
+              },
+            ],
+          });
+        }
+        return items;
+      case ChatTurnProviderStyle.openaiChatCompletions:
+      case null:
+        return const [];
     }
-    return items;
   }
 
   String _encodeProviderStepOutput(ChatTurnStep step) {
     final payload = <String, dynamic>{
-      'status': step.status == ChatTurnStepStatus.completed
-          ? 'success'
-          : 'failure',
+      'status':
+          step.status == ChatTurnStepStatus.completed ? 'success' : 'failure',
       if ((step.resultSummary ?? '').trim().isNotEmpty)
         'summary': step.resultSummary!.trim(),
       if ((step.errorCode ?? '').trim().isNotEmpty) 'error': step.errorCode,
@@ -322,7 +338,6 @@ class AgentPlannerService {
   List<String> _resolveAllowedToolNames(List<ToolDefinition> visibleTools) {
     return visibleTools.map((tool) => tool.name).toList(growable: false);
   }
-
 
   String _buildPlannerInstructionMessage({
     required bool hasUserInteractionTool,

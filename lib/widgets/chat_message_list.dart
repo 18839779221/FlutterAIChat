@@ -21,6 +21,8 @@ import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
 import 'package:ai_chat/widgets/chat_empty_state.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_card.dart';
+import 'package:ai_chat/widgets/interaction/ask_user_question_result_card.dart';
+import 'package:ai_chat/widgets/interaction/ask_user_question_timeline_card.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -40,7 +42,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   static const double _anchorThreshold = 100;
   bool _isNearBottom = true;
   bool _isLoadingOlderHistory = false;
-  GlobalKey? _latestTurnAnchorKey;
+  GlobalKey? _latestTurnEndKey;
   late final ScrollController _scrollController;
 
   @override
@@ -103,7 +105,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       return null;
     }
 
-    final anchorContext = _latestTurnAnchorKey?.currentContext;
+    final anchorContext = _latestTurnEndKey?.currentContext;
     if (anchorContext == null) {
       return scrollController.position.maxScrollExtent;
     }
@@ -118,7 +120,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       return scrollController.position.maxScrollExtent;
     }
 
-    final targetOffset = viewport.getOffsetToReveal(renderObject, 0).offset;
+    final targetOffset = viewport.getOffsetToReveal(renderObject, 1).offset;
     return targetOffset.clamp(
       scrollController.position.minScrollExtent,
       scrollController.position.maxScrollExtent,
@@ -231,6 +233,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           },
           child: CustomScrollView(
             controller: scrollController,
+            physics: const ClampingScrollPhysics(),
             slivers: [
               SliverPadding(
                 padding: EdgeInsets.fromLTRB(
@@ -318,8 +321,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
         widgets.add(
           Padding(
             key: identical(current, latestUserMessage)
-                ? (_latestTurnAnchorKey ??= GlobalKey(
-                    debugLabel: 'latest-turn-anchor',
+                ? (_latestTurnEndKey = GlobalKey(
+                    debugLabel: 'latest-turn-fallback-anchor',
                   ))
                 : null,
             padding: const EdgeInsets.only(bottom: 2),
@@ -342,7 +345,13 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           messages: segment,
           groupId: currentGroup?.id,
         );
-        widgets.addAll(_buildAssistantBlocks(segment, blocks));
+        widgets.addAll(
+          _buildAssistantBlocks(
+            segment,
+            blocks,
+            markLatestTurnEnd: identical(current, latestUserMessage),
+          ),
+        );
         cursor = nextCursor;
         continue;
       }
@@ -361,80 +370,88 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   List<Widget> _buildAssistantBlocks(
     List<ChatMessage> sourceMessages,
     List<AssistantTurnBlock> blocks,
+    {bool markLatestTurnEnd = false,}
   ) {
     final widgets = <Widget>[];
+    final activeAskUserQuestion = ref.read(activeAskUserQuestionMessageProvider);
 
-    for (final block in blocks) {
+    for (var index = 0; index < blocks.length; index += 1) {
+      final block = blocks[index];
+      final isLatestTurnEnd = markLatestTurnEnd && index == blocks.length - 1;
       final sourceMessage = _resolveSourceMessage(sourceMessages, block);
+      late Widget blockWidget;
 
       switch (block.type) {
         case AssistantTurnBlockType.analysis:
-          widgets.add(
-            GestureDetector(
-              onLongPress: sourceMessage == null
-                  ? null
-                  : () => _showMessageOptionMenu(sourceMessage),
-              child: AssistantDocBlock(
-                label: 'Analysis',
-                text: block.text ?? '',
-              ),
+          blockWidget = GestureDetector(
+            onLongPress: sourceMessage == null
+                ? null
+                : () => _showMessageOptionMenu(sourceMessage),
+            child: AssistantDocBlock(
+              label: 'Analysis',
+              text: block.text ?? '',
             ),
           );
           break;
         case AssistantTurnBlockType.finalResponse:
-          widgets.add(
-            GestureDetector(
-              onLongPress: sourceMessage == null
-                  ? null
-                  : () => _showMessageOptionMenu(sourceMessage),
-              child: sourceMessage?.status == MessageStatus.generating
-                  ? StreamingResponseBlock(
-                      text: block.text ?? '',
-                    )
-                  : FinalResponseBlock(
-                      title: block.title ?? '最终回答',
-                      text: block.text ?? '',
-                    ),
-            ),
+          blockWidget = GestureDetector(
+            onLongPress: sourceMessage == null
+                ? null
+                : () => _showMessageOptionMenu(sourceMessage),
+            child: sourceMessage?.status == MessageStatus.generating
+                ? StreamingResponseBlock(
+                    text: block.text ?? '',
+                  )
+                : FinalResponseBlock(
+                    title: block.title ?? '最终回答',
+                    text: block.text ?? '',
+                  ),
           );
           break;
         case AssistantTurnBlockType.structuredOutput:
           if (sourceMessage?.contentType == MessageContentType.askUserQuestionPrompt) {
-            widgets.add(AskUserQuestionCard(message: sourceMessage!));
+            final isActivePrompt =
+                activeAskUserQuestion?.id != null &&
+                activeAskUserQuestion!.id == sourceMessage?.id;
+            blockWidget = isActivePrompt
+                ? AskUserQuestionCard(message: sourceMessage!)
+                : AskUserQuestionTimelineCard(message: sourceMessage!);
             break;
           }
-          widgets.add(
-            GestureDetector(
-              onLongPress: sourceMessage == null
-                  ? null
-                  : () => _showMessageOptionMenu(sourceMessage),
-              child: StructuredOutputBlock(
-                title: block.title ?? 'Structured Output',
-                fields: _extractStructuredFields(block),
-              ),
+          if (sourceMessage?.contentType == MessageContentType.askUserQuestionResult) {
+            blockWidget = AskUserQuestionResultCard(message: sourceMessage!);
+            break;
+          }
+          blockWidget = GestureDetector(
+            onLongPress: sourceMessage == null
+                ? null
+                : () => _showMessageOptionMenu(sourceMessage),
+            child: StructuredOutputBlock(
+              title: block.title ?? 'Structured Output',
+              fields: _extractStructuredFields(block),
             ),
           );
           break;
         case AssistantTurnBlockType.toolResultSummary:
           final payload = block.payload;
           if (payload == null) {
-            widgets.add(AssistantDocBlock(text: block.text ?? ''));
+            blockWidget = AssistantDocBlock(text: block.text ?? '');
             break;
           }
           final result = ToolResult.fromJson(payload);
           final presentation = ToolCardPresentationMapper.mapResult(result);
           switch (presentation.variant) {
             case ToolCardPresentationVariant.outcomeCard:
-              widgets.add(ToolOutcomeCard(model: presentation));
+              blockWidget = ToolOutcomeCard(model: presentation);
               break;
             case ToolCardPresentationVariant.exceptionCard:
-              widgets.add(ToolExceptionCard(model: presentation));
+              blockWidget = ToolExceptionCard(model: presentation);
               break;
             case ToolCardPresentationVariant.inlineStep:
             case ToolCardPresentationVariant.focusedActiveStep:
             case ToolCardPresentationVariant.confirmationStep:
             case ToolCardPresentationVariant.interactionCard:
-              widgets.add(ToolInlineStepRow(model: presentation));
+              blockWidget = ToolInlineStepRow(model: presentation);
               break;
           }
           break;
@@ -442,42 +459,48 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           final steps = _extractWorkflowSteps(block);
           final manualExpandedStepId =
               ref.watch(toolWorkflowExpansionProvider)[block.turnId];
-          widgets.add(
-            ToolWorkflowCard(
-              title: block.title ?? 'Tool Workflow',
+          blockWidget = ToolWorkflowCard(
+            title: block.title ?? 'Tool Workflow',
+            steps: steps,
+            expandedStepId: resolveWorkflowExpandedStepId(
+              turnId: block.turnId,
               steps: steps,
-              expandedStepId: resolveWorkflowExpandedStepId(
-                turnId: block.turnId,
-                steps: steps,
-                manualExpandedStepId: manualExpandedStepId,
-              ),
-              onStepTapped: (stepId) {
-                ref
-                    .read(toolWorkflowExpansionProvider.notifier)
-                    .toggleExpandedStep(
-                      turnId: block.turnId,
-                      stepId: stepId,
-                    );
-              },
-              onContinue: sourceMessage == null
-                  ? null
-                  : () => ref
-                      .read(chatControllerProvider)
-                      .confirmToolInvocation(sourceMessage),
-              onCancel: sourceMessage == null
-                  ? null
-                  : () => ref
-                      .read(chatControllerProvider)
-                      .cancelToolInvocation(sourceMessage),
-              onContinueAndTrust: sourceMessage == null
-                  ? null
-                  : () => ref
-                      .read(chatControllerProvider)
-                      .confirmToolInvocation(sourceMessage, trustTool: true),
+              manualExpandedStepId: manualExpandedStepId,
             ),
+            onStepTapped: (stepId) {
+              ref
+                  .read(toolWorkflowExpansionProvider.notifier)
+                  .toggleExpandedStep(
+                    turnId: block.turnId,
+                    stepId: stepId,
+                  );
+            },
+            onContinue: sourceMessage == null
+                ? null
+                : () => ref
+                    .read(chatControllerProvider)
+                    .confirmToolInvocation(sourceMessage),
+            onCancel: sourceMessage == null
+                ? null
+                : () => ref
+                    .read(chatControllerProvider)
+                    .cancelToolInvocation(sourceMessage),
+            onContinueAndTrust: sourceMessage == null
+                ? null
+                : () => ref
+                    .read(chatControllerProvider)
+                    .confirmToolInvocation(sourceMessage, trustTool: true),
           );
           break;
       }
+      if (isLatestTurnEnd) {
+        blockWidget = KeyedSubtree(
+          key: _latestTurnEndKey = GlobalKey(debugLabel: 'latest-turn-end'),
+          child: blockWidget,
+        );
+      }
+
+      widgets.add(blockWidget);
     }
 
     return widgets;

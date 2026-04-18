@@ -44,3 +44,23 @@
 
 
 ## BUGFIX
+
+### 1. Responses tool call 第二轮续接失败
+- 现象：
+  - 首轮 `ask_user_question` 等 tool call 能正常返回
+  - 用户提交答案后，第二轮通过 `function_call_output + previous_response_id` 续接时失败
+  - 当前会触发 `planner_request_failed`，并出现“抱歉，我暂时无法规划下一步动作，请直接重试。”
+- 当前已知信息：
+  - 我们发送的是 OpenAI Responses 官方格式的 continuation 请求
+  - 请求里使用的是首轮返回的 `function_call.call_id`
+  - 某些第三方 / 中转 Responses 实现会报错：
+    - `No tool call found for function call output with call_id fc...`
+  - 报错里识别的是 `fc...`，而不是首轮响应中的 `call_...`
+- 已完成的辅助工作：
+  - 已增加完整 request/response 落盘日志
+  - 已增加 planner continuation 上下文与 provider 原始错误日志
+  - 已确认首轮 planner 请求已收敛为单 `system` + 真实 `user`
+- 后续排查方向：
+  - 继续确认第三方 provider 是否错误使用了 `function_call.id` / `fc...`
+  - 对照 OpenAI 官方 Responses 协议，判断是否需要做 provider 级兼容层
+  - 在不污染主流程的前提下，评估是否需要区分“官方兼容”和“中转兼容”两套 continuation 映射策略
