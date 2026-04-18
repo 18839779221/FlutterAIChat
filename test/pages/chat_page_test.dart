@@ -1,10 +1,12 @@
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
+import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/pages/chat_page.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_message_list.dart';
+import 'package:ai_chat/widgets/interaction/ask_user_question_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -49,7 +51,7 @@ void main() {
     expect(headerSize.height, lessThanOrEqualTo(56));
   });
 
-  testWidgets('chat page renders the chat viewport with latest-message anchor semantics',
+  testWidgets('chat page anchors viewport near the latest turn end',
       (tester) async {
     final container = ProviderContainer(
       overrides: [
@@ -106,8 +108,144 @@ void main() {
     await tester.pump();
 
     final listBounds = tester.getRect(find.byType(ChatMessageList));
-    final latestTurnTop = tester.getTopLeft(find.text('Latest user message')).dy;
-    expect(latestTurnTop, lessThan(listBounds.center.dy));
+    final latestAssistantBottom =
+        tester.getBottomLeft(find.text('Latest assistant message')).dy;
+    expect(latestAssistantBottom, lessThanOrEqualTo(listBounds.bottom));
+  });
+
+  testWidgets('chat page renders active ask-user-question in timeline',
+      (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider.overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider.overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatDebugControllerProvider.overrideWith((ref) => _StubDebugController()),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.read(messagesProvider.notifier).setMessages([
+      ChatMessage(
+        id: 1,
+        text: '需要更多信息',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.askUserQuestionPrompt,
+        payloadJson: const {
+          'type': 'prompt',
+          'agentTurnId': 42,
+          'status': 'awaitingResponse',
+          'questions': [
+            {
+              'id': 'storage_layer',
+              'header': 'Storage',
+              'question': 'Which storage layer should we use?',
+              'multiSelect': false,
+              'options': [
+                {
+                  'label': 'SQLite',
+                  'description': 'Local relational store',
+                },
+              ],
+            },
+          ],
+        },
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(AskUserQuestionCard), findsOneWidget);
+    expect(find.text('Which storage layer should we use?'), findsOneWidget);
+  });
+
+  testWidgets('resolved ask-user-question prompt does not stay active in timeline',
+      (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider.overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider.overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatDebugControllerProvider.overrideWith((ref) => _StubDebugController()),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.read(messagesProvider.notifier).setMessages([
+      ChatMessage(
+        id: 1,
+        text: '需要更多信息',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.askUserQuestionPrompt,
+        payloadJson: const {
+          'type': 'prompt',
+          'agentTurnId': 42,
+          'status': 'awaitingResponse',
+          'questions': [
+            {
+              'id': 'storage_layer',
+              'header': 'Storage',
+              'question': 'Which storage layer should we use?',
+              'multiSelect': false,
+              'options': [],
+            },
+          ],
+        },
+      ),
+      ChatMessage(
+        id: 2,
+        text: '已提交答案',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.askUserQuestionResult,
+        payloadJson: const {
+          'type': 'result',
+          'agentTurnId': 42,
+          'status': 'submitted',
+          'submittedAnswers': {
+            'answersByQuestionId': {
+              'storage_layer': 'SQLite',
+            },
+          },
+        },
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(AskUserQuestionCard), findsNothing);
   });
 }
 
