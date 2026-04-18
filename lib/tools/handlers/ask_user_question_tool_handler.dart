@@ -34,6 +34,49 @@ class AskUserQuestionToolHandler implements ToolHandler {
               type: 'array',
               description:
                   '问题列表。每项应包含 id、header、question、multiSelect、options；options 为 label/description 列表。',
+              items: ToolArgumentProperty(
+                type: 'object',
+                description: '单个结构化问题定义。',
+                required: ['id', 'question'],
+                additionalProperties: false,
+                properties: {
+                  'id': ToolArgumentProperty.string(
+                    description: '稳定问题 id，用于回填用户答案。',
+                  ),
+                  'header': ToolArgumentProperty.string(
+                    description: '显示在问题上方的短标题。',
+                  ),
+                  'question': ToolArgumentProperty.string(
+                    description: '真正向用户展示的问题内容。',
+                  ),
+                  'multiSelect': ToolArgumentProperty(
+                    type: 'boolean',
+                    description: '是否允许用户多选。',
+                  ),
+                  'options': ToolArgumentProperty(
+                    type: 'array',
+                    description: '可选项列表。',
+                    items: ToolArgumentProperty(
+                      type: 'object',
+                      description: '单个可选项定义。',
+                      required: ['label'],
+                      additionalProperties: false,
+                      properties: {
+                        'label': ToolArgumentProperty.string(
+                          description: '选项标题。',
+                        ),
+                        'description': ToolArgumentProperty.string(
+                          description: '选项说明文字。',
+                        ),
+                        'isRecommended': ToolArgumentProperty(
+                          type: 'boolean',
+                          description: '是否为推荐选项。',
+                        ),
+                      },
+                    ),
+                  ),
+                },
+              ),
             ),
           },
           required: ['questions'],

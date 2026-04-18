@@ -94,10 +94,14 @@ class TranscriptBuilderService {
       if (content == null || content.trim().isEmpty) {
         continue;
       }
+      final projectedRole = _projectFinalAnswerRole(event);
+      if (projectedRole == null) {
+        continue;
+      }
       messages.add(
         ChatMessage(
           text: content,
-          role: event.role ?? MessageRole.system,
+          role: projectedRole,
           timestamp: event.createdAt,
           status: MessageStatus.completed,
         ),
@@ -105,5 +109,29 @@ class TranscriptBuilderService {
     }
 
     return messages;
+  }
+
+  MessageRole? _projectFinalAnswerRole(ChatEvent event) {
+    switch (event.eventType) {
+      case ChatEventType.userMessage:
+        return MessageRole.user;
+      case ChatEventType.userInteractionResult:
+        return MessageRole.user;
+      case ChatEventType.assistantPlannerMessage:
+      case ChatEventType.assistantQuestionPrompt:
+      case ChatEventType.toolResult:
+      case ChatEventType.toolError:
+      case ChatEventType.finalAnswer:
+        return MessageRole.assistant;
+      case ChatEventType.assistantReasoningDelta:
+      case ChatEventType.assistantTextDelta:
+      case ChatEventType.assistantTextFinal:
+      case ChatEventType.assistantToolCall:
+      case ChatEventType.assistantToolConfirmation:
+      case ChatEventType.toolExecutionStarted:
+      case ChatEventType.turnStatus:
+      case ChatEventType.error:
+        return null;
+    }
   }
 }
