@@ -1,4 +1,5 @@
 import '../models/trace/chat_trace_event.dart';
+import '../utils/logger.dart';
 
 /// Records chat trace events and optionally emits structured logs for observability.
 class ChatTraceRecorder {
@@ -81,10 +82,6 @@ class ChatTraceRecorder {
   }
 
   void _emitLog(ChatTraceEvent event) {
-    final logger = this.logger;
-    if (logger == null) {
-      return;
-    }
     final entry = <String, dynamic>{
       'turnId': event.turnId,
       'stage': event.stage.name,
@@ -97,7 +94,22 @@ class ChatTraceRecorder {
     if (event.data != null) {
       entry['data'] = _sanitizeMap(event.data!);
     }
-    logger(entry);
+    final logger = this.logger;
+    if (logger != null) {
+      logger(entry);
+      return;
+    }
+    final traceData = entry['data'] is Map<String, dynamic>
+        ? entry['data'] as Map<String, dynamic>
+        : null;
+    Logger.trace(
+      'ChatTrace',
+      '${event.stage.name}.${event.status.name}${event.summary == null ? '' : ' ${event.summary}'}',
+      data: {
+        'turnId': event.turnId,
+        ...?traceData,
+      },
+    );
   }
 
   static const _sensitiveKeys = {'apikey', 'authorization', 'api_key'};
