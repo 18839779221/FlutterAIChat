@@ -142,10 +142,9 @@ flowchart TD
 - 单个 `ModelTurnDecision` 可以同时携带 assistant 文本和 tool calls；assistant 文本既可能是中间解释，也可能是终态答复
 - 对 native tool-calling provider，tool continuation item 由 turn-step ledger 构建；interaction tool 也必须完成对应 step 并写入结构化 `resultJson`
 
-### Trace 设计原则
-- 新增关键 feature 时，默认评估是否需要 trace/log 覆盖
-- 至少要考虑：入口事件、关键状态跳转、失败分支、用户确认动作
-- trace payload 应尽量结构化，避免只留下不可检索的自由文本日志
+### 日志与 Trace 规范
+- 日志、trace、临时日志的统一约束见 `docs/architecture/logging.md`
+- 新增关键 feature 时，默认评估是否需要补充日志锚点与排障覆盖
 
 ## 自动化
 
@@ -174,7 +173,7 @@ bash scripts/android_droidrun_chat_smoke.sh
   - README 的能力说明或架构说明
   - AGENTS 的实现约束
   - 自动化测试
-  - trace/log 链路
+  - `docs/architecture/logging.md` 中的日志锚点与排障链路
 
 ## Feature Backlog
 

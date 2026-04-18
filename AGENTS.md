@@ -258,11 +258,12 @@ Database version: 5 (includes `is_summarized` field for automatic summarization 
 - When architecture changes, update `README.md` to reflect the current structure rather than the historical structure
 - When project requirements, implementation rules, or team conventions change, update `AGENTS.md`
 - When adding a new feature, explicitly consider whether the following also need updates:
-  - trace/log coverage
+  - logging coverage defined in `docs/architecture/logging.md`
   - automated tests
   - README capability/architecture docs
   - AGENTS implementation constraints
   - backlog/todo docs if the feature changes future priorities
+- For any trace/log changes, keep detailed rules only in `docs/architecture/logging.md` and let other docs reference it instead of duplicating fields, categories, or cleanup policy
 - For new interaction checkpoints in the agent loop:
   - prefer message-card interactions over modal-only state
   - keep turn status, event payload, message payload, and step ledger aligned

@@ -734,10 +734,6 @@ class DatabaseHelper implements ChatStorage {
 
   Future<void> updateMessage(int id, String newText) async {
     try {
-      Logger.d(_tag, '更新消息 ID: $id');
-      Logger.d(
-          _tag, '新内容: ${newText.substring(0, newText.length.clamp(0, 50))}...');
-
       final db = await database;
       await db.update(
         'messages',
@@ -745,8 +741,6 @@ class DatabaseHelper implements ChatStorage {
         where: 'id = ?',
         whereArgs: [id],
       );
-
-      Logger.i(_tag, '消息更新成功');
     } catch (e, stackTrace) {
       Logger.e(_tag, '更新消息失败', e);
       Logger.e(_tag, '堆栈跟踪', stackTrace);
@@ -809,7 +803,6 @@ class DatabaseHelper implements ChatStorage {
   Future<void> updateMessageStatus(int id, MessageStatus status) async {
     try {
       final db = await database;
-      Logger.d(_tag, '更新消息状态: ID=$id, 状态=$status');
 
       await db.update(
         'messages',
@@ -817,8 +810,6 @@ class DatabaseHelper implements ChatStorage {
         where: 'id = ?',
         whereArgs: [id],
       );
-
-      Logger.i(_tag, '消息状态更新成功');
     } catch (e, stackTrace) {
       Logger.e(_tag, '更新消息状态失败', e);
       Logger.e(_tag, '堆栈跟踪', stackTrace);

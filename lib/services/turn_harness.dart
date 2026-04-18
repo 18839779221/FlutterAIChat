@@ -64,6 +64,16 @@ class TurnHarness {
     required ChatConfig config,
   }) async* {
     final turnId = turn.id!;
+    Logger.trace(
+      _tag,
+      'turn.start',
+      data: {
+        'turnId': turnId,
+        'groupId': turn.groupId,
+        'iteration': turn.iterationCount,
+        'toolCalls': turn.toolCallCount,
+      },
+    );
     Logger.i(
       _tag,
       'runTurn start turnId=$turnId groupId=${turn.groupId} iteration=${turn.iterationCount} toolCalls=${turn.toolCallCount} userInput=${_preview(turn.userInput)}',
@@ -91,6 +101,16 @@ class TurnHarness {
     bool trustTool = false,
   }) async* {
     final currentTurn = await _requireTurn(turnId);
+    Logger.trace(
+      _tag,
+      'interaction.resume_confirmation',
+      data: {
+        'turnId': turnId,
+        'toolName': invocation.toolName,
+        'stepId': invocation.stepId,
+        'trustTool': trustTool,
+      },
+    );
     await _turnRepository.markRunning(turnId);
     final execution = await _toolCallService.executeToolInvocation(
       groupId: currentTurn.groupId,
@@ -115,6 +135,15 @@ class TurnHarness {
     required ChatConfig config,
   }) async* {
     final currentTurn = await _requireTurn(turnId);
+    Logger.trace(
+      _tag,
+      'interaction.resumed',
+      data: {
+        'turnId': turnId,
+        'questionCount': request.questions.length,
+        'stepId': request.stepId,
+      },
+    );
     await _turnRepository.markRunning(turnId);
     yield await _appendAndLoad(
       turnId,
@@ -168,6 +197,16 @@ class TurnHarness {
       }
 
       final transcript = await _transcriptBuilderService.loadTranscript(turnId);
+      Logger.trace(
+        _tag,
+        'planner.start',
+        data: {
+          'turnId': turnId,
+          'iteration': currentTurn.iterationCount,
+          'toolCalls': currentTurn.toolCallCount,
+          'transcriptEvents': transcript.length,
+        },
+      );
       Logger.d(
         _tag,
         'planning iteration=${currentTurn.iterationCount} toolCalls=${currentTurn.toolCallCount} transcriptEvents=${transcript.length}',
@@ -193,6 +232,16 @@ class TurnHarness {
             providerState: {},
             isTerminal: true,
           );
+      Logger.trace(
+        _tag,
+        'planner.done',
+        data: {
+          'turnId': turnId,
+          'diagnosticCode': decision.diagnosticCode,
+          'toolCalls': decision.toolCalls.length,
+          'isTerminal': decision.isTerminal,
+        },
+      );
       await _persistDecisionRuntimeState(
         turnId: turnId,
         turn: currentTurn,
@@ -302,6 +351,14 @@ class TurnHarness {
 
       if (decision.isTerminal &&
           (decision.assistantMessage ?? '').trim().isNotEmpty) {
+        Logger.trace(
+          _tag,
+          'turn.final_answer_start',
+          data: {
+            'turnId': turnId,
+            'responsePreview': _preview(decision.assistantMessage ?? ''),
+          },
+        );
         yield await _appendAndLoad(
           turnId,
           () => _eventRepository.appendTurnStatus(
@@ -392,6 +449,14 @@ class TurnHarness {
         );
 
         if (verifyResult.canStop) {
+          Logger.trace(
+            _tag,
+            'turn.done',
+            data: {
+              'turnId': turnId,
+              'reason': verifyResult.reason,
+            },
+          );
           yield await _appendAndLoad(
             turnId,
             () => _eventRepository.appendFinalAnswer(
@@ -420,10 +485,27 @@ class TurnHarness {
           _tag,
           'stop verifier requested another iteration for turnId=$turnId reason=${verifyResult.reason}',
         );
+        Logger.trace(
+          _tag,
+          'turn.verifier_retry',
+          data: {
+            'turnId': turnId,
+            'reason': verifyResult.reason,
+          },
+        );
         await _turnRepository.incrementIteration(turnId);
         continue;
       }
 
+      Logger.trace(
+        _tag,
+        'turn.failed',
+        level: LogLevel.error,
+        data: {
+          'turnId': turnId,
+          'reason': 'planner_no_terminal_decision',
+        },
+      );
       await _turnRepository.markFailed(
         turnId,
         errorMessage: 'planner_no_terminal_decision',
@@ -484,6 +566,15 @@ class TurnHarness {
     required ChatConfig config,
   }) async* {
     final toolDisplayName = resolveToolDisplayName(toolCall.toolName);
+    Logger.trace(
+      _tag,
+      'tool.start',
+      data: {
+        'turnId': turn.id,
+        'stepId': stepId,
+        'toolName': toolCall.toolName,
+      },
+    );
     Logger.d(
       _tag,
       'planner chose tool ${toolCall.toolName} with args=${toolCall.arguments}',
@@ -518,6 +609,15 @@ class TurnHarness {
           'providerCallId': toolCall.providerCallId,
       });
       await _turnRepository.markAwaitingUserInteraction(turn.id!);
+      Logger.trace(
+        _tag,
+        'interaction.awaiting_user',
+        data: {
+          'turnId': turn.id,
+          'stepId': stepId,
+          'questionCount': request.questions.length,
+        },
+      );
       yield await _appendAndLoad(
         turn.id!,
         () => _eventRepository.appendAssistantQuestionPrompt(
@@ -575,6 +675,15 @@ class TurnHarness {
 
     if (toolInvocation != null && toolInvocation.requiresConfirmation) {
       await _turnRepository.markAwaitingToolConfirmation(turnId);
+      Logger.trace(
+        _tag,
+        'tool.awaiting_confirmation',
+        data: {
+          'turnId': turnId,
+          'stepId': stepId,
+          'toolName': toolInvocation.toolName,
+        },
+      );
       yield await _appendAndLoad(
         turnId,
         () => _eventRepository.appendToolConfirmation(
@@ -605,6 +714,17 @@ class TurnHarness {
     final toolResult = execution.toolResult;
     if (toolResult == null ||
         toolResult.status == ToolExecutionStatus.failure) {
+      Logger.trace(
+        _tag,
+        'tool.failed',
+        level: LogLevel.error,
+        data: {
+          'turnId': turnId,
+          'stepId': stepId,
+          'toolName': invocation.toolName,
+          'error': toolResult?.errorMessage ?? 'tool_execution_failed',
+        },
+      );
       Logger.w(
         _tag,
         'tool execution failed for ${invocation.toolName}: ${toolResult?.errorMessage ?? 'tool_execution_failed'}',
@@ -641,6 +761,15 @@ class TurnHarness {
     Logger.d(
       _tag,
       'tool execution succeeded for ${invocation.toolName}: ${toolResult.summary}',
+    );
+    Logger.trace(
+      _tag,
+      'tool.done',
+      data: {
+        'turnId': turnId,
+        'stepId': stepId,
+        'toolName': invocation.toolName,
+      },
     );
     yield await _appendAndLoad(
       turnId,
