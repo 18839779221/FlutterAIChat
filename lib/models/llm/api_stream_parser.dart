@@ -21,8 +21,11 @@ class ApiStreamParser {
     }
   }
 
-  Stream<String> _parseChatCompletionsStream(http.StreamedResponse response) async* {
-    await for (final line in response.stream.transform(utf8.decoder).transform(const LineSplitter())) {
+  Stream<String> _parseChatCompletionsStream(
+      http.StreamedResponse response) async* {
+    await for (final line in response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
       if (!line.startsWith('data: ')) {
         continue;
       }
@@ -42,7 +45,6 @@ class ApiStreamParser {
         }
 
         if (content is String && content.isNotEmpty) {
-          Logger.d(_tag, '收到内容片段: $content');
           yield jsonEncode({'type': 'content', 'content': content});
         }
       } catch (e) {
@@ -54,7 +56,9 @@ class ApiStreamParser {
   Stream<String> _parseResponsesStream(http.StreamedResponse response) async* {
     final emittedReasoningChunks = <String>{};
 
-    await for (final line in response.stream.transform(utf8.decoder).transform(const LineSplitter())) {
+    await for (final line in response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
       if (!line.startsWith('data: ')) {
         continue;
       }
@@ -64,20 +68,23 @@ class ApiStreamParser {
         final type = data['type'];
         final delta = data['delta'];
 
-        if (type == 'response.output_text.delta' && delta is String && delta.isNotEmpty) {
-          Logger.d(_tag, '收到 Responses 内容片段: $delta');
+        if (type == 'response.output_text.delta' &&
+            delta is String &&
+            delta.isNotEmpty) {
           yield jsonEncode({'type': 'content', 'content': delta});
           continue;
         }
 
-        if ((type == 'response.reasoning.delta' || type == 'response.reasoning_summary_text.delta') &&
+        if ((type == 'response.reasoning.delta' ||
+                type == 'response.reasoning_summary_text.delta') &&
             delta is String &&
             delta.isNotEmpty) {
           yield jsonEncode({'type': 'reasoning', 'content': delta});
           continue;
         }
 
-        if (type == 'response.output_item.added' || type == 'response.output_item.done') {
+        if (type == 'response.output_item.added' ||
+            type == 'response.output_item.done') {
           final item = data['item'];
           if (item is Map<String, dynamic>) {
             final reasoningChunks = _extractReasoningSummaries(item);

@@ -44,20 +44,27 @@ class ChatService {
     required List<ChatMessage> messages,
     required ChatConfig config,
   }) async* {
+    final responseBuffer = StringBuffer();
     await for (final content in _llm.chatStream(messages, config)) {
       try {
         final decoded = jsonDecode(content);
         if (decoded is Map<String, dynamic> && decoded['type'] == 'content') {
           final chunk = decoded['content'];
           if (chunk is String && chunk.isNotEmpty) {
+            responseBuffer.write(chunk);
             yield chunk;
           }
         }
       } catch (_) {
         if (content.isNotEmpty) {
+          responseBuffer.write(content);
           yield content;
         }
       }
+    }
+    final finalResponse = responseBuffer.toString().trim();
+    if (finalResponse.isNotEmpty) {
+      Logger.i(_tag, '最终响应: $finalResponse');
     }
   }
 

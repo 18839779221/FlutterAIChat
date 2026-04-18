@@ -35,16 +35,14 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
+    await Logger.initialize();
     final preferences = await SharedPreferences.getInstance();
     final settingsRepository = AppSettingsRepository(preferences);
     final storage = _createChatStorage(preferences);
     late final ChatTraceRecorder traceRecorder;
     late final ChatService chatService;
     late final TurnHarness turnHarness;
-    traceRecorder = ChatTraceRecorder(
-      logger: (entry) =>
-          Logger.i('ChatTrace', traceRecorder.formatLogLine(entry)),
-    );
+    traceRecorder = ChatTraceRecorder();
     await storage.testDatabaseConnection();
     final llm = LLMFactory.createLLM(
       LLMType.configurable,
