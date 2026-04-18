@@ -197,6 +197,94 @@ void main() {
         ]),
       );
     });
+
+    test(
+        'buildFinalAnswerMessages excludes internal runtime events and keeps user-facing context roles',
+        () async {
+      final service = TranscriptBuilderService(
+        eventRepository: _FakeChatEventRepository([
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '帮我规划本地持久化架构',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.assistantPlannerMessage,
+            role: MessageRole.assistant,
+            content: '我先确认你偏好的存储方案。',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.toolExecutionStarted,
+            role: MessageRole.system,
+            content: 'tool_started:ask_user_question',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 4,
+            eventType: ChatEventType.assistantQuestionPrompt,
+            role: MessageRole.assistant,
+            content: '你想用 SQLite 还是别的本地存储？',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 5,
+            eventType: ChatEventType.userInteractionResult,
+            role: MessageRole.system,
+            content: '我更偏向 SQLite。',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 6,
+            eventType: ChatEventType.turnStatus,
+            role: MessageRole.system,
+            content: 'planner_action_respond',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 7,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: '已记录用户偏好：SQLite',
+          ),
+        ]),
+      );
+
+      final messages = await service.buildFinalAnswerMessages(
+        groupId: 1,
+        turn: ChatTurn(
+          id: 1,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '帮我规划本地持久化架构',
+        ),
+        transcript: await service.loadTranscript(1),
+        systemPrompt: '',
+      );
+
+      expect(
+        messages.map((message) => '${message.role.name}:${message.text}'),
+        [
+          'user:帮我规划本地持久化架构',
+          'assistant:我先确认你偏好的存储方案。',
+          'assistant:你想用 SQLite 还是别的本地存储？',
+          'user:我更偏向 SQLite。',
+          'assistant:已记录用户偏好：SQLite',
+        ],
+      );
+    });
   });
 }
 
