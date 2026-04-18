@@ -1,5 +1,9 @@
 {
   "api_key": "your-api-key",
   "base_url": "https://your-openai-compatible-endpoint/v1",
-  "model": "gpt-5.4"
+  "model": "gpt-5.4",
+  "web_search": {
+    "provider": "tavily",
+    "tavily_api_key": "tvly-XXX"
+  }
 }
