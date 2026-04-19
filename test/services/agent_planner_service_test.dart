@@ -2,6 +2,7 @@ import 'package:ai_chat/models/agent/agent_loop_limits.dart';
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/agent/model_tool_call.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
+import 'package:ai_chat/models/agent/planner_tool_choice.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -78,9 +79,9 @@ void main() {
         limits: const AgentLoopLimits(),
       );
 
-      expect(llm.lastMessages.first.text, contains('优先使用原生工具调用来推进任务'));
-      expect(llm.lastMessages.first.text, isNot(contains('执行策略')));
-      expect(llm.lastMessages.first.text, isNot(contains('create_reminder')));
+      expect(llm.lastConfig?.systemPrompt, contains('next best action'));
+      expect(llm.lastConfig?.systemPrompt, contains('Answer directly'));
+      expect(llm.lastConfig?.systemPrompt, isNot(contains('create_reminder')));
     });
 
     test('planNextDecision keeps execution policy separate from tool description',
@@ -307,10 +308,10 @@ void main() {
         limits: const AgentLoopLimits(),
       );
 
-      expect(llm.lastMessages.first.text, contains('你是一个对话回合规划器'));
-      expect(llm.lastMessages.first.text, isNot(contains('搜索聊天记录')));
-      expect(llm.lastMessages[1].text, contains('用户目标：帮我总结网页'));
-      expect(llm.lastMessages[1].text, contains('当前轮次：0'));
+      expect(llm.lastConfig?.systemPrompt, contains('next best action'));
+      expect(llm.lastConfig?.systemPrompt, isNot(contains('Do not repeat the same tool call')));
+      expect(llm.lastMessages.map((message) => message.text), contains('已读取网页正文'));
+      expect(llm.lastMessages.map((message) => message.text), contains('读取失败'));
     });
 
     test('planNextDecision sends ledger summary and filters unsupported tools',
@@ -414,9 +415,8 @@ void main() {
       expect(decision!.toolCalls, isEmpty);
       expect(decision.diagnosticCode, 'planner_duplicate_tool_call');
       expect(decision.isTerminal, isTrue);
-      expect(llm.lastMessages[1].text, contains('已完成步骤：'));
-      expect(llm.lastMessages[1].text, contains('search_chat_history'));
-      expect(llm.lastMessages[1].text, contains('"matchCount":1'));
+      expect(llm.lastToolOptions, isNotNull);
+      expect(llm.lastMessages.single.text, contains('帮我确认数据库版本'));
     });
 
     test('planNextDecision forwards turn runtime provider state to llm',
@@ -1004,6 +1004,7 @@ Future<ToolPolicyService> _createToolPolicyService() async {
 class _NativeDecisionLLM implements BaseLLM {
   final ModelTurnDecision decision;
   List<ChatMessage> lastMessages = const [];
+  ChatConfig? lastConfig;
   List<PlannerToolOption>? lastToolOptions;
   ChatTurnProviderStyle? lastProviderStyle;
   Map<String, dynamic>? lastProviderState;
@@ -1027,6 +1028,7 @@ class _NativeDecisionLLM implements BaseLLM {
     List<Map<String, dynamic>> providerContinuationItems = const [],
   }) async {
     lastMessages = List<ChatMessage>.from(messages);
+    lastConfig = config;
     lastToolOptions = List<PlannerToolOption>.from(availableTools);
     lastProviderStyle = providerStyle;
     lastProviderState =
@@ -1040,6 +1042,21 @@ class _NativeDecisionLLM implements BaseLLM {
   @override
   Stream<String> chatStream(
       List<ChatMessage> messages, ChatConfig config) async* {}
+
+  @override
+  Future<String> planNextAction({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+  }) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<PlannerToolChoice?> planNextToolChoice({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+  }) async =>
+      null;
 
   @override
   Future<String> structureSummaryCard(String sourceText) async => '{}';
@@ -1079,6 +1096,21 @@ class _NativeNullPlannerLLM implements BaseLLM {
       List<ChatMessage> messages, ChatConfig config) async* {}
 
   @override
+  Future<String> planNextAction({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+  }) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<PlannerToolChoice?> planNextToolChoice({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+  }) async =>
+      null;
+
+  @override
   Future<String> structureSummaryCard(String sourceText) async => '{}';
 
   @override
@@ -1114,6 +1146,21 @@ class _ThrowingNativePlannerLLM implements BaseLLM {
   @override
   Stream<String> chatStream(
       List<ChatMessage> messages, ChatConfig config) async* {}
+
+  @override
+  Future<String> planNextAction({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+  }) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<PlannerToolChoice?> planNextToolChoice({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+  }) async =>
+      null;
 
   @override
   Future<String> structureSummaryCard(String sourceText) async => '{}';

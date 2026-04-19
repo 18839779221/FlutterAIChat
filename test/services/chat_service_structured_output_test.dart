@@ -1,5 +1,6 @@
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
+import 'package:ai_chat/models/agent/planner_tool_choice.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
@@ -122,6 +123,21 @@ class _FakeBaseLLM implements BaseLLM {
       List<ChatMessage> messages, ChatConfig config) async* {}
 
   @override
+  Future<String> planNextAction({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+  }) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<PlannerToolChoice?> planNextToolChoice({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+  }) async =>
+      null;
+
+  @override
   Future<ModelTurnDecision?> planTurnDecision({
     required List<ChatMessage> messages,
     required ChatConfig config,
@@ -168,6 +184,21 @@ class _CapturingBaseLLM implements BaseLLM {
   }
 
   @override
+  Future<String> planNextAction({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+  }) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<PlannerToolChoice?> planNextToolChoice({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+  }) async =>
+      null;
+
+  @override
   Future<ModelTurnDecision?> planTurnDecision({
     required List<ChatMessage> messages,
     required ChatConfig config,
@@ -203,6 +234,21 @@ class _RawTextBaseLLM implements BaseLLM {
       List<ChatMessage> messages, ChatConfig config) async* {
     yield '纯文本响应';
   }
+
+  @override
+  Future<String> planNextAction({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+  }) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<PlannerToolChoice?> planNextToolChoice({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+  }) async =>
+      null;
 
   @override
   Future<ModelTurnDecision?> planTurnDecision({

@@ -11,7 +11,7 @@
 - 消息本地持久化，支持分页加载历史消息
 - 进入会话默认定位到最新消息，向上滑动查看更早历史
 - 流式回复、手动中断、生成中自动跟随；手动上滑后可自由查看，点击回到底部后再恢复跟随
-- 深度思考模式、简洁模式、自定义系统提示词
+- 深度思考模式、自定义系统提示词
 
 ### Tool Call 与结构化输出
 - 支持工具决策、确认执行、执行结果展示、失败回退
@@ -25,6 +25,10 @@
 - 同一个模型决策可同时包含 assistant 文本和多个 tool call，不再强制“工具调用”和“文本回复”二选一
 - turn 内多次 tool use 会持久化到 `chat_turn_steps`，后续决策统一消费 ledger summary，而不是把原始工具明细全文回填给模型
 - 中间态 assistant 文本会以 `assistantPlannerMessage` 事件落库，便于在工具执行前保留模型可见解释
+- Prompt 统一通过 `lib/services/prompt/` 下的 catalog / builder 组装，按 `base prompt`、`stage delta`、`runtime sections`、`context messages` 四类心智模型管理
+- 核心 prompt 同时维护英文版与中文版，默认使用英文版
+- `summary` 与标题生成等轻量调用走轻量 prompt，不复用完整主对话 prompt
+- `final answer` 改为按需阶段；无需额外整理时，不再固定追加一次模型调用
 
 ### 自动化
 - Flutter Web 固定 origin 回归测试
@@ -69,7 +73,17 @@ UI 只消费 Riverpod providers 和 controller 门面，不直接编排复杂业
 - `ChatSessionCoordinator`：会话加载、切换、删除、分页
 - `ChatSummaryController`：会话总结与自动总结定时逻辑
 - `ChatDebugController`：结构化调试入口
-- `ChatPreferencesController`：系统提示词、推理模式、简洁模式
+- `ChatPreferencesController`：系统提示词、推理模式
+
+### Prompt 管理
+- `lib/services/prompt/prompt_catalog.dart`
+- `lib/services/prompt/prompt_builder_service.dart`
+- `lib/services/prompt/prompt_runtime_context_builder.dart`
+
+职责分工：
+- `PromptCatalog`：维护双语 prompt 文本块
+- `PromptBuilderService`：根据阶段和运行时输入组装最终 prompt
+- `PromptRuntimeContextBuilder`：将用户自定义 system prompt 等运行时信息包装为附加 section
 
 ### Service 层
 - [lib/services/chat_service.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/services/chat_service.dart)

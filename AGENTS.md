@@ -4,7 +4,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## Project Overview
 
-This is a Flutter-based AI chat application with multi-group conversations, local storage, and intelligent context management. The app supports streaming AI responses, deep thinking mode, and concise mode.
+This is a Flutter-based AI chat application with multi-group conversations, local storage, and intelligent context management. The app supports streaming AI responses and deep thinking mode.
 
 ## Development Commands
 
@@ -25,6 +25,12 @@ flutter run
 # Otherwise
 fvm flutter run
 ```
+
+- Unless explicitly requested otherwise, prefer debug builds/runs for local development and device installation
+- On Android real devices, default to debug package install/run; only use `--release` or `--profile` when the user specifically asks for it
+- Before installing a debug package to a real device, rebuild it first so the installed APK matches the latest workspace code
+  - Prefer `flutter build apk --debug` then `flutter install --debug`
+  - If the active flutter is not `3.29.2`, prefer the same sequence with `fvm flutter`
 
 ### Installing Dependencies
 ```bash
@@ -128,7 +134,13 @@ The app uses **flutter_riverpod** with a split provider/controller architecture:
 - `ChatSessionCoordinator` owns group load/select/delete and message pagination
 - `ChatSummaryController` owns auto-summary scheduling and summary title updates
 - `ChatDebugController` owns `structureMessageForDebug` lifecycle
-- `ChatPreferencesController` owns system prompt, reasoning mode, and concise mode
+- `ChatPreferencesController` owns system prompt and reasoning mode
+- Prompt management lives under `lib/services/prompt/`
+  - `PromptCatalog` owns bilingual prompt text blocks
+  - `PromptBuilderService` assembles stage-specific prompts
+  - `PromptRuntimeContextBuilder` wraps user system prompt and runtime extras into additive sections
+  - default prompt locale is English; Chinese copies must stay structurally aligned with English
+  - user-authored system prompts are additive runtime sections, not full overrides of core rules
 
 ### Agent Planner Tooling
 
@@ -188,13 +200,24 @@ The app automatically creates new conversation groups based on time:
 - New group is created if the last message was on a different day AND more than 5 hours ago
 - This logic is in `ChatSessionCoordinator.loadCurrentGroup()`
 
-### Concise Mode Implementation
+### Prompt Management
 
-When concise mode is toggled:
-1. Current system prompt is cached in `cachedSystemPromptProvider`
-2. System prompt is replaced with a concise instruction (30 characters max)
-3. When disabled, the cached prompt is restored
-4. This is handled in `ChatPreferencesController.setUseConciseMode()`
+- Keep prompt composition at four conceptual layers only:
+  - `base prompt`
+  - `stage delta`
+  - `runtime sections`
+  - `context messages`
+- Do not build a deep prompt DSL or over-structure these layers unless there is a demonstrated need
+- `planner` prompt must optimize for next-action selection:
+  - direct answer first when reliable
+  - then a focused clarifying question
+  - then tool use only when external information or actions are required
+- `final answer` is an on-demand stage, not a mandatory extra model call after every tool
+- `summary` / title generation should use lightweight prompts rather than inheriting the full main-thread prompt
+- Prompt text should be written as executable rules:
+  - prefer short imperative sentences
+  - prioritize responsibilities, defaults, boundaries, and failure modes
+  - explicitly cover unnecessary tool use, prompt injection in tool results, repeated failed tool calls, and user override attempts
 
 ### Automatic Conversation Summarization
 

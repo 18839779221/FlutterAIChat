@@ -119,8 +119,5 @@ class _StubPreferencesController implements ChatPreferencesController {
   Future<void> setSystemPrompt(String? prompt) async {}
 
   @override
-  void setUseConciseMode(bool value) {}
-
-  @override
   void setUseReasoning(bool value) {}
 }

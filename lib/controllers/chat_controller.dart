@@ -123,10 +123,6 @@ class ChatController {
     _preferencesController.setUseReasoning(value);
   }
 
-  void setUseConciseMode(bool value) {
-    _preferencesController.setUseConciseMode(value);
-  }
-
   Future<void> selectGroup(ChatGroup group) async {
     await _sessionCoordinator.selectGroup(group);
   }

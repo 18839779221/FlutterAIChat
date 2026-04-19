@@ -6,6 +6,7 @@ import 'package:ai_chat/models/agent/agent_loop_limits.dart';
 import 'package:ai_chat/models/agent/model_tool_call.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
+import 'package:ai_chat/models/agent/planner_tool_choice.dart';
 import 'package:ai_chat/models/tool/tool_access_snapshot.dart';
 import 'package:ai_chat/models/tool/tool_argument_property.dart';
 import 'package:ai_chat/models/tool/tool_argument_schema.dart';
@@ -40,7 +41,71 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('TurnHarness', () {
-    test('runs tool call, records tool result, then streams final answer',
+    test('direct terminal planner answer does not stream an extra final answer',
+        () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          id: 1,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '你是谁？',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+      final chatService = _FakeChatService(
+        chunks: const ['不应该再触发第二次回答'],
+      );
+
+      final harness = TurnHarness(
+        plannerService: _NativeDecisionPlannerService([
+          const ModelTurnDecision(
+            toolCalls: [],
+            assistantMessage: '我是你的 AI 助手。',
+            diagnosticCode: 'planner_action_respond',
+            providerState: {'response_id': 'resp_direct_1'},
+            providerStyle: ChatTurnProviderStyle.openaiResponses,
+            modelName: 'gpt-5.4',
+            isTerminal: true,
+          ),
+        ]),
+        turnRepository: turnRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        turnVerifier: _AlwaysStopVerifier(),
+        chatService: chatService,
+        toolCallService: _FakeToolCallService(
+          executeResult: const ToolPreparationResult.noTool(),
+        ),
+        limits: const AgentLoopLimits(maxIterations: 4),
+      );
+
+      final emitted = await harness
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          )
+          .toList();
+
+      expect(chatService.capturedFinalAnswerMessages, isEmpty);
+      expect(
+        emitted.map((event) => event.eventType),
+        containsAllInOrder([
+          ChatEventType.userMessage,
+          ChatEventType.turnStatus,
+          ChatEventType.finalAnswer,
+        ]),
+      );
+      final finalAnswer = emitted.firstWhere(
+        (event) => event.eventType == ChatEventType.finalAnswer,
+      );
+      expect(finalAnswer.content, '我是你的 AI 助手。');
+    });
+
+    test('runs tool call, records tool result, then completes with terminal answer',
         () async {
       final eventRepository = _InMemoryChatEventRepository();
       final turnRepository = _InMemoryChatTurnRepository();
@@ -137,12 +202,13 @@ void main() {
           ChatEventType.toolExecutionStarted,
           ChatEventType.toolResult,
           ChatEventType.turnStatus,
-          ChatEventType.assistantTextDelta,
-          ChatEventType.assistantTextDelta,
-          ChatEventType.assistantTextFinal,
           ChatEventType.finalAnswer,
         ]),
       );
+      final finalAnswerEvent = emitted.firstWhere(
+        (event) => event.eventType == ChatEventType.finalAnswer,
+      );
+      expect(finalAnswerEvent.content, '根据工具结果生成最终回答');
       expect((await turnRepository.getTurn(turnId))!.status,
           ChatTurnStatus.completed);
       final turnStatusContents = emitted
@@ -542,7 +608,7 @@ void main() {
     });
 
     test(
-        'resumes awaiting confirmation turn, executes tool, then streams final answer',
+        'resumes awaiting confirmation turn, executes tool, then completes with terminal answer',
         () async {
       final eventRepository = _InMemoryChatEventRepository();
       final turnRepository = _InMemoryChatTurnRepository();
@@ -614,12 +680,13 @@ void main() {
         containsAllInOrder([
           ChatEventType.toolExecutionStarted,
           ChatEventType.toolResult,
-          ChatEventType.assistantTextDelta,
-          ChatEventType.assistantTextDelta,
-          ChatEventType.assistantTextFinal,
           ChatEventType.finalAnswer,
         ]),
       );
+      final finalAnswerEvent = emitted.firstWhere(
+        (event) => event.eventType == ChatEventType.finalAnswer,
+      );
+      expect(finalAnswerEvent.content, '工具执行后给出最终回答');
       expect(
           (await turnRepository.getTurn(4))!.status, ChatTurnStatus.completed);
     });
@@ -997,11 +1064,13 @@ void main() {
         emitted.map((event) => event.eventType),
         containsAllInOrder([
           ChatEventType.userInteractionResult,
-          ChatEventType.assistantTextDelta,
-          ChatEventType.assistantTextFinal,
           ChatEventType.finalAnswer,
         ]),
       );
+      final finalAnswerEvent = emitted.firstWhere(
+        (event) => event.eventType == ChatEventType.finalAnswer,
+      );
+      expect(finalAnswerEvent.content, '建议先用 SQLite。');
       final step = (await stepRepository.getStep(9))!;
       expect(step.status, ChatTurnStepStatus.completed);
       expect(step.providerCallId, 'call_ask_1');
@@ -1059,11 +1128,19 @@ void main() {
         emitted.map((event) => event.eventType),
         containsAllInOrder([
           ChatEventType.userMessage,
-          ChatEventType.assistantTextDelta,
-          ChatEventType.assistantTextFinal,
+          ChatEventType.turnStatus,
+          ChatEventType.turnStatus,
           ChatEventType.turnStatus,
         ]),
       );
+      final statusEvents = emitted
+          .where((event) => event.eventType == ChatEventType.turnStatus)
+          .toList(growable: false);
+      expect(statusEvents.map((event) => event.content), [
+        'planner_action_respond',
+        'needs_more_work',
+        'max_iterations_reached',
+      ]);
       expect(
         emitted.last,
         isA<ChatEvent>()
@@ -1172,7 +1249,7 @@ void main() {
     });
 
     test(
-        'records planner request failure as turn status before streaming final answer',
+        'records planner request failure as turn status and stops without extra final-answer streaming',
         () async {
       final eventRepository = _InMemoryChatEventRepository();
       final turnRepository = _InMemoryChatTurnRepository();
@@ -1218,9 +1295,6 @@ void main() {
         containsAllInOrder([
           ChatEventType.userMessage,
           ChatEventType.turnStatus,
-          ChatEventType.assistantTextDelta,
-          ChatEventType.assistantTextFinal,
-          ChatEventType.finalAnswer,
         ]),
       );
       expect(
@@ -1228,6 +1302,10 @@ void main() {
             .where((event) => event.eventType == ChatEventType.turnStatus)
             .map((event) => event.content),
         contains('planner_request_failed'),
+      );
+      expect(
+        emitted.where((event) => event.eventType == ChatEventType.finalAnswer),
+        isEmpty,
       );
     });
 
@@ -1425,14 +1503,11 @@ void main() {
       );
       expect(plannerMessageIndex, lessThan(toolCallIndex));
 
-      final finalAnswerPrompt = chatService.capturedFinalAnswerMessages.single
-          .map((message) => message.text)
-          .join('\n');
-      expect(finalAnswerPrompt, contains('我先查一下数据库版本。'));
+      expect(chatService.capturedFinalAnswerMessages, isEmpty);
     });
 
     test(
-        'executes multiple provider-native tool calls and sends ledger summary',
+        'executes multiple provider-native tool calls and completes without extra final-answer synthesis',
         () async {
       final eventRepository = _InMemoryChatEventRepository();
       final turnRepository = _InMemoryChatTurnRepository();
@@ -1603,19 +1678,13 @@ void main() {
         isNot(contains('命中历史消息')),
       );
 
-      final finalAnswerMessages =
-          chatService.capturedFinalAnswerMessages.single;
-      final finalAnswerPrompt =
-          finalAnswerMessages.map((message) => message.text).join('\n');
-      expect(finalAnswerPrompt, contains('本轮工具执行总结：'));
-      expect(finalAnswerPrompt, contains('1. search_chat_history'));
-      expect(finalAnswerPrompt, contains('2. save_note'));
-      expect(finalAnswerPrompt, contains('3. create_reminder'));
-      expect(finalAnswerPrompt, contains('"matchCount":1'));
-      expect(finalAnswerPrompt, contains('数据库版本确认'));
-      expect(finalAnswerPrompt, contains('数据库版本 7，发版时间 2026-04-12 10:00'));
-      expect(finalAnswerPrompt, isNot(contains('命中历史消息')));
+      expect(chatService.capturedFinalAnswerMessages, isEmpty);
       expect(await stepRepository.listSteps(turnId), hasLength(3));
+
+      final finalAnswerEvent = emitted.firstWhere(
+        (event) => event.eventType == ChatEventType.finalAnswer,
+      );
+      expect(finalAnswerEvent.content, '全部步骤已完成，请整理最终答复');
 
       final persistedTurn = (await turnRepository.getTurn(turnId))!;
       expect(
@@ -1721,6 +1790,21 @@ class _QueuedNativeDecisionLLM implements BaseLLM {
     List<ChatMessage> messages,
     ChatConfig config,
   ) async* {}
+
+  @override
+  Future<String> planNextAction({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+  }) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<PlannerToolChoice?> planNextToolChoice({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+  }) async =>
+      null;
 
   @override
   Future<String> structureSummaryCard(String sourceText) async => '{}';
@@ -2309,6 +2393,21 @@ class _NoopBaseLLM implements BaseLLM {
   @override
   Stream<String> chatStream(
       List<ChatMessage> messages, ChatConfig config) async* {}
+
+  @override
+  Future<String> planNextAction({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+  }) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<PlannerToolChoice?> planNextToolChoice({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+  }) async =>
+      null;
 
   @override
   String getModelName(ChatConfig config) => 'noop';
