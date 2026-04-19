@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/services/prompt/prompt_builder_service.dart';
+import 'package:ai_chat/services/prompt/prompt_locale.dart';
+import 'package:ai_chat/services/prompt/prompt_stage.dart';
 import 'package:http/http.dart' as http;
 
 import '../../repositories/app_settings_repository.dart';
@@ -33,6 +36,7 @@ class ConfigurableHttpLLM implements BaseLLM {
   final OpenAIChatCompletionsToolLoopAdapter _chatCompletionsToolLoopAdapter;
   final OpenAIResponsesToolLoopAdapter _responsesToolLoopAdapter;
   final AnthropicMessagesToolLoopAdapter _anthropicMessagesToolLoopAdapter;
+  final PromptBuilderService _promptBuilder;
 
   ConfigurableHttpLLM({
     required AppSettingsRepository settingsRepository,
@@ -44,6 +48,7 @@ class ConfigurableHttpLLM implements BaseLLM {
     OpenAIChatCompletionsToolLoopAdapter? chatCompletionsToolLoopAdapter,
     OpenAIResponsesToolLoopAdapter? responsesToolLoopAdapter,
     AnthropicMessagesToolLoopAdapter? anthropicMessagesToolLoopAdapter,
+    PromptBuilderService? promptBuilder,
   })  : _settingsRepository = settingsRepository,
         _protocolResolver = protocolResolver ?? const ApiProtocolResolver(),
         _streamParser = streamParser ?? const ApiStreamParser(),
@@ -56,7 +61,8 @@ class ConfigurableHttpLLM implements BaseLLM {
         _responsesToolLoopAdapter =
             responsesToolLoopAdapter ?? const OpenAIResponsesToolLoopAdapter(),
         _anthropicMessagesToolLoopAdapter = anthropicMessagesToolLoopAdapter ??
-            const AnthropicMessagesToolLoopAdapter();
+            const AnthropicMessagesToolLoopAdapter(),
+        _promptBuilder = promptBuilder ?? const PromptBuilderService();
 
   @override
   String getModelName(ChatConfig config) {
@@ -153,7 +159,10 @@ class ConfigurableHttpLLM implements BaseLLM {
       _validateRuntimeConfig(runtimeConfig);
       final summaryPrompt = [
         ChatMessage(
-          text: '请用简短的一句话（10-20字）总结以下对话的主题，只返回总结内容，不要有任何其他说明：',
+          text: _promptBuilder.buildSystemPrompt(
+            stage: PromptStage.summary,
+            locale: PromptLocale.english,
+          ),
           role: MessageRole.system,
         ),
         ...messages,
@@ -470,7 +479,7 @@ class ConfigurableHttpLLM implements BaseLLM {
     required bool stream,
   }) {
     final normalizedMessages =
-        messages.where((msg) => msg.text.trim().isNotEmpty).toList();
+        _normalizeMessagesWithConfiguredSystemPrompt(messages, config);
     return {
       'model': modelName,
       'messages': normalizedMessages
@@ -522,7 +531,7 @@ class ConfigurableHttpLLM implements BaseLLM {
     required bool stream,
   }) {
     final normalizedMessages =
-        messages.where((msg) => msg.text.trim().isNotEmpty).toList();
+        _normalizeMessagesWithConfiguredSystemPrompt(messages, config);
     return {
       'model': modelName,
       'input': normalizedMessages
@@ -542,6 +551,35 @@ class ConfigurableHttpLLM implements BaseLLM {
       'store': false,
       if (config.useReasoning) 'reasoning': {'effort': 'medium'},
     };
+  }
+
+  List<ChatMessage> _normalizeMessagesWithConfiguredSystemPrompt(
+    List<ChatMessage> messages,
+    ChatConfig config,
+  ) {
+    final normalizedMessages =
+        messages.where((msg) => msg.text.trim().isNotEmpty).toList();
+    final configuredSystemPrompt = config.systemPrompt.trim();
+    if (configuredSystemPrompt.isEmpty) {
+      return normalizedMessages;
+    }
+
+    final alreadyPresent = normalizedMessages.any(
+      (message) =>
+          message.role == MessageRole.system &&
+          message.text.trim() == configuredSystemPrompt,
+    );
+    if (alreadyPresent) {
+      return normalizedMessages;
+    }
+
+    return [
+      ChatMessage(
+        text: configuredSystemPrompt,
+        role: MessageRole.system,
+      ),
+      ...normalizedMessages,
+    ];
   }
 
   Map<String, dynamic> _buildAnthropicMessagesPayload(

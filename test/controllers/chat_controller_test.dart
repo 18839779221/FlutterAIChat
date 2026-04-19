@@ -193,9 +193,6 @@ class _NoopChatDebugController implements ChatDebugController {
 
 class _NoopChatPreferencesController implements ChatPreferencesController {
   @override
-  void setUseConciseMode(bool value) {}
-
-  @override
   void setUseReasoning(bool value) {}
 
   @override

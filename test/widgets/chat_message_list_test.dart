@@ -1,4 +1,5 @@
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/debug/debug_test_case.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
@@ -27,8 +28,8 @@ void main() {
 
       expect(find.text('开始一段新的对话'), findsOneWidget);
       expect(find.text('从一个问题开始，或让助手帮你推进下一步。'), findsOneWidget);
-      expect(find.text('单题问答'), findsOneWidget);
-      expect(find.text('多题澄清'), findsOneWidget);
+      expect(find.text('纯文本直答'), findsOneWidget);
+      expect(find.text('单工具自动执行'), findsOneWidget);
     });
 
     testWidgets('empty state suggestion fills the composer without auto sending',
@@ -45,12 +46,12 @@ void main() {
         focusNode: focusNode,
       );
 
-      await tester.tap(find.text('单题问答'));
+      await tester.tap(find.text('纯文本直答'));
       await tester.pump();
 
       expect(
         textController.text,
-        '帮我设计一个本地 AI 聊天 App 的存储方案，但我现在还没决定用哪种数据库。请先向我提一个关键澄清问题，再继续给方案。',
+        '用一句话解释什么是 SQLite',
       );
       expect(
         textController.selection,
@@ -72,12 +73,12 @@ void main() {
         focusNode: focusNode,
       );
 
-      await tester.tap(find.text('多题澄清'));
+      await tester.tap(find.text('多工具串行执行'));
       await tester.pump();
 
       expect(
         textController.text,
-        '我要做一个新的 AI Chat 产品方案，但我还没决定目标平台、数据存储、以及是否支持离线模式。不要自己猜，请把这些关键问题一次性问我，然后再给最终建议。',
+        '先搜索 OpenAI 今天的最新消息，再读取你认为最相关的一篇网页，然后总结给我',
       );
       expect(
         textController.selection,
@@ -569,6 +570,41 @@ Future<void> _pumpMessageList(
   final container = ProviderContainer(
     overrides: [
       hasMoreMessagesProvider.overrideWith((ref) => false),
+      featuredDebugTestCasesProvider.overrideWith(
+        (ref) => const [
+          DebugTestCase(
+            id: 'plain-answer',
+            group: 'tool-call',
+            title: '纯文本直答',
+            summary: '验证无需工具时能直接结束回答。',
+            prompt: '用一句话解释什么是 SQLite',
+            tags: ['agent-loop'],
+            featured: true,
+            enabled: true,
+          ),
+          DebugTestCase(
+            id: 'memory-search',
+            group: 'tool-call',
+            title: '单工具自动执行',
+            summary: '验证历史检索类工具执行后再收敛回答。',
+            prompt: '我刚才提过数据库版本吗？',
+            tags: ['agent-loop'],
+            featured: true,
+            enabled: true,
+          ),
+          DebugTestCase(
+            id: 'tool-chain',
+            group: 'tool-call',
+            title: '多工具串行执行',
+            summary: '验证联网搜索和网页读取串行发生。',
+            prompt:
+                '先搜索 OpenAI 今天的最新消息，再读取你认为最相关的一篇网页，然后总结给我',
+            tags: ['agent-loop'],
+            featured: true,
+            enabled: true,
+          ),
+        ],
+      ),
       if (textController != null)
         textControllerProvider.overrideWith((ref) => textController),
       if (focusNode != null)

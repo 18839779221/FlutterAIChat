@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
+import 'package:ai_chat/models/agent/planner_tool_choice.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
@@ -1569,11 +1570,9 @@ void main() {
           .read(chatControllerProvider)
           .setSystemPrompt('new prompt');
       container.read(chatControllerProvider).setUseReasoning(true);
-      container.read(chatControllerProvider).setUseConciseMode(true);
 
       expect(preferencesController.systemPrompts, ['new prompt']);
       expect(preferencesController.reasoningValues, [true]);
-      expect(preferencesController.conciseValues, [true]);
     });
 
     test('需要确认的工具会让发送事务停留在 awaitingConfirmation', () async {
@@ -1860,6 +1859,21 @@ class _NoopBaseLLM implements BaseLLM {
       const Stream.empty();
 
   @override
+  Future<String> planNextAction({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+  }) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<PlannerToolChoice?> planNextToolChoice({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+  }) async =>
+      null;
+
+  @override
   Future<ModelTurnDecision?> planTurnDecision({
     required List<ChatMessage> messages,
     required ChatConfig config,
@@ -2000,16 +2014,10 @@ class _FakeChatDebugController implements ChatDebugController {
 class _FakeChatPreferencesController implements ChatPreferencesController {
   final List<String?> systemPrompts = [];
   final List<bool> reasoningValues = [];
-  final List<bool> conciseValues = [];
 
   @override
   Future<void> setSystemPrompt(String? prompt) async {
     systemPrompts.add(prompt);
-  }
-
-  @override
-  void setUseConciseMode(bool value) {
-    conciseValues.add(value);
   }
 
   @override

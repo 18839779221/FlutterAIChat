@@ -6,6 +6,7 @@ import '../models/chat_message.dart';
 import '../models/llm/base_llm.dart';
 import '../models/response/structured_summary_card.dart';
 import '../models/tool/tool_invocation.dart';
+import 'prompt/prompt_locale.dart';
 import 'tool_call_service.dart';
 import 'response_parser_service.dart';
 import '../utils/logger.dart';
@@ -13,10 +14,14 @@ import '../utils/logger.dart';
 class ChatConfig {
   bool useReasoning = false;
   String systemPrompt = "";
+  String userSystemPrompt = "";
+  PromptLocale promptLocale = PromptLocale.english;
 
   ChatConfig({
     required this.useReasoning,
     required this.systemPrompt,
+    this.userSystemPrompt = '',
+    this.promptLocale = PromptLocale.english,
   });
 }
 

@@ -183,6 +183,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     final config = ChatConfig(
       useReasoning: _ref.read(useReasoningProvider),
       systemPrompt: _ref.read(systemPromptProvider) ?? '',
+      userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
     );
 
     int? assistantMessageId;
@@ -652,6 +653,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
           config: ChatConfig(
             useReasoning: _ref.read(useReasoningProvider),
             systemPrompt: _ref.read(systemPromptProvider) ?? '',
+            userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
           ),
         )
         .asyncMap((event) async {
@@ -915,6 +917,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       config: ChatConfig(
         useReasoning: _ref.read(useReasoningProvider),
         systemPrompt: _ref.read(systemPromptProvider) ?? '',
+        userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
       ),
       trustTool: trustTool,
     )) {

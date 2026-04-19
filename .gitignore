@@ -50,3 +50,7 @@ app.*.map.json
 .superpowers/
 config/local_defaults.json
 web/config/local_defaults.json
+
+# test file
+request.json
+response.json

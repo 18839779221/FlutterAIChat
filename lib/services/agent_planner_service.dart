@@ -13,8 +13,10 @@ import '../models/tool/tool_access_snapshot.dart';
 import '../models/tool/tool_definition.dart';
 import 'chat_service.dart';
 import 'planner_tool_exposure_service.dart';
+import 'prompt/prompt_builder_service.dart';
 import 'tool_policy_service.dart';
 import '../utils/logger.dart';
+import 'prompt/prompt_stage.dart';
 
 class AgentPlannerService {
   static const _tag = 'AgentPlannerService';
@@ -23,17 +25,20 @@ class AgentPlannerService {
   final List<ToolDefinition> _availableTools;
   final PlannerToolExposureService _toolExposureService;
   final ToolPolicyService? _toolPolicyService;
+  final PromptBuilderService _promptBuilder;
 
   AgentPlannerService({
     required BaseLLM llm,
     List<ToolDefinition> availableTools = const [],
     PlannerToolExposureService? toolExposureService,
     ToolPolicyService? toolPolicyService,
+    PromptBuilderService? promptBuilder,
   })  : _llm = llm,
         _availableTools = availableTools,
         _toolExposureService =
             toolExposureService ?? PlannerToolExposureService(),
-        _toolPolicyService = toolPolicyService;
+        _toolPolicyService = toolPolicyService,
+        _promptBuilder = promptBuilder ?? const PromptBuilderService();
 
   Future<ModelTurnDecision?> planNextDecision({
     required ChatTurn turn,
@@ -48,18 +53,17 @@ class AgentPlannerService {
         .toList(growable: false);
     final allowedToolNames = _resolveAllowedToolNames(visibleTools);
     final plannerToolOptions = _buildPlannerToolOptions(visibleToolAccess);
-    final hasUserInteractionTool = visibleTools.any(
-      (tool) => tool.resolvedRuntimeKind == ToolRuntimeKind.userInteraction,
-    );
-    final messages = <ChatMessage>[
-      ChatMessage(
-        text: _buildPlannerInstructionMessage(
-          hasUserInteractionTool: hasUserInteractionTool,
-        ),
-        role: MessageRole.system,
+    final plannerConfig = ChatConfig(
+      useReasoning: config.useReasoning,
+      systemPrompt: _promptBuilder.buildSystemPrompt(
+        stage: PromptStage.planner,
+        locale: config.promptLocale,
+        userSystemPrompt: _resolveUserSystemPrompt(config),
       ),
-      ...transcript.map(_eventToMessage),
-    ];
+      userSystemPrompt: _resolveUserSystemPrompt(config),
+      promptLocale: config.promptLocale,
+    );
+    final messages = transcript.map(_eventToMessage).toList(growable: false);
 
     try {
       Logger.d(
@@ -72,7 +76,7 @@ class AgentPlannerService {
       );
       final decision = await _llm.planTurnDecision(
         messages: messages,
-        config: config,
+        config: plannerConfig,
         availableTools: plannerToolOptions,
         providerStyle: turn.providerStyle,
         providerState: turn.providerStateJson,
@@ -98,6 +102,14 @@ class AgentPlannerService {
       Logger.e(_tag, 'native planner decision stack trace', stackTrace);
       return _plannerRequestFailedDecision();
     }
+  }
+
+  String _resolveUserSystemPrompt(ChatConfig config) {
+    final explicit = config.userSystemPrompt.trim();
+    if (explicit.isNotEmpty) {
+      return explicit;
+    }
+    return config.systemPrompt.trim();
   }
 
   ModelTurnDecision _sanitizeDecision(
@@ -337,22 +349,6 @@ class AgentPlannerService {
 
   List<String> _resolveAllowedToolNames(List<ToolDefinition> visibleTools) {
     return visibleTools.map((tool) => tool.name).toList(growable: false);
-  }
-
-  String _buildPlannerInstructionMessage({
-    required bool hasUserInteractionTool,
-  }) {
-    final buffer = StringBuffer()
-      ..writeln('你是一个对话回合规划器。')
-      ..writeln('优先使用原生工具调用来推进任务。')
-      ..writeln('如果现有信息已经足够，请结束工具规划并准备最终答复。')
-      ..writeln('如果同一回合里某个工具用相同参数已经执行过，且期间没有新的用户信息，不要重复调用它。');
-    if (hasUserInteractionTool) {
-      buffer
-        ..writeln('当完成任务缺少必须由用户补充的关键信息时，优先调用 ask_user_question。')
-        ..writeln('不要把应由 ask_user_question 承载的问题直接写成普通 assistant 回复。');
-    }
-    return buffer.toString().trim();
   }
 
   String _preview(String value) {

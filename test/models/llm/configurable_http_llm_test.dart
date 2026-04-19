@@ -177,6 +177,53 @@ void main() {
       expect(choice.response, '我已经有足够信息，可以直接回答用户。');
     });
 
+    test('chat completions planner payload injects config system prompt',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'role': 'assistant',
+                  'content': 'ok',
+                },
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+      );
+
+      await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '继续', role: MessageRole.user),
+        ],
+        config: ChatConfig(
+          useReasoning: false,
+          systemPrompt: 'planner system prompt',
+        ),
+        availableTools: const [],
+      );
+
+      expect(client.lastRequestBody?['messages'], [
+        {
+          'role': 'system',
+          'content': 'planner system prompt',
+        },
+        {
+          'role': 'user',
+          'content': '继续',
+        },
+      ]);
+    });
+
     test('responses payload includes planner tools and parses function call',
         () async {
       final client = _RecordingHttpClient(
@@ -265,6 +312,66 @@ void main() {
             },
             'required': ['query'],
           },
+        },
+      ]);
+    });
+
+    test('responses planner payload injects config system prompt as system input',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'output': [
+              {
+                'type': 'message',
+                'content': [
+                  {
+                    'type': 'output_text',
+                    'text': 'ok',
+                  },
+                ],
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1',
+        httpClient: client,
+      );
+
+      await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '继续', role: MessageRole.user),
+        ],
+        config: ChatConfig(
+          useReasoning: false,
+          systemPrompt: 'planner system prompt',
+        ),
+        availableTools: const [],
+      );
+
+      expect(client.lastRequestBody?['input'], [
+        {
+          'role': 'system',
+          'content': [
+            {
+              'type': 'input_text',
+              'text': 'planner system prompt',
+            },
+          ],
+        },
+        {
+          'role': 'user',
+          'content': [
+            {
+              'type': 'input_text',
+              'text': '继续',
+            },
+          ],
         },
       ]);
     });

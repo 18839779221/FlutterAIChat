@@ -23,12 +23,6 @@ final autoScrollToBottomProvider = StateProvider<bool>((ref) => true);
 // 推理模式提供者
 final useReasoningProvider = StateProvider<bool>((ref) => false);
 
-// 简洁模式提供者
-final useConciseModeProvider = StateProvider<bool>((ref) => false);
-
-// 暂存的系统提示词提供者
-final cachedSystemPromptProvider = StateProvider<String?>((ref) => null);
-
 // 初始化状态提供者
 final isInitializingProvider = StateProvider<bool>((ref) => true);
 

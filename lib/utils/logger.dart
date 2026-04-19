@@ -147,7 +147,7 @@ class Logger {
     Map<String, dynamic>? data,
   }) {
     final line = _formatLine(
-      timestamp: DateTime.now().toUtc(),
+      timestamp: DateTime.now(),
       kind: kind,
       level: level,
       tag: tag,
@@ -167,7 +167,7 @@ class Logger {
     Map<String, dynamic>? data,
   }) {
     final buffer = StringBuffer()
-      ..write(timestamp.toIso8601String())
+      ..write(formatTimestampForLog(timestamp))
       ..write(' ')
       ..write(level.label)
       ..write(' [')
@@ -188,6 +188,18 @@ class Logger {
         ..write(suffix);
     }
     return buffer.toString();
+  }
+
+  @visibleForTesting
+  static String formatTimestampForLog(DateTime timestamp) {
+    final local = timestamp.toLocal();
+    final offset = local.timeZoneOffset;
+    final sign = offset.isNegative ? '-' : '+';
+    final absoluteOffset = offset.abs();
+    final hours = absoluteOffset.inHours.toString().padLeft(2, '0');
+    final minutes =
+        (absoluteOffset.inMinutes % 60).toString().padLeft(2, '0');
+    return '${local.toIso8601String()}$sign$hours:$minutes';
   }
 
   static String _formatKeyValues(Map<String, dynamic>? data) {
@@ -238,7 +250,7 @@ class Logger {
   }
 
   static String _newSessionId() {
-    final timestamp = DateTime.now().toUtc().microsecondsSinceEpoch;
+    final timestamp = DateTime.now().microsecondsSinceEpoch;
     return 'run_$timestamp';
   }
 }

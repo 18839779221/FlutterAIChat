@@ -1,5 +1,6 @@
 import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
+import 'package:ai_chat/models/agent/planner_tool_choice.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -250,6 +251,21 @@ class _NoopBaseLLM implements BaseLLM {
   @override
   Stream<String> chatStream(List<ChatMessage> messages, ChatConfig config) =>
       const Stream.empty();
+
+  @override
+  Future<String> planNextAction({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+  }) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<PlannerToolChoice?> planNextToolChoice({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+  }) async =>
+      null;
 
   @override
   Future<ModelTurnDecision?> planTurnDecision({

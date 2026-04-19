@@ -38,7 +38,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final isSendInFlight = sendPhase != ChatSendPhase.idle;
     final systemPrompt = ref.watch(systemPromptProvider);
     final useReasoning = ref.watch(useReasoningProvider);
-    final useConciseMode = ref.watch(useConciseModeProvider);
     final isLoadingMore = ref.watch(isLoadingMoreProvider);
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final colors = Theme.of(context).extension<AppColors>()!;
@@ -142,7 +141,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     hasSystemPrompt:
                         systemPrompt != null && systemPrompt.isNotEmpty,
                     useReasoning: useReasoning,
-                    useConciseMode: useConciseMode,
                   ),
                 ),
               ),
@@ -183,7 +181,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     BuildContext context, {
     required bool hasSystemPrompt,
     required bool useReasoning,
-    required bool useConciseMode,
   }) {
     showCupertinoModalPopup(
       context: context,
@@ -201,15 +198,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             child: Text(useReasoning ? '关闭深度模式' : '开启深度模式'),
             onPressed: () {
               ref.read(chatControllerProvider).setUseReasoning(!useReasoning);
-              Navigator.pop(context);
-            },
-          ),
-          CupertinoActionSheetAction(
-            child: Text(useConciseMode ? '关闭简洁模式' : '开启简洁模式'),
-            onPressed: () {
-              ref.read(chatControllerProvider).setUseConciseMode(
-                    !useConciseMode,
-                  );
               Navigator.pop(context);
             },
           ),

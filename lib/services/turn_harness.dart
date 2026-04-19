@@ -3,7 +3,6 @@ import '../models/agent/model_tool_call.dart';
 import '../models/agent/model_turn_decision.dart';
 import '../models/agent/agent_loop_limits.dart';
 import '../models/chat_event.dart';
-import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/interaction/ask_user_question_request.dart';
 import '../models/interaction/ask_user_question_response.dart';
@@ -19,7 +18,6 @@ import '../utils/logger.dart';
 import 'agent_planner_service.dart';
 import 'chat_service.dart';
 import 'turn_verifier.dart';
-import 'turn_ledger_builder_service.dart';
 import 'tool_call_service.dart';
 import 'transcript_builder_service.dart';
 
@@ -30,9 +28,7 @@ class TurnHarness {
   final ChatTurnStepRepository? _stepRepository;
   final ChatEventRepository _eventRepository;
   final TranscriptBuilderService _transcriptBuilderService;
-  final TurnLedgerBuilderService _turnLedgerBuilder;
   final TurnVerifier _turnVerifier;
-  final ChatService _chatService;
   final ToolCallService _toolCallService;
   final AgentLoopLimits _limits;
 
@@ -42,8 +38,6 @@ class TurnHarness {
     ChatTurnStepRepository? turnStepRepository,
     required ChatEventRepository eventRepository,
     required TranscriptBuilderService transcriptBuilderService,
-    TurnLedgerBuilderService turnLedgerBuilder =
-        const TurnLedgerBuilderService(),
     required TurnVerifier turnVerifier,
     required ChatService chatService,
     required ToolCallService toolCallService,
@@ -53,9 +47,7 @@ class TurnHarness {
         _stepRepository = turnStepRepository,
         _eventRepository = eventRepository,
         _transcriptBuilderService = transcriptBuilderService,
-        _turnLedgerBuilder = turnLedgerBuilder,
         _turnVerifier = turnVerifier,
-        _chatService = chatService,
         _toolCallService = toolCallService,
         _limits = limits;
 
@@ -249,7 +241,9 @@ class TurnHarness {
       );
       final runtimeTurn = await _turnRepository.getTurn(turnId) ?? currentTurn;
       final plannerAssistantMessage = (decision.assistantMessage ?? '').trim();
-      if (plannerAssistantMessage.isNotEmpty) {
+      final shouldPersistPlannerMessage = plannerAssistantMessage.isNotEmpty &&
+          !(decision.isTerminal && decision.toolCalls.isEmpty);
+      if (shouldPersistPlannerMessage) {
         yield await _appendAndLoad(
           turnId,
           () => _eventRepository.appendAssistantPlannerMessage(
@@ -351,14 +345,6 @@ class TurnHarness {
 
       if (decision.isTerminal &&
           (decision.assistantMessage ?? '').trim().isNotEmpty) {
-        Logger.trace(
-          _tag,
-          'turn.final_answer_start',
-          data: {
-            'turnId': turnId,
-            'responsePreview': _preview(decision.assistantMessage ?? ''),
-          },
-        );
         yield await _appendAndLoad(
           turnId,
           () => _eventRepository.appendTurnStatus(
@@ -386,65 +372,22 @@ class TurnHarness {
 
         final answerTranscript =
             await _transcriptBuilderService.loadTranscript(turnId);
-        Logger.d(
+        final latestAssistantText = decision.assistantMessage ?? '';
+        Logger.trace(
           _tag,
-          'building final answer with transcriptEvents=${answerTranscript.length}',
+          'turn.terminal_response_ready',
+          data: {
+            'turnId': turnId,
+            'responsePreview': _preview(latestAssistantText),
+          },
         );
-        final answerMessages =
-            await _transcriptBuilderService.buildFinalAnswerMessages(
-          groupId: runtimeTurn.groupId,
-          turn: runtimeTurn,
-          transcript: answerTranscript,
-          systemPrompt: config.systemPrompt,
-        );
-        final finalSummary = _turnLedgerBuilder.buildFinalAnswerSummary(
-          turn: runtimeTurn,
-          steps: _stepRepository == null
-              ? const []
-              : await _stepRepository!.listSteps(turnId),
-        );
-        answerMessages.insert(
-          config.systemPrompt.trim().isEmpty ? 0 : 1,
-          ChatMessage(
-            text: finalSummary,
-            role: MessageRole.system,
-            status: MessageStatus.completed,
-          ),
-        );
-
-        final buffer = StringBuffer();
-        await for (final chunk in _chatService.streamFinalAnswer(
-          messages: answerMessages,
-          config: config,
-        )) {
-          buffer.write(chunk);
-          yield await _appendAndLoad(
-            turnId,
-            () => _eventRepository.appendAssistantTextDelta(
-              turnId: turnId,
-              groupId: runtimeTurn.groupId,
-              content: chunk,
-            ),
-          );
-        }
-
-        final finalText = buffer.toString();
-        yield await _appendAndLoad(
-          turnId,
-          () => _eventRepository.appendAssistantTextFinal(
-            turnId: turnId,
-            groupId: runtimeTurn.groupId,
-            content: finalText,
-          ),
-        );
-
         final verifyResult = await _turnVerifier.verifyCanStop(
           turn: runtimeTurn,
-          transcript: await _transcriptBuilderService.loadTranscript(turnId),
+          transcript: answerTranscript,
           steps: _stepRepository == null
               ? const []
               : await _stepRepository!.listSteps(turnId),
-          latestAssistantText: finalText,
+          latestAssistantText: latestAssistantText,
           limits: _limits,
         );
 
@@ -462,13 +405,13 @@ class TurnHarness {
             () => _eventRepository.appendFinalAnswer(
               turnId: turnId,
               groupId: runtimeTurn.groupId,
-              content: finalText,
+              content: latestAssistantText,
             ),
           );
           await _turnRepository.markCompleted(
             turnId,
             stopReason: verifyResult.reason,
-            finalResponseText: finalText,
+            finalResponseText: latestAssistantText,
           );
           break;
         }
