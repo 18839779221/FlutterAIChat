@@ -276,6 +276,9 @@ Database version: 5 (includes `is_summarized` field for automatic summarization 
 - History messages are filtered to only include completed AI-user message pairs before sending to the LLM
 - Auto-scrolling behavior pauses when user manually scrolls up during generation
 - The app supports Shorebird code push for over-the-air updates
+- The app is currently in an internal-development stage with no external users
+  - Unless a task explicitly requires it, do not add backward-compatibility layers, migration shims, fallback parsing for retired schemas, or legacy-preservation code
+  - Prefer direct refactors toward the target structure and update local docs/scripts/tests in the same change
 - `assets/debug/test_cases.json` is the single source of truth for debug/e2e manual test cases
   - Do not reintroduce a second primary case list in Markdown, widget constants, or automation-only fixtures
   - When adding or changing debug cases, consider whether empty-state featured entries, Debug `Cases` grouping, and related tests also need updates

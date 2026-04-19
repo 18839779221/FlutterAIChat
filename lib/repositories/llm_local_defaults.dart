@@ -4,23 +4,25 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
+import '../models/llm/llm_provider_config.dart';
+
 class LlmLocalDefaults {
-  /// Default LLM API key used when local overrides are absent.
-  final String? apiKey;
+  /// Default provider selected during the first local seed.
+  final String? defaultProviderId;
 
-  /// Default LLM base URL used when local overrides are absent.
-  final String? baseUrl;
+  /// Default model selected during the first local seed.
+  final String? defaultModelId;
 
-  /// Default model name used when local overrides are absent.
-  final String? model;
+  /// Provider directory imported into shared preferences on first launch.
+  final List<LlmProviderConfig> providers;
 
   /// Extra runtime config shared with non-LLM integrations such as tools.
   final Map<String, dynamic> additionalConfig;
 
   const LlmLocalDefaults({
-    this.apiKey,
-    this.baseUrl,
-    this.model,
+    this.defaultProviderId,
+    this.defaultModelId,
+    this.providers = const [],
     this.additionalConfig = const {},
   });
 
@@ -33,19 +35,30 @@ class LlmLocalDefaults {
       return trimmed.isEmpty ? null : trimmed;
     }
 
+    final rawProviders = json['providers'];
+    final providers = rawProviders is List
+        ? rawProviders
+            .whereType<Map>()
+            .map((item) => LlmProviderConfig.fromJson(Map<String, dynamic>.from(item)))
+            .where(
+              (item) =>
+                  item.id.isNotEmpty &&
+                  item.name.isNotEmpty &&
+                  item.baseUrl.isNotEmpty &&
+                  item.models.isNotEmpty,
+            )
+            .toList(growable: false)
+        : const <LlmProviderConfig>[];
+
     return LlmLocalDefaults(
-      apiKey: normalize(json['api_key']),
-      baseUrl: normalize(json['base_url']),
-      model: normalize(json['model']),
+      defaultProviderId: normalize(json['default_provider_id']),
+      defaultModelId: normalize(json['default_model_id']),
+      providers: providers,
       additionalConfig: _readAdditionalConfig(json),
     );
   }
 
-  bool get isEmpty =>
-      apiKey == null &&
-      baseUrl == null &&
-      model == null &&
-      additionalConfig.isEmpty;
+  bool get isEmpty => providers.isEmpty && additionalConfig.isEmpty;
 
   static Map<String, dynamic> _readAdditionalConfig(Map<String, dynamic> json) {
     final webSearch = json['web_search'];

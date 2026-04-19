@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/llm/llm_provider_config.dart';
+import '../models/llm/llm_provider_model.dart';
 import '../models/tool/tool_policy.dart';
 import '../providers/chat_providers.dart';
+import '../services/llm_model_test_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../widgets/settings/settings_group_section.dart';
 import '../widgets/settings/settings_row.dart';
 import '../widgets/settings/settings_segmented_control.dart';
+import 'model_management_page.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -18,18 +22,15 @@ class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
-  final _formKey = GlobalKey<FormState>();
-  final _apiKeyController = TextEditingController();
-  final _modelController = TextEditingController();
-  final _baseUrlController = TextEditingController();
-
   bool _isDarkMode = false;
   bool _autoShowKeyboard = true;
   bool _isLoading = true;
-  bool _isSaving = false;
-  bool _obscureApiKey = true;
+  bool _isTestingModel = false;
   ToolExecutionMode _toolExecutionMode = ToolExecutionMode.balanced;
   List<String> _trustedToolNames = const [];
+  List<LlmProviderConfig> _providers = const [];
+  LlmProviderConfig? _currentProvider;
+  LlmProviderModel? _currentModel;
 
   @override
   void initState() {
@@ -37,98 +38,44 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _loadSettings();
   }
 
-  @override
-  void dispose() {
-    _apiKeyController.dispose();
-    _modelController.dispose();
-    _baseUrlController.dispose();
-    super.dispose();
-  }
-
   Future<void> _loadSettings() async {
     final repository = ref.read(appSettingsRepositoryProvider);
-    final apiKey = await repository.getApiKey();
-    final model = await repository.getModel();
-    final baseUrl = await repository.getBaseUrl();
+    final providers = await repository.getProviders();
+    final selection = await repository.getSelectionState();
     final toolExecutionModeName = await repository.getToolExecutionModeName();
     final trustedToolNames = await repository.getTrustedToolNames();
+
+    LlmProviderConfig? currentProvider;
+    LlmProviderModel? currentModel;
+    for (final provider in providers) {
+      if (provider.id == selection.selectedProviderId) {
+        currentProvider = provider;
+        break;
+      }
+    }
+    if (currentProvider != null) {
+      for (final model in currentProvider.models) {
+        if (model.id == selection.selectedModelId) {
+          currentModel = model;
+          break;
+        }
+      }
+      currentModel ??=
+          currentProvider.models.isEmpty ? null : currentProvider.models.first;
+    }
 
     if (!mounted) {
       return;
     }
 
-    _apiKeyController.text = apiKey;
-    _modelController.text = model;
-    _baseUrlController.text = baseUrl;
-
     setState(() {
+      _providers = providers;
+      _currentProvider = currentProvider;
+      _currentModel = currentModel;
       _toolExecutionMode = _parseToolExecutionMode(toolExecutionModeName);
       _trustedToolNames = trustedToolNames.toList()..sort();
       _isLoading = false;
     });
-  }
-
-  Future<void> _saveSettings() async {
-    final formState = _formKey.currentState;
-    if (formState == null || !formState.validate()) {
-      return;
-    }
-
-    setState(() {
-      _isSaving = true;
-    });
-
-    try {
-      await ref.read(appSettingsRepositoryProvider).saveLlmConfig(
-        apiKey: _apiKeyController.text,
-        model: _modelController.text,
-        baseUrl: _baseUrlController.text,
-      );
-
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('API 配置已保存')),
-      );
-    } catch (e) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('保存失败: $e')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSaving = false;
-        });
-      }
-    }
-  }
-
-  String? _validateBaseUrl(String? value) {
-    final input = value?.trim() ?? '';
-    if (input.isEmpty) {
-      return '请输入 Base URL';
-    }
-
-    final uri = Uri.tryParse(input);
-    if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
-      return '请输入有效的 URL';
-    }
-
-    return null;
-  }
-
-  String? _validateModel(String? value) {
-    if ((value?.trim() ?? '').isEmpty) {
-      return '请输入模型名';
-    }
-
-    return null;
   }
 
   ToolExecutionMode _parseToolExecutionMode(String? modeName) {
@@ -175,12 +122,130 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     });
   }
 
+  Future<void> _openModelManagement() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ModelManagementPage(
+          repository: ref.read(appSettingsRepositoryProvider),
+        ),
+      ),
+    );
+    await _loadSettings();
+  }
+
+  Future<void> _selectProvider(LlmProviderConfig provider) async {
+    final nextModel = provider.models.isEmpty ? null : provider.models.first;
+    if (nextModel == null) {
+      return;
+    }
+    await ref.read(appSettingsRepositoryProvider).selectProviderAndModel(
+          providerId: provider.id,
+          modelId: nextModel.id,
+        );
+    await _loadSettings();
+  }
+
+  Future<void> _selectModel(LlmProviderModel model) async {
+    final provider = _currentProvider;
+    if (provider == null) {
+      return;
+    }
+    await ref.read(appSettingsRepositoryProvider).selectProviderAndModel(
+          providerId: provider.id,
+          modelId: model.id,
+        );
+    await _loadSettings();
+  }
+
+  Future<void> _testCurrentModel() async {
+    final provider = _currentProvider;
+    final model = _currentModel;
+    if (provider == null || model == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先新增提供方和模型')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isTestingModel = true;
+    });
+
+    try {
+      final result = await LlmModelTestService().testModel(
+        provider: provider,
+        model: model,
+      );
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('测试成功: $result')),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('测试失败: $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isTestingModel = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _openProviderPicker() async {
+    if (_providers.isEmpty) {
+      return;
+    }
+    final selected = await showModalBottomSheet<LlmProviderConfig>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => _SelectionSheet<LlmProviderConfig>(
+        title: '选择提供方',
+        items: _providers,
+        isSelected: (item) => item.id == _currentProvider?.id,
+        labelBuilder: (item) => item.name,
+      ),
+    );
+    if (selected == null) {
+      return;
+    }
+    await _selectProvider(selected);
+  }
+
+  Future<void> _openModelPicker() async {
+    final provider = _currentProvider;
+    if (provider == null || provider.models.isEmpty) {
+      return;
+    }
+    final selected = await showModalBottomSheet<LlmProviderModel>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => _SelectionSheet<LlmProviderModel>(
+        title: '选择模型',
+        items: provider.models,
+        isSelected: (item) => item.id == _currentModel?.id,
+        labelBuilder: (item) => item.displayName,
+      ),
+    );
+    if (selected == null) {
+      return;
+    }
+    await _selectModel(selected);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<AppColors>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
-
+    final provider = _currentProvider;
+    final model = _currentModel;
     return Scaffold(
       appBar: AppBar(
         title: const Text('设置'),
@@ -221,73 +286,75 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 SizedBox(height: spacing.lg),
                 SettingsGroupSection(
                   title: '模型接入',
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '保存后，新请求会直接读取最新的 API Key、Model 与 Base URL。',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: colors.secondaryText,
-                                height: 1.4,
-                              ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '当前运行时配置来自所选提供方与模型，管理入口会统一维护 provider 与 model 目录。',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: colors.secondaryText,
+                              height: 1.4,
+                            ),
+                      ),
+                      SizedBox(height: spacing.md),
+                      SettingsRow(
+                        title: '当前提供方',
+                        subtitle: provider?.name ?? '暂无提供方',
+                        trailing: Tooltip(
+                          message: '选择提供方',
+                          child: OutlinedButton.icon(
+                            onPressed: _providers.isEmpty ? null : _openProviderPicker,
+                            icon: const Icon(Icons.unfold_more),
+                            label: const Text('选择'),
+                          ),
                         ),
-                        SizedBox(height: spacing.md),
-                        TextFormField(
-                          controller: _apiKeyController,
-                          obscureText: _obscureApiKey,
-                          decoration: InputDecoration(
-                            labelText: 'API Key',
-                            hintText: 'sk-...',
-                            suffixIcon: IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  _obscureApiKey = !_obscureApiKey;
-                                });
-                              },
-                              icon: Icon(
-                                _obscureApiKey
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined,
-                              ),
+                      ),
+                      Divider(color: colors.divider, height: spacing.md * 2),
+                      SettingsRow(
+                        title: '当前模型',
+                        subtitle: model?.displayName ?? '暂无模型',
+                        trailing: Tooltip(
+                          message: '选择模型',
+                          child: OutlinedButton.icon(
+                            onPressed: provider == null || provider.models.isEmpty
+                                ? null
+                                : _openModelPicker,
+                            icon: const Icon(Icons.unfold_more),
+                            label: const Text('选择'),
+                          ),
+                        ),
+                      ),
+                      Divider(color: colors.divider, height: spacing.md * 2),
+                      SettingsRow(
+                        title: 'Base URL',
+                        subtitle: provider?.baseUrl ?? '未配置',
+                        trailing: const SizedBox.shrink(),
+                      ),
+                      SizedBox(height: spacing.md),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: _openModelManagement,
+                              child: const Text('管理模型'),
                             ),
                           ),
-                        ),
-                        SizedBox(height: spacing.md),
-                        TextFormField(
-                          controller: _modelController,
-                          validator: _validateModel,
-                          decoration: const InputDecoration(
-                            labelText: 'Model',
-                            hintText: 'gpt-5.4 / claude-sonnet / qwen-plus',
+                          SizedBox(width: spacing.md),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: _isTestingModel ? null : _testCurrentModel,
+                              child: _isTestingModel
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Text('测试当前模型'),
+                            ),
                           ),
-                        ),
-                        SizedBox(height: spacing.md),
-                        TextFormField(
-                          controller: _baseUrlController,
-                          validator: _validateBaseUrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Base URL',
-                            hintText: 'https://api.example.com/v1/responses',
-                          ),
-                        ),
-                        SizedBox(height: spacing.md),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton(
-                            onPressed: _isSaving ? null : _saveSettings,
-                            child: _isSaving
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                : const Text('保存配置'),
-                          ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
                 SizedBox(height: spacing.lg),
@@ -413,6 +480,75 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
               ],
             ),
+    );
+  }
+}
+
+class _SelectionSheet<T> extends StatelessWidget {
+  final String title;
+  final List<T> items;
+  final bool Function(T item) isSelected;
+  final String Function(T item) labelBuilder;
+
+  const _SelectionSheet({
+    required this.title,
+    required this.items,
+    required this.isSelected,
+    required this.labelBuilder,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final colors = Theme.of(context).extension<AppColors>()!;
+    final maxHeight = MediaQuery.of(context).size.height * 0.7;
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.all(spacing.lg),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: colors.primaryText,
+                    ),
+              ),
+              SizedBox(height: spacing.md),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    final selected = isSelected(item);
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: selected
+                          ? Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: colors.workflowRunning,
+                                shape: BoxShape.circle,
+                              ),
+                              )
+                          : const SizedBox(width: 8, height: 8),
+                      title: Text(labelBuilder(item)),
+                      onTap: () => Navigator.of(context).pop(item),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
