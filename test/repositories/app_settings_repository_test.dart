@@ -1,3 +1,5 @@
+import 'package:ai_chat/models/llm/llm_provider_config.dart';
+import 'package:ai_chat/models/llm/llm_provider_model.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,47 +8,156 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('AppSettingsRepository local defaults', () {
-    test('falls back to local defaults when preferences are empty', () async {
+  group('AppSettingsRepository provider-first settings', () {
+    test('seeds providers from local defaults on first read', () async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
       final repository = AppSettingsRepository(
         preferences,
         localDefaultsLoader: () async => const LlmLocalDefaults(
-          apiKey: 'local-key',
-          baseUrl: 'https://local.example/v1',
-          model: 'gpt-5.4',
+          defaultProviderId: 'aigocode',
+          defaultModelId: 'gpt-5.4',
+          providers: [
+            LlmProviderConfig(
+              id: 'aigocode',
+              name: 'AIGoCode',
+              apiKey: 'local-key',
+              baseUrl: 'https://api.aigocode.com',
+              models: [
+                LlmProviderModel(id: 'gpt-5.4', name: 'GPT-5.4'),
+              ],
+            ),
+          ],
         ),
       );
 
+      final providers = await repository.getProviders();
+      final selection = await repository.getSelectionState();
       final config = await repository.getLlmConfig();
 
+      expect(providers, hasLength(1));
+      expect(providers.single.id, 'aigocode');
+      expect(selection.selectedProviderId, 'aigocode');
+      expect(selection.selectedModelId, 'gpt-5.4');
       expect(config.apiKey, 'local-key');
-      expect(config.apiUrl, 'https://local.example/v1');
+      expect(config.apiUrl, 'https://api.aigocode.com');
       expect(config.model, 'gpt-5.4');
     });
 
-    test('saved preferences take precedence over local defaults', () async {
+    test('saved providers and selection override local defaults after seeding',
+        () async {
       SharedPreferences.setMockInitialValues({
-        'llm.api_key': 'saved-key',
-        'llm.base_url': 'https://saved.example/v1',
-        'llm.model': 'saved-model',
+        'llm.providers_seeded': true,
+        'llm.providers_json':
+            '[{"id":"saved","name":"Saved","apiKey":"saved-key","baseUrl":"https://saved.example","models":[{"id":"saved-model","name":"Saved Model"}]}]',
+        'llm.selection_json':
+            '{"selected_provider_id":"saved","selected_model_id":"saved-model","default_provider_id":"saved","default_model_id":"saved-model"}',
       });
       final preferences = await SharedPreferences.getInstance();
       final repository = AppSettingsRepository(
         preferences,
         localDefaultsLoader: () async => const LlmLocalDefaults(
-          apiKey: 'local-key',
-          baseUrl: 'https://local.example/v1',
-          model: 'local-model',
+          defaultProviderId: 'local',
+          defaultModelId: 'local-model',
+          providers: [
+            LlmProviderConfig(
+              id: 'local',
+              name: 'Local',
+              apiKey: 'local-key',
+              baseUrl: 'https://local.example',
+              models: [
+                LlmProviderModel(id: 'local-model', name: 'Local Model'),
+              ],
+            ),
+          ],
         ),
       );
 
+      final providers = await repository.getProviders();
       final config = await repository.getLlmConfig();
 
+      expect(providers.single.id, 'saved');
       expect(config.apiKey, 'saved-key');
-      expect(config.apiUrl, 'https://saved.example/v1');
+      expect(config.apiUrl, 'https://saved.example');
       expect(config.model, 'saved-model');
+    });
+
+    test('can save provider and update current selection', () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final repository = AppSettingsRepository(
+        preferences,
+        localDefaultsLoader: () async => null,
+      );
+
+      await repository.saveProvider(
+        const LlmProviderConfig(
+          id: 'aigocode',
+          name: 'AIGoCode',
+          apiKey: 'key',
+          baseUrl: 'https://api.aigocode.com',
+          models: [
+            LlmProviderModel(id: 'gpt-5.4', name: 'GPT-5.4'),
+            LlmProviderModel(id: 'gpt-5-mini', name: 'GPT-5 Mini'),
+          ],
+        ),
+      );
+      await repository.selectProviderAndModel(
+        providerId: 'aigocode',
+        modelId: 'gpt-5-mini',
+      );
+
+      final selection = await repository.getSelectionState();
+      final config = await repository.getLlmConfig();
+
+      expect(selection.selectedProviderId, 'aigocode');
+      expect(selection.selectedModelId, 'gpt-5-mini');
+      expect(config.model, 'gpt-5-mini');
+    });
+
+    test('falls back to first provider model when selected model disappears',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final repository = AppSettingsRepository(
+        preferences,
+        localDefaultsLoader: () async => null,
+      );
+
+      await repository.saveProvider(
+        const LlmProviderConfig(
+          id: 'aigocode',
+          name: 'AIGoCode',
+          apiKey: 'key',
+          baseUrl: 'https://api.aigocode.com',
+          models: [
+            LlmProviderModel(id: 'gpt-5.4', name: 'GPT-5.4'),
+            LlmProviderModel(id: 'gpt-5-mini', name: 'GPT-5 Mini'),
+          ],
+        ),
+      );
+      await repository.selectProviderAndModel(
+        providerId: 'aigocode',
+        modelId: 'gpt-5-mini',
+      );
+
+      await repository.saveProvider(
+        const LlmProviderConfig(
+          id: 'aigocode',
+          name: 'AIGoCode',
+          apiKey: 'key',
+          baseUrl: 'https://api.aigocode.com',
+          models: [
+            LlmProviderModel(id: 'gpt-5.4', name: 'GPT-5.4'),
+          ],
+        ),
+      );
+
+      final selection = await repository.getSelectionState();
+      final config = await repository.getLlmConfig();
+
+      expect(selection.selectedModelId, 'gpt-5.4');
+      expect(config.model, 'gpt-5.4');
     });
 
     test('loads tavily web search config from local defaults', () async {
@@ -55,9 +166,19 @@ void main() {
       final repository = AppSettingsRepository(
         preferences,
         localDefaultsLoader: () async => const LlmLocalDefaults(
-          apiKey: 'local-key',
-          baseUrl: 'https://local.example/v1',
-          model: 'gpt-5.4',
+          defaultProviderId: 'aigocode',
+          defaultModelId: 'gpt-5.4',
+          providers: [
+            LlmProviderConfig(
+              id: 'aigocode',
+              name: 'AIGoCode',
+              apiKey: 'local-key',
+              baseUrl: 'https://local.example/v1',
+              models: [
+                LlmProviderModel(id: 'gpt-5.4', name: 'GPT-5.4'),
+              ],
+            ),
+          ],
           additionalConfig: {
             'web_search.provider': 'tavily',
             'web_search.tavily_api_key': 'tavily-local-key',

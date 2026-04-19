@@ -7,6 +7,8 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
 import 'package:ai_chat/models/llm/configurable_http_llm.dart';
+import 'package:ai_chat/models/llm/llm_provider_config.dart';
+import 'package:ai_chat/models/llm/llm_provider_model.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
 import 'package:ai_chat/services/chat_service.dart';
@@ -1244,9 +1246,19 @@ Future<ConfigurableHttpLLM> _buildLlm({
   final repository = AppSettingsRepository(
     preferences,
     localDefaultsLoader: () async => LlmLocalDefaults(
-      apiKey: 'test-key',
-      baseUrl: baseUrl,
-      model: 'gpt-5.4',
+      defaultProviderId: 'test-provider',
+      defaultModelId: 'gpt-5.4',
+      providers: [
+        LlmProviderConfig(
+          id: 'test-provider',
+          name: 'Test Provider',
+          apiKey: 'test-key',
+          baseUrl: baseUrl,
+          models: const [
+            LlmProviderModel(id: 'gpt-5.4', name: 'GPT-5.4'),
+          ],
+        ),
+      ],
     ),
   );
   return ConfigurableHttpLLM(

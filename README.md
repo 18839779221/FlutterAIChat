@@ -36,6 +36,7 @@
 - Driver 式确定性脚本与 Agent 式脚本双轨并存
 - Debug 测试案例统一维护在 `assets/debug/test_cases.json`
 - Debug 模式下可通过聊天页顶部的 `Cases` 入口查看全量案例，并将 prompt 一键填入输入框
+- LLM 接入配置改为 provider-first：`config/local_defaults.json` 和设置页都支持“提供方 + 多模型”目录，运行时从当前选中的 provider/model 解析最终请求配置
 
 ## 架构概览
 
@@ -199,5 +200,4 @@ bash scripts/android_droidrun_chat_smoke.sh
 
 当前 backlog 包括：
 - context 管理策略升级，并在达到上限时自动压缩
-- 支持多模型同时配置，让低端模型承担轻量任务，例如会话总结
 - session 总结功能优化，例如超过 N 分钟无对话后自动总结本次会话
