@@ -3,6 +3,7 @@ import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/session/session_context_snapshot.dart';
 import 'package:ai_chat/services/tool_executor.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -153,31 +154,6 @@ void main() {
       expect(result.data['content'], '网页正文');
     });
 
-    test('save_note returns success with stub note saver', () async {
-      final executor = ToolExecutor(
-        chatStorage: const _FakeChatStorage(messages: []),
-        noteSaver: ({required title, required content, folder}) async =>
-            ToolResult(
-          toolName: 'save_note',
-          status: ToolExecutionStatus.success,
-          summary: '已保存笔记：$title',
-          data: {
-            'title': title,
-            'content': content,
-            'folder': folder,
-          },
-        ),
-      );
-
-      final result = await executor.executeSaveNote(
-        title: 'ToolCall 设计',
-        content: '一段整理结果',
-      );
-
-      expect(result.status, ToolExecutionStatus.success);
-      expect(result.summary, contains('ToolCall 设计'));
-    });
-
     test('create_reminder returns failure when adapter is unavailable',
         () async {
       final executor = ToolExecutor(
@@ -304,6 +280,10 @@ class _FakeChatStorage implements ChatStorage {
   Future<ChatTurn?> getTurn(int id) => throw UnimplementedError();
 
   @override
+  Future<List<ChatTurn>> getTurnsByGroup(int groupId) =>
+      throw UnimplementedError();
+
+  @override
   Future<ChatTurnStep?> getTurnStep(int id) => throw UnimplementedError();
 
   @override
@@ -327,7 +307,21 @@ class _FakeChatStorage implements ChatStorage {
       throw UnimplementedError();
 
   @override
+  Future<List<ChatEvent>> getEventsByGroup(int groupId) =>
+      throw UnimplementedError();
+
+  @override
   Future<int> insertMessage(ChatMessage message, int groupId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<int> insertSessionContextSnapshot(SessionContextSnapshot snapshot) =>
+      throw UnimplementedError();
+
+  @override
+  Future<SessionContextSnapshot?> getLatestSessionContextSnapshotByGroup(
+    int groupId,
+  ) =>
       throw UnimplementedError();
 
   @override
@@ -371,4 +365,10 @@ class _FakeChatStorage implements ChatStorage {
 
   @override
   Future<bool> testDatabaseConnection() => throw UnimplementedError();
+
+  @override
+  Future<void> updateSessionContextSnapshot(
+    SessionContextSnapshot snapshot,
+  ) =>
+      throw UnimplementedError();
 }

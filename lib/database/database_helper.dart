@@ -8,6 +8,7 @@ import '../models/chat_message.dart';
 import '../models/response/message_content_type.dart';
 import '../models/chat_group.dart';
 import '../models/chat_turn.dart';
+import '../models/session/session_context_snapshot.dart';
 import '../storage/chat_storage.dart';
 import '../utils/logger.dart';
 
@@ -42,7 +43,7 @@ class DatabaseHelper implements ChatStorage {
 
       return await openDatabase(
         path,
-        version: 9,
+        version: 10,
         onCreate: (Database db, int version) async {
           Logger.i(_tag, '创建数据库表...');
           // 创建分组表
@@ -74,6 +75,7 @@ class DatabaseHelper implements ChatStorage {
             )
           ''');
           await _createAgentLoopTables(db);
+          await _createSessionContextSnapshotTable(db);
           Logger.i(_tag, '数据库表创建成功');
         },
         onUpgrade: (Database db, int oldVersion, int newVersion) async {
@@ -217,6 +219,9 @@ class DatabaseHelper implements ChatStorage {
               ''');
             }
           }
+          if (oldVersion < 10) {
+            await _createSessionContextSnapshotTable(db);
+          }
         },
       );
     } catch (e, stackTrace) {
@@ -298,6 +303,25 @@ class DatabaseHelper implements ChatStorage {
     await db.execute('''
       CREATE INDEX idx_chat_events_group_id_created_at
       ON chat_events(group_id, created_at DESC)
+    ''');
+  }
+
+  Future<void> _createSessionContextSnapshotTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS session_context_snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id INTEGER NOT NULL,
+        summary_text TEXT NOT NULL,
+        covered_until_turn_id INTEGER NOT NULL,
+        estimated_tokens INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (group_id) REFERENCES chat_groups (id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_session_context_snapshots_group_id_updated_at
+      ON session_context_snapshots(group_id, updated_at DESC)
     ''');
   }
 
@@ -452,6 +476,23 @@ class DatabaseHelper implements ChatStorage {
   }
 
   @override
+  Future<List<ChatTurn>> getTurnsByGroup(int groupId) async {
+    try {
+      final db = await database;
+      final maps = await db.query(
+        'chat_turns',
+        where: 'group_id = ?',
+        whereArgs: [groupId],
+        orderBy: 'created_at ASC, id ASC',
+      );
+      return maps.map(ChatTurn.fromMap).toList(growable: false);
+    } catch (e) {
+      Logger.e(_tag, '按分组获取 turns 失败', e);
+      rethrow;
+    }
+  }
+
+  @override
   Future<void> updateTurn(ChatTurn turn) async {
     try {
       final db = await database;
@@ -567,6 +608,23 @@ class DatabaseHelper implements ChatStorage {
     }
   }
 
+  @override
+  Future<List<ChatEvent>> getEventsByGroup(int groupId) async {
+    try {
+      final db = await database;
+      final maps = await db.query(
+        'chat_events',
+        where: 'group_id = ?',
+        whereArgs: [groupId],
+        orderBy: 'created_at ASC, sequence ASC, id ASC',
+      );
+      return maps.map(ChatEvent.fromMap).toList(growable: false);
+    } catch (e) {
+      Logger.e(_tag, '按分组获取 events 失败', e);
+      rethrow;
+    }
+  }
+
   // 消息相关操作（更新为支持分组）
   Future<int> insertMessage(ChatMessage message, int groupId) async {
     try {
@@ -586,6 +644,65 @@ class DatabaseHelper implements ChatStorage {
       return id;
     } catch (e) {
       Logger.e(_tag, '插入消息失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<int> insertSessionContextSnapshot(
+      SessionContextSnapshot snapshot) async {
+    try {
+      final db = await database;
+      return await db.insert(
+        'session_context_snapshots',
+        snapshot.toMap(),
+      );
+    } catch (e) {
+      Logger.e(_tag, '插入 Session 上下文快照失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<SessionContextSnapshot?> getLatestSessionContextSnapshotByGroup(
+    int groupId,
+  ) async {
+    try {
+      final db = await database;
+      final maps = await db.query(
+        'session_context_snapshots',
+        where: 'group_id = ?',
+        whereArgs: [groupId],
+        orderBy: 'updated_at DESC, id DESC',
+        limit: 1,
+      );
+      if (maps.isEmpty) {
+        return null;
+      }
+      return SessionContextSnapshot.fromMap(maps.first);
+    } catch (e) {
+      Logger.e(_tag, '获取最新 Session 上下文快照失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> updateSessionContextSnapshot(
+    SessionContextSnapshot snapshot,
+  ) async {
+    try {
+      if (snapshot.id == null) {
+        throw ArgumentError('SessionContextSnapshot.id is required for update');
+      }
+      final db = await database;
+      await db.update(
+        'session_context_snapshots',
+        snapshot.toMap(),
+        where: 'id = ?',
+        whereArgs: [snapshot.id],
+      );
+    } catch (e) {
+      Logger.e(_tag, '更新 Session 上下文快照失败', e);
       rethrow;
     }
   }

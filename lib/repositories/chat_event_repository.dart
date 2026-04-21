@@ -143,6 +143,7 @@ class ChatEventRepository {
     required int groupId,
     required String content,
     String? errorCode,
+    Map<String, dynamic>? payloadJson,
   }) {
     return _appendEvent(
       turnId: turnId,
@@ -151,6 +152,7 @@ class ChatEventRepository {
       role: MessageRole.system,
       content: content,
       status: errorCode,
+      payloadJson: payloadJson,
     );
   }
 
@@ -228,6 +230,10 @@ class ChatEventRepository {
 
   Future<List<ChatEvent>> listEventsByTurn(int turnId) {
     return _storage.getEventsByTurn(turnId);
+  }
+
+  Future<List<ChatEvent>> listEventsByGroup(int groupId) {
+    return _storage.getEventsByGroup(groupId);
   }
 
   Future<int> _appendEvent({

@@ -9,7 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('TranscriptBuilderService', () {
-    test('buildPlannerContext includes latest tool result and unresolved goal', () async {
+    test('buildPlannerContext includes latest tool result and unresolved goal',
+        () async {
       final service = TranscriptBuilderService(
         eventRepository: _FakeChatEventRepository([
           ChatEvent(
@@ -45,7 +46,8 @@ void main() {
       expect(context, contains('最近一次工具结果：已找到数据库版本是 7'));
     });
 
-    test('buildPlannerContext includes attempted tools and latest tool error', () async {
+    test('buildPlannerContext includes attempted tools and latest tool error',
+        () async {
       final service = TranscriptBuilderService(
         eventRepository: _FakeChatEventRepository([
           ChatEvent(
@@ -106,7 +108,9 @@ void main() {
       expect(context, contains('最近一次工具失败：invalid_due_at'));
     });
 
-    test('buildFinalAnswerMessages adds system prompt before transcript-derived messages', () async {
+    test(
+        'buildFinalAnswerMessages adds system prompt before transcript-derived messages',
+        () async {
       final service = TranscriptBuilderService(
         eventRepository: _FakeChatEventRepository([
           ChatEvent(
@@ -145,7 +149,8 @@ void main() {
       expect(messages.last.text, '已找到数据库版本是 7');
     });
 
-    test('buildFinalAnswerMessages keeps intermediate planner assistant messages in transcript order',
+    test(
+        'buildFinalAnswerMessages keeps intermediate planner assistant messages in transcript order',
         () async {
       final service = TranscriptBuilderService(
         eventRepository: _FakeChatEventRepository([
@@ -315,8 +320,8 @@ class _FakeChatEventRepository implements ChatEventRepository {
   @override
   Future<int> appendAssistantTextFinal({
     required int turnId,
-      required int groupId,
-      required String content,
+    required int groupId,
+    required String content,
   }) {
     throw UnimplementedError();
   }
@@ -425,5 +430,10 @@ class _FakeChatEventRepository implements ChatEventRepository {
   @override
   Future<List<ChatEvent>> listEventsByTurn(int turnId) async {
     return events.where((event) => event.turnId == turnId).toList();
+  }
+
+  @override
+  Future<List<ChatEvent>> listEventsByGroup(int groupId) async {
+    return events.where((event) => event.groupId == groupId).toList();
   }
 }

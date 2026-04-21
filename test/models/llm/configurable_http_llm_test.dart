@@ -1254,6 +1254,66 @@ void main() {
       );
     });
 
+    test('responses decision uses continuation-only input for ask-user answers',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'id': 'resp_ask_next',
+            'output': [
+              {
+                'type': 'message',
+                'content': [
+                  {
+                    'type': 'output_text',
+                    'text': '建议先用 SQLite。',
+                  },
+                ],
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1',
+        httpClient: client,
+      );
+
+      await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '继续', role: MessageRole.user),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        availableTools: const [],
+        providerStyle: ChatTurnProviderStyle.openaiResponses,
+        providerState: const {'response_id': 'resp_prev'},
+        providerContinuationItems: const [
+          {
+            'type': 'user_interaction_answer',
+            'toolCallId': 'call_ask_1',
+            'content': 'User answered AskUserQuestion:\n- Storage: SQLite',
+          },
+        ],
+      );
+
+      final input = client.lastRequestBody?['input'] as List<dynamic>?;
+      expect(input, isNotNull);
+      expect(input, hasLength(1));
+      expect(input!.single, {
+        'role': 'user',
+        'content': [
+          {
+            'type': 'input_text',
+            'text': 'User answered AskUserQuestion:\n- Storage: SQLite',
+          },
+        ],
+      });
+      expect(client.lastRequestBody?['previous_response_id'], 'resp_prev');
+    });
+
     test('responses decision stores planner responses for later continuation',
         () async {
       final client = _RecordingHttpClient(

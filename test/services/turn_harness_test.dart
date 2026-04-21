@@ -19,6 +19,7 @@ import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
+import 'package:ai_chat/models/session/session_context_snapshot.dart';
 import 'package:ai_chat/models/tool/tool_call.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
@@ -105,7 +106,8 @@ void main() {
       expect(finalAnswer.content, '我是你的 AI 助手。');
     });
 
-    test('runs tool call, records tool result, then completes with terminal answer',
+    test(
+        'runs tool call, records tool result, then completes with terminal answer',
         () async {
       final eventRepository = _InMemoryChatEventRepository();
       final turnRepository = _InMemoryChatTurnRepository();
@@ -394,7 +396,122 @@ void main() {
       expect((await turnRepository.getTurn(3))!.status, ChatTurnStatus.failed);
     });
 
-    test('continues repeated retrieval steps based on loop state rather than planner patching',
+    test(
+        'continues loop after file tool failure and returns failure result to planner',
+        () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      final stepRepository = _InMemoryChatTurnStepRepository();
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          id: 301,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '读取不存在的文件后告诉我怎么处理',
+          providerStyle: ChatTurnProviderStyle.openaiResponses,
+          modelName: 'gpt-5.4',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+      final plannerService = _NativeDecisionPlannerService([
+        const ModelTurnDecision(
+          toolCalls: [
+            ModelToolCall(
+              providerCallId: 'call_read_1',
+              toolName: 'Read',
+              arguments: {'file_path': 'missing.md'},
+              sequence: 1,
+            ),
+          ],
+          assistantMessage: null,
+          providerState: {'response_id': 'resp_1'},
+          isTerminal: false,
+        ),
+        const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: '文件不存在，请先确认正确路径后我再继续。',
+          diagnosticCode: 'planner_action_respond',
+          providerState: {'response_id': 'resp_2'},
+          isTerminal: true,
+        ),
+      ]);
+
+      final harness = TurnHarness(
+        plannerService: plannerService,
+        turnRepository: turnRepository,
+        turnStepRepository: stepRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        turnVerifier: _AlwaysStopVerifier(),
+        chatService: _FakeChatService(chunks: const ['最终回答']),
+        toolCallService: _FakeToolCallService(
+          executeResult: const ToolPreparationResult(
+            toolInvocation: ToolInvocation(
+              toolName: 'Read',
+              arguments: {'file_path': 'missing.md'},
+              status: ToolInvocationStatus.running,
+              summary: '正在执行工具：读取文件',
+              requiresConfirmation: false,
+            ),
+            toolResult: ToolResult(
+              toolName: 'Read',
+              status: ToolExecutionStatus.failure,
+              summary: 'Read failed: file not found',
+              toolResultText:
+                  'Read failed: file not found\n实际文件路径：agent/missing.md',
+              data: {'filePath': 'agent/missing.md'},
+              errorMessage: 'file_not_found',
+            ),
+            additionalContextMessages: [],
+          ),
+        ),
+        limits: const AgentLoopLimits(maxIterations: 4, maxConsecutiveFailures: 2),
+      );
+
+      final emitted = await harness
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          )
+          .toList();
+
+      expect(plannerService.nativeDecisionCalls, 2);
+      expect(
+        emitted.map((event) => event.eventType),
+        containsAllInOrder([
+          ChatEventType.userMessage,
+          ChatEventType.turnStatus,
+          ChatEventType.assistantToolCall,
+          ChatEventType.toolExecutionStarted,
+          ChatEventType.toolError,
+          ChatEventType.turnStatus,
+          ChatEventType.finalAnswer,
+        ]),
+      );
+      final toolErrorEvent = emitted.firstWhere(
+        (event) => event.eventType == ChatEventType.toolError,
+      );
+      expect(toolErrorEvent.content, 'Read failed: file not found');
+      expect(toolErrorEvent.status, 'file_not_found');
+      expect(
+        toolErrorEvent.payloadJson?['data'],
+        containsPair('filePath', 'agent/missing.md'),
+      );
+      final step = (await stepRepository.listSteps(turnId)).single;
+      expect(step.status, ChatTurnStepStatus.failed);
+      expect(step.errorCode, 'file_not_found');
+      final finalAnswerEvent = emitted.firstWhere(
+        (event) => event.eventType == ChatEventType.finalAnswer,
+      );
+      expect(finalAnswerEvent.content, '文件不存在，请先确认正确路径后我再继续。');
+      expect((await turnRepository.getTurn(turnId))!.status,
+          ChatTurnStatus.completed);
+    });
+
+    test(
+        'continues repeated retrieval steps based on loop state rather than planner patching',
         () async {
       final eventRepository = _InMemoryChatEventRepository();
       final turnRepository = _InMemoryChatTurnRepository();
@@ -1079,6 +1196,10 @@ void main() {
         containsPair('storage_layer', 'SQLite'),
       );
       expect(
+        step.resultJson?['transcriptContent'],
+        'User answered AskUserQuestion:\n- Storage: SQLite',
+      );
+      expect(
         (await turnRepository.getTurn(turnId))!.status,
         ChatTurnStatus.completed,
       );
@@ -1409,6 +1530,91 @@ void main() {
       );
     });
 
+    test('keeps tool-result transcript summary compact even when payload has model context',
+        () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          id: 81,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '继续编辑爱好笔记',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+      final plannerService = _FakePlannerService([
+        const AgentAction.callTool(
+          ToolCall(
+            toolName: 'Edit',
+            arguments: {
+              'file_path': 'my_hobbies.md',
+              'old_string': '篮球',
+              'new_string': '篮球\n游戏',
+            },
+          ),
+          diagnosticCode: 'planner_action_call_tool',
+        ),
+        const AgentAction.respond(
+          '编辑完成',
+          diagnosticCode: 'planner_action_respond',
+        ),
+      ]);
+
+      final harness = TurnHarness(
+        plannerService: plannerService,
+        turnRepository: turnRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        turnVerifier: _AlwaysStopVerifier(),
+        chatService: _FakeChatService(chunks: const ['最终回答']),
+        toolCallService: _FakeToolCallService(
+          executeResult: const ToolPreparationResult(
+            toolInvocation: ToolInvocation(
+              toolName: 'Edit',
+              arguments: {
+                'file_path': 'my_hobbies.md',
+                'old_string': '篮球',
+                'new_string': '篮球\n游戏',
+              },
+              status: ToolInvocationStatus.running,
+              summary: '正在执行工具：编辑文件',
+              requiresConfirmation: false,
+            ),
+            toolResult: ToolResult(
+              toolName: 'Edit',
+              status: ToolExecutionStatus.success,
+              summary: '已编辑文件：my_hobbies.md',
+              toolResultText: '已编辑文件：agent/my_hobbies.md',
+              data: {
+                'filePath': 'agent/my_hobbies.md',
+              },
+            ),
+            additionalContextMessages: [],
+          ),
+        ),
+        limits: const AgentLoopLimits(maxIterations: 4),
+      );
+
+      await harness
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          )
+          .toList();
+
+      final toolResultContent = plannerService.capturedTranscripts[1]
+          .where((event) => event.eventType == ChatEventType.toolResult)
+          .single
+          .content;
+      expect(
+        toolResultContent,
+        '已编辑文件：my_hobbies.md',
+      );
+    });
+
     test(
         'records intermediate planner assistant text before executing provider-native tool calls',
         () async {
@@ -1535,9 +1741,9 @@ void main() {
             ),
             ModelToolCall(
               providerCallId: 'call_2',
-              toolName: 'save_note',
+              toolName: 'Write',
               arguments: {
-                'title': '数据库版本确认',
+                'file_path': 'notes/db-version.md',
                 'content': '数据库版本 7，发版时间 2026-04-12 10:00',
               },
               sequence: 2,
@@ -1613,22 +1819,21 @@ void main() {
           ),
           const ToolPreparationResult(
             toolInvocation: ToolInvocation(
-              toolName: 'save_note',
+              toolName: 'Write',
               arguments: {
-                'title': '数据库版本确认',
+                'file_path': 'notes/db-version.md',
                 'content': '数据库版本 7，发版时间 2026-04-12 10:00',
               },
               status: ToolInvocationStatus.running,
-              summary: '正在执行工具：保存笔记',
+              summary: '正在执行工具：写入文件',
               requiresConfirmation: false,
             ),
             toolResult: ToolResult(
-              toolName: 'save_note',
+              toolName: 'Write',
               status: ToolExecutionStatus.success,
-              summary: '已保存笔记《数据库版本确认》',
+              summary: '已写入文件：notes/db-version.md',
               data: {
-                'title': '数据库版本确认',
-                'folder': '默认',
+                'filePath': 'notes/db-version.md',
               },
             ),
             additionalContextMessages: [],
@@ -1673,7 +1878,7 @@ void main() {
       expect(toolResults, hasLength(3));
       expect(toolResults.map((event) => event.content), [
         '已执行：搜索历史记录',
-        '已保存笔记《数据库版本确认》',
+        '已写入文件：notes/db-version.md',
         '已创建提醒：今晚 8 点同步给测试同学',
       ]);
       expect(
@@ -1729,6 +1934,7 @@ class _FakePlannerService extends AgentPlannerService {
     required List<ChatTurnStep> steps,
     required ChatConfig config,
     required AgentLoopLimits limits,
+    List<ChatMessage>? plannerMessages,
   }) async {
     capturedTranscripts.add(List<ChatEvent>.from(transcript));
     return _decisionFromAction(actions.removeFirst());
@@ -1750,6 +1956,7 @@ class _NativeDecisionPlannerService extends AgentPlannerService {
     required List<ChatTurnStep> steps,
     required ChatConfig config,
     required AgentLoopLimits limits,
+    List<ChatMessage>? plannerMessages,
   }) async {
     nativeDecisionCalls += 1;
     final decision = decisions.removeFirst();
@@ -1905,8 +2112,7 @@ class _FakeToolCallService extends ToolCallService {
   _FakeToolCallService({
     required this.executeResult,
     this.definitionsByName = const {},
-  })
-      : super(
+  }) : super(
           toolExecutor: ToolExecutor(chatStorage: _NoopChatStorage()),
         );
 
@@ -2267,6 +2473,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
     required int groupId,
     required String content,
     String? errorCode,
+    Map<String, dynamic>? payloadJson,
   }) async {
     return _append(
       turnId: turnId,
@@ -2275,6 +2482,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
       role: MessageRole.system,
       content: content,
       status: errorCode,
+      payloadJson: payloadJson,
     );
   }
 
@@ -2447,6 +2655,9 @@ class _NoopChatStorage implements ChatStorage {
   Future<void> deleteMessage(int id) => throw UnimplementedError();
 
   @override
+  Future<List<ChatEvent>> getEventsByGroup(int groupId) async => const [];
+
+  @override
   Future<List<ChatEvent>> getEventsByTurn(int turnId) async => const [];
 
   @override
@@ -2457,6 +2668,12 @@ class _NoopChatStorage implements ChatStorage {
 
   @override
   Future<ChatGroup?> getLatestGroup() => throw UnimplementedError();
+
+  @override
+  Future<SessionContextSnapshot?> getLatestSessionContextSnapshotByGroup(
+    int groupId,
+  ) async =>
+      null;
 
   @override
   Future<List<ChatMessage>> getMessagesByGroup(int groupId) async => const [];
@@ -2473,6 +2690,9 @@ class _NoopChatStorage implements ChatStorage {
   Future<ChatTurn?> getTurn(int id) async => null;
 
   @override
+  Future<List<ChatTurn>> getTurnsByGroup(int groupId) async => const [];
+
+  @override
   Future<ChatTurnStep?> getTurnStep(int id) async => null;
 
   @override
@@ -2486,6 +2706,10 @@ class _NoopChatStorage implements ChatStorage {
 
   @override
   Future<int> insertMessage(ChatMessage message, int groupId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<int> insertSessionContextSnapshot(SessionContextSnapshot snapshot) =>
       throw UnimplementedError();
 
   @override
@@ -2520,6 +2744,12 @@ class _NoopChatStorage implements ChatStorage {
 
   @override
   Future<void> updateMessageStatus(int id, MessageStatus status) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> updateSessionContextSnapshot(
+    SessionContextSnapshot snapshot,
+  ) =>
       throw UnimplementedError();
 
   @override

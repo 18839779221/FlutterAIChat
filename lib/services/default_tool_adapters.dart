@@ -3,13 +3,10 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'tool_executor.dart';
 import '../utils/logger.dart';
 
-/// Preference key for the lightweight app-internal note store.
-const String kSavedNotesPreferenceKey = 'tool.saved_notes';
 const MethodChannel _hostToolsChannel = MethodChannel('ai_chat/host_tools');
 const String _hostToolsTag = 'DefaultToolAdapters';
 
@@ -192,7 +189,8 @@ ProviderWebSearcher buildTavilyWebSearcher({
         status: ToolExecutionStatus.success,
         summary: '已执行联网搜索',
         data: {
-          'query': decoded['query'] is String && (decoded['query'] as String).trim().isNotEmpty
+          'query': decoded['query'] is String &&
+                  (decoded['query'] as String).trim().isNotEmpty
               ? (decoded['query'] as String).trim()
               : query,
           'provider': 'tavily',
@@ -284,47 +282,6 @@ WebpageFetcher buildDefaultWebpageFetcher({
         errorMessage: 'network_error',
       );
     }
-  };
-}
-
-/// Builds a minimal app-internal note saver backed by SharedPreferences.
-///
-/// Saved note fields:
-/// - `id`: generated stable storage id
-/// - `title`: user-visible note title
-/// - `content`: note body
-/// - `folder`: optional logical grouping label
-/// - `createdAt`: ISO8601 timestamp
-NoteSaver buildSharedPreferencesNoteSaver(SharedPreferences preferences) {
-  return ({
-    required String title,
-    required String content,
-    String? folder,
-  }) async {
-    final trimmedTitle = title.trim();
-    final trimmedContent = content.trim();
-    final createdAt = DateTime.now().toIso8601String();
-    final noteRecord = {
-      'id': '$createdAt-$trimmedTitle',
-      'title': trimmedTitle,
-      'content': trimmedContent,
-      'folder': folder?.trim(),
-      'createdAt': createdAt,
-    };
-
-    final current = preferences.getStringList(kSavedNotesPreferenceKey) ?? [];
-    final next = [
-      ...current,
-      jsonEncode(noteRecord),
-    ];
-    await preferences.setStringList(kSavedNotesPreferenceKey, next);
-
-    return ToolResult(
-      toolName: 'save_note',
-      status: ToolExecutionStatus.success,
-      summary: '已保存笔记：$trimmedTitle',
-      data: noteRecord,
-    );
   };
 }
 
@@ -426,8 +383,9 @@ ReminderCreator buildDefaultReminderCreator({
       ),
     );
 
-    final launchMode =
-        result.message == 'calendar_fallback_launched' ? 'calendar_fallback' : 'alarm';
+    final launchMode = result.message == 'calendar_fallback_launched'
+        ? 'calendar_fallback'
+        : 'alarm';
     if (result.status != HostIntentStatus.launched) {
       final fallbackText = _buildReminderFallbackText(
         title: title,
@@ -606,7 +564,8 @@ String? _extractHtmlTitle(String html) {
 String _extractReadableText(String html) {
   final withoutScript = html
       .replaceAll(
-        RegExp(r'<script[^>]*>.*?</script>', caseSensitive: false, dotAll: true),
+        RegExp(r'<script[^>]*>.*?</script>',
+            caseSensitive: false, dotAll: true),
         ' ',
       )
       .replaceAll(
@@ -615,7 +574,10 @@ String _extractReadableText(String html) {
       );
 
   final withLineHints = withoutScript
-      .replaceAll(RegExp(r'</(p|div|section|article|h1|h2|h3|li|br)>', caseSensitive: false), '\n')
+      .replaceAll(
+          RegExp(r'</(p|div|section|article|h1|h2|h3|li|br)>',
+              caseSensitive: false),
+          '\n')
       .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
 
   final withoutTags = withLineHints.replaceAll(

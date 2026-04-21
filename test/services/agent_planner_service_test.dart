@@ -20,7 +20,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('AgentPlannerService', () {
-    test('planNextDecision uses a minimal planner prompt instead of rendering tool policies',
+    test(
+        'planNextDecision uses a minimal planner prompt instead of rendering tool policies',
         () async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
@@ -84,7 +85,8 @@ void main() {
       expect(llm.lastConfig?.systemPrompt, isNot(contains('create_reminder')));
     });
 
-    test('planNextDecision keeps execution policy separate from tool description',
+    test(
+        'planNextDecision keeps execution policy separate from tool description',
         () async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
@@ -133,7 +135,8 @@ void main() {
 
       expect(llm.lastToolOptions, isNotNull);
       expect(llm.lastToolOptions!.single.description, '当用户明确要求提醒时使用。');
-      expect(llm.lastToolOptions!.single.executionPolicy, 'require_confirmation');
+      expect(
+          llm.lastToolOptions!.single.executionPolicy, 'require_confirmation');
     });
 
     test(
@@ -185,7 +188,8 @@ void main() {
       );
     });
 
-    test('planNextDecision returns unsupported-tool failure for invisible tools',
+    test(
+        'planNextDecision returns unsupported-tool failure for invisible tools',
         () async {
       final service = AgentPlannerService(
         llm: _NativeDecisionLLM(
@@ -237,7 +241,8 @@ void main() {
       expect(result.diagnosticCode, 'planner_request_failed');
     });
 
-    test('planner messages keep minimal instructions separate from turn summary',
+    test(
+        'planner messages keep minimal instructions separate from turn summary',
         () async {
       final llm = _NativeDecisionLLM(
         decision: const ModelTurnDecision(
@@ -310,13 +315,14 @@ void main() {
       );
 
       expect(llm.lastConfig?.systemPrompt, contains('next best action'));
-      expect(llm.lastConfig?.systemPrompt, isNot(contains('Do not repeat the same tool call')));
-      expect(llm.lastMessages.map((message) => message.text), contains('已读取网页正文'));
+      expect(llm.lastConfig?.systemPrompt,
+          isNot(contains('Do not repeat the same tool call')));
+      expect(
+          llm.lastMessages.map((message) => message.text), contains('已读取网页正文'));
       expect(llm.lastMessages.map((message) => message.text), contains('读取失败'));
     });
 
-    test(
-        'planNextDecision projects ask-user transcript into chat-safe roles',
+    test('planNextDecision projects ask-user transcript into chat-safe roles',
         () async {
       final llm = _NativeDecisionLLM(
         decision: const ModelTurnDecision(
@@ -412,7 +418,8 @@ void main() {
       );
 
       expect(
-        llm.lastMessages.map((message) => '${message.role.name}:${message.text}'),
+        llm.lastMessages
+            .map((message) => '${message.role.name}:${message.text}'),
         [
           'user:帮我确认应该用什么本地存储',
           'assistant:<think>我先补充询问用户的偏好</think>',
@@ -420,6 +427,55 @@ void main() {
           'user:User answered AskUserQuestion:\n- Storage: SQLite',
           'assistant:已记录用户偏好：SQLite',
         ],
+      );
+    });
+
+    test('planNextDecision uses tool-provided model context text for transcript',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: 'ok',
+          providerState: {},
+          isTerminal: true,
+        ),
+      );
+      final service = AgentPlannerService(llm: llm);
+
+      await service.planNextDecision(
+        turn: ChatTurn(
+          id: 1,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '继续处理文件',
+        ),
+        transcript: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: '已编辑文件：my_hobbies.md',
+            payloadJson: const {
+              'toolName': 'Edit',
+              'status': 'success',
+              'summary': '已编辑文件：my_hobbies.md',
+              'toolResultText': '已编辑文件：agent/my_hobbies.md',
+              'data': {
+                'filePath': 'agent/my_hobbies.md',
+              },
+            },
+          ),
+        ],
+        steps: const [],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(
+        llm.lastMessages.single.text,
+        '已编辑文件：agent/my_hobbies.md',
       );
     });
 
@@ -463,16 +519,16 @@ void main() {
             ),
           ),
           ToolDefinition(
-            name: 'save_note',
-            title: '保存笔记',
-            description: '保存笔记',
-            descriptionForModel: '当用户要求沉淀结论时使用。',
+            name: 'Write',
+            title: '写入文件',
+            description: '写入文件',
+            descriptionForModel: '当用户明确要求创建本地文件或整文件覆盖时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
-                'title': ToolArgumentProperty.string(description: '标题'),
+                'file_path': ToolArgumentProperty.string(description: '文件路径'),
                 'content': ToolArgumentProperty.string(description: '正文'),
               },
-              required: ['title', 'content'],
+              required: ['file_path', 'content'],
             ),
           ),
         ],
@@ -521,9 +577,11 @@ void main() {
       );
 
       expect(decision, isNotNull);
-      expect(decision!.toolCalls, isEmpty);
-      expect(decision.diagnosticCode, 'planner_duplicate_tool_call');
-      expect(decision.isTerminal, isTrue);
+      expect(decision!.toolCalls, hasLength(1));
+      expect(decision.toolCalls.single.toolName, 'search_chat_history');
+      expect(decision.toolCalls.single.arguments, {'query': '数据库版本'});
+      expect(decision.diagnosticCode, isNull);
+      expect(decision.isTerminal, isFalse);
       expect(llm.lastToolOptions, isNotNull);
       expect(llm.lastMessages.single.text, contains('帮我确认数据库版本'));
     });
@@ -555,16 +613,16 @@ void main() {
             ),
           ),
           ToolDefinition(
-            name: 'save_note',
-            title: '保存笔记',
-            description: '保存笔记',
-            descriptionForModel: '当用户要求沉淀结论时使用。',
+            name: 'Write',
+            title: '写入文件',
+            description: '写入文件',
+            descriptionForModel: '当用户明确要求创建本地文件或整文件覆盖时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
-                'title': ToolArgumentProperty.string(description: '标题'),
+                'file_path': ToolArgumentProperty.string(description: '文件路径'),
                 'content': ToolArgumentProperty.string(description: '正文'),
               },
-              required: ['title', 'content'],
+              required: ['file_path', 'content'],
             ),
           ),
         ],
@@ -648,8 +706,8 @@ void main() {
             stepIndex: 2,
             providerResponseId: 'resp_old',
             providerCallId: 'fc_old',
-            toolName: 'save_note',
-            toolArgsJson: const {'title': '旧笔记'},
+            toolName: 'Write',
+            toolArgsJson: const {'file_path': 'notes/old-note.md'},
             status: ChatTurnStepStatus.completed,
             resultSummary: '旧结果',
           ),
@@ -835,6 +893,67 @@ void main() {
     });
 
     test(
+        'planNextDecision builds responses ask-user continuation as user answer',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: '继续处理',
+          providerState: {'response_id': 'resp_next'},
+          isTerminal: true,
+        ),
+      );
+      final service = AgentPlannerService(llm: llm);
+
+      await service.planNextDecision(
+        turn: ChatTurn(
+          id: 3,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '继续根据我的偏好给建议',
+          providerStyle: ChatTurnProviderStyle.openaiResponses,
+          providerStateJson: const {'response_id': 'resp_prev'},
+        ),
+        transcript: const [],
+        steps: [
+          ChatTurnStep(
+            id: 4,
+            turnId: 3,
+            stepIndex: 1,
+            providerResponseId: 'resp_prev',
+            providerCallId: 'call_ask_1',
+            toolName: 'ask_user_question',
+            toolArgsJson: {
+              'questions': [
+                {'id': 'storage', 'question': '请选择存储方案'},
+              ],
+            },
+            status: ChatTurnStepStatus.completed,
+            resultSummary: 'user_answered',
+            resultJson: {
+              'transcriptContent':
+                  'User answered AskUserQuestion:\n- Storage: SQLite',
+              'answersByQuestionId': {'storage': 'SQLite'},
+            },
+          ),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(
+        llm.lastProviderContinuationItems,
+        [
+          {
+            'type': 'user_interaction_answer',
+            'toolCallId': 'call_ask_1',
+            'content': 'User answered AskUserQuestion:\n- Storage: SQLite',
+          },
+        ],
+      );
+    });
+
+    test(
         'planNextDecision returns terminal planner failure when native planner returns null',
         () async {
       final llm = _NativeNullPlannerLLM();
@@ -955,8 +1074,11 @@ void main() {
         decision: const ModelTurnDecision(
           toolCalls: [
             ModelToolCall(
-              toolName: 'save_note',
-              arguments: {'title': '数据库版本确认', 'content': '数据库版本是 7'},
+              toolName: 'Write',
+              arguments: {
+                'file_path': 'notes/db-version.md',
+                'content': '数据库版本是 7',
+              },
               sequence: 1,
             ),
           ],
@@ -998,7 +1120,8 @@ void main() {
       expect(decision.isTerminal, isTrue);
     });
 
-    test('planNextDecision filters duplicate tool calls already completed in the same turn',
+    test(
+        'planNextDecision allows duplicate tool calls already completed in the same turn',
         () async {
       final llm = _NativeDecisionLLM(
         decision: const ModelTurnDecision(
@@ -1062,12 +1185,18 @@ void main() {
       );
 
       expect(decision, isNotNull);
-      expect(decision!.toolCalls, isEmpty);
-      expect(decision.diagnosticCode, 'planner_duplicate_tool_call');
-      expect(decision.isTerminal, isTrue);
+      expect(decision!.toolCalls, hasLength(1));
+      expect(decision.toolCalls.single.toolName, 'search_chat_history');
+      expect(decision.toolCalls.single.arguments, {
+        'query': 'agent loop',
+        'maxResults': 5,
+      });
+      expect(decision.diagnosticCode, isNull);
+      expect(decision.isTerminal, isFalse);
     });
 
-    test('planNextDecision preserves assistant text when duplicate tool calls are filtered',
+    test(
+        'planNextDecision preserves assistant text when previous steps used the same tool call',
         () async {
       final llm = _NativeDecisionLLM(
         decision: const ModelTurnDecision(
@@ -1127,12 +1256,81 @@ void main() {
       );
 
       expect(decision, isNotNull);
-      expect(decision!.toolCalls, isEmpty);
+      expect(decision!.toolCalls, hasLength(1));
+      expect(decision.toolCalls.single.toolName, 'search_chat_history');
       expect(decision.assistantMessage, '我先基于现有结果整理一下。');
       expect(
         decision.providerState,
         containsPair('response_id', 'resp_keep_text'),
       );
+      expect(decision.isTerminal, isFalse);
+    });
+
+    test(
+        'planNextDecision filters duplicate tool calls within the same planner decision',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [
+            ModelToolCall(
+              toolName: 'Read',
+              arguments: {'file_path': 'docs/spec.md', 'offset': 0, 'limit': 200},
+              sequence: 0,
+            ),
+            ModelToolCall(
+              toolName: 'Read',
+              arguments: {'limit': 200, 'offset': 0, 'file_path': 'docs/spec.md'},
+              sequence: 1,
+            ),
+          ],
+          assistantMessage: '我先读取规格说明。',
+          providerState: {},
+          isTerminal: false,
+        ),
+      );
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [
+          ToolDefinition(
+            name: 'Read',
+            title: '读取文件',
+            description: '读取文件内容',
+            descriptionForModel: '当已经知道文件路径并需要查看内容时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'file_path': ToolArgumentProperty.string(description: '路径'),
+                'offset': ToolArgumentProperty.integer(description: '起始行'),
+                'limit': ToolArgumentProperty.integer(description: '行数'),
+              },
+              required: ['file_path'],
+            ),
+          ),
+        ],
+      );
+
+      final decision = await service.planNextDecision(
+        turn: ChatTurn(
+          id: 1,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '读一下 docs/spec.md',
+        ),
+        transcript: [_userEvent()],
+        steps: const [],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, hasLength(1));
+      expect(decision.toolCalls.single.toolName, 'Read');
+      expect(decision.toolCalls.single.arguments, {
+        'file_path': 'docs/spec.md',
+        'offset': 0,
+        'limit': 200,
+      });
+      expect(decision.assistantMessage, '我先读取规格说明。');
       expect(decision.isTerminal, isFalse);
     });
 
@@ -1317,7 +1515,6 @@ void main() {
       expect(result.toolCalls.single.arguments,
           containsPair('url', 'https://example.com'));
     });
-
   });
 }
 

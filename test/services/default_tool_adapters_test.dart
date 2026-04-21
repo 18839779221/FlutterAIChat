@@ -4,11 +4,11 @@ import 'package:ai_chat/services/default_tool_adapters.dart';
 import 'package:ai_chat/services/tool_executor.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('default tool adapters', () {
-    test('web search adapter maps tavily results into stable payload', () async {
+    test('web search adapter maps tavily results into stable payload',
+        () async {
       final searcher = buildTavilyWebSearcher(
         client: _FakeHttpClient(
           responses: {
@@ -102,7 +102,8 @@ void main() {
       expect(result.errorMessage, 'http_404');
     });
 
-    test('web search adapter returns failure when tavily api key is missing', () async {
+    test('web search adapter returns failure when tavily api key is missing',
+        () async {
       final searcher = buildTavilyWebSearcher(
         client: _FakeHttpClient(responses: const {}),
       );
@@ -116,38 +117,10 @@ void main() {
       expect(result.errorMessage, 'missing_api_key');
     });
 
-    test('shared preferences note saver persists note records', () async {
-      SharedPreferences.setMockInitialValues({});
-      final preferences = await SharedPreferences.getInstance();
-      final saver = buildSharedPreferencesNoteSaver(preferences);
-
-      final first = await saver(
-        title: 'ToolCall 设计',
-        content: '第一版设计结论',
-        folder: 'research',
-      );
-      final second = await saver(
-        title: '后续动作',
-        content: '继续补齐 tool adapter',
-      );
-
-      final stored = preferences.getStringList(kSavedNotesPreferenceKey);
-      expect(first.status, ToolExecutionStatus.success);
-      expect(second.status, ToolExecutionStatus.success);
-      expect(stored, isNotNull);
-      expect(stored, hasLength(2));
-
-      final decoded = stored!
-          .map((item) => jsonDecode(item) as Map<String, dynamic>)
-          .toList();
-      expect(decoded.first['title'], 'ToolCall 设计');
-      expect(decoded.first['folder'], 'research');
-      expect(decoded.last['title'], '后续动作');
-    });
-
     test('result sharer returns success when share sheet is invoked', () async {
       final sharer = buildDefaultResultSharer(
-        shareInvoker: ({required text, subject}) async => const ShareAdapterResult(
+        shareInvoker: ({required text, subject}) async =>
+            const ShareAdapterResult(
           status: ShareAdapterStatus.success,
           raw: 'share-sheet-opened',
         ),
@@ -178,7 +151,8 @@ void main() {
       expect(result.errorMessage, 'share_failed');
     });
 
-    test('reminder creator returns success when host intent is launched', () async {
+    test('reminder creator returns success when host intent is launched',
+        () async {
       final creator = buildDefaultReminderCreator(
         launchIntent: (request) async {
           expect(request.action, 'create_reminder');
@@ -202,7 +176,8 @@ void main() {
       expect(result.data['launchStatus'], 'launched');
     });
 
-    test('calendar event creator returns success when host intent is launched', () async {
+    test('calendar event creator returns success when host intent is launched',
+        () async {
       final creator = buildDefaultCalendarEventCreator(
         launchIntent: (request) async {
           expect(request.action, 'create_calendar_event');
@@ -247,7 +222,8 @@ void main() {
       expect(result.data['launchMode'], 'clipboard_fallback');
     });
 
-    test('reminder creator falls back to clipboard instructions when host is unavailable',
+    test(
+        'reminder creator falls back to clipboard instructions when host is unavailable',
         () async {
       String? copiedText;
       final creator = buildDefaultReminderCreator(
@@ -274,7 +250,8 @@ void main() {
       expect(copiedText, contains('2026-03-31 20:00 GMT+08:00'));
     });
 
-    test('reminder creator reports calendar fallback launch explicitly', () async {
+    test('reminder creator reports calendar fallback launch explicitly',
+        () async {
       final creator = buildDefaultReminderCreator(
         launchIntent: (request) async => const HostIntentResult(
           status: HostIntentStatus.launched,
@@ -292,7 +269,8 @@ void main() {
       expect(result.data['launchMode'], 'calendar_fallback');
     });
 
-    test('reminder creator keeps local hour and minutes from iso dueAt', () async {
+    test('reminder creator keeps local hour and minutes from iso dueAt',
+        () async {
       late HostIntentRequest capturedRequest;
       final creator = buildDefaultReminderCreator(
         launchIntent: (request) async {
@@ -342,7 +320,8 @@ void main() {
       expect(result.errorMessage, 'invalid_start_at');
     });
 
-    test('calendar creator falls back to clipboard instructions when host is unavailable',
+    test(
+        'calendar creator falls back to clipboard instructions when host is unavailable',
         () async {
       String? copiedText;
       final creator = buildDefaultCalendarEventCreator(
@@ -381,8 +360,8 @@ class _FakeHttpClient extends http.BaseClient {
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    final response = responses[request.url.toString()] ??
-        http.Response('not found', 404);
+    final response =
+        responses[request.url.toString()] ?? http.Response('not found', 404);
     return http.StreamedResponse(
       Stream.value(response.bodyBytes),
       response.statusCode,

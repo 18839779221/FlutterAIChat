@@ -824,15 +824,15 @@ void main() {
             sequence: 1,
             eventType: ChatEventType.toolExecutionStarted,
             role: MessageRole.system,
-            content: '正在执行工具：保存笔记',
+            content: '正在执行工具：写入文件',
             payloadJson: const {
-              'toolName': 'save_note',
+              'toolName': 'Write',
               'arguments': {
-                'title': '数据库版本确认',
+                'file_path': 'notes/db-version.md',
                 'content': '数据库版本：7',
               },
               'status': 'running',
-              'summary': '正在执行工具：保存笔记',
+              'summary': '正在执行工具：写入文件',
               'requiresConfirmation': false,
             },
           ),
@@ -842,11 +842,11 @@ void main() {
             sequence: 2,
             eventType: ChatEventType.toolResult,
             role: MessageRole.system,
-            content: '已保存笔记：数据库版本确认',
+            content: '已写入文件：notes/db-version.md',
             payloadJson: const {
-              'toolName': 'save_note',
+              'toolName': 'Write',
               'status': 'success',
-              'summary': '已保存笔记：数据库版本确认',
+              'summary': '已写入文件：notes/db-version.md',
             },
           ),
           ChatEvent(
@@ -893,18 +893,18 @@ void main() {
       container.read(currentGroupProvider.notifier).state =
           ChatGroup(id: groupId, title: 'group');
       final confirmationMessage = ChatMessage(
-        text: '请确认执行工具：保存笔记',
+        text: '请确认执行工具：写入文件',
         role: MessageRole.assistant,
         status: MessageStatus.completed,
         contentType: MessageContentType.actionConfirmation,
         payloadJson: const {
-          'toolName': 'save_note',
+          'toolName': 'Write',
           'arguments': {
-            'title': '数据库版本确认',
+            'file_path': 'notes/db-version.md',
             'content': '数据库版本：7',
           },
           'status': 'awaitingConfirmation',
-          'summary': '请确认执行工具：保存笔记',
+          'summary': '请确认执行工具：写入文件',
           'requiresConfirmation': true,
           'agentTurnId': 12,
         },
@@ -925,7 +925,7 @@ void main() {
       final replacedMessage = messages.firstWhere(
         (message) => message.id == confirmationMessageId,
       );
-      expect(replacedMessage.text, '正在执行工具：保存笔记');
+      expect(replacedMessage.text, '正在执行工具：写入文件');
       expect(replacedMessage.contentType, MessageContentType.toolInvocation);
       expect(replacedMessage.payloadJson?['status'], 'running');
       expect(replacedMessage.payloadJson?['requiresConfirmation'], isFalse);
@@ -1462,6 +1462,74 @@ void main() {
       expect(coordinator.confirmedTrustFlags, [true]);
       expect(coordinator.cancelledMessages, [message]);
       expect(sessionCoordinator.loadGroupsCalls, 0);
+    });
+
+    test('stale confirmation message does not resume tool execution again',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final orchestrator = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: const [],
+        resumedEvents: const [],
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(),
+        harness: orchestrator,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      final staleMessage = ChatMessage(
+        id: 42,
+        text: '准备执行工具：编辑文件',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.actionConfirmation,
+        payloadJson: const {
+          'toolName': 'Edit',
+          'arguments': {
+            'file_path': '我的爱好.md',
+            'old_string': '---',
+            'new_string': '---\n\n## 二、看电影',
+          },
+          'status': 'awaitingConfirmation',
+          'summary': '准备执行工具：编辑文件',
+          'requiresConfirmation': true,
+          'agentTurnId': 9,
+        },
+      );
+      container.read(messagesProvider.notifier).setMessages([
+        staleMessage.copyWith(
+          text: '正在执行工具：编辑文件',
+          contentType: MessageContentType.toolInvocation,
+          payloadJson: const {
+            'toolName': 'Edit',
+            'arguments': {
+              'file_path': '我的爱好.md',
+              'old_string': '---',
+              'new_string': '---\n\n## 二、看电影',
+            },
+            'status': 'running',
+            'summary': '正在执行工具：编辑文件',
+            'requiresConfirmation': false,
+            'agentTurnId': 9,
+          },
+        ),
+      ]);
+
+      await container.read(chatControllerProvider).confirmToolInvocation(
+            staleMessage,
+            trustTool: true,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(orchestrator.resumedTurnIds, isEmpty);
+      expect(orchestrator.resumedTrustFlags, isEmpty);
     });
 
     test(

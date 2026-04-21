@@ -45,6 +45,11 @@ class ChatService {
   // 暴露LLM实例供外部使用
   BaseLLM get llm => _llm;
 
+  /// Returns the runtime model name that budget services should evaluate.
+  String getModelName(ChatConfig config) {
+    return _llm.getModelName(config);
+  }
+
   Stream<String> streamFinalAnswer({
     required List<ChatMessage> messages,
     required ChatConfig config,

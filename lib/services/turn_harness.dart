@@ -20,6 +20,7 @@ import 'chat_service.dart';
 import 'turn_verifier.dart';
 import 'tool_call_service.dart';
 import 'transcript_builder_service.dart';
+import 'session_context_service.dart';
 
 class TurnHarness {
   static const _tag = 'TurnHarness';
@@ -31,6 +32,7 @@ class TurnHarness {
   final TurnVerifier _turnVerifier;
   final ToolCallService _toolCallService;
   final AgentLoopLimits _limits;
+  final SessionContextService? _sessionContextService;
 
   TurnHarness({
     required AgentPlannerService plannerService,
@@ -41,6 +43,7 @@ class TurnHarness {
     required TurnVerifier turnVerifier,
     required ChatService chatService,
     required ToolCallService toolCallService,
+    SessionContextService? sessionContextService,
     AgentLoopLimits limits = const AgentLoopLimits(),
   })  : _plannerService = plannerService,
         _turnRepository = turnRepository,
@@ -49,6 +52,7 @@ class TurnHarness {
         _transcriptBuilderService = transcriptBuilderService,
         _turnVerifier = turnVerifier,
         _toolCallService = toolCallService,
+        _sessionContextService = sessionContextService,
         _limits = limits;
 
   Stream<ChatEvent> runTurn({
@@ -147,10 +151,17 @@ class TurnHarness {
       ),
     );
     if (request.stepId != null) {
+      final transcriptContent = _formatUserInteractionTranscript(
+        request,
+        response,
+      );
       await _stepRepository?.markCompleted(
         request.stepId!,
         resultSummary: 'user_answered',
-        resultJson: response.toJson(),
+        resultJson: {
+          ...response.toJson(),
+          'transcriptContent': transcriptContent,
+        },
       );
     }
 
@@ -210,12 +221,21 @@ class TurnHarness {
       final steps = _stepRepository == null
           ? <ChatTurnStep>[]
           : await _stepRepository!.listSteps(turnId);
+      final plannerMessages = _sessionContextService == null
+          ? null
+          : await _sessionContextService!.buildPlannerMessages(
+              groupId: currentTurn.groupId,
+              currentTurnId: turnId,
+              currentTurnTranscript: transcript,
+              config: config,
+            );
       final decision = await _plannerService.planNextDecision(
             turn: currentTurn,
             transcript: transcript,
             steps: steps,
             config: config,
             limits: _limits,
+            plannerMessages: plannerMessages,
           ) ??
           const ModelTurnDecision(
             toolCalls: [],
@@ -328,14 +348,24 @@ class TurnHarness {
           if (stepId != null) {
             final persistedStep = await _stepRepository!.getStep(stepId);
             if (persistedStep == null ||
-                persistedStep.status != ChatTurnStepStatus.completed) {
+                persistedStep.status == ChatTurnStepStatus.planned ||
+                persistedStep.status == ChatTurnStepStatus.running) {
               shouldBreakBatch = true;
+              break;
+            }
+            if (persistedStep.status == ChatTurnStepStatus.failed) {
+              shouldBreakBatch = true;
+              failures += 1;
               break;
             }
           }
         }
 
         if (shouldBreakBatch) {
+          final refreshedTurn = await _turnRepository.getTurn(turnId) ?? turn;
+          if (refreshedTurn.status == ChatTurnStatus.running) {
+            continue;
+          }
           break;
         }
 
@@ -687,6 +717,7 @@ class TurnHarness {
           groupId: groupId,
           content: toolResult?.summary ?? 'tool_execution_failed',
           errorCode: toolResult?.errorMessage,
+          payloadJson: toolResult?.toJson(),
         ),
       );
       await _turnRepository.incrementToolCallCount(turnId);
@@ -727,7 +758,7 @@ class TurnHarness {
       () => _eventRepository.appendToolResult(
         turnId: turnId,
         groupId: groupId,
-        content: _buildToolResultTranscriptContent(execution),
+        content: toolResult.summary,
         payloadJson: toolResult.toJson(),
       ),
     );
@@ -814,14 +845,6 @@ class TurnHarness {
       return code;
     }
     return 'planner_action_respond';
-  }
-
-  String _buildToolResultTranscriptContent(ToolPreparationResult execution) {
-    final toolResult = execution.toolResult;
-    if (toolResult == null) {
-      return '';
-    }
-    return toolResult.summary;
   }
 
   Map<String, dynamic> _buildToolInvocationPayload({

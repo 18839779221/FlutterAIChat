@@ -64,3 +64,18 @@
   - 继续确认第三方 provider 是否错误使用了 `function_call.id` / `fc...`
   - 对照 OpenAI 官方 Responses 协议，判断是否需要做 provider 级兼容层
   - 在不污染主流程的前提下，评估是否需要区分“官方兼容”和“中转兼容”两套 continuation 映射策略
+
+### 2. 同一 turn 内写工具成功后未收敛，导致重复写入循环
+- 现象：
+  - `Write` 工具在用户确认后执行成功
+  - 当前 turn 没有在写入成功后结束，而是继续进入下一轮 planner
+  - 后续 planner 在相同用户意图下再次规划 `Write`，形成同一 turn 内的重复写入
+  - 日志中会出现同一个 `turnId` 下多次 `tool.done toolName=Write`，以及重复的 `已写入文件：xxx`
+- 当前已知信息：
+  - 这不是“同一 step 内重复 tool call”问题，而是跨 step 的重复 re-plan
+  - 最新现场中，同一个 `turnId=5` 已出现多个 `Write` step，并在 `tool.done` 后继续 `planner.start`
+  - 当前 transcript 会累计多条相同的 `已写入文件：个人信息.md`，进一步污染后续 planner 输入
+- 后续排查方向：
+  - 梳理 `TurnHarness` 在写工具成功后的收敛策略，确认哪些工具应在成功后优先结束 turn
+  - 评估是否需要将 `Write` / `Edit` / 外部动作工具标记为“成功后优先收口”的 action 类工具
+  - 避免 tool result 与 final answer 双重投影造成重复成功文本继续进入后续 planner 上下文

@@ -14,6 +14,10 @@ class ChatTurnRepository {
     return _storage.getTurn(id);
   }
 
+  Future<List<ChatTurn>> getTurnsByGroup(int groupId) {
+    return _storage.getTurnsByGroup(groupId);
+  }
+
   Future<void> incrementIteration(int turnId) async {
     final turn = await _requireTurn(turnId);
     await _storage.updateTurn(

@@ -124,6 +124,7 @@ The app uses **flutter_riverpod** with a split provider/controller architecture:
 1. **UI Layer** (`lib/pages/`, `lib/widgets/`) - Consumes providers and displays data
 2. **Controller Layer** (`lib/controllers/`) - Coordinates chat, session, summary, debug, and preference flows
 3. **Service Layer** (`lib/services/chat_service.dart`) - Handles AI communication with context strategy
+  - Session context orchestration now lives in dedicated `SessionContext*` services
 4. **Data Layer** (`lib/database/database_helper.dart`) - SQLite operations for persistence
 
 ### Controller Boundaries
@@ -176,14 +177,27 @@ When adding a feature, prefer extending an existing bounded controller or creati
 
 ### Context Management System
 
-The app uses a **Strategy Pattern** for managing conversation context:
+The app now uses a **Session Context** architecture for conversation context:
 
-- `MessageContextStrategy` (base class) - Defines the interface for context selection
-- `TokenBasedStrategy` - Selects messages based on token limits
-- `SmartSelectionStrategy` - Selects messages based on relevance and time
-- `HybridStrategy` - Combines multiple strategies with weighted scoring
+- `SessionContextService` builds planner-visible context for one `group`/Session
+- `SessionContextProjector` converts prior messages, tool results, and interaction results into compact model-visible messages
+- `SessionTokenBudgetService` decides whether compression is needed based on token budget pressure
+- `SessionSummaryService` generates stable historical summaries
+- `session_context_snapshots` stores the latest persisted summary boundary for each Session
 
-Context strategies are configured in `main.dart` when creating the `ChatService`. The default is a hybrid of 70% token-based and 30% smart selection.
+The planner-visible context should be composed from:
+
+- latest snapshot summary
+- recent working set after the snapshot boundary
+- current turn transcript
+
+Important rules:
+
+- Do not reintroduce `context_strategies.dart` or `MessageContextStrategy`
+- Do not treat UI `messages` as the direct model input source
+- Do not persist compression summaries into UI timeline messages
+- Compression boundaries should prefer completed turn / completed interaction units, not arbitrary single-event slicing
+- The primary compression trigger is token budget pressure near the current model limit, not a fixed message count
 
 ### LLM Integration
 
@@ -244,13 +258,17 @@ The app automatically generates conversation summaries using a Hybrid Approach:
 
 ### Database Schema
 
-SQLite database with two main tables:
+SQLite database with these primary tables:
 - `chat_groups` - Conversation groups with system prompts and `is_summarized` flag
-- `chat_messages` - Individual messages with role, status, and optional reasoning content
+- `messages` - UI timeline messages with role, status, and optional reasoning content
+- `chat_turns` - Turn ledger records for agent-loop execution
+- `chat_turn_steps` - Tool and interaction steps inside one turn
+- `chat_events` - Append-only transcript events inside one turn
+- `session_context_snapshots` - Latest persisted session summary boundary and text
 
 Messages are loaded with pagination (20 messages per page) to optimize performance.
 
-Database version: 5 (includes `is_summarized` field for automatic summarization tracking)
+Database version: 10
 
 ## Key Files
 
@@ -262,8 +280,11 @@ Database version: 5 (includes `is_summarized` field for automatic summarization 
 - `lib/controllers/chat_summary_controller.dart` - Summary and auto-summary controller
 - `lib/controllers/chat_debug_controller.dart` - Structured debug controller
 - `lib/controllers/chat_preferences_controller.dart` - Prompt/mode preference controller
-- `lib/services/chat_service.dart` - Handles AI streaming with context selection
-- `lib/models/context/context_strategies.dart` - Context selection strategy implementations
+- `lib/services/chat_service.dart` - Handles AI streaming and model-name lookup for runtime services
+- `lib/services/session_context_service.dart` - Session-level planner context orchestrator
+- `lib/services/session_context_projector.dart` - Session history to model-visible context projector
+- `lib/services/session_token_budget_service.dart` - Token budget evaluation for context compression
+- `lib/services/session_summary_service.dart` - Snapshot summary generation service
 - `lib/models/llm/llm_factory.dart` - LLM factory for creating model instances
 - `lib/database/database_helper.dart` - SQLite database operations
 - `assets/debug/test_cases.json` - Debug 测试案例的唯一结构化数据源，供空状态精选案例、Debug `Cases` 面板和未来自动化共用
@@ -308,3 +329,7 @@ Database version: 5 (includes `is_summarized` field for automatic summarization 
   - Avoid one-off UI patterns or isolated architectural shortcuts that bypass the current controller/provider boundaries
   - Tool-use UI should prefer semantic presentation variants over raw message-type mirroring
   - Context-gathering tool steps should stay compact and collapse by default; external-action results should remain explicit in the timeline
+- Session context changes should preserve the current layered boundary:
+  - UI `messages` for timeline
+  - `chat_turns/chat_turn_steps/chat_events` for turn ledger and transcript
+  - `SessionContextService` for model-visible session context

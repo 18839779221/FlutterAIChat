@@ -844,20 +844,49 @@ class ConfigurableHttpLLM implements BaseLLM {
       payload['previous_response_id'] = previousResponseId;
     }
     if (continuationItems.isNotEmpty) {
+      final continuationInputItems =
+          _buildResponsesContinuationInputItems(continuationItems);
       final input = _shouldUseResponsesContinuationInputOnly(
         previousResponseId: previousResponseId,
-        continuationItems: continuationItems,
+        continuationItems: continuationInputItems,
       )
           ? <dynamic>[]
           : List<dynamic>.from(
               payload['input'] as List<dynamic>? ?? const <dynamic>[],
             );
-      for (final item in continuationItems) {
+      for (final item in continuationInputItems) {
         input.add(Map<String, dynamic>.from(item));
       }
       payload['input'] = input;
     }
     return payload;
+  }
+
+  List<Map<String, dynamic>> _buildResponsesContinuationInputItems(
+    List<Map<String, dynamic>> continuationItems,
+  ) {
+    final items = <Map<String, dynamic>>[];
+    for (final item in continuationItems) {
+      final type = item['type'];
+      if (type == 'user_interaction_answer') {
+        final content = _normalizeText(item['content']);
+        if (content == null) {
+          continue;
+        }
+        items.add({
+          'role': 'user',
+          'content': [
+            {
+              'type': 'input_text',
+              'text': content,
+            },
+          ],
+        });
+        continue;
+      }
+      items.add(Map<String, dynamic>.from(item));
+    }
+    return items;
   }
 
   PlannerToolChoice? _parsePlannerChatCompletionsChoice(
