@@ -581,6 +581,9 @@ Future<void> _pumpMessageList(
             tags: ['agent-loop'],
             featured: true,
             enabled: true,
+            setup: _debugCaseEmptySetup,
+            checkpoints: ['finalAnswer'],
+            assertions: _debugCaseCompletedAssertions,
           ),
           DebugTestCase(
             id: 'memory-search',
@@ -591,6 +594,9 @@ Future<void> _pumpMessageList(
             tags: ['agent-loop'],
             featured: true,
             enabled: true,
+            setup: _debugCaseEmptySetup,
+            checkpoints: ['tool:search_chat_history:success', 'finalAnswer'],
+            assertions: _debugCaseCompletedAssertions,
           ),
           DebugTestCase(
             id: 'tool-chain',
@@ -602,6 +608,13 @@ Future<void> _pumpMessageList(
             tags: ['agent-loop'],
             featured: true,
             enabled: true,
+            setup: _debugCaseEmptySetup,
+            checkpoints: [
+              'tool:web_search:success',
+              'tool:fetch_webpage:success',
+              'finalAnswer',
+            ],
+            assertions: _debugCaseCompletedAssertions,
           ),
         ],
       ),
@@ -638,6 +651,27 @@ Future<void> _pumpMessageList(
     ),
   );
 }
+
+const _debugCaseEmptySetup = DebugTestCaseSetup(
+  historyMessages: [],
+  files: [],
+  mutationsAfterCheckpoints: [],
+);
+
+const _debugCaseCompletedAssertions = DebugTestCaseAssertions(
+  endStatus: ['completed'],
+  mustContainEvents: [],
+  mustNotContainEvents: [],
+  mustContainErrorCodes: [],
+  mustContainAnyErrorCodes: [],
+  forbidErrorCodes: [],
+  finalAnswerContainsAll: [],
+  finalFileContains: [],
+  finalFileUnchanged: [],
+  mustNotFalseClaimWriteSuccess: false,
+  mustNotFalseClaimReadSuccess: false,
+  mustNotHang: true,
+);
 
 ChatMessage _buildMessage({
   required String text,

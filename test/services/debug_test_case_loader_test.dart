@@ -1,87 +1,205 @@
-import 'package:ai_chat/models/debug/debug_test_case.dart';
 import 'package:ai_chat/services/debug_test_case_loader.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('loader parses enabled cases and keeps featured ordering', () async {
-    final loader = AssetDebugTestCaseLoader(
-      assetBundle: _FakeAssetBundle('''
+  group('AssetDebugTestCaseLoader', () {
+    test('parses enabled cases and keeps featured ordering', () async {
+      final loader = AssetDebugTestCaseLoader(
+        assetBundle: _FakeAssetBundle('''
 {
-  "version": 1,
   "cases": [
     {
-      "id": "plain-answer",
-      "group": "tool-call",
-      "title": "纯文本直答",
-      "summary": "无需工具。",
-      "prompt": "用一句话解释什么是 SQLite",
-      "tags": ["agent-loop", "plain-answer"],
+      "id": "case-a",
+      "group": "agent-loop-basic",
+      "title": "A",
+      "summary": "A summary",
+      "prompt": "A prompt",
+      "tags": ["agent-loop"],
       "featured": true,
-      "enabled": true
+      "enabled": true,
+      "setup": {
+        "historyMessages": [],
+        "files": [],
+        "mutationsAfterCheckpoints": []
+      },
+      "checkpoints": ["finalAnswer"],
+      "assertions": {
+        "endStatus": ["completed"],
+        "mustContainEvents": ["finalAnswer"],
+        "mustNotHang": true
+      }
     },
     {
-      "id": "disabled",
-      "group": "tool-call",
-      "title": "停用案例",
-      "summary": "不展示。",
-      "prompt": "disabled",
-      "tags": ["legacy"],
+      "id": "case-b",
+      "group": "file-sandbox-looped",
+      "title": "B",
+      "summary": "B summary",
+      "prompt": "B prompt",
+      "tags": ["file"],
       "featured": true,
-      "enabled": false
+      "enabled": true,
+      "setup": {
+        "historyMessages": [],
+        "files": [
+          {
+            "path": "memories/todo.md",
+            "content": "alpha"
+          }
+        ],
+        "mutationsAfterCheckpoints": []
+      },
+      "checkpoints": [
+        "tool:Read:success",
+        "tool:Edit:success",
+        "finalAnswer"
+      ],
+      "assertions": {
+        "endStatus": ["completed"],
+        "finalFileContains": [
+          {
+            "path": "memories/todo.md",
+            "text": "delta"
+          }
+        ],
+        "mustNotHang": true
+      }
     },
     {
-      "id": "confirmation",
-      "group": "confirmation",
-      "title": "确认暂停",
-      "summary": "副作用工具。",
-      "prompt": "提醒我今晚 8 点提交周报",
-      "tags": ["confirmation"],
-      "featured": true,
-      "enabled": true
+      "id": "case-c",
+      "group": "agent-loop-basic",
+      "title": "C",
+      "summary": "C summary",
+      "prompt": "C prompt",
+      "tags": ["disabled"],
+      "featured": false,
+      "enabled": false,
+      "setup": {
+        "historyMessages": [],
+        "files": [],
+        "mutationsAfterCheckpoints": []
+      },
+      "checkpoints": ["finalAnswer"],
+      "assertions": {
+        "endStatus": ["completed"],
+        "mustNotHang": true
+      }
     }
   ]
 }
 '''),
-    );
+      );
 
-    final library = await loader.load();
+      final library = await loader.load();
 
-    expect(library.version, 1);
-    expect(library.allCases.map((item) => item.id), [
-      'plain-answer',
-      'confirmation',
-    ]);
-    expect(library.featuredCases.map((item) => item.id), [
-      'plain-answer',
-      'confirmation',
-    ]);
-    expect(library.allCases.map((item) => item.group), [
-      'tool-call',
-      'confirmation',
-    ]);
-  });
-
-  test('debug test case model trims scalar strings and preserves group/tags', () {
-    final parsed = DebugTestCase.fromJson(const {
-      'id': '  plain-answer  ',
-      'group': ' tool-call ',
-      'title': '  纯文本直答 ',
-      'summary': '  无需工具。 ',
-      'prompt': '  用一句话解释什么是 SQLite ',
-      'tags': ['agent-loop', ' plain-answer '],
-      'featured': true,
-      'enabled': true,
+      expect(library.allCases, hasLength(2));
+      expect(library.allCases.map((item) => item.id), ['case-a', 'case-b']);
+      expect(library.featuredCases.map((item) => item.id), ['case-a', 'case-b']);
+      final fileCase = library.allCases.last;
+      expect(fileCase.setup.files.single.path, 'memories/todo.md');
+      expect(fileCase.checkpoints, containsAllInOrder([
+        'tool:Read:success',
+        'tool:Edit:success',
+        'finalAnswer',
+      ]));
+      expect(fileCase.assertions.endStatus, ['completed']);
     });
 
-    expect(parsed.id, 'plain-answer');
-    expect(parsed.group, 'tool-call');
-    expect(parsed.title, '纯文本直答');
-    expect(parsed.summary, '无需工具。');
-    expect(parsed.prompt, '用一句话解释什么是 SQLite');
-    expect(parsed.tags, ['agent-loop', 'plain-answer']);
-    expect(parsed.featured, isTrue);
-    expect(parsed.enabled, isTrue);
+    test('rejects duplicate ids', () async {
+      final loader = AssetDebugTestCaseLoader(
+        assetBundle: _FakeAssetBundle('''
+{
+  "cases": [
+    {
+      "id": "dup",
+      "group": "agent-loop-basic",
+      "title": "A",
+      "summary": "A",
+      "prompt": "A",
+      "tags": [],
+      "featured": false,
+      "enabled": true,
+      "setup": {
+        "historyMessages": [],
+        "files": [],
+        "mutationsAfterCheckpoints": []
+      },
+      "checkpoints": ["finalAnswer"],
+      "assertions": {
+        "endStatus": ["completed"],
+        "mustNotHang": true
+      }
+    },
+    {
+      "id": "dup",
+      "group": "agent-loop-basic",
+      "title": "B",
+      "summary": "B",
+      "prompt": "B",
+      "tags": [],
+      "featured": false,
+      "enabled": true,
+      "setup": {
+        "historyMessages": [],
+        "files": [],
+        "mutationsAfterCheckpoints": []
+      },
+      "checkpoints": ["finalAnswer"],
+      "assertions": {
+        "endStatus": ["completed"],
+        "mustNotHang": true
+      }
+    }
+  ]
+}
+'''),
+      );
+
+      await expectLater(
+        loader.load(),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('id 重复'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects non-object root', () async {
+      final loader = AssetDebugTestCaseLoader(
+        assetBundle: _FakeAssetBundle('[]'),
+      );
+
+      await expectLater(
+        loader.load(),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('root 必须是对象'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects non-array cases', () async {
+      final loader = AssetDebugTestCaseLoader(
+        assetBundle: _FakeAssetBundle('{"cases": {}}'),
+      );
+
+      await expectLater(
+        loader.load(),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('cases 必须是数组'),
+          ),
+        ),
+      );
+    });
   });
 }
 

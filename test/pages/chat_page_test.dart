@@ -268,7 +268,6 @@ void main() {
         debugTestCaseLoaderProvider.overrideWith(
           (ref) => const _FakeDebugTestCaseLoader(
             DebugTestCaseLibrary(
-              version: 1,
               allCases: [
                 DebugTestCase(
                   id: 'plain-answer',
@@ -279,6 +278,9 @@ void main() {
                   tags: ['agent-loop'],
                   featured: true,
                   enabled: true,
+                  setup: _debugCaseEmptySetup,
+                  checkpoints: ['finalAnswer'],
+                  assertions: _debugCaseCompletedAssertions,
                 ),
                 DebugTestCase(
                   id: 'single-follow-up',
@@ -289,6 +291,9 @@ void main() {
                   tags: ['clarification'],
                   featured: false,
                   enabled: true,
+                  setup: _debugCaseEmptySetup,
+                  checkpoints: ['askUser:prompted'],
+                  assertions: _debugCaseAwaitingInteractionAssertions,
                 ),
               ],
             ),
@@ -326,6 +331,42 @@ void main() {
     expect(input.controller?.text, '用一句话解释什么是 SQLite');
   });
 }
+
+const _debugCaseEmptySetup = DebugTestCaseSetup(
+  historyMessages: [],
+  files: [],
+  mutationsAfterCheckpoints: [],
+);
+
+const _debugCaseCompletedAssertions = DebugTestCaseAssertions(
+  endStatus: ['completed'],
+  mustContainEvents: [],
+  mustNotContainEvents: [],
+  mustContainErrorCodes: [],
+  mustContainAnyErrorCodes: [],
+  forbidErrorCodes: [],
+  finalAnswerContainsAll: [],
+  finalFileContains: [],
+  finalFileUnchanged: [],
+  mustNotFalseClaimWriteSuccess: false,
+  mustNotFalseClaimReadSuccess: false,
+  mustNotHang: true,
+);
+
+const _debugCaseAwaitingInteractionAssertions = DebugTestCaseAssertions(
+  endStatus: ['awaitingUserInteraction'],
+  mustContainEvents: [],
+  mustNotContainEvents: ['finalAnswer'],
+  mustContainErrorCodes: [],
+  mustContainAnyErrorCodes: [],
+  forbidErrorCodes: [],
+  finalAnswerContainsAll: [],
+  finalFileContains: [],
+  finalFileUnchanged: [],
+  mustNotFalseClaimWriteSuccess: false,
+  mustNotFalseClaimReadSuccess: false,
+  mustNotHang: true,
+);
 
 class _StubSendCoordinator implements ChatSendCoordinator {
   @override

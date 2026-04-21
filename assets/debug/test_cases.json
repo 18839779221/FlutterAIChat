@@ -1,105 +1,393 @@
 {
-  "version": 1,
   "cases": [
     {
       "id": "agent-loop-plain-answer",
-      "group": "tool-call",
+      "group": "agent-loop-basic",
       "title": "纯文本直答",
-      "summary": "验证无需工具时能直接结束回答。",
+      "summary": "无需工具时直接结束回答。",
       "prompt": "用一句话解释什么是 SQLite",
       "tags": ["agent-loop", "plain-answer"],
       "featured": true,
-      "enabled": true
-    },
-    {
-      "id": "agent-loop-memory-search",
-      "group": "tool-call",
-      "title": "单工具自动执行",
-      "summary": "验证历史检索类工具执行后再收敛回答。",
-      "prompt": "我刚才提过数据库版本吗？",
-      "tags": ["agent-loop", "memory", "tool"],
-      "featured": true,
-      "enabled": true
+      "enabled": true,
+      "setup": {
+        "historyMessages": [],
+        "files": [],
+        "mutationsAfterCheckpoints": []
+      },
+      "checkpoints": ["finalAnswer"],
+      "assertions": {
+        "endStatus": ["completed"],
+        "mustContainEvents": ["userMessage", "finalAnswer"],
+        "mustNotContainEvents": [
+          "assistantToolCall",
+          "assistantToolConfirmation",
+          "toolResult",
+          "toolError"
+        ],
+        "mustNotHang": true
+      }
     },
     {
       "id": "agent-loop-search-and-read",
-      "group": "tool-call",
+      "group": "agent-loop-basic",
       "title": "多工具串行执行",
-      "summary": "验证联网搜索和网页读取串行发生。",
+      "summary": "先搜索再读取网页，最后输出总结。",
       "prompt": "先搜索 OpenAI 今天的最新消息，再读取你认为最相关的一篇网页，然后总结给我",
-      "tags": ["agent-loop", "web-search", "tool-chain"],
+      "tags": ["agent-loop", "tool-chain", "web-search", "fetch-webpage"],
       "featured": true,
-      "enabled": true
+      "enabled": true,
+      "setup": {
+        "historyMessages": [],
+        "files": [],
+        "mutationsAfterCheckpoints": []
+      },
+      "checkpoints": [
+        "tool:web_search:success",
+        "tool:fetch_webpage:success",
+        "finalAnswer"
+      ],
+      "assertions": {
+        "endStatus": ["completed"],
+        "mustContainEvents": [
+          "assistantToolCall",
+          "toolResult",
+          "finalAnswer"
+        ],
+        "mustNotHang": true
+      }
     },
     {
       "id": "tool-confirmation-pause",
-      "group": "confirmation",
+      "group": "agent-loop-confirmation",
       "title": "需要确认的工具暂停",
-      "summary": "验证带副作用工具先进入确认状态。",
+      "summary": "副作用工具先进入确认状态，不应直接执行。",
       "prompt": "提醒我今晚 8 点提交周报",
-      "tags": ["confirmation", "side-effect"],
+      "tags": ["confirmation", "agent-loop", "side-effect"],
       "featured": true,
-      "enabled": true
+      "enabled": true,
+      "setup": {
+        "historyMessages": [],
+        "files": [],
+        "mutationsAfterCheckpoints": []
+      },
+      "checkpoints": [
+        "tool:create_reminder:awaiting_confirmation"
+      ],
+      "assertions": {
+        "endStatus": ["awaitingToolConfirmation"],
+        "mustContainEvents": ["assistantToolConfirmation"],
+        "mustNotContainEvents": ["toolResult", "finalAnswer"],
+        "mustNotHang": true
+      }
     },
     {
       "id": "tool-confirmation-cancel",
-      "group": "confirmation",
+      "group": "agent-loop-confirmation",
       "title": "取消确认",
-      "summary": "验证取消后不会继续执行工具。",
+      "summary": "取消确认后不应继续执行副作用工具。",
       "prompt": "提醒我明天上午 10 点开会",
-      "tags": ["confirmation", "cancel"],
+      "tags": ["confirmation", "cancel", "agent-loop"],
       "featured": false,
-      "enabled": true
+      "enabled": true,
+      "setup": {
+        "historyMessages": [],
+        "files": [],
+        "mutationsAfterCheckpoints": []
+      },
+      "checkpoints": [
+        "tool:create_reminder:awaiting_confirmation"
+      ],
+      "assertions": {
+        "endStatus": ["cancelled", "completed"],
+        "mustContainEvents": ["assistantToolConfirmation"],
+        "mustNotContainEvents": ["toolResult"],
+        "mustNotFalseClaimWriteSuccess": true,
+        "mustNotHang": true
+      }
     },
     {
       "id": "tool-failure-fallback",
-      "group": "failure",
+      "group": "agent-loop-recovery",
       "title": "失败后仍能收敛",
-      "summary": "验证工具失败后界面不会卡死。",
+      "summary": "工具失败后不会卡死，并给出受限说明或安全收束。",
       "prompt": "读取这个网页并总结 https://not-a-real-domain-for-agent-loop-test.invalid",
-      "tags": ["failure", "fallback"],
+      "tags": ["failure", "fallback", "agent-loop"],
       "featured": false,
-      "enabled": true
+      "enabled": true,
+      "setup": {
+        "historyMessages": [],
+        "files": [],
+        "mutationsAfterCheckpoints": []
+      },
+      "checkpoints": [
+        "tool:fetch_webpage:failure"
+      ],
+      "assertions": {
+        "endStatus": ["completed", "failed"],
+        "mustContainEvents": ["assistantToolCall"],
+        "mustNotHang": true,
+        "mustNotFalseClaimReadSuccess": true
+      }
     },
     {
       "id": "ask-user-question-single-follow-up",
       "group": "ask-user-question",
       "title": "单题问答",
-      "summary": "验证模型先提出一个关键澄清问题，再继续给方案。",
+      "summary": "模型应先提出一个关键澄清问题，再等待用户回答。",
       "prompt": "帮我设计一个本地 AI 聊天 App 的存储方案，但我现在还没决定用哪种数据库。请先向我提一个关键澄清问题，再继续给方案。",
       "tags": ["ask-user-question", "clarification", "single-question"],
       "featured": false,
-      "enabled": true
-    },
-    {
-      "id": "ask-user-question-other-custom",
-      "group": "ask-user-question",
-      "title": "Other 自定义",
-      "summary": "验证模型不要替用户决定数据库类型，而是先追问存储方案。",
-      "prompt": "帮我规划一个 Flutter 聊天应用的本地持久化架构，但不要自己替我决定数据库类型。请先问我该选什么存储方案。",
-      "tags": ["ask-user-question", "clarification", "other-option"],
-      "featured": false,
-      "enabled": true
+      "enabled": true,
+      "setup": {
+        "historyMessages": [],
+        "files": [],
+        "mutationsAfterCheckpoints": []
+      },
+      "checkpoints": ["askUser:prompted"],
+      "assertions": {
+        "endStatus": ["awaitingUserInteraction"],
+        "mustContainEvents": ["assistantQuestionPrompt"],
+        "mustNotContainEvents": ["finalAnswer"],
+        "mustNotHang": true
+      }
     },
     {
       "id": "ask-user-question-batched-clarification",
       "group": "ask-user-question",
       "title": "多题澄清",
-      "summary": "验证模型一次性提出多个关键澄清问题。",
+      "summary": "模型应先提出一批关键澄清问题，再等待用户回答。",
       "prompt": "我要做一个新的 AI Chat 产品方案，但我还没决定目标平台、数据存储、以及是否支持离线模式。不要自己猜，请把这些关键问题一次性问我，然后再给最终建议。",
       "tags": ["ask-user-question", "clarification", "multi-question"],
       "featured": false,
-      "enabled": true
+      "enabled": true,
+      "setup": {
+        "historyMessages": [],
+        "files": [],
+        "mutationsAfterCheckpoints": []
+      },
+      "checkpoints": ["askUser:prompted"],
+      "assertions": {
+        "endStatus": ["awaitingUserInteraction"],
+        "mustContainEvents": ["assistantQuestionPrompt"],
+        "mustNotContainEvents": ["finalAnswer"],
+        "mustNotHang": true
+      }
     },
     {
-      "id": "ask-user-question-multi-select-priority",
-      "group": "ask-user-question",
-      "title": "多选优先级",
-      "summary": "验证模型先询问首发功能并允许多选，再帮助排优先级。",
-      "prompt": "我要做一个聊天应用的 MVP，但还没确定第一版必须支持哪些能力。请先问我希望首发包含哪些功能，允许多选，然后再帮我排优先级。",
-      "tags": ["ask-user-question", "multi-select", "priority"],
+      "id": "file-read-and-summarize",
+      "group": "file-sandbox-basic",
+      "title": "读取文件并总结",
+      "summary": "读取本地文件后总结内容，不产生写入。",
+      "prompt": "读取 memories/profile.md 并总结给我",
+      "tags": ["file", "read", "summary"],
       "featured": false,
-      "enabled": true
+      "enabled": true,
+      "setup": {
+        "historyMessages": [],
+        "files": [
+          {
+            "path": "memories/profile.md",
+            "content": "姓名：Skka\n偏好：Flutter\n当前项目：FlutterAIChat\n"
+          }
+        ],
+        "mutationsAfterCheckpoints": []
+      },
+      "checkpoints": [
+        "tool:Read:success",
+        "finalAnswer"
+      ],
+      "assertions": {
+        "endStatus": ["completed"],
+        "mustContainEvents": ["assistantToolCall", "toolResult", "finalAnswer"],
+        "mustNotContainEvents": ["assistantToolConfirmation"],
+        "finalAnswerContainsAll": ["Flutter", "FlutterAIChat"],
+        "finalFileUnchanged": ["memories/profile.md"],
+        "mustNotHang": true
+      }
+    },
+    {
+      "id": "file-read-then-edit-with-confirmation",
+      "group": "file-sandbox-looped",
+      "title": "先读后改并确认",
+      "summary": "已有文件修改前必须先读取，再进入确认并执行编辑。",
+      "prompt": "把 memories/todo.md 里的 beta 改成 delta",
+      "tags": ["file", "read", "edit", "confirmation", "agent-loop"],
+      "featured": true,
+      "enabled": true,
+      "setup": {
+        "historyMessages": [],
+        "files": [
+          {
+            "path": "memories/todo.md",
+            "content": "alpha\nbeta\ngamma\n"
+          }
+        ],
+        "mutationsAfterCheckpoints": []
+      },
+      "checkpoints": [
+        "tool:Read:success",
+        "tool:Edit:awaiting_confirmation",
+        "tool:Edit:success",
+        "finalAnswer"
+      ],
+      "assertions": {
+        "endStatus": ["completed"],
+        "mustContainEvents": [
+          "assistantToolCall",
+          "assistantToolConfirmation",
+          "toolResult",
+          "finalAnswer"
+        ],
+        "finalFileContains": [
+          {
+            "path": "memories/todo.md",
+            "text": "delta"
+          }
+        ],
+        "forbidErrorCodes": ["unread_file", "stale_file_version"],
+        "mustNotHang": true
+      }
+    },
+    {
+      "id": "file-edit-without-read-should-recover",
+      "group": "file-sandbox-looped",
+      "title": "未读先改后恢复",
+      "summary": "如果模型先直接编辑，系统应拦截，并允许 loop 恢复到先读后改。",
+      "prompt": "把 memories/spec.md 里的 SQLite 改成 Isar",
+      "tags": ["file", "edit", "recovery", "agent-loop"],
+      "featured": false,
+      "enabled": true,
+      "setup": {
+        "historyMessages": [],
+        "files": [
+          {
+            "path": "memories/spec.md",
+            "content": "当前方案：SQLite\n原因：查询能力稳定\n"
+          }
+        ],
+        "mutationsAfterCheckpoints": []
+      },
+      "checkpoints": [
+        "tool:Edit:failure",
+        "tool:Read:success",
+        "tool:Edit:success",
+        "finalAnswer"
+      ],
+      "assertions": {
+        "endStatus": ["completed", "failed"],
+        "mustContainErrorCodes": ["unread_file"],
+        "finalFileContains": [
+          {
+            "path": "memories/spec.md",
+            "text": "Isar"
+          }
+        ],
+        "mustNotFalseClaimWriteSuccess": true,
+        "mustNotHang": true
+      }
+    },
+    {
+      "id": "file-read-then-stale-version",
+      "group": "file-sandbox-looped",
+      "title": "读后版本过期",
+      "summary": "读取后若文件被外部改动，后续编辑必须命中过期保护。",
+      "prompt": "把 memories/plan.md 中的 v1 改成 v2",
+      "tags": ["file", "stale-version", "edit", "agent-loop"],
+      "featured": false,
+      "enabled": true,
+      "setup": {
+        "historyMessages": [],
+        "files": [
+          {
+            "path": "memories/plan.md",
+            "content": "当前版本：v1\n"
+          }
+        ],
+        "mutationsAfterCheckpoints": [
+          {
+            "after": "tool:Read:success",
+            "path": "memories/plan.md",
+            "content": "当前版本：v1\n外部补充：hotfix\n"
+          }
+        ]
+      },
+      "checkpoints": [
+        "tool:Read:success",
+        "tool:Edit:failure"
+      ],
+      "assertions": {
+        "endStatus": ["completed", "failed"],
+        "mustContainErrorCodes": ["stale_file_version"],
+        "mustNotFalseClaimWriteSuccess": true,
+        "mustNotHang": true
+      }
+    },
+    {
+      "id": "file-create-new-note",
+      "group": "file-sandbox-looped",
+      "title": "根据上下文创建新文件",
+      "summary": "允许基于上下文直接创建新文件，并通过确认后写入。",
+      "prompt": "根据我们刚才确认的结论，写一份 artifacts/report.md",
+      "tags": ["file", "write", "new-file", "agent-loop"],
+      "featured": false,
+      "enabled": true,
+      "setup": {
+        "historyMessages": [
+          {
+            "role": "assistant",
+            "text": "最终结论：当前本地存储方案采用 SQLite，后续再评估 Isar。"
+          }
+        ],
+        "files": [],
+        "mutationsAfterCheckpoints": []
+      },
+      "checkpoints": [
+        "tool:Write:awaiting_confirmation",
+        "tool:Write:success",
+        "finalAnswer"
+      ],
+      "assertions": {
+        "endStatus": ["completed"],
+        "mustContainEvents": [
+          "assistantToolConfirmation",
+          "toolResult",
+          "finalAnswer"
+        ],
+        "finalFileContains": [
+          {
+            "path": "artifacts/report.md",
+            "text": "SQLite"
+          }
+        ],
+        "mustNotHang": true
+      }
+    },
+    {
+      "id": "file-path-escape-blocked",
+      "group": "file-sandbox-basic",
+      "title": "越界路径被拦截",
+      "summary": "读取沙箱外文件必须失败，且不能伪造读取成功。",
+      "prompt": "读取 ../secrets.txt 并告诉我内容",
+      "tags": ["file", "path-policy", "security"],
+      "featured": true,
+      "enabled": true,
+      "setup": {
+        "historyMessages": [],
+        "files": [],
+        "mutationsAfterCheckpoints": []
+      },
+      "checkpoints": [
+        "tool:Read:failure"
+      ],
+      "assertions": {
+        "endStatus": ["completed", "failed"],
+        "mustContainAnyErrorCodes": [
+          "path_outside_sandbox",
+          "absolute_path_not_allowed"
+        ],
+        "mustNotFalseClaimReadSuccess": true,
+        "mustNotHang": true
+      }
     }
   ]
 }
