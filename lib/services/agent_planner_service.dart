@@ -63,7 +63,10 @@ class AgentPlannerService {
       userSystemPrompt: _resolveUserSystemPrompt(config),
       promptLocale: config.promptLocale,
     );
-    final messages = transcript.map(_eventToMessage).toList(growable: false);
+    final messages = transcript
+        .map(_eventToMessage)
+        .whereType<ChatMessage>()
+        .toList(growable: false);
 
     try {
       Logger.d(
@@ -95,12 +98,13 @@ class AgentPlannerService {
       );
       return _plannerRequestFailedDecision();
     } catch (error, stackTrace) {
+      final detail = _preview(error.toString());
       Logger.w(
         _tag,
-        'native planner decision unavailable, terminating turn: ${_preview(error.toString())}',
+        'native planner decision unavailable, terminating turn: $detail',
       );
       Logger.e(_tag, 'native planner decision stack trace', stackTrace);
-      return _plannerRequestFailedDecision();
+      return _plannerRequestFailedDecision(detail: detail);
     }
   }
 
@@ -197,10 +201,15 @@ class AgentPlannerService {
     );
   }
 
-  ModelTurnDecision _plannerRequestFailedDecision() {
-    return const ModelTurnDecision(
+  ModelTurnDecision _plannerRequestFailedDecision({String? detail}) {
+    final normalizedDetail = detail?.trim();
+    final assistantMessage = (normalizedDetail != null &&
+            normalizedDetail.isNotEmpty)
+        ? '当前模型请求失败，已中断本轮流程。\n原因：$normalizedDetail'
+        : '抱歉，我暂时无法规划下一步动作，请直接重试。';
+    return ModelTurnDecision(
       toolCalls: [],
-      assistantMessage: '抱歉，我暂时无法规划下一步动作，请直接重试。',
+      assistantMessage: assistantMessage,
       diagnosticCode: 'planner_request_failed',
       providerState: {},
       isTerminal: true,
@@ -277,6 +286,17 @@ class AgentPlannerService {
             continue;
           }
           items.add({
+            'role': 'assistant',
+            'content': [
+              {
+                'type': 'tool_use',
+                'id': step.providerCallId!.trim(),
+                'name': step.toolName,
+                'input': step.toolArgsJson,
+              },
+            ],
+          });
+          items.add({
             'role': 'user',
             'content': [
               {
@@ -289,9 +309,56 @@ class AgentPlannerService {
         }
         return items;
       case ChatTurnProviderStyle.openaiChatCompletions:
+        final items = <Map<String, dynamic>>[];
+        for (final step in steps) {
+          if ((step.providerCallId ?? '').trim().isEmpty) {
+            continue;
+          }
+          if (step.status != ChatTurnStepStatus.completed &&
+              step.status != ChatTurnStepStatus.failed) {
+            continue;
+          }
+          if (step.toolName == 'ask_user_question') {
+            final content = _resolveUserInteractionContinuationContent(step);
+            if (content != null) {
+              items.add({
+                'type': 'user_interaction_answer',
+                'toolCallId': step.providerCallId!.trim(),
+                'content': content,
+              });
+            }
+            continue;
+          }
+          items.add({
+            'type': 'assistant_tool_call',
+            'toolCallId': step.providerCallId!.trim(),
+            'toolName': step.toolName,
+            'arguments': step.toolArgsJson,
+          });
+          items.add({
+            'type': 'tool_result',
+            'toolCallId': step.providerCallId!.trim(),
+            'toolName': step.toolName,
+            'output': _encodeProviderStepOutput(step),
+          });
+        }
+        return items;
       case null:
         return const [];
     }
+  }
+
+  String? _resolveUserInteractionContinuationContent(ChatTurnStep step) {
+    final resultJson = step.resultJson ?? const <String, dynamic>{};
+    final transcriptContent = resultJson['transcriptContent'];
+    if (transcriptContent is String && transcriptContent.trim().isNotEmpty) {
+      return transcriptContent.trim();
+    }
+    final summary = step.resultSummary?.trim();
+    if (summary != null && summary.isNotEmpty) {
+      return summary;
+    }
+    return null;
   }
 
   String _encodeProviderStepOutput(ChatTurnStep step) {
@@ -359,12 +426,40 @@ class AgentPlannerService {
     return '${normalized.substring(0, 240)}...';
   }
 
-  ChatMessage _eventToMessage(ChatEvent event) {
+  ChatMessage? _eventToMessage(ChatEvent event) {
+    final projectedRole = _projectPlannerRole(event);
+    if (projectedRole == null) {
+      return null;
+    }
     return ChatMessage(
       text: event.content ?? '',
-      role: event.role ?? MessageRole.system,
+      role: projectedRole,
       timestamp: event.createdAt,
       status: MessageStatus.completed,
     );
+  }
+
+  MessageRole? _projectPlannerRole(ChatEvent event) {
+    switch (event.eventType) {
+      case ChatEventType.userMessage:
+        return MessageRole.user;
+      case ChatEventType.userInteractionResult:
+        return MessageRole.user;
+      case ChatEventType.assistantPlannerMessage:
+      case ChatEventType.assistantQuestionPrompt:
+      case ChatEventType.toolResult:
+      case ChatEventType.toolError:
+      case ChatEventType.finalAnswer:
+        return MessageRole.assistant;
+      case ChatEventType.assistantReasoningDelta:
+      case ChatEventType.assistantTextDelta:
+      case ChatEventType.assistantTextFinal:
+      case ChatEventType.assistantToolCall:
+      case ChatEventType.assistantToolConfirmation:
+      case ChatEventType.toolExecutionStarted:
+      case ChatEventType.turnStatus:
+      case ChatEventType.error:
+        return null;
+    }
   }
 }

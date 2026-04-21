@@ -363,6 +363,14 @@ class TurnHarness {
             _tag,
             'planner_request_failed short-circuits final-answer streaming for turnId=$turnId',
           );
+          yield await _appendAndLoad(
+            turnId,
+            () => _eventRepository.appendFinalAnswer(
+              turnId: turnId,
+              groupId: runtimeTurn.groupId,
+              content: decision.assistantMessage ?? '规划请求失败',
+            ),
+          );
           await _turnRepository.markFailed(
             turnId,
             errorMessage: decision.diagnosticCode ?? 'planner_request_failed',

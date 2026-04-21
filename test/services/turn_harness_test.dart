@@ -1249,7 +1249,7 @@ void main() {
     });
 
     test(
-        'records planner request failure as turn status and stops without extra final-answer streaming',
+        'records planner request failure as turn status and surfaces failure message as final answer',
         () async {
       final eventRepository = _InMemoryChatEventRepository();
       final turnRepository = _InMemoryChatTurnRepository();
@@ -1295,6 +1295,7 @@ void main() {
         containsAllInOrder([
           ChatEventType.userMessage,
           ChatEventType.turnStatus,
+          ChatEventType.finalAnswer,
         ]),
       );
       expect(
@@ -1304,8 +1305,10 @@ void main() {
         contains('planner_request_failed'),
       );
       expect(
-        emitted.where((event) => event.eventType == ChatEventType.finalAnswer),
-        isEmpty,
+        emitted
+            .where((event) => event.eventType == ChatEventType.finalAnswer)
+            .map((event) => event.content),
+        contains('抱歉，我暂时无法规划下一步动作，请直接重试。'),
       );
     });
 
