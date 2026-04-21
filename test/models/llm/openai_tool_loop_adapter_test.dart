@@ -7,7 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('OpenAIChatCompletionsToolLoopAdapter', () {
-    test('keeps assistant text when tool calls are present in same message', () {
+    test('keeps assistant text when tool calls are present in same message',
+        () {
       const adapter = OpenAIChatCompletionsToolLoopAdapter();
 
       final decision = adapter.parseDecision({
@@ -58,7 +59,7 @@ void main() {
                   'id': 'call_2',
                   'type': 'function',
                   'function': {
-                    'name': 'save_note',
+                    'name': 'Write',
                     'arguments': jsonEncode({'title': '数据库版本确认'}),
                   },
                 },
@@ -82,7 +83,7 @@ void main() {
           isA<ModelToolCall>()
               .having(
                   (value) => value.providerCallId, 'providerCallId', 'call_2')
-              .having((value) => value.toolName, 'toolName', 'save_note')
+              .having((value) => value.toolName, 'toolName', 'Write')
               .having((value) => value.sequence, 'sequence', 1),
         ],
       );
@@ -112,7 +113,8 @@ void main() {
   });
 
   group('OpenAIResponsesToolLoopAdapter', () {
-    test('keeps assistant text when output mixes message and function_call', () {
+    test('keeps assistant text when output mixes message and function_call',
+        () {
       const adapter = OpenAIResponsesToolLoopAdapter();
 
       final decision = adapter.parseDecision({
@@ -195,6 +197,31 @@ void main() {
       expect(decision.assistantMessage, '三件事都已经处理完毕。');
       expect(decision.isTerminal, isTrue);
       expect(decision.providerState, containsPair('response_id', 'resp_456'));
+    });
+
+    test('does not preserve response_id when provider marks response unstored',
+        () {
+      const adapter = OpenAIResponsesToolLoopAdapter();
+
+      final decision = adapter.parseDecision({
+        'id': 'resp_unstored',
+        'store': false,
+        'output': [
+          {
+            'type': 'function_call',
+            'call_id': 'fc_1',
+            'name': 'Write',
+            'arguments': jsonEncode({
+              'file_path': 'personal_profile.md',
+              'content': '# 个人资料',
+            }),
+          },
+        ],
+      });
+
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, hasLength(1));
+      expect(decision.providerState, isEmpty);
     });
   });
 }

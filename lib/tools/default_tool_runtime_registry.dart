@@ -9,7 +9,6 @@ import 'handlers/glob_tool_handler.dart';
 import 'handlers/grep_tool_handler.dart';
 import 'handlers/ls_tool_handler.dart';
 import 'handlers/read_tool_handler.dart';
-import 'handlers/save_note_tool_handler.dart';
 import 'handlers/search_chat_history_tool_handler.dart';
 import 'handlers/share_result_tool_handler.dart';
 import 'handlers/web_search_tool_handler.dart';
@@ -64,19 +63,6 @@ ToolRuntimeRegistry buildDefaultToolRuntimeRegistry({
       ReadToolHandler(),
       WriteToolHandler(),
       EditToolHandler(),
-      SaveNoteToolHandler(
-        noteSaver: ({
-          required title,
-          required content,
-          folder,
-        }) {
-          return toolExecutor.executeSaveNote(
-            title: title,
-            content: content,
-            folder: folder,
-          );
-        },
-      ),
       CreateReminderToolHandler(
         reminderCreator: ({
           required title,

@@ -2,6 +2,7 @@ import 'package:ai_chat/constants/route_constant.dart';
 import 'package:ai_chat/pages/test_page.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
+import 'package:ai_chat/repositories/session_context_snapshot_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_step_repository.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
@@ -26,6 +27,10 @@ import 'services/default_tool_adapters.dart';
 import 'services/transcript_builder_service.dart';
 import 'services/tool_executor.dart';
 import 'services/tool_policy_service.dart';
+import 'services/session_context_projector.dart';
+import 'services/session_context_service.dart';
+import 'services/session_summary_service.dart';
+import 'services/session_token_budget_service.dart';
 import 'tools/adapters/tool_host_adapters.dart';
 import 'tools/default_tool_runtime_registry.dart';
 import 'theme/app_theme.dart';
@@ -84,7 +89,6 @@ void main() async {
         );
       },
       webpageFetcher: buildDefaultWebpageFetcher(),
-      noteSaver: buildSharedPreferencesNoteSaver(preferences),
       reminderCreator: buildDefaultReminderCreator(),
       calendarEventCreator: buildDefaultCalendarEventCreator(),
       resultSharer: buildDefaultResultSharer(),
@@ -109,6 +113,15 @@ void main() async {
     final turnRepository = ChatTurnRepository(storage);
     final turnStepRepository = ChatTurnStepRepository(storage);
     final eventRepository = ChatEventRepository(storage);
+    final sessionContextService = SessionContextService(
+      chatTurnRepository: turnRepository,
+      chatEventRepository: eventRepository,
+      snapshotRepository: SessionContextSnapshotRepository(storage),
+      contextProjector: SessionContextProjector(),
+      tokenBudgetService: SessionTokenBudgetService(),
+      summaryService: SessionSummaryService(chatService: chatService),
+      chatService: chatService,
+    );
     turnHarness = TurnHarness(
       plannerService: AgentPlannerService(
         llm: llm,
@@ -126,6 +139,7 @@ void main() async {
       turnVerifier: TurnVerifier(),
       chatService: chatService,
       toolCallService: toolCallService,
+      sessionContextService: sessionContextService,
     );
 
     // 创建一个自定义的ProviderContainer来添加覆盖

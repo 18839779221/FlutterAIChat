@@ -7,6 +7,7 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
+import 'package:ai_chat/models/session/session_context_snapshot.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:flutter/widgets.dart';
@@ -43,7 +44,8 @@ void main() {
     expect(scrollController.addListenerCalls, 0);
   });
 
-  test('cancelStreamSubscription resets send state and interrupts assistant message',
+  test(
+      'cancelStreamSubscription resets send state and interrupts assistant message',
       () async {
     final subscription = _FakeStreamSubscription();
     final container = ProviderContainer(
@@ -213,6 +215,9 @@ class _FakeChatStorage implements ChatStorage {
   Future<List<ChatGroup>> getAllGroups() async => const [];
 
   @override
+  Future<List<ChatEvent>> getEventsByGroup(int groupId) async => const [];
+
+  @override
   Future<List<ChatEvent>> getEventsByTurn(int turnId) async => const [];
 
   @override
@@ -222,6 +227,12 @@ class _FakeChatStorage implements ChatStorage {
   Future<ChatGroup?> getLatestGroup() async => null;
 
   @override
+  Future<SessionContextSnapshot?> getLatestSessionContextSnapshotByGroup(
+    int groupId,
+  ) async =>
+      null;
+
+  @override
   Future<List<ChatMessage>> getMessagesByGroup(int groupId) async => const [];
 
   @override
@@ -229,10 +240,14 @@ class _FakeChatStorage implements ChatStorage {
     required int groupId,
     required int limit,
     required int offset,
-  }) async => const [];
+  }) async =>
+      const [];
 
   @override
   Future<ChatTurn?> getTurn(int id) async => null;
+
+  @override
+  Future<List<ChatTurn>> getTurnsByGroup(int groupId) async => const [];
 
   @override
   Future<ChatTurnStep?> getTurnStep(int id) async => null;
@@ -250,6 +265,11 @@ class _FakeChatStorage implements ChatStorage {
   Future<int> insertMessage(ChatMessage message, int groupId) async => 1;
 
   @override
+  Future<int> insertSessionContextSnapshot(
+          SessionContextSnapshot snapshot) async =>
+      1;
+
+  @override
   Future<int> insertTurn(ChatTurn turn) async => 1;
 
   @override
@@ -262,7 +282,8 @@ class _FakeChatStorage implements ChatStorage {
   Future<void> updateGroupLastMessageTime(int groupId) async {}
 
   @override
-  Future<void> updateGroupSystemPrompt(int groupId, String? systemPrompt) async {}
+  Future<void> updateGroupSystemPrompt(
+      int groupId, String? systemPrompt) async {}
 
   @override
   Future<void> updateGroupTitle(
@@ -279,6 +300,11 @@ class _FakeChatStorage implements ChatStorage {
 
   @override
   Future<void> updateMessageStatus(int id, MessageStatus status) async {}
+
+  @override
+  Future<void> updateSessionContextSnapshot(
+    SessionContextSnapshot snapshot,
+  ) async {}
 
   @override
   Future<void> updateStructuredMessage(

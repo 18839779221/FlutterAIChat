@@ -11,6 +11,7 @@ import '../models/chat_turn.dart';
 import '../models/llm/base_llm.dart';
 import '../models/tool/tool_access_snapshot.dart';
 import '../models/tool/tool_definition.dart';
+import '../models/tool/tool_result.dart';
 import 'chat_service.dart';
 import 'planner_tool_exposure_service.dart';
 import 'prompt/prompt_builder_service.dart';
@@ -46,6 +47,7 @@ class AgentPlannerService {
     required List<ChatTurnStep> steps,
     required ChatConfig config,
     required AgentLoopLimits limits,
+    List<ChatMessage>? plannerMessages,
   }) async {
     final visibleToolAccess = await _resolveVisibleToolAccess(turn.userInput);
     final visibleTools = visibleToolAccess
@@ -63,10 +65,11 @@ class AgentPlannerService {
       userSystemPrompt: _resolveUserSystemPrompt(config),
       promptLocale: config.promptLocale,
     );
-    final messages = transcript
-        .map(_eventToMessage)
-        .whereType<ChatMessage>()
-        .toList(growable: false);
+    final messages = plannerMessages ??
+        transcript
+            .map(_eventToMessage)
+            .whereType<ChatMessage>()
+            .toList(growable: false);
 
     try {
       Logger.d(
@@ -89,7 +92,6 @@ class AgentPlannerService {
         return _sanitizeDecision(
           decision,
           allowedToolNames: allowedToolNames,
-          steps: steps,
         );
       }
       Logger.w(
@@ -119,41 +121,52 @@ class AgentPlannerService {
   ModelTurnDecision _sanitizeDecision(
     ModelTurnDecision decision, {
     required List<String> allowedToolNames,
-    required List<ChatTurnStep> steps,
   }) {
     if (decision.toolCalls.isEmpty) {
       return decision;
     }
 
-    final seenToolCalls = steps
-        .where((step) =>
-            step.status == ChatTurnStepStatus.planned ||
-            step.status == ChatTurnStepStatus.running ||
-            step.status == ChatTurnStepStatus.completed)
-        .map((step) => _toolCallFingerprint(step.toolName, step.toolArgsJson))
-        .toSet();
+    final originalCount = decision.toolCalls.length;
     final filteredCalls = <ModelToolCall>[];
-    final blockedDuplicates = <String>[];
+    final seenToolCalls = <String>{};
+    var duplicateCount = 0;
+    var unsupportedCount = 0;
     for (final toolCall in decision.toolCalls) {
       if (!allowedToolNames.contains(toolCall.toolName.trim())) {
+        unsupportedCount += 1;
         Logger.w(
           _tag,
           'native planner emitted unsupported tool: ${toolCall.toolName}',
         );
         continue;
       }
-      final fingerprint =
-          _toolCallFingerprint(toolCall.toolName, toolCall.arguments);
-      if (seenToolCalls.contains(fingerprint)) {
-        blockedDuplicates.add(fingerprint);
+      final fingerprint = _decisionToolCallFingerprint(toolCall);
+      if (!seenToolCalls.add(fingerprint)) {
+        duplicateCount += 1;
         Logger.w(
           _tag,
-          'native planner emitted duplicate tool call in same turn: ${toolCall.toolName} args=${_compactJson(toolCall.arguments)}',
+          'native planner emitted duplicate tool call in same decision: ${toolCall.toolName} args=${_compactJson(toolCall.arguments)}',
         );
         continue;
       }
-      seenToolCalls.add(fingerprint);
       filteredCalls.add(toolCall);
+    }
+
+    if (duplicateCount > 0 || unsupportedCount > 0) {
+      Logger.i(
+        _tag,
+        'planner decision sanitized original=$originalCount retained=${filteredCalls.length} duplicates=$duplicateCount unsupported=$unsupportedCount',
+      );
+      Logger.trace(
+        _tag,
+        'planner.sanitized',
+        data: {
+          'originalToolCalls': originalCount,
+          'retainedToolCalls': filteredCalls.length,
+          if (duplicateCount > 0) 'filteredDuplicates': duplicateCount,
+          if (unsupportedCount > 0) 'filteredUnsupported': unsupportedCount,
+        },
+      );
     }
 
     if (filteredCalls.isEmpty) {
@@ -168,17 +181,6 @@ class AgentPlannerService {
           providerStyle: decision.providerStyle,
           modelName: decision.modelName,
           isTerminal: decision.isTerminal,
-        );
-      }
-      if (blockedDuplicates.isNotEmpty) {
-        return ModelTurnDecision(
-          toolCalls: const [],
-          assistantMessage: '当前回合里相同工具调用已经执行过，请基于现有结果总结，或改用其他工具。',
-          diagnosticCode: 'planner_duplicate_tool_call',
-          providerState: decision.providerState,
-          providerStyle: decision.providerStyle,
-          modelName: decision.modelName,
-          isTerminal: true,
         );
       }
       return const ModelTurnDecision(
@@ -203,10 +205,10 @@ class AgentPlannerService {
 
   ModelTurnDecision _plannerRequestFailedDecision({String? detail}) {
     final normalizedDetail = detail?.trim();
-    final assistantMessage = (normalizedDetail != null &&
-            normalizedDetail.isNotEmpty)
-        ? '当前模型请求失败，已中断本轮流程。\n原因：$normalizedDetail'
-        : '抱歉，我暂时无法规划下一步动作，请直接重试。';
+    final assistantMessage =
+        (normalizedDetail != null && normalizedDetail.isNotEmpty)
+            ? '当前模型请求失败，已中断本轮流程。\n原因：$normalizedDetail'
+            : '抱歉，我暂时无法规划下一步动作，请直接重试。';
     return ModelTurnDecision(
       toolCalls: [],
       assistantMessage: assistantMessage,
@@ -216,11 +218,8 @@ class AgentPlannerService {
     );
   }
 
-  String _toolCallFingerprint(
-    String toolName,
-    Map<String, dynamic> arguments,
-  ) {
-    return '$toolName:${_compactJson(arguments)}';
+  String _decisionToolCallFingerprint(ModelToolCall toolCall) {
+    return '${toolCall.toolName.trim()}:${_compactJson(toolCall.arguments)}';
   }
 
   String _compactJson(Map<String, dynamic> value) {
@@ -260,6 +259,17 @@ class AgentPlannerService {
           }
           if (step.status != ChatTurnStepStatus.completed &&
               step.status != ChatTurnStepStatus.failed) {
+            continue;
+          }
+          if (step.toolName == 'ask_user_question') {
+            final content = _resolveUserInteractionContinuationContent(step);
+            if (content != null) {
+              items.add({
+                'type': 'user_interaction_answer',
+                'toolCallId': step.providerCallId!.trim(),
+                'content': content,
+              });
+            }
             continue;
           }
           items.add({
@@ -431,12 +441,37 @@ class AgentPlannerService {
     if (projectedRole == null) {
       return null;
     }
+    final content = _resolvePlannerEventContent(event);
+    if (content.isEmpty) {
+      return null;
+    }
     return ChatMessage(
-      text: event.content ?? '',
+      text: content,
       role: projectedRole,
       timestamp: event.createdAt,
       status: MessageStatus.completed,
     );
+  }
+
+  String _resolvePlannerEventContent(ChatEvent event) {
+    final modelContextText = _extractPlannerEventModelContextText(event);
+    if (modelContextText != null) {
+      return modelContextText;
+    }
+    final content = event.content?.trim() ?? '';
+    return content;
+  }
+
+  String? _extractPlannerEventModelContextText(ChatEvent event) {
+    if (event.eventType != ChatEventType.toolResult &&
+        event.eventType != ChatEventType.toolError) {
+      return null;
+    }
+    final payload = event.payloadJson;
+    if (payload == null) {
+      return null;
+    }
+    return ToolResult.fromJson(payload).resolvedToolResultText;
   }
 
   MessageRole? _projectPlannerRole(ChatEvent event) {

@@ -7,8 +7,10 @@ class OpenAIResponsesToolLoopAdapter {
   const OpenAIResponsesToolLoopAdapter();
 
   ModelTurnDecision? parseDecision(Map<String, dynamic> payload) {
+    final canReuseResponseState = _canReuseResponseState(payload);
     final providerState = <String, dynamic>{
-      if (payload['id'] is String &&
+      if (canReuseResponseState &&
+          payload['id'] is String &&
           (payload['id'] as String).trim().isNotEmpty)
         'response_id': payload['id'],
     };
@@ -38,6 +40,14 @@ class OpenAIResponsesToolLoopAdapter {
     }
 
     return null;
+  }
+
+  bool _canReuseResponseState(Map<String, dynamic> payload) {
+    final store = payload['store'];
+    if (store is bool) {
+      return store;
+    }
+    return true;
   }
 
   List<ModelToolCall> _parseToolCalls(List<dynamic> output) {

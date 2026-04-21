@@ -40,7 +40,8 @@ void main() {
       expect(snapshot.toJson()['toolName'], 'web_search');
     });
 
-    test('fromLegacyDefinition maps blocked and confirmation semantics once', () {
+    test('fromLegacyDefinition maps blocked and confirmation semantics once',
+        () {
       final blocked = ToolAccessSnapshot.fromLegacyDefinition(
         definition: const ToolDefinition(
           name: 'create_reminder',
@@ -52,8 +53,8 @@ void main() {
       );
       final confirmation = ToolAccessSnapshot.fromLegacyDefinition(
         definition: const ToolDefinition(
-          name: 'save_note',
-          title: '保存笔记',
+          name: 'Write',
+          title: '写入文件',
           description: '保存结构化笔记',
           requiresConfirmation: true,
         ),

@@ -9,6 +9,8 @@
 ### 聊天与会话
 - 多会话管理，支持创建、切换、删除会话
 - 消息本地持久化，支持分页加载历史消息
+- 同一会话内支持 Session 级多轮上下文继承，planner 不再只看当前 turn transcript
+- 长对话会按 token budget 压力自动压缩为 session snapshot，再与最近工作集和当前 turn transcript 一起进入模型上下文
 - 进入会话默认定位到最新消息，向上滑动查看更早历史
 - 流式回复、手动中断、生成中自动跟随；手动上滑后可自由查看，点击回到底部后再恢复跟随
 - 深度思考模式、自定义系统提示词
@@ -93,7 +95,22 @@ UI 只消费 Riverpod providers 和 controller 门面，不直接编排复杂业
 - [lib/services/chat_service.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/services/chat_service.dart)
 - `tool/runtime`、`trace`、`response parser` 等服务
 
-Service 层负责 LLM 通信、上下文选择、工具编排与 trace 记录。
+Service 层负责 LLM 通信、Session 上下文编排、工具编排与 trace 记录。
+
+### Session 上下文层
+- `lib/services/session_context_service.dart`
+- `lib/services/session_context_projector.dart`
+- `lib/services/session_token_budget_service.dart`
+- `lib/services/session_summary_service.dart`
+- `lib/repositories/session_context_snapshot_repository.dart`
+- `lib/models/session/session_context_snapshot.dart`
+
+职责分工：
+- `SessionContextService`：为 planner 构建“历史摘要 + 最近工作集 + 当前 turn transcript”
+- `SessionContextProjector`：把消息、tool result、interaction result 投影成模型可见上下文
+- `SessionTokenBudgetService`：统一按模型上下文预算判断是否需要压缩
+- `SessionSummaryService`：把较早历史整理为固定栏目摘要
+- `SessionContextSnapshotRepository`：持久化读取最近 session snapshot
 
 ## 消息发送链路
 
@@ -203,5 +220,4 @@ bash scripts/android_droidrun_chat_smoke.sh
 - [docs/feature_todo.md](/Users/zyb_wl/flutterSpace/FlutterAIChat/docs/feature_todo.md)
 
 当前 backlog 包括：
-- context 管理策略升级，并在达到上限时自动压缩
 - session 总结功能优化，例如超过 N 分钟无对话后自动总结本次会话

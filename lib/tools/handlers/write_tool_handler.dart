@@ -95,13 +95,21 @@ class WriteToolHandler implements ToolHandler {
         toolName: 'Write',
         status: ToolExecutionStatus.success,
         summary: '已写入文件：${resolution.relativePath}',
-        data: outcome.toJson(),
+        toolResultText: '已写入文件：${resolution.relativePath}',
+        data: {
+          ...outcome.toJson(),
+        },
       );
     } on FileToolGuardException catch (error) {
       return ToolResult(
         toolName: 'Write',
         status: ToolExecutionStatus.failure,
         summary: '写入文件失败：文件未读取或状态已过期',
+        toolResultText:
+            '写入文件失败：文件未读取或状态已过期\n实际文件路径：${resolution.relativePath}',
+        data: {
+          'filePath': resolution.relativePath,
+        },
         errorMessage: error.code,
       );
     }

@@ -82,7 +82,52 @@ void main() {
       expect(result.data['content'], contains('     3\tgamma'));
       expect(result.data['linesReturned'], 2);
       expect(result.data['fileVersion'], isA<Map<String, dynamic>>());
+      expect(
+        result.toolResultText,
+        '已读取文件：memories/demo.md',
+      );
       expect(guard.hasSeen('memories/demo.md'), isTrue);
+    });
+
+    test('read missing file returns toolResultText for planner context', () async {
+      final resolution = await handler.normalizeArguments(
+        rawArguments: {
+          'file_path': 'memories/missing.md',
+        },
+        userMessage: 'read the file',
+        history: const [],
+        now: DateTime(2026, 4, 13),
+      );
+
+      final result = await handler.execute(
+        ToolExecutionContext(
+          groupId: 1,
+          toolName: 'Read',
+          arguments: resolution.normalizedArguments,
+          history: const <ChatMessage>[],
+          now: DateTime(2026, 4, 13),
+          hostAdapters: ToolHostAdapters(
+            fileTools: FileToolHostAdapters(
+              rootService: rootService,
+              pathPolicy: FileToolPathPolicy(rootService: rootService),
+              sessionGuard: guard,
+              budgetService: const FileToolBudgetService(),
+              readFormatter: const FileToolReadFormatter(),
+              discoveryService: FileToolDiscoveryService(
+                rootService: rootService,
+                pathPolicy: FileToolPathPolicy(rootService: rootService),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(result.status, ToolExecutionStatus.failure);
+      expect(result.errorMessage, 'file_not_found');
+      expect(
+        result.toolResultText,
+        'Read failed: file not found\n实际文件路径：memories/missing.md',
+      );
     });
   });
 }

@@ -8,6 +8,7 @@ import '../models/chat_event.dart';
 import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/response/message_content_type.dart';
+import '../models/session/session_context_snapshot.dart';
 import '../utils/logger.dart';
 import 'chat_storage.dart';
 
@@ -16,6 +17,8 @@ class WebChatStorage implements ChatStorage {
   static const String _eventsKey = 'web.chat_events';
   static const String _groupsKey = 'web.chat_groups';
   static const String _messagesKey = 'web.chat_messages';
+  static const String _sessionContextSnapshotsKey =
+      'web.session_context_snapshots';
   static const String _turnsKey = 'web.chat_turns';
   static const String _turnStepsKey = 'web.chat_turn_steps';
 
@@ -103,6 +106,7 @@ class WebChatStorage implements ChatStorage {
     final events = await _readEvents();
     final groups = await _readGroups();
     final messages = await _readMessages();
+    final snapshots = await _readSessionContextSnapshots();
     final turns = await _readTurns();
     final turnSteps = await _readTurnSteps();
     await _writeEvents(
@@ -111,6 +115,9 @@ class WebChatStorage implements ChatStorage {
         groups.where((group) => group['id'] != groupId).toList());
     await _writeMessages(
         messages.where((message) => message['group_id'] != groupId).toList());
+    await _writeSessionContextSnapshots(
+      snapshots.where((snapshot) => snapshot['group_id'] != groupId).toList(),
+    );
     await _writeTurns(
         turns.where((turn) => turn['group_id'] != groupId).toList());
     final deletedTurnIds = turns
@@ -144,6 +151,21 @@ class WebChatStorage implements ChatStorage {
       return null;
     }
     return ChatTurn.fromMap(match.first);
+  }
+
+  @override
+  Future<List<ChatTurn>> getTurnsByGroup(int groupId) async {
+    final turns = await _readTurns();
+    final filtered = turns.where((turn) => turn['group_id'] == groupId).toList()
+      ..sort((a, b) {
+        final createdComparison =
+            (a['created_at'] as int).compareTo(b['created_at'] as int);
+        if (createdComparison != 0) {
+          return createdComparison;
+        }
+        return (a['id'] as int).compareTo(b['id'] as int);
+      });
+    return filtered.map(ChatTurn.fromMap).toList();
   }
 
   @override
@@ -221,6 +243,72 @@ class WebChatStorage implements ChatStorage {
         .toList()
       ..sort((a, b) => (a['sequence'] as int).compareTo(b['sequence'] as int));
     return filtered.map(ChatEvent.fromMap).toList();
+  }
+
+  @override
+  Future<List<ChatEvent>> getEventsByGroup(int groupId) async {
+    final events = await _readEvents();
+    final filtered =
+        events.where((event) => event['group_id'] == groupId).toList()
+          ..sort((a, b) {
+            final createdComparison =
+                (a['created_at'] as int).compareTo(b['created_at'] as int);
+            if (createdComparison != 0) {
+              return createdComparison;
+            }
+            final sequenceComparison =
+                (a['sequence'] as int).compareTo(b['sequence'] as int);
+            if (sequenceComparison != 0) {
+              return sequenceComparison;
+            }
+            return (a['id'] as int).compareTo(b['id'] as int);
+          });
+    return filtered.map(ChatEvent.fromMap).toList();
+  }
+
+  @override
+  Future<int> insertSessionContextSnapshot(
+      SessionContextSnapshot snapshot) async {
+    final snapshots = await _readSessionContextSnapshots();
+    final nextId = _nextId(snapshots.map((item) => item['id'] as int?));
+    snapshots.add({
+      ...snapshot.toMap(),
+      'id': nextId,
+    });
+    await _writeSessionContextSnapshots(snapshots);
+    return nextId;
+  }
+
+  @override
+  Future<SessionContextSnapshot?> getLatestSessionContextSnapshotByGroup(
+    int groupId,
+  ) async {
+    final snapshots = await _readSessionContextSnapshots();
+    final matches = snapshots
+        .where((snapshot) => snapshot['group_id'] == groupId)
+        .toList()
+      ..sort(
+        (left, right) =>
+            (right['updated_at'] as int).compareTo(left['updated_at'] as int),
+      );
+    if (matches.isEmpty) {
+      return null;
+    }
+    return SessionContextSnapshot.fromMap(matches.first);
+  }
+
+  @override
+  Future<void> updateSessionContextSnapshot(
+    SessionContextSnapshot snapshot,
+  ) async {
+    final snapshots = await _readSessionContextSnapshots();
+    final updated = snapshots.map((storedSnapshot) {
+      if (storedSnapshot['id'] != snapshot.id) {
+        return storedSnapshot;
+      }
+      return snapshot.toMap();
+    }).toList();
+    await _writeSessionContextSnapshots(updated);
   }
 
   @override
@@ -381,6 +469,31 @@ class WebChatStorage implements ChatStorage {
 
   Future<void> _writeMessages(List<Map<String, dynamic>> messages) async {
     await _preferences.setString(_messagesKey, jsonEncode(messages));
+  }
+
+  Future<List<Map<String, dynamic>>> _readSessionContextSnapshots() async {
+    final raw = _preferences.getString(_sessionContextSnapshotsKey);
+    if (raw == null || raw.isEmpty) {
+      return [];
+    }
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) {
+      Logger.w(_tag, 'Invalid stored session context snapshots payload');
+      return [];
+    }
+    return decoded
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+  }
+
+  Future<void> _writeSessionContextSnapshots(
+    List<Map<String, dynamic>> snapshots,
+  ) async {
+    await _preferences.setString(
+      _sessionContextSnapshotsKey,
+      jsonEncode(snapshots),
+    );
   }
 
   Future<void> _writeTurns(List<Map<String, dynamic>> turns) async {

@@ -94,10 +94,15 @@ class ReadToolHandler implements ToolHandler {
 
     final file = fileTools.rootService.resolveFile(resolution.relativePath!);
     if (!file.existsSync()) {
-      return const ToolResult(
+      return ToolResult(
         toolName: 'Read',
         status: ToolExecutionStatus.failure,
         summary: 'Read failed: file not found',
+        toolResultText:
+            'Read failed: file not found\n实际文件路径：${resolution.relativePath}',
+        data: {
+          'filePath': resolution.relativePath,
+        },
         errorMessage: 'file_not_found',
       );
     }
@@ -151,6 +156,7 @@ class ReadToolHandler implements ToolHandler {
       toolName: 'Read',
       status: ToolExecutionStatus.success,
       summary: '已读取文件：${resolution.relativePath}',
+      toolResultText: '已读取文件：${resolution.relativePath}',
       data: {
         'filePath': resolution.relativePath,
         ...formatted.toJson(),

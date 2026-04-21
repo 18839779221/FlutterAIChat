@@ -48,7 +48,7 @@ void main() {
         ChatTurnStep(
           turnId: turnId,
           stepIndex: 2,
-          toolName: 'save_note',
+          toolName: 'Write',
           toolArgsJson: {'title': '数据库版本确认'},
           status: ChatTurnStepStatus.planned,
         ),
@@ -84,7 +84,8 @@ void main() {
       await storage.deleteGroup(groupId);
     });
 
-    test('completed interaction step keeps provider continuation fields', () async {
+    test('completed interaction step keeps provider continuation fields',
+        () async {
       final storage = DatabaseHelper(
           databaseName: 'chat_turn_step_repository_interaction_test_v8.db');
       final turnRepository = ChatTurnRepository(storage);

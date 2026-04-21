@@ -2,13 +2,17 @@ import '../models/chat_event.dart';
 import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../repositories/chat_event_repository.dart';
+import 'session_context_projector.dart';
 
 class TranscriptBuilderService {
   final ChatEventRepository _eventRepository;
+  final SessionContextProjector _contextProjector;
 
   TranscriptBuilderService({
     required ChatEventRepository eventRepository,
-  }) : _eventRepository = eventRepository;
+    SessionContextProjector? contextProjector,
+  })  : _eventRepository = eventRepository,
+        _contextProjector = contextProjector ?? SessionContextProjector();
 
   Future<List<ChatEvent>> loadTranscript(int turnId) {
     return _eventRepository.listEventsByTurn(turnId);
@@ -90,48 +94,12 @@ class TranscriptBuilderService {
     }
 
     for (final event in transcript) {
-      final content = event.content;
-      if (content == null || content.trim().isEmpty) {
-        continue;
+      final projected = _contextProjector.projectEventToContext(event);
+      if (projected != null) {
+        messages.add(projected);
       }
-      final projectedRole = _projectFinalAnswerRole(event);
-      if (projectedRole == null) {
-        continue;
-      }
-      messages.add(
-        ChatMessage(
-          text: content,
-          role: projectedRole,
-          timestamp: event.createdAt,
-          status: MessageStatus.completed,
-        ),
-      );
     }
 
     return messages;
-  }
-
-  MessageRole? _projectFinalAnswerRole(ChatEvent event) {
-    switch (event.eventType) {
-      case ChatEventType.userMessage:
-        return MessageRole.user;
-      case ChatEventType.userInteractionResult:
-        return MessageRole.user;
-      case ChatEventType.assistantPlannerMessage:
-      case ChatEventType.assistantQuestionPrompt:
-      case ChatEventType.toolResult:
-      case ChatEventType.toolError:
-      case ChatEventType.finalAnswer:
-        return MessageRole.assistant;
-      case ChatEventType.assistantReasoningDelta:
-      case ChatEventType.assistantTextDelta:
-      case ChatEventType.assistantTextFinal:
-      case ChatEventType.assistantToolCall:
-      case ChatEventType.assistantToolConfirmation:
-      case ChatEventType.toolExecutionStarted:
-      case ChatEventType.turnStatus:
-      case ChatEventType.error:
-        return null;
-    }
   }
 }

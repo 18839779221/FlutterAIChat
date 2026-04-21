@@ -19,8 +19,6 @@ String resolveToolDisplayName(String toolName) {
       return '写入文件';
     case 'Edit':
       return '编辑文件';
-    case 'save_note':
-      return '保存笔记';
     case 'create_reminder':
       return '创建提醒';
     case 'create_calendar_event':

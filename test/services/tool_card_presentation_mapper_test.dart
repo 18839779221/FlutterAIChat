@@ -87,22 +87,21 @@ void main() {
       expect(model.statusLabel, '执行中');
     });
 
-    test('maps save_note success to outcomeCard', () {
+    test('maps Write success to outcomeCard', () {
       const result = ToolResult(
-        toolName: 'save_note',
+        toolName: 'Write',
         status: ToolExecutionStatus.success,
-        summary: '已保存笔记：架构结论',
+        summary: '已写入文件：notes/architecture.md',
         data: {
-          'title': '架构结论',
-          'folder': 'Research',
+          'filePath': 'notes/architecture.md',
         },
       );
 
       final model = ToolCardPresentationMapper.mapResult(result);
 
       expect(model.variant.name, 'outcomeCard');
-      expect(model.title, '保存笔记');
-      expect(model.primaryFields['folder'], 'Research');
+      expect(model.title, '写入文件');
+      expect(model.primaryFields['filePath'], 'notes/architecture.md');
     });
 
     test('maps missing_api_key web search failure to exceptionCard', () {

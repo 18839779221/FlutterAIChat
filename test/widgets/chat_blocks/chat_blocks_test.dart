@@ -70,7 +70,8 @@ void main() {
       final markdown = tester.widget<MarkdownBody>(find.byType(MarkdownBody));
       final styleSheet = markdown.styleSheet!;
 
-      expect(styleSheet.p!.height, lessThanOrEqualTo(1.42));
+      expect(styleSheet.p!.fontSize, 13);
+      expect(styleSheet.p!.height, 1.4);
       expect(styleSheet.p!.fontFamily, 'AnthropicSans');
       expect(styleSheet.p!.fontWeight, FontWeight.w400);
       expect(
@@ -79,11 +80,37 @@ void main() {
           const ['NotoSansCJKSC', 'Noto Sans SC', 'PingFang SC'],
         ),
       );
-      expect(styleSheet.h2!.fontSize, lessThan(17));
-      expect(styleSheet.listBullet!.height, lessThanOrEqualTo(1.36));
+      expect(styleSheet.h1!.fontSize, 18);
+      expect(styleSheet.h2!.fontSize, 15);
+      expect(styleSheet.h3!.fontSize, 14);
+      expect(styleSheet.listBullet!.fontSize, 13);
+      expect(styleSheet.listBullet!.height, 1.34);
       expect(styleSheet.blockSpacing, lessThanOrEqualTo(6));
       expect(
           styleSheet.h2Padding!.top, greaterThan(styleSheet.h2Padding!.bottom));
+    });
+
+    testWidgets('markdown content is isolated by repaint boundary', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: FlutterMarkdownImpl(
+              data: 'A paragraph with **markdown** content.',
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        find.ancestor(
+          of: find.byType(MarkdownBody),
+          matching: find.byType(RepaintBoundary),
+        ),
+        findsAtLeastNWidgets(1),
+      );
     });
 
     testWidgets(

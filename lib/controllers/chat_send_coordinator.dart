@@ -578,9 +578,23 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     ChatMessage message, {
     bool trustTool = false,
   }) async {
-    final payload = message.payloadJson;
+    final latestMessage = _resolveLatestMessageById(message);
+    final effectiveMessage = latestMessage ?? message;
+    final payload = effectiveMessage.payloadJson;
     final currentGroup = _ref.read(currentGroupProvider);
-    if (message.id == null || payload == null || currentGroup?.id == null) {
+    if (effectiveMessage.id == null ||
+        payload == null ||
+        currentGroup?.id == null) {
+      return;
+    }
+
+    final invocation = ToolInvocation.fromJson(payload);
+    if (invocation.status != ToolInvocationStatus.awaitingConfirmation ||
+        !invocation.requiresConfirmation) {
+      Logger.w(
+        _tag,
+        'ignore stale tool confirmation tap messageId=${effectiveMessage.id} tool=${invocation.toolName} status=${invocation.status.name}',
+      );
       return;
     }
 
@@ -588,7 +602,6 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     final traceRecorder = _ref.read(traceRecorderProvider);
     final traceTurnId = _resolveTraceTurnId(payload, traceRecorder);
     final agentTurnId = payload['agentTurnId'] as int?;
-    final invocation = ToolInvocation.fromJson(payload);
     traceRecorder.record(
       turnId: traceTurnId,
       stage: ChatTraceStage.toolConfirmationAction,
@@ -596,7 +609,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       summary: '用户确认继续执行工具',
       data: {
         'action': 'confirm',
-        'messageId': message.id,
+        'messageId': effectiveMessage.id,
         'toolName': invocation.toolName,
         'trustTool': trustTool,
       },
@@ -607,7 +620,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         invocation: invocation,
         traceTurnId: traceTurnId,
         trustTool: trustTool,
-        sourceMessage: message,
+        sourceMessage: effectiveMessage,
       );
       return;
     }
@@ -1141,6 +1154,20 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       return rawTurnId;
     }
     return traceRecorder.newTurnId();
+  }
+
+  ChatMessage? _resolveLatestMessageById(ChatMessage message) {
+    final messageId = message.id;
+    if (messageId == null) {
+      return null;
+    }
+    final messages = _ref.read(messagesProvider);
+    for (final candidate in messages) {
+      if (candidate.id == messageId) {
+        return candidate;
+      }
+    }
+    return null;
   }
 
   Future<void> _appendToolResultMessage({

@@ -16,13 +16,6 @@ typedef WebSearcher = Future<ToolResult> Function({
   int? maxResults,
 });
 
-/// Persists a note-like record and returns a normalized tool result payload.
-typedef NoteSaver = Future<ToolResult> Function({
-  required String title,
-  required String content,
-  String? folder,
-});
-
 /// Creates a reminder entry in the host platform and returns a tool result.
 typedef ReminderCreator = Future<ToolResult> Function({
   required String title,
@@ -50,14 +43,12 @@ class ToolExecutor {
     required ChatStorage chatStorage,
     WebSearcher? webSearcher,
     WebpageFetcher? webpageFetcher,
-    NoteSaver? noteSaver,
     ReminderCreator? reminderCreator,
     CalendarEventCreator? calendarEventCreator,
     ResultSharer? resultSharer,
   })  : _chatStorage = chatStorage,
         _webSearcher = webSearcher,
         _webpageFetcher = webpageFetcher,
-        _noteSaver = noteSaver,
         _reminderCreator = reminderCreator,
         _calendarEventCreator = calendarEventCreator,
         _resultSharer = resultSharer;
@@ -65,7 +56,6 @@ class ToolExecutor {
   final ChatStorage _chatStorage;
   final WebSearcher? _webSearcher;
   final WebpageFetcher? _webpageFetcher;
-  final NoteSaver? _noteSaver;
   final ReminderCreator? _reminderCreator;
   final CalendarEventCreator? _calendarEventCreator;
   final ResultSharer? _resultSharer;
@@ -131,20 +121,6 @@ class ToolExecutor {
       return _unsupportedToolResult('fetch_webpage');
     }
     return fetcher(url: url, extractMode: extractMode);
-  }
-
-  /// Saves a note through an injected adapter so storage decisions can stay
-  /// outside the core tool pipeline.
-  Future<ToolResult> executeSaveNote({
-    required String title,
-    required String content,
-    String? folder,
-  }) async {
-    final saver = _noteSaver;
-    if (saver == null) {
-      return _unsupportedToolResult('save_note');
-    }
-    return saver(title: title, content: content, folder: folder);
   }
 
   /// Creates a reminder through an injected platform adapter.

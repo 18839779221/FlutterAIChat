@@ -4,6 +4,7 @@ import '../models/chat_event.dart';
 import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/response/message_content_type.dart';
+import '../models/session/session_context_snapshot.dart';
 
 abstract class ChatStorage {
   Future<int> insertGroup(ChatGroup group);
@@ -17,6 +18,7 @@ abstract class ChatStorage {
 
   Future<int> insertTurn(ChatTurn turn);
   Future<ChatTurn?> getTurn(int id);
+  Future<List<ChatTurn>> getTurnsByGroup(int groupId);
   Future<void> updateTurn(ChatTurn turn);
   Future<int> insertTurnStep(ChatTurnStep step);
   Future<ChatTurnStep?> getTurnStep(int id);
@@ -25,6 +27,13 @@ abstract class ChatStorage {
 
   Future<int> insertEvent(ChatEvent event);
   Future<List<ChatEvent>> getEventsByTurn(int turnId);
+  Future<List<ChatEvent>> getEventsByGroup(int groupId);
+
+  Future<int> insertSessionContextSnapshot(SessionContextSnapshot snapshot);
+  Future<SessionContextSnapshot?> getLatestSessionContextSnapshotByGroup(
+    int groupId,
+  );
+  Future<void> updateSessionContextSnapshot(SessionContextSnapshot snapshot);
 
   Future<int> insertMessage(ChatMessage message, int groupId);
   Future<List<ChatMessage>> getMessagesByGroup(int groupId);

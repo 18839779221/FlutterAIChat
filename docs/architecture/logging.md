@@ -196,6 +196,20 @@ File log 是开发期排障的主入口。
 
 - `planner.failed`
 
+若 planner 对同一批 decision 内的 tool calls 做了本地收敛，也应补充可检索日志：
+
+- `planner.sanitized`
+
+它用于说明本次 decision 是否发生了静默过滤，例如：
+
+- 同一 step 内模型重复输出了规格完全相同的 tool call
+- planner 输出了当前不可见或不可用的 tool
+
+注意：
+
+- `planner.sanitized` 只描述“本次 planner decision 输出”上的本地收敛
+- 不应用它表达跨 turn 或跨历史 step 的去重语义
+
 ### tool 锚点
 
 每次 tool 流程至少应有：

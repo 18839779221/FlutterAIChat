@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/session/session_context_snapshot.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -12,10 +13,12 @@ void main() {
     databaseFactory = databaseFactoryFfi;
   });
 
-  test('DatabaseHelper schema includes turn, step and event tables in v9', () {
+  test(
+      'DatabaseHelper schema includes turn, step, event and snapshot tables in v10',
+      () {
     final source = File('lib/database/database_helper.dart').readAsStringSync();
 
-    expect(source, contains('version: 9'));
+    expect(source, contains('version: 10'));
     expect(
       source,
       contains(RegExp(r'CREATE TABLE chat_turns \(')),
@@ -27,6 +30,11 @@ void main() {
     expect(
       source,
       contains(RegExp(r'CREATE TABLE chat_events \(')),
+    );
+    expect(
+      source,
+      contains(
+          RegExp(r'CREATE TABLE IF NOT EXISTS session_context_snapshots \(')),
     );
     expect(source, contains(RegExp(r'sequence INTEGER NOT NULL')));
     expect(source, contains(RegExp(r'provider_style TEXT')));
@@ -43,25 +51,30 @@ void main() {
       source,
       contains(RegExp(r'CREATE UNIQUE INDEX idx_chat_events_turn_id_sequence')),
     );
-    expect(source, contains('if (oldVersion < 9)'));
+    expect(source, contains('if (oldVersion < 10)'));
   });
 
   test(
-      'DatabaseHelper creates turn, step and event tables with required indexes',
+      'DatabaseHelper creates turn, step, event and snapshot tables with required indexes',
       () async {
-    final helper = DatabaseHelper(databaseName: 'database_helper_test_v9.db');
+    final helper = DatabaseHelper(databaseName: 'database_helper_test_v10.db');
     final db = await helper.database;
 
     final tables = await db.rawQuery('''
       SELECT name
       FROM sqlite_master
-      WHERE type = 'table' AND name IN ('chat_turns', 'chat_turn_steps', 'chat_events')
+      WHERE type = 'table' AND name IN ('chat_turns', 'chat_turn_steps', 'chat_events', 'session_context_snapshots')
       ORDER BY name
     ''');
 
     expect(
       tables.map((row) => row['name']).toList(),
-      ['chat_events', 'chat_turn_steps', 'chat_turns'],
+      [
+        'chat_events',
+        'chat_turn_steps',
+        'chat_turns',
+        'session_context_snapshots'
+      ],
     );
 
     final indexes = await db.rawQuery('''
@@ -70,7 +83,8 @@ void main() {
       WHERE type = 'index'
         AND name IN (
           'idx_chat_events_turn_id_sequence',
-          'idx_chat_turn_steps_turn_id_step_index'
+          'idx_chat_turn_steps_turn_id_step_index',
+          'idx_session_context_snapshots_group_id_updated_at'
         )
       ORDER BY name
     ''');
@@ -79,7 +93,8 @@ void main() {
       indexes.map((row) => row['name']).toList(),
       [
         'idx_chat_events_turn_id_sequence',
-        'idx_chat_turn_steps_turn_id_step_index'
+        'idx_chat_turn_steps_turn_id_step_index',
+        'idx_session_context_snapshots_group_id_updated_at',
       ],
     );
 
@@ -135,7 +150,7 @@ void main() {
       () => db.insert('chat_turn_steps', {
         'turn_id': turnId,
         'step_index': 1,
-        'tool_name': 'save_note',
+        'tool_name': 'Write',
         'tool_args_json': '{"title":"数据库版本确认"}',
         'status': 'planned',
         'created_at': DateTime.now().millisecondsSinceEpoch,
@@ -147,16 +162,56 @@ void main() {
     await helper.deleteGroup(groupId);
   });
 
-  test('DatabaseHelper upgrades v8 db without duplicating provider_response_id',
+  test('DatabaseHelper can persist and update session context snapshots',
       () async {
-    const dbName = 'database_helper_upgrade_v8_to_v9.db';
+    final helper =
+        DatabaseHelper(databaseName: 'database_helper_snapshot_roundtrip.db');
+    final groupId =
+        await helper.insertGroup(ChatGroup(title: 'session snapshot group'));
+
+    final snapshotId = await helper.insertSessionContextSnapshot(
+      SessionContextSnapshot(
+        groupId: groupId,
+        summaryText: '当前目标：接入 SessionContextService',
+        coveredUntilTurnId: 8,
+        estimatedTokens: 90,
+      ),
+    );
+
+    final created =
+        await helper.getLatestSessionContextSnapshotByGroup(groupId);
+    expect(created, isNotNull);
+    expect(created!.id, snapshotId);
+    expect(created.coveredUntilTurnId, 8);
+
+    await helper.updateSessionContextSnapshot(
+      created.copyWith(
+        summaryText: '当前目标：接入 SessionContextService 并补测试',
+        coveredUntilTurnId: 11,
+        estimatedTokens: 120,
+      ),
+    );
+
+    final updated =
+        await helper.getLatestSessionContextSnapshotByGroup(groupId);
+    expect(updated, isNotNull);
+    expect(updated!.summaryText, contains('补测试'));
+    expect(updated.coveredUntilTurnId, 11);
+    expect(updated.estimatedTokens, 120);
+
+    await helper.deleteGroup(groupId);
+  });
+
+  test('DatabaseHelper upgrades v9 db and adds session context snapshot table',
+      () async {
+    const dbName = 'database_helper_upgrade_v9_to_v10.db';
     final dbPath = p.join(await getDatabasesPath(), dbName);
     await databaseFactory.deleteDatabase(dbPath);
 
     final seedDb = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 8,
+        version: 9,
         onCreate: (db, version) async {
           await db.execute('''
             CREATE TABLE chat_groups (
@@ -234,6 +289,14 @@ void main() {
               created_at INTEGER NOT NULL
             )
           ''');
+          await db.execute('''
+            CREATE UNIQUE INDEX idx_chat_turn_steps_turn_id_step_index
+            ON chat_turn_steps(turn_id, step_index)
+          ''');
+          await db.execute('''
+            CREATE UNIQUE INDEX idx_chat_events_turn_id_sequence
+            ON chat_events(turn_id, sequence)
+          ''');
         },
       ),
     );
@@ -247,5 +310,10 @@ void main() {
         .toList(growable: false);
 
     expect(providerColumns, hasLength(1));
+    final snapshotTables = await db.rawQuery("""
+      SELECT name FROM sqlite_master
+      WHERE type = 'table' AND name = 'session_context_snapshots'
+    """);
+    expect(snapshotTables, hasLength(1));
   });
 }

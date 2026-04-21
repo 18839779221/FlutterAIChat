@@ -12,7 +12,7 @@ void main() {
           id: 1,
           groupId: 1,
           status: ChatTurnStatus.running,
-          userInput: '先查历史、保存笔记、再创建提醒',
+          userInput: '先查历史、写入文件、再创建提醒',
           goalSummary: '完成数据库确认闭环',
           providerStyle: ChatTurnProviderStyle.openaiResponses,
         ),
@@ -30,8 +30,8 @@ void main() {
             id: 2,
             turnId: 1,
             stepIndex: 2,
-            toolName: 'save_note',
-            toolArgsJson: const {'title': '数据库版本确认'},
+            toolName: 'Write',
+            toolArgsJson: const {'file_path': 'notes/db-version.md'},
             status: ChatTurnStepStatus.planned,
           ),
           ChatTurnStep(
@@ -45,13 +45,13 @@ void main() {
         ],
       );
 
-      expect(summary, contains('用户目标：先查历史、保存笔记、再创建提醒'));
+      expect(summary, contains('用户目标：先查历史、写入文件、再创建提醒'));
       expect(summary, contains('目标摘要：完成数据库确认闭环'));
       expect(summary, contains('已完成步骤：'));
       expect(summary, contains('1. search_chat_history'));
       expect(summary, contains('确认数据库版本 7，发版时间 4 月 20 日'));
       expect(summary, contains('待完成步骤：'));
-      expect(summary, contains('2. save_note'));
+      expect(summary, contains('2. Write'));
       expect(summary, contains('3. create_reminder'));
     });
 
@@ -80,10 +80,10 @@ void main() {
             id: 2,
             turnId: 2,
             stepIndex: 2,
-            toolName: 'save_note',
-            toolArgsJson: const {'title': '数据库版本确认'},
+            toolName: 'Write',
+            toolArgsJson: const {'file_path': 'notes/db-version.md'},
             status: ChatTurnStepStatus.completed,
-            resultSummary: '已保存笔记《数据库版本确认》',
+            resultSummary: '已写入文件：notes/db-version.md',
           ),
           ChatTurnStep(
             id: 3,
@@ -99,7 +99,7 @@ void main() {
 
       expect(summary, contains('本轮工具执行总结：'));
       expect(summary, contains('search_chat_history'));
-      expect(summary, contains('save_note'));
+      expect(summary, contains('Write'));
       expect(summary, contains('create_reminder'));
       expect(summary, isNot(contains('待完成步骤')));
     });
@@ -120,10 +120,10 @@ void main() {
             id: 1,
             turnId: 3,
             stepIndex: 1,
-            toolName: 'save_note',
-            toolArgsJson: const {'title': '数据库版本确认'},
+            toolName: 'Write',
+            toolArgsJson: const {'file_path': 'notes/db-version.md'},
             status: ChatTurnStepStatus.completed,
-            resultSummary: '已保存笔记《数据库版本确认》',
+            resultSummary: '已写入文件：notes/db-version.md',
           ),
           ChatTurnStep(
             id: 2,
@@ -139,7 +139,7 @@ void main() {
       );
 
       expect(summary, contains('本轮工具执行总结：'));
-      expect(summary, contains('save_note'));
+      expect(summary, contains('Write'));
       expect(summary, contains('失败步骤：'));
       expect(summary, contains('share_result'));
       expect(summary, contains('share_failed'));

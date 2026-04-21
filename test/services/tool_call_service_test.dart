@@ -4,6 +4,7 @@ import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
+import 'package:ai_chat/models/session/session_context_snapshot.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
@@ -153,6 +154,10 @@ class _FakeChatStorage implements ChatStorage {
   Future<ChatTurn?> getTurn(int id) => throw UnimplementedError();
 
   @override
+  Future<List<ChatTurn>> getTurnsByGroup(int groupId) =>
+      throw UnimplementedError();
+
+  @override
   Future<ChatTurnStep?> getTurnStep(int id) => throw UnimplementedError();
 
   @override
@@ -176,7 +181,21 @@ class _FakeChatStorage implements ChatStorage {
       throw UnimplementedError();
 
   @override
+  Future<List<ChatEvent>> getEventsByGroup(int groupId) =>
+      throw UnimplementedError();
+
+  @override
   Future<int> insertMessage(ChatMessage message, int groupId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<int> insertSessionContextSnapshot(SessionContextSnapshot snapshot) =>
+      throw UnimplementedError();
+
+  @override
+  Future<SessionContextSnapshot?> getLatestSessionContextSnapshotByGroup(
+    int groupId,
+  ) =>
       throw UnimplementedError();
 
   @override
@@ -220,4 +239,10 @@ class _FakeChatStorage implements ChatStorage {
 
   @override
   Future<void> deleteMessage(int id) => throw UnimplementedError();
+
+  @override
+  Future<void> updateSessionContextSnapshot(
+    SessionContextSnapshot snapshot,
+  ) =>
+      throw UnimplementedError();
 }
