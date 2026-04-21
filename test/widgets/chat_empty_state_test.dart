@@ -14,6 +14,9 @@ void main() {
         tags: ['agent-loop'],
         featured: true,
         enabled: true,
+        setup: _emptySetup,
+        checkpoints: ['finalAnswer'],
+        assertions: _completedAssertions,
       ),
       DebugTestCase(
         id: 'confirmation',
@@ -24,6 +27,22 @@ void main() {
         tags: ['confirmation'],
         featured: true,
         enabled: true,
+        setup: _emptySetup,
+        checkpoints: ['tool:create_reminder:awaiting_confirmation'],
+        assertions: DebugTestCaseAssertions(
+          endStatus: ['awaitingToolConfirmation'],
+          mustContainEvents: [],
+          mustNotContainEvents: [],
+          mustContainErrorCodes: [],
+          mustContainAnyErrorCodes: [],
+          forbidErrorCodes: [],
+          finalAnswerContainsAll: [],
+          finalFileContains: [],
+          finalFileUnchanged: [],
+          mustNotFalseClaimWriteSuccess: false,
+          mustNotFalseClaimReadSuccess: false,
+          mustNotHang: true,
+        ),
       ),
       DebugTestCase(
         id: 'disabled',
@@ -32,8 +51,24 @@ void main() {
         summary: '不应该进入空状态。',
         prompt: 'disabled',
         tags: ['legacy'],
-        featured: true,
+        featured: false,
         enabled: false,
+        setup: _emptySetup,
+        checkpoints: ['tool:fetch_webpage:failure'],
+        assertions: DebugTestCaseAssertions(
+          endStatus: ['failed'],
+          mustContainEvents: [],
+          mustNotContainEvents: [],
+          mustContainErrorCodes: [],
+          mustContainAnyErrorCodes: [],
+          forbidErrorCodes: [],
+          finalAnswerContainsAll: [],
+          finalFileContains: [],
+          finalFileUnchanged: [],
+          mustNotFalseClaimWriteSuccess: false,
+          mustNotFalseClaimReadSuccess: true,
+          mustNotHang: true,
+        ),
       ),
     ];
 
@@ -47,3 +82,24 @@ void main() {
     );
   });
 }
+
+const _emptySetup = DebugTestCaseSetup(
+  historyMessages: [],
+  files: [],
+  mutationsAfterCheckpoints: [],
+);
+
+const _completedAssertions = DebugTestCaseAssertions(
+  endStatus: ['completed'],
+  mustContainEvents: [],
+  mustNotContainEvents: [],
+  mustContainErrorCodes: [],
+  mustContainAnyErrorCodes: [],
+  forbidErrorCodes: [],
+  finalAnswerContainsAll: [],
+  finalFileContains: [],
+  finalFileUnchanged: [],
+  mustNotFalseClaimWriteSuccess: false,
+  mustNotFalseClaimReadSuccess: false,
+  mustNotHang: true,
+);

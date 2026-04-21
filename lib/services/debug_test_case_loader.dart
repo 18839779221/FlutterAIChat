@@ -24,25 +24,31 @@ class AssetDebugTestCaseLoader implements DebugTestCaseLoader {
       throw const FormatException('Debug test case root 必须是对象');
     }
 
-    final version = decoded['version'];
-    if (version is! int) {
-      throw const FormatException('Debug test case version 必须是整数');
-    }
-
     final rawCases = decoded['cases'];
     if (rawCases is! List) {
       throw const FormatException('Debug test case cases 必须是数组');
     }
 
-    final allCases = rawCases
-        .whereType<Map<String, dynamic>>()
-        .map(DebugTestCase.fromJson)
-        .where((item) => item.enabled)
-        .toList(growable: false);
+    final parsedCases = rawCases.map((item) {
+      if (item is! Map<String, dynamic>) {
+        throw const FormatException('Debug test case case 元素必须是对象');
+      }
+      return DebugTestCase.fromJson(item);
+    }).toList(growable: false);
+    _validateUniqueIds(parsedCases);
 
     return DebugTestCaseLibrary(
-      version: version,
-      allCases: allCases,
+      allCases:
+          parsedCases.where((item) => item.enabled).toList(growable: false),
     );
+  }
+
+  void _validateUniqueIds(List<DebugTestCase> cases) {
+    final seen = <String>{};
+    for (final item in cases) {
+      if (!seen.add(item.id)) {
+        throw FormatException('Debug test case id 重复: ${item.id}');
+      }
+    }
   }
 }
