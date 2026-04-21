@@ -25,7 +25,7 @@ import 'tool_loop/openai_responses_tool_loop_adapter.dart';
 class ConfigurableHttpLLM implements BaseLLM {
   static const String _tag = 'ConfigurableHttpLLM';
   static const Duration _defaultRequestTimeout = Duration(seconds: 60);
-  static const Duration _defaultPlannerRequestTimeout = Duration(seconds: 25);
+  static const Duration _defaultPlannerRequestTimeout = Duration(seconds: 60);
 
   final AppSettingsRepository _settingsRepository;
   final ApiProtocolResolver _protocolResolver;
@@ -341,11 +341,13 @@ class ConfigurableHttpLLM implements BaseLLM {
           .timeout(_plannerRequestTimeout);
 
       if (response.statusCode != 200) {
+        final detail =
+            'HTTP ${response.statusCode} ${response.reasonPhrase ?? '-'} ${_previewBody(response.body)}';
         Logger.w(
           _tag,
           'native planner unsupported status=${response.statusCode} reason=${response.reasonPhrase ?? '-'} body=${_previewBody(response.body)}',
         );
-        return null;
+        throw Exception(detail);
       }
       final responseText = utf8.decode(response.bodyBytes);
       Logger.i(_tag, 'native planner 响应体: $responseText');
@@ -394,7 +396,7 @@ class ConfigurableHttpLLM implements BaseLLM {
         'native planner 请求失败: ${_previewBody(e.toString())}',
       );
       Logger.e(_tag, 'native planner stack trace', stackTrace);
-      return null;
+      rethrow;
     }
   }
 
@@ -637,6 +639,7 @@ class ConfigurableHttpLLM implements BaseLLM {
     String modelName, {
     required List<PlannerToolOption> availableTools,
     required bool parallelToolCalls,
+    List<Map<String, dynamic>> continuationItems = const [],
   }) {
     final payload = _buildChatCompletionsPayload(
       messages,
@@ -644,6 +647,17 @@ class ConfigurableHttpLLM implements BaseLLM {
       modelName,
       stream: false,
     );
+    final payloadMessages = List<Map<String, dynamic>>.from(
+      (payload['messages'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item)),
+    );
+    if (continuationItems.isNotEmpty) {
+      payload['messages'] = [
+        ...payloadMessages,
+        ..._buildChatCompletionsContinuationMessages(continuationItems),
+      ];
+    }
     final tools = availableTools
         .map(
           (tool) => {
@@ -692,6 +706,7 @@ class ConfigurableHttpLLM implements BaseLLM {
           modelName,
           availableTools: availableTools,
           parallelToolCalls: parallelToolCalls,
+          continuationItems: continuationItems,
         );
       case ApiStyle.anthropicMessages:
         return _buildPlannerAnthropicMessagesPayload(
@@ -732,6 +747,63 @@ class ConfigurableHttpLLM implements BaseLLM {
       payload['tool_choice'] = {'type': 'auto'};
     }
     return payload;
+  }
+
+  List<Map<String, dynamic>> _buildChatCompletionsContinuationMessages(
+    List<Map<String, dynamic>> continuationItems,
+  ) {
+    final messages = <Map<String, dynamic>>[];
+    for (final rawItem in continuationItems) {
+      final item = Map<String, dynamic>.from(rawItem);
+      final type = item['type'];
+      if (type == 'assistant_tool_call') {
+        final toolCallId = _normalizeText(item['toolCallId']);
+        final toolName = _normalizeText(item['toolName']);
+        final arguments = item['arguments'];
+        if (toolCallId == null || toolName == null || arguments is! Map) {
+          continue;
+        }
+        messages.add({
+          'role': 'assistant',
+          'content': '',
+          'tool_calls': [
+            {
+              'id': toolCallId,
+              'type': 'function',
+              'function': {
+                'name': toolName,
+                'arguments': jsonEncode(arguments),
+              },
+            },
+          ],
+        });
+        continue;
+      }
+      if (type == 'tool_result') {
+        final toolCallId = _normalizeText(item['toolCallId']);
+        final output = _normalizeText(item['output']);
+        if (toolCallId == null || output == null) {
+          continue;
+        }
+        messages.add({
+          'role': 'tool',
+          'tool_call_id': toolCallId,
+          'content': output,
+        });
+        continue;
+      }
+      if (type == 'user_interaction_answer') {
+        final content = _normalizeText(item['content']);
+        if (content == null) {
+          continue;
+        }
+        messages.add({
+          'role': 'user',
+          'content': content,
+        });
+      }
+    }
+    return messages;
   }
 
   Map<String, dynamic> _buildPlannerResponsesPayload(

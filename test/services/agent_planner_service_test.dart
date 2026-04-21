@@ -232,7 +232,8 @@ void main() {
       );
 
       expect(result, isNotNull);
-      expect(result!.assistantMessage, contains('暂时无法规划'));
+      expect(result!.assistantMessage, contains('当前模型请求失败'));
+      expect(result.assistantMessage, contains('native planner unavailable'));
       expect(result.diagnosticCode, 'planner_request_failed');
     });
 
@@ -312,6 +313,114 @@ void main() {
       expect(llm.lastConfig?.systemPrompt, isNot(contains('Do not repeat the same tool call')));
       expect(llm.lastMessages.map((message) => message.text), contains('已读取网页正文'));
       expect(llm.lastMessages.map((message) => message.text), contains('读取失败'));
+    });
+
+    test(
+        'planNextDecision projects ask-user transcript into chat-safe roles',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: 'ok',
+          providerState: {},
+          isTerminal: true,
+        ),
+      );
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [
+          ToolDefinition(
+            name: 'ask_user_question',
+            title: '向用户提问',
+            description: '向用户提问',
+            descriptionForModel: '当必须补充关键信息时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'questions': ToolArgumentProperty(
+                  type: 'array',
+                  description: '问题列表',
+                ),
+              },
+              required: ['questions'],
+            ),
+          ),
+        ],
+      );
+
+      await service.planNextDecision(
+        turn: ChatTurn(
+          id: 1,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '帮我确认应该用什么本地存储',
+          providerStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        ),
+        transcript: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '帮我确认应该用什么本地存储',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.assistantPlannerMessage,
+            role: MessageRole.assistant,
+            content: '<think>我先补充询问用户的偏好</think>',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.turnStatus,
+            role: MessageRole.system,
+            content: 'planner_action_call_tools:ask_user_question',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 4,
+            eventType: ChatEventType.assistantQuestionPrompt,
+            role: MessageRole.assistant,
+            content: '你更偏向 SQLite 还是 ObjectBox？',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 5,
+            eventType: ChatEventType.userInteractionResult,
+            role: MessageRole.system,
+            content: 'User answered AskUserQuestion:\n- Storage: SQLite',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 6,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: '已记录用户偏好：SQLite',
+          ),
+        ],
+        steps: const [],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(
+        llm.lastMessages.map((message) => '${message.role.name}:${message.text}'),
+        [
+          'user:帮我确认应该用什么本地存储',
+          'assistant:<think>我先补充询问用户的偏好</think>',
+          'assistant:你更偏向 SQLite 还是 ObjectBox？',
+          'user:User answered AskUserQuestion:\n- Storage: SQLite',
+          'assistant:已记录用户偏好：SQLite',
+        ],
+      );
     });
 
     test('planNextDecision sends ledger summary and filters unsupported tools',
@@ -569,6 +678,163 @@ void main() {
     });
 
     test(
+        'planNextDecision builds chat completions continuation items for regular tools',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: '继续处理',
+          providerState: {},
+          isTerminal: true,
+        ),
+      );
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [
+          ToolDefinition(
+            name: 'web_search',
+            title: '联网搜索',
+            description: '联网搜索',
+            descriptionForModel: '当用户需要最新外部资料时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'query': ToolArgumentProperty.string(description: '查询词'),
+              },
+              required: ['query'],
+            ),
+          ),
+        ],
+      );
+
+      await service.planNextDecision(
+        turn: ChatTurn(
+          id: 2,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '继续完成联网搜索结论',
+          providerStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        ),
+        transcript: [_userEvent()],
+        steps: [
+          ChatTurnStep(
+            id: 3,
+            turnId: 2,
+            stepIndex: 1,
+            providerCallId: 'call_web_1',
+            toolName: 'web_search',
+            toolArgsJson: const {'query': 'MiniMax API'},
+            status: ChatTurnStepStatus.completed,
+            resultSummary: '已完成联网搜索',
+            resultJson: const {'topResult': 'https://example.com/minimax'},
+          ),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(
+        llm.lastProviderContinuationItems,
+        [
+          {
+            'type': 'assistant_tool_call',
+            'toolCallId': 'call_web_1',
+            'toolName': 'web_search',
+            'arguments': {
+              'query': 'MiniMax API',
+            },
+          },
+          {
+            'type': 'tool_result',
+            'toolCallId': 'call_web_1',
+            'toolName': 'web_search',
+            'output':
+                '{"status":"success","summary":"已完成联网搜索","data":{"topResult":"https://example.com/minimax"}}',
+          },
+        ],
+      );
+    });
+
+    test(
+        'planNextDecision builds chat completions ask-user continuation as user answer',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: '继续处理',
+          providerState: {},
+          isTerminal: true,
+        ),
+      );
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [
+          ToolDefinition(
+            name: 'ask_user_question',
+            title: '向用户提问',
+            description: '向用户提问',
+            descriptionForModel: '当必须补充关键信息时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'questions': ToolArgumentProperty(
+                  type: 'array',
+                  description: '问题列表',
+                ),
+              },
+              required: ['questions'],
+            ),
+          ),
+        ],
+      );
+
+      await service.planNextDecision(
+        turn: ChatTurn(
+          id: 3,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '继续根据我的偏好给建议',
+          providerStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        ),
+        transcript: const [],
+        steps: [
+          ChatTurnStep(
+            id: 4,
+            turnId: 3,
+            stepIndex: 1,
+            providerCallId: 'call_ask_1',
+            toolName: 'ask_user_question',
+            toolArgsJson: const {
+              'questions': [
+                {'id': 'storage', 'question': '请选择存储方案'},
+              ],
+            },
+            status: ChatTurnStepStatus.completed,
+            resultSummary: 'user_answered',
+            resultJson: const {
+              'transcriptContent':
+                  'User answered AskUserQuestion:\n- Storage: SQLite',
+              'answersByQuestionId': {'storage': 'SQLite'},
+            },
+          ),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(
+        llm.lastProviderContinuationItems,
+        [
+          {
+            'type': 'user_interaction_answer',
+            'toolCallId': 'call_ask_1',
+            'content': 'User answered AskUserQuestion:\n- Storage: SQLite',
+          },
+        ],
+      );
+    });
+
+    test(
         'planNextDecision returns terminal planner failure when native planner returns null',
         () async {
       final llm = _NativeNullPlannerLLM();
@@ -640,7 +906,8 @@ void main() {
 
       expect(decision, isNotNull);
       expect(decision!.toolCalls, isEmpty);
-      expect(decision.assistantMessage, contains('暂时无法规划'));
+      expect(decision.assistantMessage, contains('当前模型请求失败'));
+      expect(decision.assistantMessage, contains('native planner unavailable'));
       expect(decision.diagnosticCode, 'planner_request_failed');
       expect(decision.isTerminal, isTrue);
       expect(llm.nativeAttempts, 1);
@@ -914,6 +1181,86 @@ void main() {
       expect(llm.lastToolOptions, isNotNull);
       expect(llm.lastToolOptions!.single.name, 'web_search');
       expect(llm.lastToolOptions!.single.inputSchema['required'], ['query']);
+    });
+
+    test(
+        'planNextDecision builds anthropic continuation with tool_use followed by tool_result',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: '继续处理',
+          providerState: {'message_id': 'msg_next'},
+          isTerminal: true,
+        ),
+      );
+      final service = AgentPlannerService(llm: llm);
+
+      await service.planNextDecision(
+        turn: ChatTurn(
+          id: 3,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '继续完成方案',
+          providerStyle: ChatTurnProviderStyle.anthropicMessages,
+          providerStateJson: const {'message_id': 'msg_prev'},
+        ),
+        transcript: [_userEvent()],
+        steps: [
+          ChatTurnStep(
+            id: 7,
+            turnId: 3,
+            stepIndex: 1,
+            providerResponseId: 'msg_prev',
+            providerCallId: 'call_function_123',
+            toolName: 'ask_user_question',
+            toolArgsJson: const {
+              'questions': [
+                {'id': 'platform', 'question': '目标平台是什么？'},
+              ],
+            },
+            status: ChatTurnStepStatus.completed,
+            resultSummary: 'user_answered',
+            resultJson: const {
+              'answersByQuestionId': {'platform': 'Android'},
+            },
+          ),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(
+        llm.lastProviderContinuationItems,
+        [
+          {
+            'role': 'assistant',
+            'content': [
+              {
+                'type': 'tool_use',
+                'id': 'call_function_123',
+                'name': 'ask_user_question',
+                'input': {
+                  'questions': [
+                    {'id': 'platform', 'question': '目标平台是什么？'},
+                  ],
+                },
+              },
+            ],
+          },
+          {
+            'role': 'user',
+            'content': [
+              {
+                'type': 'tool_result',
+                'tool_use_id': 'call_function_123',
+                'content':
+                    '{"status":"success","summary":"user_answered","data":{"answersByQuestionId":{"platform":"Android"}}}',
+              },
+            ],
+          },
+        ],
+      );
     });
 
     test('planNextDecision parses native planner tool choice directly',

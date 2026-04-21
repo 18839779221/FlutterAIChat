@@ -226,6 +226,70 @@ void main() {
       ]);
     });
 
+    test('chat completions full endpoint stays on chat completions protocol',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'role': 'assistant',
+                  'tool_calls': [
+                    {
+                      'id': 'call_1',
+                      'type': 'function',
+                      'function': {
+                        'name': 'ask_user_question',
+                        'arguments': jsonEncode({
+                          'questions': [
+                            {'id': 'q1', 'question': '请选择数据库类型'},
+                          ],
+                        }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://api.minimaxi.com/v1/chat/completions',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '先问我选什么数据库', role: MessageRole.user),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        availableTools: const [
+          PlannerToolOption(
+            name: 'ask_user_question',
+            description: '向用户提问',
+            inputSchema: {
+              'type': 'object',
+              'properties': {
+                'questions': {'type': 'array'},
+              },
+              'required': ['questions'],
+            },
+          ),
+        ],
+      );
+
+      expect(client.lastRequest?.url.path, '/v1/chat/completions');
+      expect(client.lastRequestBody?['messages'], isNotNull);
+      expect(client.lastRequestBody?['input'], isNull);
+      expect(decision, isNotNull);
+      expect(decision!.providerStyle, ChatTurnProviderStyle.openaiChatCompletions);
+    });
+
     test('responses payload includes planner tools and parses function call',
         () async {
       final client = _RecordingHttpClient(
@@ -1062,6 +1126,132 @@ void main() {
             ),
       );
       expect(client.lastRequestBody?['previous_response_id'], 'resp_prev');
+    });
+
+    test(
+        'chat completions decision appends assistant tool call and tool result continuation items',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'role': 'assistant',
+                  'content': '继续处理完成。',
+                },
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+      );
+
+      await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '继续', role: MessageRole.user),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        availableTools: const [],
+        providerStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        providerContinuationItems: const [
+          {
+            'type': 'assistant_tool_call',
+            'toolCallId': 'call_123',
+            'toolName': 'web_search',
+            'arguments': {'query': 'MiniMax API'},
+          },
+          {
+            'type': 'tool_result',
+            'toolCallId': 'call_123',
+            'toolName': 'web_search',
+            'output': '{"status":"success","summary":"已完成"}',
+          },
+        ],
+      );
+
+      final messages = client.lastRequestBody?['messages'] as List<dynamic>?;
+      expect(messages, isNotNull);
+      expect(messages, hasLength(3));
+      expect(messages![1], {
+        'role': 'assistant',
+        'content': '',
+        'tool_calls': [
+          {
+            'id': 'call_123',
+            'type': 'function',
+            'function': {
+              'name': 'web_search',
+              'arguments': '{"query":"MiniMax API"}',
+            },
+          },
+        ],
+      });
+      expect(messages[2], {
+        'role': 'tool',
+        'tool_call_id': 'call_123',
+        'content': '{"status":"success","summary":"已完成"}',
+      });
+    });
+
+    test(
+        'chat completions decision keeps ask-user continuation as user message',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'role': 'assistant',
+                  'content': '建议先用 SQLite。',
+                },
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+      );
+
+      await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '继续', role: MessageRole.user),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        availableTools: const [],
+        providerStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        providerContinuationItems: const [
+          {
+            'type': 'user_interaction_answer',
+            'toolCallId': 'call_ask_1',
+            'content': 'User answered AskUserQuestion:\n- Storage: SQLite',
+          },
+        ],
+      );
+
+      final messages = client.lastRequestBody?['messages'] as List<dynamic>?;
+      expect(messages, isNotNull);
+      expect(messages, hasLength(2));
+      expect(messages![1], {
+        'role': 'user',
+        'content': 'User answered AskUserQuestion:\n- Storage: SQLite',
+      });
+      expect(
+        messages.where((message) => (message as Map)['role'] == 'system'),
+        isEmpty,
+      );
     });
 
     test('responses decision stores planner responses for later continuation',

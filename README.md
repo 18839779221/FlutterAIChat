@@ -37,6 +37,9 @@
 - Debug 测试案例统一维护在 `assets/debug/test_cases.json`
 - Debug 模式下可通过聊天页顶部的 `Cases` 入口查看全量案例，并将 prompt 一键填入输入框
 - LLM 接入配置改为 provider-first：`config/local_defaults.json` 和设置页都支持“提供方 + 多模型”目录，运行时从当前选中的 provider/model 解析最终请求配置
+- 运行时会根据 Base URL 自动推断 provider 协议风格：OpenAI `responses`、OpenAI `chat/completions`、Anthropic `messages`
+- `chat/completions` 续跑只会发送兼容角色集合（`system` / `user` / `assistant` / `tool`），不会把内部 `turnStatus` 等运行时事件直接透传给上游
+- 对 `AskUserQuestion`，OpenAI-compatible `chat/completions` provider 会将用户补充答案按真实 `user` 消息续跑，而不是伪装成内部 `system` 或普通工具结果
 
 ## 架构概览
 
@@ -158,6 +161,7 @@ flowchart TD
 - 主编排层只依赖 provider-native `ModelTurnDecision`，不再保留 legacy planner 执行分支
 - 单个 `ModelTurnDecision` 可以同时携带 assistant 文本和 tool calls；assistant 文本既可能是中间解释，也可能是终态答复
 - 对 native tool-calling provider，tool continuation item 由 turn-step ledger 构建；interaction tool 也必须完成对应 step 并写入结构化 `resultJson`
+- `openaiChatCompletions` 会优先把普通工具续跑重建为 `assistant.tool_calls + tool` 消息；`AskUserQuestion` 则保留为用户回答语义，避免兼容层拒绝非法 role
 
 ### 日志与 Trace 规范
 - 日志、trace、临时日志的统一约束见 `docs/architecture/logging.md`
