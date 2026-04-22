@@ -48,6 +48,12 @@ app.*.map.json
 .fvm/
 .worktrees/
 .superpowers/
+.codex/
+.dart-tool/
+.dart/
+.dartServer/
+.gradle-run-fast/
+.gradle-run-no-proxy/
 config/local_defaults.json
 web/config/local_defaults.json
 
