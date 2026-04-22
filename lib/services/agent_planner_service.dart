@@ -15,6 +15,7 @@ import '../models/tool/tool_result.dart';
 import 'chat_service.dart';
 import 'planner_tool_exposure_service.dart';
 import 'prompt/prompt_builder_service.dart';
+import 'prompt/prompt_locale.dart';
 import 'tool_policy_service.dart';
 import '../utils/logger.dart';
 import 'prompt/prompt_stage.dart';
@@ -54,7 +55,10 @@ class AgentPlannerService {
         .map((access) => access.definition)
         .toList(growable: false);
     final allowedToolNames = _resolveAllowedToolNames(visibleTools);
-    final plannerToolOptions = _buildPlannerToolOptions(visibleToolAccess);
+    final plannerToolOptions = _buildPlannerToolOptions(
+      visibleToolAccess,
+      locale: config.promptLocale,
+    );
     final plannerConfig = ChatConfig(
       useReasoning: config.useReasoning,
       systemPrompt: _promptBuilder.buildSystemPrompt(
@@ -400,14 +404,15 @@ class AgentPlannerService {
   }
 
   List<PlannerToolOption> _buildPlannerToolOptions(
-    List<ToolAccessSnapshot> visibleToolAccess,
-  ) {
+    List<ToolAccessSnapshot> visibleToolAccess, {
+    PromptLocale locale = PromptLocale.english,
+  }) {
     return visibleToolAccess
         .map(
           (access) => PlannerToolOption(
             name: access.definition.name,
-            description: access.definition.descriptionForModel,
-            inputSchema: access.definition.toPlannerJsonSchema(),
+            description: access.definition.resolveDescriptionForModel(locale),
+            inputSchema: access.definition.toPlannerJsonSchema(locale: locale),
             executionPolicy: access.executionPolicyLabel,
           ),
         )

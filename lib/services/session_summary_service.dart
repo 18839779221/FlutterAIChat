@@ -17,6 +17,23 @@ typedef SessionSummaryGenerator = Future<String> Function(
 );
 
 class SessionSummaryService {
+  static const String summaryInstructionPrompt = '''
+请将以下会话历史整理为稳定摘要，必须使用以下栏目且不要输出 Markdown 代码块：
+当前目标：
+已确认事实：
+用户偏好/限制：
+已确认决策：
+已否决方案：
+重要工具结论：
+未完成事项：
+风险与下一步：
+
+要求：
+1. 只保留后续继续工作需要的信息。
+2. 不要输出原始 JSON 或 payload。
+3. 如果某栏目暂无内容，写“无”。
+''';
+
   SessionSummaryService({
     ChatService? chatService,
     SessionSummaryGenerator? summaryGenerator,
@@ -45,11 +62,11 @@ class SessionSummaryService {
   }) async {
     final generator = _resolveGenerator();
     final summaryPromptMessages = [
-      ChatMessage(
-        text: _summaryInstructionPrompt,
-        role: MessageRole.system,
-        status: MessageStatus.completed,
-      ),
+        ChatMessage(
+          text: summaryInstructionPrompt,
+          role: MessageRole.system,
+          status: MessageStatus.completed,
+        ),
       if ((previousSummary ?? '').trim().isNotEmpty)
         ChatMessage(
           text: previousSummary!.trim(),
@@ -82,20 +99,4 @@ class SessionSummaryService {
     return chatService.llm.summarizeConversation;
   }
 
-  static const String _summaryInstructionPrompt = '''
-请将以下会话历史整理为稳定摘要，必须使用以下栏目且不要输出 Markdown 代码块：
-当前目标：
-已确认事实：
-用户偏好/限制：
-已确认决策：
-已否决方案：
-重要工具结论：
-未完成事项：
-风险与下一步：
-
-要求：
-1. 只保留后续继续工作需要的信息。
-2. 不要输出原始 JSON 或 payload。
-3. 如果某栏目暂无内容，写“无”。
-''';
 }

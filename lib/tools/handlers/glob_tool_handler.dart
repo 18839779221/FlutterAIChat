@@ -2,6 +2,7 @@ import '../../models/chat_message.dart';
 import '../../models/tool/tool_argument_property.dart';
 import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
+import '../../models/tool/localized_tool_text.dart';
 import '../../models/tool/tool_result.dart';
 import '../core/tool_argument_resolution.dart';
 import '../core/tool_execution_context.dart';
@@ -11,20 +12,32 @@ class GlobToolHandler implements ToolHandler {
   @override
   ToolDefinition get definition => const ToolDefinition(
         name: 'Glob',
-        title: '查找文件',
-        description: '按路径模式在沙箱中查找文件。',
+        title: 'Glob',
+        localizedTitle: LocalizedToolText(english: 'Glob', chinese: '查找文件'),
         descriptionForModel:
-            '当你知道目标文件的大致文件名、扩展名或路径模式时使用，例如查找所有 .md、.json 或某个目录下的特定文件。它只做路径发现，不读取文件内容。',
-        category: ToolCategory.retrieval,
-        capabilities: [ToolCapability.fileDiscovery],
+            'Use this when you know the approximate file name, extension, or path pattern, such as finding all .md or .json files or a specific file under a directory. It only discovers paths and does not read file contents.',
+        localizedDescriptionForModel: LocalizedToolText(
+          english:
+              'Use this when you know the approximate file name, extension, or path pattern, such as finding all .md or .json files or a specific file under a directory. It only discovers paths and does not read file contents.',
+          chinese:
+              '当你知道目标文件的大致文件名、扩展名或路径模式时使用，例如查找所有 .md、.json 或某个目录下的特定文件。它只做路径发现，不读取文件内容。',
+        ),
         supportedPlatforms: ['android', 'ios', 'macos', 'windows', 'linux'],
         argumentSchema: ToolArgumentSchema(
           properties: {
             'pattern': ToolArgumentProperty.string(
-              description: '用于查找文件的 glob 模式。',
+              description: 'Glob pattern used to discover matching files.',
+              localizedDescription: LocalizedToolText(
+                english: 'Glob pattern used to discover matching files.',
+                chinese: '用于查找文件的 glob 模式。',
+              ),
             ),
             'path': ToolArgumentProperty.string(
-              description: '可选的沙箱相对起始目录。',
+              description: 'Optional relative sandbox start directory.',
+              localizedDescription: LocalizedToolText(
+                english: 'Optional relative sandbox start directory.',
+                chinese: '可选的沙箱相对起始目录。',
+              ),
             ),
           },
           required: ['pattern'],

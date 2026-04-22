@@ -2,6 +2,7 @@ import '../../models/chat_message.dart';
 import '../../models/tool/tool_argument_property.dart';
 import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
+import '../../models/tool/localized_tool_text.dart';
 import '../../services/tool_executor.dart';
 import '../core/tool_argument_resolution.dart';
 import '../core/tool_execution_context.dart';
@@ -18,20 +19,19 @@ class FetchWebpageToolHandler implements ToolHandler {
   @override
   ToolDefinition get definition => const ToolDefinition(
         name: 'fetch_webpage',
-        title: '读取网页',
-        description: '读取网页正文并返回可供总结的文本内容。',
+        title: 'Fetch Webpage',
+        localizedTitle: LocalizedToolText(
+          english: 'Fetch Webpage',
+          chinese: '读取网页',
+        ),
         descriptionForModel:
-            '当用户已经提供 URL，或者搜索结果里已经有明确网页链接，需要直接读取网页正文时使用。不要把它用于“先去网上找资料”的场景；那种情况应先用 web_search。',
-        category: ToolCategory.retrieval,
-        capabilities: [ToolCapability.webUrlReader],
-        whenToUse: [
-          '用户消息里已经包含 URL',
-          '上一轮工具结果已经给出了明确网页链接，需要继续打开读取',
-        ],
-        whenNotToUse: [
-          '用户只是笼统要求联网查资料，但没有给 URL',
-          '问题只依赖聊天记录，不需要网页内容',
-        ],
+            'Use this when the user already provided a URL or a previous search result includes a clear webpage link and you need to read the page directly. Do not use it for the generic step of first looking something up on the web; in that case use web_search first.',
+        localizedDescriptionForModel: LocalizedToolText(
+          english:
+              'Use this when the user already provided a URL or a previous search result includes a clear webpage link and you need to read the page directly. Do not use it for the generic step of first looking something up on the web; in that case use web_search first.',
+          chinese:
+              '当用户已经提供 URL，或者搜索结果里已经有明确网页链接，需要直接读取网页正文时使用。不要把它用于“先去网上找资料”的场景；那种情况应先用 web_search。',
+        ),
         parameters: {
           'url': 'string',
           'extractMode': 'string?',
@@ -39,11 +39,21 @@ class FetchWebpageToolHandler implements ToolHandler {
         argumentSchema: ToolArgumentSchema(
           properties: {
             'url': ToolArgumentProperty.string(
-              description: '要读取的网页链接。',
+              description: 'Webpage URL to fetch and read.',
+              localizedDescription: LocalizedToolText(
+                english: 'Webpage URL to fetch and read.',
+                chinese: '要读取的网页链接。',
+              ),
               format: 'uri',
             ),
             'extractMode': ToolArgumentProperty.string(
-              description: '可选的正文提取模式；不确定时留空。',
+              description:
+                  'Optional extraction mode for page content; leave empty if unsure.',
+              localizedDescription: LocalizedToolText(
+                english:
+                    'Optional extraction mode for page content; leave empty if unsure.',
+                chinese: '可选的正文提取模式；不确定时留空。',
+              ),
             ),
           },
           required: ['url'],

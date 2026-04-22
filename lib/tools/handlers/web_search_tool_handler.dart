@@ -3,6 +3,7 @@ import '../../models/response/message_content_type.dart';
 import '../../models/tool/tool_argument_property.dart';
 import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
+import '../../models/tool/localized_tool_text.dart';
 import '../../services/tool_executor.dart';
 import '../core/tool_argument_resolution.dart';
 import '../core/tool_execution_context.dart';
@@ -19,20 +20,16 @@ class WebSearchToolHandler implements ToolHandler {
   @override
   ToolDefinition get definition => const ToolDefinition(
         name: 'web_search',
-        title: '联网搜索',
-        description: '搜索外部网页并返回结构化结果列表。',
+        title: 'Web Search',
+        localizedTitle: LocalizedToolText(english: 'Web Search', chinese: '联网搜索'),
         descriptionForModel:
-            '当用户需要实时信息、外部资料、官网来源或网上最新进展时使用。应生成短而具体的搜索词。如果用户已经提供 URL，应优先使用 fetch_webpage；如果问题只依赖当前聊天上下文，应优先使用 search_chat_history。',
-        category: ToolCategory.retrieval,
-        capabilities: [ToolCapability.webSearch],
-        whenToUse: [
-          '用户提到最新、最近、网上、官网、新闻、资料',
-          '回答需要当前会话之外的外部信息来源',
-        ],
-        whenNotToUse: [
-          '用户已经给出 URL，需要直接读取网页',
-          '问题只依赖当前聊天记录或已有工具结果',
-        ],
+            'Use this when the user needs real-time information, external references, official sources, or the latest updates from the web. Generate short, specific search queries. If the user already provided a URL, prefer fetch_webpage. If the question only depends on current chat context, prefer search_chat_history.',
+        localizedDescriptionForModel: LocalizedToolText(
+          english:
+              'Use this when the user needs real-time information, external references, official sources, or the latest updates from the web. Generate short, specific search queries. If the user already provided a URL, prefer fetch_webpage. If the question only depends on current chat context, prefer search_chat_history.',
+          chinese:
+              '当用户需要实时信息、外部资料、官网来源或网上最新进展时使用。应生成短而具体的搜索词。如果用户已经提供 URL，应优先使用 fetch_webpage；如果问题只依赖当前聊天上下文，应优先使用 search_chat_history。',
+        ),
         parameters: {
           'query': 'string',
           'maxResults': 'int?',
@@ -40,10 +37,22 @@ class WebSearchToolHandler implements ToolHandler {
         argumentSchema: ToolArgumentSchema(
           properties: {
             'query': ToolArgumentProperty.string(
-              description: '短而具体的联网搜索词，应尽量聚焦实体、主题和限定词。',
+              description:
+                  'Short and specific web search query focused on the entity, topic, and qualifiers.',
+              localizedDescription: LocalizedToolText(
+                english:
+                    'Short and specific web search query focused on the entity, topic, and qualifiers.',
+                chinese: '短而具体的联网搜索词，应尽量聚焦实体、主题和限定词。',
+              ),
             ),
             'maxResults': ToolArgumentProperty.integer(
-              description: '最多返回多少条搜索结果，通常 3 到 5 条即可。',
+              description:
+                  'Maximum number of search results to return; usually 3 to 5 is enough.',
+              localizedDescription: LocalizedToolText(
+                english:
+                    'Maximum number of search results to return; usually 3 to 5 is enough.',
+                chinese: '最多返回多少条搜索结果，通常 3 到 5 条即可。',
+              ),
             ),
           },
           required: ['query'],

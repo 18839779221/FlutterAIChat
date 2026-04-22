@@ -1,12 +1,7 @@
+import '../../services/prompt/prompt_locale.dart';
+import 'localized_tool_text.dart';
 import 'tool_argument_property.dart';
 import 'tool_argument_schema.dart';
-
-/// High-level grouping used for planner-side tool exposure and routing.
-enum ToolCategory {
-  retrieval,
-  productivity,
-  outputAction,
-}
 
 /// Runtime handling mode used by the turn loop before invoking a tool handler.
 enum ToolRuntimeKind {
@@ -15,56 +10,31 @@ enum ToolRuntimeKind {
   userInteraction,
 }
 
-/// Stable capability tags used by planner/tool-policy layers to reason about
-/// a tool without hard-coding concrete tool names.
-enum ToolCapability {
-  webSearch,
-  webUrlReader,
-  fileDiscovery,
-  fileRead,
-  fileWrite,
-  fileEdit,
-  noteWrite,
-  reminderCreate,
-  calendarCreate,
-  shareResult,
-}
-
 class ToolDefinition {
   final String name;
   final String title;
-  final String description;
   final Map<String, String> parameters;
-  final ToolCategory category;
-  final List<ToolCapability> capabilities;
   final String descriptionForModel;
-  final List<String> whenToUse;
-  final List<String> whenNotToUse;
+  final LocalizedToolText? localizedTitle;
+  final LocalizedToolText? localizedDescriptionForModel;
   final ToolArgumentSchema? argumentSchema;
-  final Map<String, dynamic> argumentExamples;
   final bool requiresConfirmation;
   final ToolRuntimeKind runtimeKind;
-  final String riskLevel;
   final List<String> supportedPlatforms;
 
   const ToolDefinition({
     required this.name,
     String? title,
-    required this.description,
     this.parameters = const {},
-    this.category = ToolCategory.retrieval,
-    this.capabilities = const [],
     String? descriptionForModel,
-    this.whenToUse = const [],
-    this.whenNotToUse = const [],
+    this.localizedTitle,
+    this.localizedDescriptionForModel,
     this.argumentSchema,
-    this.argumentExamples = const {},
     this.requiresConfirmation = false,
     this.runtimeKind = ToolRuntimeKind.immediate,
-    this.riskLevel = 'low',
     this.supportedPlatforms = const ['android', 'ios', 'web'],
   })  : title = title ?? name,
-        descriptionForModel = descriptionForModel ?? description;
+        descriptionForModel = descriptionForModel ?? title ?? name;
 
   /// Returns the planner-facing input schema, falling back to legacy
   /// `parameters` when handlers have not been migrated yet.
@@ -72,26 +42,18 @@ class ToolDefinition {
     return argumentSchema ?? _buildSchemaFromLegacyParameters(parameters);
   }
 
-  Map<String, dynamic> toPlannerJsonSchema() {
-    return resolvedArgumentSchema.toJsonSchema();
+  String resolveTitle(PromptLocale locale) {
+    return localizedTitle?.resolve(locale) ?? title;
   }
 
-  Map<String, dynamic> toPlannerDescriptor() {
-    return {
-      'name': name,
-      'title': title,
-      'category': category.name,
-      'capabilities': capabilities.map((item) => item.name).toList(),
-      'description': descriptionForModel,
-      'whenToUse': whenToUse,
-      'whenNotToUse': whenNotToUse,
-      'inputSchema': toPlannerJsonSchema(),
-      if (argumentExamples.isNotEmpty) 'argumentExamples': argumentExamples,
-      'requiresConfirmation': requiresConfirmation,
-      'runtimeKind': resolvedRuntimeKind.name,
-      'riskLevel': riskLevel,
-      'supportedPlatforms': supportedPlatforms,
-    };
+  String resolveDescriptionForModel(PromptLocale locale) {
+    return localizedDescriptionForModel?.resolve(locale) ?? descriptionForModel;
+  }
+
+  Map<String, dynamic> toPlannerJsonSchema({
+    PromptLocale locale = PromptLocale.english,
+  }) {
+    return resolvedArgumentSchema.toJsonSchema(locale: locale);
   }
 
   ToolRuntimeKind get resolvedRuntimeKind {

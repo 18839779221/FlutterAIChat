@@ -4,6 +4,7 @@ import '../../models/chat_message.dart';
 import '../../models/tool/tool_argument_property.dart';
 import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
+import '../../models/tool/localized_tool_text.dart';
 import '../../models/tool/tool_result.dart';
 import '../core/tool_argument_resolution.dart';
 import '../core/tool_execution_context.dart';
@@ -13,31 +14,42 @@ class ReadToolHandler implements ToolHandler {
   @override
   ToolDefinition get definition => const ToolDefinition(
         name: 'Read',
-        title: '读取文件',
-        description: '读取沙箱中的文本文件。',
+        title: 'Read',
+        localizedTitle: LocalizedToolText(chinese: '读取文件', english: 'Read'),
         descriptionForModel:
-            '当你已经知道目标文件路径，并且需要查看文件内容时使用。支持 offset/limit 分页。通常应先用 LS、Glob 或 Grep 定位文件，再用 Read 查看内容。对已有文件执行 Edit 或 Write 前，通常应先 Read。',
-        category: ToolCategory.retrieval,
-        capabilities: [ToolCapability.fileRead],
+            'Use this when you already know the target file path and need to inspect file contents. Supports pagination with offset and limit. Usually locate files with LS, Glob, or Grep first, then use Read. Before Edit or Write on an existing file, usually Read first.',
+        localizedDescriptionForModel: LocalizedToolText(
+          english:
+              'Use this when you already know the target file path and need to inspect file contents. Supports pagination with offset and limit. Usually locate files with LS, Glob, or Grep first, then use Read. Before Edit or Write on an existing file, usually Read first.',
+          chinese:
+              '当你已经知道目标文件路径，并且需要查看文件内容时使用。支持 offset 和 limit 分页。通常应先用 LS、Glob 或 Grep 定位文件，再用 Read 查看内容。对已有文件执行 Edit 或 Write 前，通常应先 Read。',
+        ),
         supportedPlatforms: ['android', 'ios', 'macos', 'windows', 'linux'],
-        whenToUse: [
-          '已经知道目标文件路径，需要查看文件内容',
-          '准备修改已有文件前，先确认当前内容',
-        ],
-        whenNotToUse: [
-          '只是想按文件名、路径模式或关键字查找文件',
-          '目标是直接修改文件，而不是先查看内容',
-        ],
         argumentSchema: ToolArgumentSchema(
           properties: {
             'file_path': ToolArgumentProperty.string(
-              description: '要读取的沙箱相对文件路径。',
+              description: 'Relative sandbox file path to read.',
+              localizedDescription: LocalizedToolText(
+                english: 'Relative sandbox file path to read.',
+                chinese: '要读取的沙箱相对文件路径。',
+              ),
             ),
             'offset': ToolArgumentProperty.integer(
-              description: '从第几行开始读取，0 表示文件第一行。',
+              description:
+                  'Line offset to start reading from; 0 means the first line.',
+              localizedDescription: LocalizedToolText(
+                english:
+                    'Line offset to start reading from; 0 means the first line.',
+                chinese: '从第几行开始读取，0 表示文件第一行。',
+              ),
             ),
             'limit': ToolArgumentProperty.integer(
-              description: '最多返回多少行，用于分页读取。',
+              description: 'Maximum number of lines to return for pagination.',
+              localizedDescription: LocalizedToolText(
+                english:
+                    'Maximum number of lines to return for pagination.',
+                chinese: '最多返回多少行，用于分页读取。',
+              ),
             ),
           },
           required: ['file_path'],

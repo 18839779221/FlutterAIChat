@@ -146,6 +146,99 @@ void main() {
       await storage.deleteGroup(groupId);
     });
 
+    test('does not eagerly create snapshot when budget pressure is low',
+        () async {
+      final storage = DatabaseHelper(
+        databaseName: 'session_context_service_no_eager_summary_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(title: 'Session Context No Eager Summary'),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final eventRepository = ChatEventRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+
+      Future<void> createCompletedTurn(String text) async {
+        final turnId = await turnRepository.createTurn(
+          ChatTurn(
+            groupId: groupId,
+            status: ChatTurnStatus.completed,
+            userInput: text,
+          ),
+        );
+        await eventRepository.appendUserMessage(
+          turnId: turnId,
+          groupId: groupId,
+          content: text,
+        );
+      }
+
+      for (var i = 1; i <= 7; i += 1) {
+        await createCompletedTurn('completed-turn-$i');
+      }
+
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: 'current-turn',
+        ),
+      );
+
+      var summaryCalls = 0;
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetResolver: (_) => const SessionModelBudget(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
+            pressureThreshold: 0.95,
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async {
+            summaryCalls += 1;
+            return 'unexpected';
+          },
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      );
+
+      final plannerMessages = await service.buildPlannerMessages(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: [
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: 'current-turn',
+          ),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: '你是一个助手'),
+      );
+
+      final snapshot = await snapshotRepository.getLatestByGroup(groupId);
+      expect(summaryCalls, 0);
+      expect(snapshot, isNull);
+      expect(
+        plannerMessages.map((message) => message.text).join('\n'),
+        isNot(contains('completed-turn-1')),
+      );
+      expect(
+        plannerMessages.map((message) => message.text).join('\n'),
+        contains('completed-turn-7'),
+      );
+
+      await storage.deleteGroup(groupId);
+    });
+
     test(
         'compresses older completed turns into a snapshot when budget pressure is high',
         () async {
@@ -317,9 +410,9 @@ void main() {
         tokenBudgetService: SessionTokenBudgetService(
           modelBudgetResolver: (_) => const SessionModelBudget(
             maxContextTokens: 420,
-            reservedOutputTokens: 40,
-            safetyMarginTokens: 20,
-            pressureThreshold: 0.85,
+            reservedOutputTokens: 140,
+            safetyMarginTokens: 80,
+            pressureThreshold: 0.55,
           ),
         ),
         summaryService: SessionSummaryService(
@@ -507,11 +600,11 @@ void main() {
               'gpt-5.4': const ModelBudgetProfile(
                 modelId: 'gpt-5.4',
                 maxContextTokens: 300,
-                reservedOutputTokens: 50,
+                reservedOutputTokens: 100,
                 reasoningReserveTokens: 50,
-                safetyMarginTokens: 50,
+                safetyMarginTokens: 80,
                 compactionConfig: ContextCompactionConfig(
-                  compressionTriggerRatio: 0.80,
+                  compressionTriggerRatio: 0.35,
                   postCompressionHistoryRatio: 0.15,
                   defaultRecentCompletedTurns: 3,
                   recentTurnsMaxRatio: 0.10,
@@ -567,6 +660,94 @@ void main() {
       final snapshot = await snapshotRepository.getLatestByGroup(groupId);
       expect(snapshot, isNotNull);
       expect(snapshot!.coveredUntilTurnId, secondTurnId);
+
+      await storage.deleteGroup(groupId);
+    });
+
+    test('keeps conversation running when summary generation fails', () async {
+      final storage = DatabaseHelper(
+        databaseName: 'session_context_service_summary_failure_fallback_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(title: 'Session Context Summary Failure Fallback'),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final eventRepository = ChatEventRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+
+      Future<void> createCompletedTurn(String text) async {
+        final turnId = await turnRepository.createTurn(
+          ChatTurn(
+            groupId: groupId,
+            status: ChatTurnStatus.completed,
+            userInput: text,
+          ),
+        );
+        await eventRepository.appendUserMessage(
+          turnId: turnId,
+          groupId: groupId,
+          content: text,
+        );
+      }
+
+      await createCompletedTurn(
+          'old-turn-1 with long history payload to force compaction');
+      await createCompletedTurn(
+          'old-turn-2 with long history payload to force compaction');
+      await createCompletedTurn(
+          'old-turn-3 with long history payload to force compaction');
+
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: 'current-turn',
+        ),
+      );
+
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetResolver: (_) => const SessionModelBudget(
+            maxContextTokens: 120,
+            reservedOutputTokens: 20,
+            safetyMarginTokens: 10,
+            pressureThreshold: 0.5,
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw StateError('session_summary_empty'),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      );
+
+      final plannerMessages = await service.buildPlannerMessages(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: [
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: 'current-turn',
+          ),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: '你是一个助手'),
+      );
+
+      final snapshot = await snapshotRepository.getLatestByGroup(groupId);
+      final combined =
+          plannerMessages.map((message) => message.text).join('\n');
+      expect(snapshot, isNull);
+      expect(combined, contains('old-turn-1'));
+      expect(combined, contains('old-turn-2'));
+      expect(combined, contains('old-turn-3'));
+      expect(combined, contains('current-turn'));
 
       await storage.deleteGroup(groupId);
     });

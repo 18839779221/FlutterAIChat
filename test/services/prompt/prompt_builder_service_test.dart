@@ -14,10 +14,20 @@ void main() {
 
       expect(result, contains("solve the user's problem"));
       expect(result, contains('Do not fabricate'));
-      expect(result, contains('speaking directly to the user'));
+      expect(
+        result,
+        contains(
+          'When given an instruction that requires creating or modifying external artifacts',
+        ),
+      );
+      expect(result, contains('Report outcomes faithfully'));
+      expect(
+          result, contains('Do not imply that an external action succeeded'));
+      expect(result, isNot(contains('run the test')));
     });
 
-    test('planner prompt is action-selection oriented instead of tool-first', () {
+    test('planner prompt is action-selection oriented instead of tool-first',
+        () {
       final result = service.buildSystemPrompt(
         stage: PromptStage.planner,
       );
@@ -25,6 +35,12 @@ void main() {
       expect(result, contains('selecting the next best action'));
       expect(result, contains('Answer directly'));
       expect(result, contains('Use a tool only'));
+      expect(
+        result,
+        contains(
+          'If the user request requires a real external action, do not end the turn with text that merely sounds like the action already happened.',
+        ),
+      );
     });
 
     test('summary prompt stays lightweight and omits the main base block', () {
@@ -35,6 +51,22 @@ void main() {
 
       expect(result, contains('Summarize and compress'));
       expect(result, isNot(contains("solve the user's problem")));
+      expect(result, isNot(contains('Report outcomes faithfully')));
+      expect(result, isNot(contains('To edit existing files use Edit')));
+    });
+
+    test('final answer prompt keeps faithful reporting constraints', () {
+      final result = service.buildSystemPrompt(
+        stage: PromptStage.finalAnswer,
+      );
+
+      expect(result, contains('Report outcomes faithfully'));
+      expect(
+        result,
+        contains(
+            'Do not imply that unexecuted or unverified work has already been completed.'),
+      );
+      expect(result, isNot(contains('execute the script')));
     });
 
     test('user system prompt is wrapped as runtime constraints', () {

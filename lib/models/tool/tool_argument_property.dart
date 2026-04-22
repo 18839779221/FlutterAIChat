@@ -1,3 +1,6 @@
+import '../../services/prompt/prompt_locale.dart';
+import 'localized_tool_text.dart';
+
 /// Describes one tool input field exposed to the planner layer.
 class ToolArgumentProperty {
   /// Primitive JSON schema type such as `string` or `integer`.
@@ -5,6 +8,9 @@ class ToolArgumentProperty {
 
   /// Human-readable field meaning shown to the model.
   final String description;
+
+  /// Optional localized description overrides; English remains the default.
+  final LocalizedToolText? localizedDescription;
 
   /// Optional enum candidates for closed-value fields.
   final List<String>? enumValues;
@@ -27,6 +33,7 @@ class ToolArgumentProperty {
   const ToolArgumentProperty({
     required this.type,
     required this.description,
+    this.localizedDescription,
     this.enumValues,
     this.format,
     this.properties,
@@ -37,35 +44,45 @@ class ToolArgumentProperty {
 
   const ToolArgumentProperty.string({
     required String description,
+    LocalizedToolText? localizedDescription,
     List<String>? enumValues,
     String? format,
   }) : this(
           type: 'string',
           description: description,
+          localizedDescription: localizedDescription,
           enumValues: enumValues,
           format: format,
         );
 
   const ToolArgumentProperty.integer({
     required String description,
+    LocalizedToolText? localizedDescription,
   }) : this(
           type: 'integer',
           description: description,
+          localizedDescription: localizedDescription,
         );
 
-  Map<String, dynamic> toJsonSchema() {
+  String resolveDescription(PromptLocale locale) {
+    return localizedDescription?.resolve(locale) ?? description;
+  }
+
+  Map<String, dynamic> toJsonSchema({
+    PromptLocale locale = PromptLocale.english,
+  }) {
     return {
       'type': type,
-      'description': description,
+      'description': resolveDescription(locale),
       if (enumValues != null && enumValues!.isNotEmpty) 'enum': enumValues,
       if (format != null && format!.trim().isNotEmpty) 'format': format,
       if (properties != null && properties!.isNotEmpty)
         'properties': {
           for (final entry in properties!.entries)
-            entry.key: entry.value.toJsonSchema(),
+            entry.key: entry.value.toJsonSchema(locale: locale),
         },
       if (required != null && required!.isNotEmpty) 'required': required,
-      if (items != null) 'items': items!.toJsonSchema(),
+      if (items != null) 'items': items!.toJsonSchema(locale: locale),
       if (additionalProperties != null)
         'additionalProperties': additionalProperties,
     };

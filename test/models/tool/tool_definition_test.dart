@@ -1,6 +1,8 @@
 import 'package:ai_chat/models/tool/tool_argument_property.dart';
 import 'package:ai_chat/models/tool/tool_argument_schema.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
+import 'package:ai_chat/models/tool/localized_tool_text.dart';
+import 'package:ai_chat/services/prompt/prompt_locale.dart';
 import 'package:ai_chat/tools/handlers/ask_user_question_tool_handler.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -10,22 +12,17 @@ void main() {
       const definition = ToolDefinition(
         name: 'ask_user_question',
         title: '向用户提问',
-        description: '向用户发起结构化问题',
         runtimeKind: ToolRuntimeKind.userInteraction,
       );
 
       expect(definition.runtimeKind, ToolRuntimeKind.userInteraction);
-      expect(
-        definition.toPlannerDescriptor(),
-        containsPair('runtimeKind', ToolRuntimeKind.userInteraction.name),
-      );
+      expect(definition.resolvedRuntimeKind, ToolRuntimeKind.userInteraction);
     });
 
     test('user interaction tools can advertise structured question schema', () {
       const definition = ToolDefinition(
         name: 'ask_user_question',
         title: '向用户提问',
-        description: '向用户发起结构化问题',
         descriptionForModel: '当完成任务缺少关键信息时，先向用户提问再继续。',
         runtimeKind: ToolRuntimeKind.userInteraction,
         argumentSchema: ToolArgumentSchema(
@@ -39,10 +36,7 @@ void main() {
         ),
       );
 
-      expect(
-        definition.toPlannerDescriptor(),
-        containsPair('runtimeKind', 'userInteraction'),
-      );
+      expect(definition.resolvedRuntimeKind, ToolRuntimeKind.userInteraction);
       expect(
         definition.toPlannerJsonSchema()['required'],
         contains('questions'),
@@ -53,9 +47,7 @@ void main() {
       const definition = ToolDefinition(
         name: 'web_search',
         title: '联网搜索',
-        description: '搜索外部网页',
         descriptionForModel: '当用户需要实时外部信息时使用。',
-        category: ToolCategory.retrieval,
         argumentSchema: ToolArgumentSchema(
           properties: {
             'query': ToolArgumentProperty.string(
@@ -78,16 +70,13 @@ void main() {
       });
     });
 
-    test('导出给 planner 的 descriptor 包含模型侧描述和使用边界', () {
+    test('localized title and description resolve correctly', () {
       const definition = ToolDefinition(
         name: 'fetch_webpage',
-        title: '读取网页',
-        description: '读取网页正文',
+        title: 'Fetch Webpage',
+        localizedTitle:
+            LocalizedToolText(english: 'Fetch Webpage', chinese: '读取网页'),
         descriptionForModel: '当用户已经提供 URL，需要直接读取网页内容时使用。',
-        category: ToolCategory.retrieval,
-        capabilities: [ToolCapability.webUrlReader],
-        whenToUse: ['用户消息里已经有 URL'],
-        whenNotToUse: ['用户只是想联网搜索但没有给 URL'],
         argumentSchema: ToolArgumentSchema(
           properties: {
             'url': ToolArgumentProperty.string(
@@ -99,47 +88,76 @@ void main() {
         ),
       );
 
+      expect(definition.resolveTitle(PromptLocale.english), 'Fetch Webpage');
+      expect(definition.resolveTitle(PromptLocale.chinese), '读取网页');
       expect(
-        definition.toPlannerDescriptor(),
-        containsPair('name', 'fetch_webpage'),
+        definition.resolveDescriptionForModel(PromptLocale.english),
+        '当用户已经提供 URL，需要直接读取网页内容时使用。',
+      );
+    });
+
+    test('planner-facing metadata defaults to english and can resolve chinese', () {
+      const definition = ToolDefinition(
+        name: 'web_search',
+        title: 'Web Search',
+        localizedTitle: LocalizedToolText(
+          english: 'Web Search',
+          chinese: '联网搜索',
+        ),
+        descriptionForModel: 'Use this for real-time web information.',
+        localizedDescriptionForModel: LocalizedToolText(
+          english: 'Use this for real-time web information.',
+          chinese: '当用户需要实时外部信息时使用。',
+        ),
+        argumentSchema: ToolArgumentSchema(
+          properties: {
+            'query': ToolArgumentProperty.string(
+              description: 'Short search query.',
+              localizedDescription: LocalizedToolText(
+                english: 'Short search query.',
+                chinese: '短而具体的搜索词。',
+              ),
+            ),
+          },
+          required: ['query'],
+        ),
+      );
+
+      expect(definition.resolveTitle(PromptLocale.english), 'Web Search');
+      expect(definition.resolveTitle(PromptLocale.chinese), '联网搜索');
+      expect(
+        definition.resolveDescriptionForModel(PromptLocale.english),
+        'Use this for real-time web information.',
       );
       expect(
-        definition.toPlannerDescriptor(),
-        containsPair('title', '读取网页'),
+        definition.resolveDescriptionForModel(PromptLocale.chinese),
+        '当用户需要实时外部信息时使用。',
       );
       expect(
-        definition.toPlannerDescriptor(),
-        containsPair('category', 'retrieval'),
-      );
-      expect(
-        definition.toPlannerDescriptor(),
-        containsPair('description', '当用户已经提供 URL，需要直接读取网页内容时使用。'),
-      );
-      expect(
-        definition.toPlannerDescriptor(),
-        containsPair('whenToUse', ['用户消息里已经有 URL']),
-      );
-      expect(
-        definition.toPlannerDescriptor(),
-        containsPair('whenNotToUse', ['用户只是想联网搜索但没有给 URL']),
-      );
-      expect(
-        definition.toPlannerDescriptor(),
-        containsPair('capabilities', ['webUrlReader']),
-      );
-      expect(
-        definition.toPlannerDescriptor(),
-        containsPair('inputSchema', {
+        definition.toPlannerJsonSchema(locale: PromptLocale.english),
+        {
           'type': 'object',
           'properties': {
-            'url': {
+            'query': {
               'type': 'string',
-              'description': '要读取的网页链接',
-              'format': 'uri',
+              'description': 'Short search query.',
             },
           },
-          'required': ['url'],
-        }),
+          'required': ['query'],
+        },
+      );
+      expect(
+        definition.toPlannerJsonSchema(locale: PromptLocale.chinese),
+        {
+          'type': 'object',
+          'properties': {
+            'query': {
+              'type': 'string',
+              'description': '短而具体的搜索词。',
+            },
+          },
+          'required': ['query'],
+        },
       );
     });
 

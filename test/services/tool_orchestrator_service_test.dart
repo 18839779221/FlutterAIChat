@@ -386,7 +386,6 @@ class _FakeShareToolHandler implements ToolHandler {
   ToolDefinition get definition => const ToolDefinition(
         name: 'share_result',
         title: '分享结果',
-        description: '分享一段结果文本',
         parameters: {
           'text': 'string',
           'subject': 'string',
@@ -438,7 +437,6 @@ class _FakeReminderToolHandler implements ToolHandler {
   ToolDefinition get definition => const ToolDefinition(
         name: 'create_reminder',
         title: '创建提醒',
-        description: '创建一个提醒事项',
         parameters: {
           'title': 'string',
           'dueAt': 'string',
@@ -489,7 +487,6 @@ class _FakeAskUserQuestionToolHandler implements ToolHandler {
   ToolDefinition get definition => const ToolDefinition(
         name: 'ask_user_question',
         title: '向用户提问',
-        description: '向用户发起结构化问题',
         runtimeKind: ToolRuntimeKind.userInteraction,
       );
 
@@ -525,7 +522,6 @@ class _RecordingNormalizeToolHandler implements ToolHandler {
   ToolDefinition get definition => const ToolDefinition(
         name: 'web_search',
         title: '联网搜索',
-        description: '搜索网页',
         parameters: {
           'query': 'string',
           'maxResults': 'int?',
@@ -577,7 +573,6 @@ class _InvalidNormalizeToolHandler implements ToolHandler {
   ToolDefinition get definition => const ToolDefinition(
         name: 'web_search',
         title: '联网搜索',
-        description: '搜索网页',
         parameters: {
           'query': 'string',
         },

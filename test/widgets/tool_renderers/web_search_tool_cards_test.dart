@@ -16,19 +16,21 @@ void main() {
           theme: AppTheme.light(),
           home: const Scaffold(
             body: WebSearchToolWorkflowCard(
-              step: ToolWorkflowStep(
-                stepId: 'web-1',
-                turnId: 'turn-1',
-                toolName: 'web_search',
-                title: '联网搜索',
-                summary: '准备搜索 OpenAI latest',
-                status: ToolWorkflowStepStatus.running,
-                requiresConfirmation: false,
-                details: {
-                  'query': 'OpenAI latest',
-                  'maxResults': 5,
-                },
-              ),
+              steps: [
+                ToolWorkflowStep(
+                  stepId: 'web-1',
+                  turnId: 'turn-1',
+                  toolName: 'web_search',
+                  title: '联网搜索',
+                  summary: '准备搜索 OpenAI latest',
+                  status: ToolWorkflowStepStatus.running,
+                  requiresConfirmation: false,
+                  details: {
+                    'query': 'OpenAI latest',
+                    'maxResults': 5,
+                  },
+                ),
+              ],
             ),
           ),
         ),

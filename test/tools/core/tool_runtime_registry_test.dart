@@ -14,6 +14,7 @@ import 'package:ai_chat/tools/core/tool_argument_resolution.dart';
 import 'package:ai_chat/tools/core/tool_execution_context.dart';
 import 'package:ai_chat/tools/core/tool_handler.dart';
 import 'package:ai_chat/tools/core/tool_runtime_registry.dart';
+import 'package:ai_chat/services/prompt/prompt_locale.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -101,24 +102,33 @@ void main() {
       final shareResult =
           definitions.firstWhere((item) => item.name == 'share_result');
 
-      expect(webSearch.descriptionForModel, contains('实时'));
-      expect(webSearch.category, ToolCategory.retrieval);
-      expect(webSearch.whenToUse, isNotEmpty);
+      expect(webSearch.descriptionForModel, contains('real-time'));
+      expect(
+        webSearch.resolveDescriptionForModel(PromptLocale.chinese),
+        contains('实时'),
+      );
       expect(webSearch.argumentSchema?.required, contains('query'));
 
       expect(fetchWebpage.descriptionForModel, contains('URL'));
-      expect(fetchWebpage.whenNotToUse, isNotEmpty);
+      expect(
+        fetchWebpage.resolveDescriptionForModel(PromptLocale.chinese),
+        contains('URL'),
+      );
       expect(fetchWebpage.argumentSchema?.required, contains('url'));
 
-      expect(createReminder.category, ToolCategory.productivity);
-      expect(createReminder.descriptionForModel, contains('提醒'));
-      expect(createReminder.whenToUse, isNotEmpty);
+      expect(createReminder.descriptionForModel, contains('reminder'));
+      expect(
+        createReminder.resolveDescriptionForModel(PromptLocale.chinese),
+        contains('提醒'),
+      );
       expect(createReminder.argumentSchema?.required,
           containsAll(['title', 'dueAt']));
 
-      expect(shareResult.category, ToolCategory.outputAction);
-      expect(shareResult.descriptionForModel, contains('分享'));
-      expect(shareResult.whenNotToUse, isNotEmpty);
+      expect(shareResult.descriptionForModel, contains('share'));
+      expect(
+        shareResult.resolveDescriptionForModel(PromptLocale.chinese),
+        contains('分享'),
+      );
       expect(shareResult.argumentSchema?.required, contains('text'));
     });
   });
@@ -207,9 +217,7 @@ class _FakeToolHandler implements ToolHandler {
   @override
   ToolDefinition get definition => ToolDefinition(
         name: toolName,
-        description: '$toolName description',
         descriptionForModel: '$toolName planner description',
-        category: ToolCategory.retrieval,
         argumentSchema: const ToolArgumentSchema(
           properties: {
             'query': ToolArgumentProperty.string(

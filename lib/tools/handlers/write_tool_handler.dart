@@ -2,6 +2,7 @@ import '../../models/chat_message.dart';
 import '../../models/tool/tool_argument_property.dart';
 import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
+import '../../models/tool/localized_tool_text.dart';
 import '../../models/tool/tool_result.dart';
 import '../../services/file_tools/file_tool_session_guard.dart';
 import '../core/tool_argument_resolution.dart';
@@ -12,22 +13,34 @@ class WriteToolHandler implements ToolHandler {
   @override
   ToolDefinition get definition => const ToolDefinition(
         name: 'Write',
-        title: '写入文件',
-        description: '创建新文件或整文件覆盖已有文件。',
+        title: 'Write',
+        localizedTitle: LocalizedToolText(english: 'Write', chinese: '写入文件'),
         descriptionForModel:
-            '当用户明确要求创建新文件，或需要整文件重写时使用。对于已有文件的小范围修改，优先使用 Edit。Write 属于高风险写操作，需要确认。',
-        category: ToolCategory.productivity,
-        capabilities: [ToolCapability.fileWrite],
+            'Use this when the user clearly wants a new file or a full-file rewrite. For small edits to an existing file, prefer Edit. Write is a high-risk mutating action and requires confirmation.',
+        localizedDescriptionForModel: LocalizedToolText(
+          english:
+              'Use this when the user clearly wants a new file or a full-file rewrite. For small edits to an existing file, prefer Edit. Write is a high-risk mutating action and requires confirmation.',
+          chinese:
+              '当用户明确要求创建新文件，或需要整文件重写时使用。对于已有文件的小范围修改，优先使用 Edit。Write 属于高风险写操作，需要确认。',
+        ),
         supportedPlatforms: ['android', 'ios', 'macos', 'windows', 'linux'],
         requiresConfirmation: true,
-        riskLevel: 'high',
         argumentSchema: ToolArgumentSchema(
           properties: {
             'file_path': ToolArgumentProperty.string(
-              description: '要创建或覆盖的沙箱相对文件路径。',
+              description: 'Relative sandbox file path to create or overwrite.',
+              localizedDescription: LocalizedToolText(
+                english:
+                    'Relative sandbox file path to create or overwrite.',
+                chinese: '要创建或覆盖的沙箱相对文件路径。',
+              ),
             ),
             'content': ToolArgumentProperty.string(
-              description: '要写入的完整文件内容。',
+              description: 'Full file content to write.',
+              localizedDescription: LocalizedToolText(
+                english: 'Full file content to write.',
+                chinese: '要写入的完整文件内容。',
+              ),
             ),
           },
           required: ['file_path', 'content'],

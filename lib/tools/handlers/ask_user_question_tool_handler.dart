@@ -2,6 +2,7 @@ import '../../models/chat_message.dart';
 import '../../models/tool/tool_argument_property.dart';
 import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
+import '../../models/tool/localized_tool_text.dart';
 import '../../services/tool_executor.dart';
 import '../core/tool_argument_resolution.dart';
 import '../core/tool_execution_context.dart';
@@ -13,64 +14,115 @@ class AskUserQuestionToolHandler implements ToolHandler {
   @override
   ToolDefinition get definition => const ToolDefinition(
         name: 'ask_user_question',
-        title: '向用户提问',
-        description: '当完成当前任务缺少关键信息时，向用户发起结构化问题卡片。',
+        title: 'Ask User Question',
+        localizedTitle: LocalizedToolText(
+          english: 'Ask User Question',
+          chinese: '向用户提问',
+        ),
         descriptionForModel:
-            '当你无法继续当前任务、且缺少的关键信息只能由用户补充时，必须优先调用此工具，而不是直接用普通文本提问。适合单题、多题、单选、多选和 Other 自定义输入。用户回答后，系统会在同一个 turn 内继续执行。',
-        whenToUse: [
-          '完成任务所需的关键信息尚未提供，且不能安全假设',
-          '你想一次性收集多个决定后续方案的问题',
-          '你希望用户从结构化选项中选择，而不是自由文本来回澄清',
-        ],
-        whenNotToUse: [
-          '现有信息已经足够，可以直接回答',
-          '缺的不是用户偏好，而是应该通过其他工具获取的客观信息',
-          '只是想补充说明、寒暄或做非关键追问',
-        ],
+            'When you cannot continue the current task and the missing critical information can only come from the user, you must prefer this tool instead of asking in plain assistant text. It supports single-question, multi-question, single-select, multi-select, and Other custom input. After the user answers, the system continues within the same turn.',
+        localizedDescriptionForModel: LocalizedToolText(
+          english:
+              'When you cannot continue the current task and the missing critical information can only come from the user, you must prefer this tool instead of asking in plain assistant text. It supports single-question, multi-question, single-select, multi-select, and Other custom input. After the user answers, the system continues within the same turn.',
+          chinese:
+              '当你无法继续当前任务、且缺少的关键信息只能由用户补充时，必须优先调用此工具，而不是直接用普通文本提问。适合单题、多题、单选、多选和 Other 自定义输入。用户回答后，系统会在同一个 turn 内继续执行。',
+        ),
         runtimeKind: ToolRuntimeKind.userInteraction,
         argumentSchema: ToolArgumentSchema(
           properties: {
             'questions': ToolArgumentProperty(
               type: 'array',
               description:
-                  '问题列表。每项应包含 id、header、question、multiSelect、options；options 为 label/description 列表。',
+                  'List of questions. Each item should include id, header, question, multiSelect, and options; options are label/description pairs.',
+              localizedDescription: LocalizedToolText(
+                english:
+                    'List of questions. Each item should include id, header, question, multiSelect, and options; options are label/description pairs.',
+                chinese:
+                    '问题列表。每项应包含 id、header、question、multiSelect、options；options 为 label/description 列表。',
+              ),
               items: ToolArgumentProperty(
                 type: 'object',
-                description: '单个结构化问题定义。',
+                description: 'Definition of one structured question.',
+                localizedDescription: LocalizedToolText(
+                  english: 'Definition of one structured question.',
+                  chinese: '单个结构化问题定义。',
+                ),
                 required: ['id', 'question'],
                 additionalProperties: false,
                 properties: {
                   'id': ToolArgumentProperty.string(
-                    description: '稳定问题 id，用于回填用户答案。',
+                    description:
+                        'Stable question id used to map the user answer back.',
+                    localizedDescription: LocalizedToolText(
+                      english:
+                          'Stable question id used to map the user answer back.',
+                      chinese: '稳定问题 id，用于回填用户答案。',
+                    ),
                   ),
                   'header': ToolArgumentProperty.string(
-                    description: '显示在问题上方的短标题。',
+                    description: 'Short heading shown above the question.',
+                    localizedDescription: LocalizedToolText(
+                      english: 'Short heading shown above the question.',
+                      chinese: '显示在问题上方的短标题。',
+                    ),
                   ),
                   'question': ToolArgumentProperty.string(
-                    description: '真正向用户展示的问题内容。',
+                    description: 'The actual question shown to the user.',
+                    localizedDescription: LocalizedToolText(
+                      english: 'The actual question shown to the user.',
+                      chinese: '真正向用户展示的问题内容。',
+                    ),
                   ),
                   'multiSelect': ToolArgumentProperty(
                     type: 'boolean',
-                    description: '是否允许用户多选。',
+                    description:
+                        'Whether the user can choose multiple options.',
+                    localizedDescription: LocalizedToolText(
+                      english:
+                          'Whether the user can choose multiple options.',
+                      chinese: '是否允许用户多选。',
+                    ),
                   ),
                   'options': ToolArgumentProperty(
                     type: 'array',
-                    description: '可选项列表。',
+                    description: 'List of selectable options.',
+                    localizedDescription: LocalizedToolText(
+                      english: 'List of selectable options.',
+                      chinese: '可选项列表。',
+                    ),
                     items: ToolArgumentProperty(
                       type: 'object',
-                      description: '单个可选项定义。',
+                      description: 'Definition of one selectable option.',
+                      localizedDescription: LocalizedToolText(
+                        english: 'Definition of one selectable option.',
+                        chinese: '单个可选项定义。',
+                      ),
                       required: ['label'],
                       additionalProperties: false,
                       properties: {
                         'label': ToolArgumentProperty.string(
-                          description: '选项标题。',
+                          description: 'Option title shown to the user.',
+                          localizedDescription: LocalizedToolText(
+                            english: 'Option title shown to the user.',
+                            chinese: '选项标题。',
+                          ),
                         ),
                         'description': ToolArgumentProperty.string(
-                          description: '选项说明文字。',
+                          description:
+                              'Optional explanatory text for the option.',
+                          localizedDescription: LocalizedToolText(
+                            english:
+                                'Optional explanatory text for the option.',
+                            chinese: '选项说明文字。',
+                          ),
                         ),
                         'isRecommended': ToolArgumentProperty(
                           type: 'boolean',
-                          description: '是否为推荐选项。',
+                          description: 'Whether this option is recommended.',
+                          localizedDescription: LocalizedToolText(
+                            english: 'Whether this option is recommended.',
+                            chinese: '是否为推荐选项。',
+                          ),
                         ),
                       },
                     ),
@@ -81,26 +133,6 @@ class AskUserQuestionToolHandler implements ToolHandler {
           },
           required: ['questions'],
         ),
-        argumentExamples: {
-          'questions': [
-            {
-              'id': 'storage_layer',
-              'header': '存储',
-              'question': '你希望使用哪种本地存储方案？',
-              'multiSelect': false,
-              'options': [
-                {
-                  'label': 'SQLite',
-                  'description': '关系型，本地查询稳定',
-                },
-                {
-                  'label': 'Isar (Recommended)',
-                  'description': '对象存储，适合 Flutter 本地数据',
-                },
-              ],
-            },
-          ],
-        },
       );
 
   @override

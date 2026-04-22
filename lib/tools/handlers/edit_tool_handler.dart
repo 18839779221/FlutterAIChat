@@ -2,6 +2,7 @@ import '../../models/chat_message.dart';
 import '../../models/tool/tool_argument_property.dart';
 import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
+import '../../models/tool/localized_tool_text.dart';
 import '../../models/tool/tool_result.dart';
 import '../../services/file_tools/file_tool_session_guard.dart';
 import '../../services/file_tools/file_tool_write_service.dart';
@@ -13,29 +14,51 @@ class EditToolHandler implements ToolHandler {
   @override
   ToolDefinition get definition => const ToolDefinition(
         name: 'Edit',
-        title: '编辑文件',
-        description: '对文件中的精确文本片段执行替换。',
+        title: 'Edit',
+        localizedTitle: LocalizedToolText(english: 'Edit', chinese: '编辑文件'),
         descriptionForModel:
-            '当需要对已有文件做小范围、精确的文本替换时使用。通常应先 Read，再 Edit。若 old_string 在文件中不唯一，应补充更多上下文，或明确使用 replace_all。Edit 属于写操作，需要确认。',
-        category: ToolCategory.productivity,
-        capabilities: [ToolCapability.fileEdit],
+            'Use this for small, precise text replacements in an existing file. Usually Read first, then Edit. If old_string is not unique in the file, provide more context or explicitly use replace_all. Edit is a mutating action and requires confirmation.',
+        localizedDescriptionForModel: LocalizedToolText(
+          english:
+              'Use this for small, precise text replacements in an existing file. Usually Read first, then Edit. If old_string is not unique in the file, provide more context or explicitly use replace_all. Edit is a mutating action and requires confirmation.',
+          chinese:
+              '当需要对已有文件做小范围、精确的文本替换时使用。通常应先 Read，再 Edit。若 old_string 在文件中不唯一，应补充更多上下文，或明确使用 replace_all。Edit 属于写操作，需要确认。',
+        ),
         supportedPlatforms: ['android', 'ios', 'macos', 'windows', 'linux'],
         requiresConfirmation: true,
-        riskLevel: 'medium',
         argumentSchema: ToolArgumentSchema(
           properties: {
             'file_path': ToolArgumentProperty.string(
-              description: '要编辑的沙箱相对文件路径。',
+              description: 'Relative sandbox file path to edit.',
+              localizedDescription: LocalizedToolText(
+                english: 'Relative sandbox file path to edit.',
+                chinese: '要编辑的沙箱相对文件路径。',
+              ),
             ),
             'old_string': ToolArgumentProperty.string(
-              description: '文件中当前存在、将被替换的精确文本。',
+              description:
+                  'Exact existing text in the file that should be replaced.',
+              localizedDescription: LocalizedToolText(
+                english:
+                    'Exact existing text in the file that should be replaced.',
+                chinese: '文件中当前存在、将被替换的精确文本。',
+              ),
             ),
             'new_string': ToolArgumentProperty.string(
-              description: '替换后的新文本。',
+              description: 'Replacement text to write instead.',
+              localizedDescription: LocalizedToolText(
+                english: 'Replacement text to write instead.',
+                chinese: '替换后的新文本。',
+              ),
             ),
             'replace_all': ToolArgumentProperty(
               type: 'boolean',
-              description: '是否替换所有匹配项。',
+              description: 'Whether to replace all matches instead of just one.',
+              localizedDescription: LocalizedToolText(
+                english:
+                    'Whether to replace all matches instead of just one.',
+                chinese: '是否替换所有匹配项。',
+              ),
             ),
           },
           required: ['file_path', 'old_string', 'new_string'],

@@ -54,6 +54,18 @@ void main() {
       );
     });
 
+    test('exposes stable summary instruction prompt for downstream callers',
+        () async {
+      expect(
+        SessionSummaryService.summaryInstructionPrompt,
+        contains('当前目标：'),
+      );
+      expect(
+        SessionSummaryService.summaryInstructionPrompt,
+        contains('风险与下一步：'),
+      );
+    });
+
     test('rolls previous summary together with newer historical messages',
         () async {
       final service = SessionSummaryService(

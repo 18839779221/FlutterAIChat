@@ -1,3 +1,4 @@
+import '../../services/prompt/prompt_locale.dart';
 import 'tool_argument_property.dart';
 
 /// Structured input schema exported to the planner layer.
@@ -13,11 +14,14 @@ class ToolArgumentSchema {
     this.required = const [],
   });
 
-  Map<String, dynamic> toJsonSchema() {
+  Map<String, dynamic> toJsonSchema({
+    PromptLocale locale = PromptLocale.english,
+  }) {
     return {
       'type': 'object',
       'properties': {
-        for (final entry in properties.entries) entry.key: entry.value.toJsonSchema(),
+        for (final entry in properties.entries)
+          entry.key: entry.value.toJsonSchema(locale: locale),
       },
       'required': required,
     };

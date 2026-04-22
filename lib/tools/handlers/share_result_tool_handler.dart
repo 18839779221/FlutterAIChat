@@ -2,6 +2,7 @@ import '../../models/chat_message.dart';
 import '../../models/tool/tool_argument_property.dart';
 import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
+import '../../models/tool/localized_tool_text.dart';
 import '../../services/tool_executor.dart';
 import '../core/tool_argument_resolution.dart';
 import '../core/tool_execution_context.dart';
@@ -18,19 +19,19 @@ class ShareResultToolHandler implements ToolHandler {
   @override
   ToolDefinition get definition => const ToolDefinition(
         name: 'share_result',
-        title: '分享结果',
-        description: '调用系统分享面板分享文本结果。',
+        title: 'Share Result',
+        localizedTitle: LocalizedToolText(
+          english: 'Share Result',
+          chinese: '分享结果',
+        ),
         descriptionForModel:
-            '当用户明确要求把结果分享、发送、转发到其他应用时使用。它会打开系统分享面板，属于输出动作；如果用户只是想查看结果，不要自动调用。',
-        category: ToolCategory.outputAction,
-        capabilities: [ToolCapability.shareResult],
-        whenToUse: [
-          '用户明确说分享、发送给别人、导出到外部应用',
-        ],
-        whenNotToUse: [
-          '用户只是想继续阅读或总结内容',
-          '用户没有表达对外分享意图',
-        ],
+            'Use this when the user explicitly asks to share, send, or forward a result to another app. It opens the system share sheet and is an output action. If the user only wants to view the result, do not call it automatically.',
+        localizedDescriptionForModel: LocalizedToolText(
+          english:
+              'Use this when the user explicitly asks to share, send, or forward a result to another app. It opens the system share sheet and is an output action. If the user only wants to view the result, do not call it automatically.',
+          chinese:
+              '当用户明确要求把结果分享、发送、转发到其他应用时使用。它会打开系统分享面板，属于输出动作；如果用户只是想查看结果，不要自动调用。',
+        ),
         parameters: {
           'text': 'string',
           'subject': 'string?',
@@ -38,16 +39,23 @@ class ShareResultToolHandler implements ToolHandler {
         argumentSchema: ToolArgumentSchema(
           properties: {
             'text': ToolArgumentProperty.string(
-              description: '要分享的正文内容。',
+              description: 'Main body text to share.',
+              localizedDescription: LocalizedToolText(
+                english: 'Main body text to share.',
+                chinese: '要分享的正文内容。',
+              ),
             ),
             'subject': ToolArgumentProperty.string(
-              description: '可选分享主题。',
+              description: 'Optional share subject.',
+              localizedDescription: LocalizedToolText(
+                english: 'Optional share subject.',
+                chinese: '可选分享主题。',
+              ),
             ),
           },
           required: ['text'],
         ),
         requiresConfirmation: true,
-        riskLevel: 'high',
       );
 
   @override

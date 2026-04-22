@@ -140,7 +140,9 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         scheduleAutoSummary: scheduleAutoSummary,
       );
     } catch (e, stackTrace) {
-      Logger.e(_tag, '发送消息过程中出错', e);
+      final handledFailure = e is _HandledSendFailure ? e : null;
+      final rawError = handledFailure?.error ?? e;
+      Logger.e(_tag, '发送消息过程中出错', rawError);
       Logger.e(_tag, '堆栈跟踪', stackTrace);
       traceRecorder.record(
         turnId: turnId,
@@ -148,13 +150,15 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         status: ChatTraceStatus.failure,
         summary: '发送消息过程中出错',
         data: {
-          'error': e.toString(),
+          'error': rawError.toString(),
         },
       );
-      await _appendVisibleSendFailureMessage(
-        groupId: _ref.read(currentGroupProvider)?.id,
-        error: e,
-      );
+      if (handledFailure == null) {
+        await _appendVisibleSendFailureMessage(
+          groupId: _ref.read(currentGroupProvider)?.id,
+          error: rawError,
+        );
+      }
       _ref.read(chatSendStateProvider.notifier).update(
             isGenerating: false,
             phase: ChatSendPhase.idle,
@@ -419,7 +423,6 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         unawaited(assistantStreamBuffer?.cancel());
         assistantStreamBuffer?.dispose();
         assistantStreamBuffer = null;
-        Logger.e(_tag, 'agent loop 发送失败', error);
         traceRecorder.record(
           turnId: turnId,
           stage: ChatTraceStage.sendFailed,
@@ -439,7 +442,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
               phase: ChatSendPhase.idle,
             );
         if (!completion.isCompleted) {
-          completion.completeError(error, stackTrace);
+          completion.completeError(_HandledSendFailure(error), stackTrace);
         }
       },
       onDone: () {
@@ -1243,4 +1246,13 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       Logger.e(_tag, '加载分组失败', e);
     }
   }
+}
+
+class _HandledSendFailure implements Exception {
+  final Object error;
+
+  const _HandledSendFailure(this.error);
+
+  @override
+  String toString() => error.toString();
 }

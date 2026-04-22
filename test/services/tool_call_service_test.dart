@@ -71,7 +71,6 @@ class _FakeRuntimeToolHandler implements ToolHandler {
   ToolDefinition get definition => const ToolDefinition(
         name: 'debug_runtime_tool',
         title: 'Runtime Debug Tool',
-        description: 'Only exists in the runtime registry for testing.',
         parameters: {
           'topic': 'string',
         },
