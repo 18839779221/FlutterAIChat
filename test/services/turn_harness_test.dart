@@ -157,7 +157,6 @@ void main() {
               definition: ToolDefinition(
                 name: 'search_chat_history',
                 title: '搜索聊天记录',
-                description: '搜索历史消息',
               ),
               executionDecision: ToolPolicyDecision.autoRun,
               executionPolicyLabel: 'auto_run',
@@ -295,7 +294,6 @@ void main() {
               definition: ToolDefinition(
                 name: 'create_reminder',
                 title: '创建提醒',
-                description: '创建系统提醒',
               ),
               executionDecision: ToolPolicyDecision.requireConfirmation,
               executionPolicyLabel: 'require_confirmation',
@@ -609,7 +607,7 @@ void main() {
       );
     });
 
-    test('does not execute an identical tool call twice within the same turn',
+    test('allows an identical retrieval tool call in a later turn iteration',
         () async {
       final eventRepository = _InMemoryChatEventRepository();
       final turnRepository = _InMemoryChatTurnRepository();
@@ -653,13 +651,19 @@ void main() {
               providerState: {},
               isTerminal: false,
             ),
+            const ModelTurnDecision(
+              toolCalls: [],
+              assistantMessage: '基于两次检索结果给出最终回答',
+              diagnosticCode: 'planner_action_respond',
+              providerState: {},
+              isTerminal: true,
+            ),
           ]),
           toolPolicyService: await _createToolPolicyService(),
           availableTools: const [
             ToolDefinition(
               name: 'search_chat_history',
               title: '搜索聊天记录',
-              description: '搜索聊天记录',
               descriptionForModel: '当用户要求从历史记录找结论时使用。',
               argumentSchema: ToolArgumentSchema(
                 properties: {
@@ -713,7 +717,7 @@ void main() {
       final toolResults = emitted
           .where((event) => event.eventType == ChatEventType.toolResult)
           .toList(growable: false);
-      expect(toolResults, hasLength(1));
+      expect(toolResults, hasLength(2));
       expect(
         emitted.where((event) => event.eventType == ChatEventType.finalAnswer),
         isNotEmpty,
@@ -1039,7 +1043,6 @@ void main() {
             'ask_user_question': ToolDefinition(
               name: 'ask_user_question',
               title: '向用户提问',
-              description: '向用户发起结构化问题',
               runtimeKind: ToolRuntimeKind.userInteraction,
             ),
           },

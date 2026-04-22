@@ -46,7 +46,6 @@ void main() {
           ToolDefinition(
             name: 'web_search',
             title: '联网搜索',
-            description: '搜索外部网页',
             descriptionForModel: '当用户需要最新外部资料时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -58,7 +57,6 @@ void main() {
           ToolDefinition(
             name: 'create_reminder',
             title: '创建提醒',
-            description: '创建系统提醒',
             descriptionForModel: '当用户明确要求提醒时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -67,7 +65,6 @@ void main() {
               required: ['title'],
             ),
             requiresConfirmation: true,
-            riskLevel: 'medium',
           ),
         ],
       );
@@ -111,7 +108,6 @@ void main() {
           ToolDefinition(
             name: 'create_reminder',
             title: '创建提醒',
-            description: '创建系统提醒',
             descriptionForModel: '当用户明确要求提醒时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -120,7 +116,6 @@ void main() {
               required: ['title'],
             ),
             requiresConfirmation: true,
-            riskLevel: 'medium',
           ),
         ],
       );
@@ -156,7 +151,6 @@ void main() {
           ToolDefinition(
             name: 'create_reminder',
             title: '创建提醒',
-            description: '创建系统提醒',
             descriptionForModel: '当用户明确要求提醒时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -165,7 +159,6 @@ void main() {
               required: ['title'],
             ),
             requiresConfirmation: true,
-            riskLevel: 'medium',
           ),
         ],
       );
@@ -259,7 +252,6 @@ void main() {
           ToolDefinition(
             name: 'search_chat_history',
             title: '搜索聊天记录',
-            description: '搜索聊天记录',
             descriptionForModel: '当用户要求从历史记录找结论时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -339,7 +331,6 @@ void main() {
           ToolDefinition(
             name: 'ask_user_question',
             title: '向用户提问',
-            description: '向用户提问',
             descriptionForModel: '当必须补充关键信息时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -509,7 +500,6 @@ void main() {
           ToolDefinition(
             name: 'search_chat_history',
             title: '搜索聊天记录',
-            description: '搜索聊天记录',
             descriptionForModel: '当用户要求从历史记录找结论时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -521,7 +511,6 @@ void main() {
           ToolDefinition(
             name: 'Write',
             title: '写入文件',
-            description: '写入文件',
             descriptionForModel: '当用户明确要求创建本地文件或整文件覆盖时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -603,7 +592,6 @@ void main() {
           ToolDefinition(
             name: 'search_chat_history',
             title: '搜索聊天记录',
-            description: '搜索聊天记录',
             descriptionForModel: '当用户要求从历史记录找结论时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -615,7 +603,6 @@ void main() {
           ToolDefinition(
             name: 'Write',
             title: '写入文件',
-            description: '写入文件',
             descriptionForModel: '当用户明确要求创建本地文件或整文件覆盖时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -665,7 +652,6 @@ void main() {
           ToolDefinition(
             name: 'search_chat_history',
             title: '搜索聊天记录',
-            description: '搜索聊天记录',
             descriptionForModel: '当用户要求从历史记录找结论时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -753,7 +739,6 @@ void main() {
           ToolDefinition(
             name: 'web_search',
             title: '联网搜索',
-            description: '联网搜索',
             descriptionForModel: '当用户需要最新外部资料时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -831,7 +816,6 @@ void main() {
           ToolDefinition(
             name: 'ask_user_question',
             title: '向用户提问',
-            description: '向用户提问',
             descriptionForModel: '当必须补充关键信息时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -964,7 +948,6 @@ void main() {
           ToolDefinition(
             name: 'search_chat_history',
             title: '搜索聊天记录',
-            description: '搜索聊天记录',
             descriptionForModel: '当用户要求从历史记录找结论时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -1003,7 +986,6 @@ void main() {
           ToolDefinition(
             name: 'search_chat_history',
             title: '搜索聊天记录',
-            description: '搜索聊天记录',
             descriptionForModel: '当用户要求从历史记录找结论时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -1094,7 +1076,6 @@ void main() {
           ToolDefinition(
             name: 'search_chat_history',
             title: '搜索聊天记录',
-            description: '搜索聊天记录',
             descriptionForModel: '当用户要求从历史记录找结论时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -1144,7 +1125,6 @@ void main() {
           ToolDefinition(
             name: 'search_chat_history',
             title: '搜索聊天记录',
-            description: '搜索聊天记录',
             descriptionForModel: '当用户要求从历史记录找结论时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -1219,7 +1199,6 @@ void main() {
           ToolDefinition(
             name: 'search_chat_history',
             title: '搜索聊天记录',
-            description: '搜索聊天记录',
             descriptionForModel: '当用户要求从历史记录找结论时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -1295,7 +1274,6 @@ void main() {
           ToolDefinition(
             name: 'Read',
             title: '读取文件',
-            description: '读取文件内容',
             descriptionForModel: '当已经知道文件路径并需要查看内容时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -1351,7 +1329,6 @@ void main() {
           ToolDefinition(
             name: 'web_search',
             title: '联网搜索',
-            description: '搜索外部网页',
             descriptionForModel: '当用户需要最新外部资料时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {
@@ -1484,7 +1461,6 @@ void main() {
           ToolDefinition(
             name: 'fetch_webpage',
             title: '读取网页',
-            description: '读取网页',
             descriptionForModel: '当用户已经提供 URL 时使用。',
             argumentSchema: ToolArgumentSchema(
               properties: {

@@ -2,6 +2,7 @@ import '../../models/chat_message.dart';
 import '../../models/tool/tool_argument_property.dart';
 import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
+import '../../models/tool/localized_tool_text.dart';
 import '../../models/tool/tool_result.dart';
 import '../core/tool_argument_resolution.dart';
 import '../core/tool_execution_context.dart';
@@ -11,17 +12,25 @@ class LsToolHandler implements ToolHandler {
   @override
   ToolDefinition get definition => const ToolDefinition(
         name: 'LS',
-        title: '列出目录',
-        description: '列出沙箱目录下的直接子项。',
+        title: 'LS',
+        localizedTitle: LocalizedToolText(english: 'LS', chinese: '列出目录'),
         descriptionForModel:
-            '当你想确认目录结构、验证路径是否存在、或查看某个目录下有哪些直接文件和子目录时使用。不会递归读取文件内容。',
-        category: ToolCategory.retrieval,
-        capabilities: [ToolCapability.fileDiscovery],
+            'Use this to inspect directory structure, verify that a path exists, or see the direct files and subdirectories under a directory. It does not read file contents recursively.',
+        localizedDescriptionForModel: LocalizedToolText(
+          english:
+              'Use this to inspect directory structure, verify that a path exists, or see the direct files and subdirectories under a directory. It does not read file contents recursively.',
+          chinese:
+              '当你想确认目录结构、验证路径是否存在、或查看某个目录下有哪些直接文件和子目录时使用。不会递归读取文件内容。',
+        ),
         supportedPlatforms: ['android', 'ios', 'macos', 'windows', 'linux'],
         argumentSchema: ToolArgumentSchema(
           properties: {
             'path': ToolArgumentProperty.string(
-              description: '要列出的沙箱相对目录路径。',
+              description: 'Relative sandbox directory path to list.',
+              localizedDescription: LocalizedToolText(
+                english: 'Relative sandbox directory path to list.',
+                chinese: '要列出的沙箱相对目录路径。',
+              ),
             ),
           },
           required: ['path'],

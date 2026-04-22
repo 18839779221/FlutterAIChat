@@ -114,9 +114,7 @@ const _allTools = [
   ToolDefinition(
     name: 'web_search',
     title: '联网搜索',
-    description: '搜索外部网页',
     descriptionForModel: '当用户需要实时外部资料时使用。',
-    category: ToolCategory.retrieval,
     argumentSchema: ToolArgumentSchema(
       properties: {
         'query': ToolArgumentProperty.string(description: '搜索词'),
@@ -127,9 +125,7 @@ const _allTools = [
   ToolDefinition(
     name: 'fetch_webpage',
     title: '读取网页',
-    description: '读取网页',
     descriptionForModel: '当用户已经提供 URL 时使用。',
-    category: ToolCategory.retrieval,
     argumentSchema: ToolArgumentSchema(
       properties: {
         'url': ToolArgumentProperty.string(description: '网页链接'),
@@ -140,9 +136,7 @@ const _allTools = [
   ToolDefinition(
     name: 'create_reminder',
     title: '创建提醒',
-    description: '创建提醒',
     descriptionForModel: '当用户明确要求提醒时使用。',
-    category: ToolCategory.productivity,
     argumentSchema: ToolArgumentSchema(
       properties: {
         'title': ToolArgumentProperty.string(description: '标题'),
@@ -154,9 +148,7 @@ const _allTools = [
   ToolDefinition(
     name: 'share_result',
     title: '分享结果',
-    description: '分享结果',
     descriptionForModel: '当用户明确要求分享时使用。',
-    category: ToolCategory.outputAction,
     argumentSchema: ToolArgumentSchema(
       properties: {
         'text': ToolArgumentProperty.string(description: '正文'),

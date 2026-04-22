@@ -6,12 +6,15 @@ import '../models/session/session_context_snapshot.dart';
 import '../repositories/chat_event_repository.dart';
 import '../repositories/chat_turn_repository.dart';
 import '../repositories/session_context_snapshot_repository.dart';
+import '../utils/logger.dart';
 import 'chat_service.dart';
 import 'session_context_projector.dart';
 import 'session_summary_service.dart';
 import 'session_token_budget_service.dart';
 
 class SessionContextService {
+  static const String _tag = 'SessionContextService';
+
   SessionContextService({
     required ChatTurnRepository chatTurnRepository,
     required ChatEventRepository chatEventRepository,
@@ -80,17 +83,6 @@ class SessionContextService {
       usableInputBudget: profile.usableInputBudget,
       compactionConfig: compactionConfig,
     );
-    final olderSegments = historySegments
-        .take(historySegments.length - recentSegments.length)
-        .toList(growable: false);
-
-    if (olderSegments.isNotEmpty) {
-      activeSummary = await _rollSummaryForward(
-        groupId: groupId,
-        existingSnapshot: snapshot,
-        compactedSegments: olderSegments,
-      );
-    }
 
     var budget = _tokenBudgetService.evaluatePlannerBudget(
       modelName: modelName,
@@ -113,6 +105,14 @@ class SessionContextService {
       );
       activeSummary = compactionResult.snapshot;
       recentSegments = compactionResult.recentSegments;
+    } else {
+      budget = _tokenBudgetService.evaluatePlannerBudget(
+        modelName: modelName,
+        fixedPrefixTokens: fixedPrefixTokens,
+        summaryTokens: _resolveSnapshotTokens(activeSummary),
+        recentTurnsTokens: _estimateSegmentsTokens(recentSegments),
+        currentTurnTokens: currentTurnTokens,
+      );
     }
 
     return [
@@ -227,6 +227,16 @@ class SessionContextService {
         existingSnapshot: existingSnapshot,
         compactedSegments: compactedSegments,
       );
+      if (activeSnapshot == null) {
+        Logger.w(
+          _tag,
+          'summary compaction skipped because summary generation failed',
+        );
+        return _CompactionResult(
+          snapshot: existingSnapshot,
+          recentSegments: historySegments.toList(growable: false),
+        );
+      }
     }
 
     return _CompactionResult(
@@ -235,24 +245,32 @@ class SessionContextService {
     );
   }
 
-  Future<SessionContextSnapshot> _rollSummaryForward({
+  Future<SessionContextSnapshot?> _rollSummaryForward({
     required int groupId,
     required SessionContextSnapshot? existingSnapshot,
     required List<_TurnContextSegment> compactedSegments,
   }) async {
-    final summary = await _summaryService.summarizeHistory(
-      previousSummary: existingSnapshot?.summaryText,
-      historicalMessages:
-          compactedSegments.expand((segment) => segment.messages).toList(),
-    );
-    final snapshot = SessionContextSnapshot(
-      groupId: groupId,
-      summaryText: summary.summaryText,
-      coveredUntilTurnId: compactedSegments.last.turnId,
-      estimatedTokens: summary.estimatedTokens,
-    );
-    await _snapshotRepository.upsertLatest(snapshot);
-    return snapshot;
+    try {
+      final summary = await _summaryService.summarizeHistory(
+        previousSummary: existingSnapshot?.summaryText,
+        historicalMessages:
+            compactedSegments.expand((segment) => segment.messages).toList(),
+      );
+      final snapshot = SessionContextSnapshot(
+        groupId: groupId,
+        summaryText: summary.summaryText,
+        coveredUntilTurnId: compactedSegments.last.turnId,
+        estimatedTokens: summary.estimatedTokens,
+      );
+      await _snapshotRepository.upsertLatest(snapshot);
+      return snapshot;
+    } catch (error) {
+      Logger.w(
+        _tag,
+        'failed to roll summary forward: $error',
+      );
+      return null;
+    }
   }
 
   int _estimateSegmentsTokens(Iterable<_TurnContextSegment> segments) {

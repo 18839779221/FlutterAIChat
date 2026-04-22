@@ -199,7 +199,7 @@ void main() {
       expect(decision.providerState, containsPair('response_id', 'resp_456'));
     });
 
-    test('does not preserve response_id when provider marks response unstored',
+    test('preserves response_id when payload exposes a reusable response id',
         () {
       const adapter = OpenAIResponsesToolLoopAdapter();
 
@@ -221,7 +221,7 @@ void main() {
 
       expect(decision, isNotNull);
       expect(decision!.toolCalls, hasLength(1));
-      expect(decision.providerState, isEmpty);
+      expect(decision.providerState, containsPair('response_id', 'resp_unstored'));
     });
   });
 }

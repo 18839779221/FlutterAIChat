@@ -2,6 +2,7 @@ import '../../models/chat_message.dart';
 import '../../models/tool/tool_argument_property.dart';
 import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
+import '../../models/tool/localized_tool_text.dart';
 import '../../services/tool_executor.dart';
 import '../core/tool_argument_resolution.dart';
 import '../core/tool_datetime_normalizer.dart';
@@ -23,19 +24,19 @@ class CreateReminderToolHandler implements ToolHandler {
   @override
   ToolDefinition get definition => const ToolDefinition(
         name: 'create_reminder',
-        title: '创建提醒',
-        description: '创建系统提醒事项。',
+        title: 'Create Reminder',
+        localizedTitle: LocalizedToolText(
+          english: 'Create Reminder',
+          chinese: '创建提醒',
+        ),
         descriptionForModel:
-            '当用户明确要求创建提醒、闹钟或待办提醒时使用。必须具备标题和提醒时间；如果时间缺失，应先继续确认，不要盲目调用。该工具会触发系统侧写操作，需要确认。',
-        category: ToolCategory.productivity,
-        capabilities: [ToolCapability.reminderCreate],
-        whenToUse: [
-          '用户要求提醒我、到时候叫我、帮我设提醒',
-        ],
-        whenNotToUse: [
-          '用户没有明确要求创建提醒',
-          '缺少可解析的提醒时间',
-        ],
+            'Use this when the user explicitly asks to create a reminder, alarm, or to-do reminder. It must have a title and a reminder time. If time is missing, ask or continue confirmation first instead of calling blindly. This tool triggers a system-side write action and requires confirmation.',
+        localizedDescriptionForModel: LocalizedToolText(
+          english:
+              'Use this when the user explicitly asks to create a reminder, alarm, or to-do reminder. It must have a title and a reminder time. If time is missing, ask or continue confirmation first instead of calling blindly. This tool triggers a system-side write action and requires confirmation.',
+          chinese:
+              '当用户明确要求创建提醒、闹钟或待办提醒时使用。必须具备标题和提醒时间；如果时间缺失，应先继续确认，不要盲目调用。该工具会触发系统侧写操作，需要确认。',
+        ),
         parameters: {
           'title': 'string',
           'dueAt': 'string?',
@@ -44,20 +45,35 @@ class CreateReminderToolHandler implements ToolHandler {
         argumentSchema: ToolArgumentSchema(
           properties: {
             'title': ToolArgumentProperty.string(
-              description: '提醒标题，说明需要提醒的事项。',
+              description:
+                  'Reminder title describing what should be remembered.',
+              localizedDescription: LocalizedToolText(
+                english:
+                    'Reminder title describing what should be remembered.',
+                chinese: '提醒标题，说明需要提醒的事项。',
+              ),
             ),
             'dueAt': ToolArgumentProperty.string(
-              description: '提醒时间，建议使用 ISO 时间字符串或可被系统解析的明确时间。',
+              description:
+                  'Reminder time, ideally as an ISO datetime string or another explicit parseable time.',
+              localizedDescription: LocalizedToolText(
+                english:
+                    'Reminder time, ideally as an ISO datetime string or another explicit parseable time.',
+                chinese: '提醒时间，建议使用 ISO 时间字符串或可被系统解析的明确时间。',
+              ),
               format: 'date-time',
             ),
             'note': ToolArgumentProperty.string(
-              description: '可选备注，用于补充提醒细节。',
+              description: 'Optional note with extra reminder details.',
+              localizedDescription: LocalizedToolText(
+                english: 'Optional note with extra reminder details.',
+                chinese: '可选备注，用于补充提醒细节。',
+              ),
             ),
           },
           required: ['title', 'dueAt'],
         ),
         requiresConfirmation: true,
-        riskLevel: 'medium',
       );
 
   @override

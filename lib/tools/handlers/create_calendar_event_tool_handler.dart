@@ -2,6 +2,7 @@ import '../../models/chat_message.dart';
 import '../../models/tool/tool_argument_property.dart';
 import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
+import '../../models/tool/localized_tool_text.dart';
 import '../../services/tool_executor.dart';
 import '../core/tool_argument_resolution.dart';
 import '../core/tool_datetime_normalizer.dart';
@@ -23,19 +24,19 @@ class CreateCalendarEventToolHandler implements ToolHandler {
   @override
   ToolDefinition get definition => const ToolDefinition(
         name: 'create_calendar_event',
-        title: '创建日历事件',
-        description: '创建系统日历事件。',
+        title: 'Create Calendar Event',
+        localizedTitle: LocalizedToolText(
+          english: 'Create Calendar Event',
+          chinese: '创建日历事件',
+        ),
         descriptionForModel:
-            '当用户明确要求安排日程、创建日历事件或加入日历时使用。必须具备标题和开始时间；结束时间、地点、备注可选。该工具会写入系统日历，属于高风险写操作，需要确认。',
-        category: ToolCategory.productivity,
-        capabilities: [ToolCapability.calendarCreate],
-        whenToUse: [
-          '用户要求创建日程、加入日历、安排会议',
-        ],
-        whenNotToUse: [
-          '用户只是讨论计划，但没有要求实际创建日历事件',
-          '缺少可解析的开始时间',
-        ],
+            'Use this when the user explicitly asks to schedule something, create a calendar event, or add something to the calendar. It must have a title and start time; end time, location, and notes are optional. This tool writes to the system calendar, so it is a high-risk mutating action and requires confirmation.',
+        localizedDescriptionForModel: LocalizedToolText(
+          english:
+              'Use this when the user explicitly asks to schedule something, create a calendar event, or add something to the calendar. It must have a title and start time; end time, location, and notes are optional. This tool writes to the system calendar, so it is a high-risk mutating action and requires confirmation.',
+          chinese:
+              '当用户明确要求安排日程、创建日历事件或加入日历时使用。必须具备标题和开始时间；结束时间、地点、备注可选。该工具会写入系统日历，属于高风险写操作，需要确认。',
+        ),
         parameters: {
           'title': 'string',
           'startAt': 'string',
@@ -46,27 +47,48 @@ class CreateCalendarEventToolHandler implements ToolHandler {
         argumentSchema: ToolArgumentSchema(
           properties: {
             'title': ToolArgumentProperty.string(
-              description: '日历事件标题。',
+              description: 'Calendar event title.',
+              localizedDescription: LocalizedToolText(
+                english: 'Calendar event title.',
+                chinese: '日历事件标题。',
+              ),
             ),
             'startAt': ToolArgumentProperty.string(
-              description: '事件开始时间，建议使用 ISO 时间字符串或明确的日期时间。',
+              description:
+                  'Event start time, ideally as an ISO datetime string or another explicit date and time.',
+              localizedDescription: LocalizedToolText(
+                english:
+                    'Event start time, ideally as an ISO datetime string or another explicit date and time.',
+                chinese: '事件开始时间，建议使用 ISO 时间字符串或明确的日期时间。',
+              ),
               format: 'date-time',
             ),
             'endAt': ToolArgumentProperty.string(
-              description: '可选的结束时间。',
+              description: 'Optional event end time.',
+              localizedDescription: LocalizedToolText(
+                english: 'Optional event end time.',
+                chinese: '可选的结束时间。',
+              ),
               format: 'date-time',
             ),
             'location': ToolArgumentProperty.string(
-              description: '可选的地点信息。',
+              description: 'Optional event location.',
+              localizedDescription: LocalizedToolText(
+                english: 'Optional event location.',
+                chinese: '可选的地点信息。',
+              ),
             ),
             'notes': ToolArgumentProperty.string(
-              description: '可选备注，用于补充议程细节。',
+              description: 'Optional notes with extra agenda details.',
+              localizedDescription: LocalizedToolText(
+                english: 'Optional notes with extra agenda details.',
+                chinese: '可选备注，用于补充议程细节。',
+              ),
             ),
           },
           required: ['title', 'startAt'],
         ),
         requiresConfirmation: true,
-        riskLevel: 'high',
       );
 
   @override

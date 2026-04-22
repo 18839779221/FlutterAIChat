@@ -25,13 +25,11 @@ void main() {
       const searchTool = ToolDefinition(
         name: 'search_chat_history',
         title: '搜索聊天记录',
-        description: '搜索历史消息',
         parameters: {'query': 'string'},
       );
       const fetchTool = ToolDefinition(
         name: 'fetch_webpage',
         title: '读取网页',
-        description: '读取网页正文',
         parameters: {'url': 'string'},
       );
 
@@ -49,10 +47,8 @@ void main() {
       const reminderTool = ToolDefinition(
         name: 'create_reminder',
         title: '创建提醒',
-        description: '创建系统提醒',
         parameters: {'title': 'string'},
         requiresConfirmation: true,
-        riskLevel: 'medium',
       );
 
       expect(
@@ -65,10 +61,8 @@ void main() {
       const reminderTool = ToolDefinition(
         name: 'create_reminder',
         title: '创建提醒',
-        description: '创建系统提醒',
         parameters: {'title': 'string'},
         requiresConfirmation: true,
-        riskLevel: 'medium',
       );
 
       await service.trustTool(reminderTool.name);
@@ -84,10 +78,8 @@ void main() {
       const reminderTool = ToolDefinition(
         name: 'create_reminder',
         title: '创建提醒',
-        description: '创建系统提醒',
         parameters: {'title': 'string'},
         requiresConfirmation: true,
-        riskLevel: 'medium',
       );
 
       await service.trustTool(reminderTool.name);
@@ -104,10 +96,8 @@ void main() {
       const reminderTool = ToolDefinition(
         name: 'create_reminder',
         title: '创建提醒',
-        description: '创建系统提醒',
         parameters: {'title': 'string'},
         requiresConfirmation: true,
-        riskLevel: 'medium',
       );
 
       await service.blockTool(reminderTool.name);
@@ -127,10 +117,8 @@ void main() {
       const reminderTool = ToolDefinition(
         name: 'create_reminder',
         title: '创建提醒',
-        description: '创建系统提醒',
         parameters: {'title': 'string'},
         requiresConfirmation: true,
-        riskLevel: 'medium',
       );
 
       final confirmationAccess = await service.resolveToolAccess(reminderTool);
@@ -153,16 +141,13 @@ void main() {
       const readTool = ToolDefinition(
         name: 'search_chat_history',
         title: '搜索聊天记录',
-        description: '搜索历史消息',
         parameters: {'query': 'string'},
       );
       const riskyTool = ToolDefinition(
         name: 'create_reminder',
         title: '创建提醒',
-        description: '创建系统提醒',
         parameters: {'title': 'string'},
         requiresConfirmation: true,
-        riskLevel: 'medium',
       );
 
       final autoRunAccess = await service.resolveToolAccess(readTool);
@@ -190,16 +175,13 @@ void main() {
       const readTool = ToolDefinition(
         name: 'search_chat_history',
         title: '搜索聊天记录',
-        description: '搜索历史消息',
         parameters: {'query': 'string'},
       );
       const riskyTool = ToolDefinition(
         name: 'create_reminder',
         title: '创建提醒',
-        description: '创建系统提醒',
         parameters: {'title': 'string'},
         requiresConfirmation: true,
-        riskLevel: 'medium',
       );
 
       final visibleAccess = <ToolAccessSnapshot>[

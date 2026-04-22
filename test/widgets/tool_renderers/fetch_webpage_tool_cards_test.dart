@@ -16,19 +16,21 @@ void main() {
           theme: AppTheme.light(),
           home: const Scaffold(
             body: FetchWebpageToolWorkflowCard(
-              step: ToolWorkflowStep(
-                stepId: 'fetch-1',
-                turnId: 'turn-1',
-                toolName: 'fetch_webpage',
-                title: '读取网页',
-                summary: '准备读取网页',
-                status: ToolWorkflowStepStatus.running,
-                requiresConfirmation: false,
-                details: {
-                  'url': 'https://openai.com/news',
-                  'extractMode': 'article',
-                },
-              ),
+              steps: [
+                ToolWorkflowStep(
+                  stepId: 'fetch-1',
+                  turnId: 'turn-1',
+                  toolName: 'fetch_webpage',
+                  title: '读取网页',
+                  summary: '准备读取网页',
+                  status: ToolWorkflowStepStatus.running,
+                  requiresConfirmation: false,
+                  details: {
+                    'url': 'https://openai.com/news',
+                    'extractMode': 'article',
+                  },
+                ),
+              ],
             ),
           ),
         ),

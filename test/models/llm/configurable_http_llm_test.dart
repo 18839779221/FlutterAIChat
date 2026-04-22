@@ -12,6 +12,7 @@ import 'package:ai_chat/models/llm/llm_provider_model.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
 import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/services/session_summary_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -943,6 +944,61 @@ void main() {
       expect(client.lastRequestBody?['previous_response_id'], 'resp_prev');
     });
 
+    test('responses decision preserves response_id even when payload store is false',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'id': 'resp_unstored',
+            'store': false,
+            'output': [
+              {
+                'type': 'function_call',
+                'call_id': 'fc_1',
+                'name': 'search_chat_history',
+                'arguments': jsonEncode({'query': '数据库版本'}),
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '查数据库版本', role: MessageRole.user),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        availableTools: const [
+          PlannerToolOption(
+            name: 'search_chat_history',
+            description: '搜索聊天历史',
+            inputSchema: {
+              'type': 'object',
+              'properties': {
+                'query': {'type': 'string'},
+              },
+              'required': ['query'],
+            },
+          ),
+        ],
+        providerStyle: ChatTurnProviderStyle.openaiResponses,
+        providerState: const {'response_id': 'resp_prev'},
+      );
+
+      expect(decision, isNotNull);
+      expect(decision!.providerStyle, ChatTurnProviderStyle.openaiResponses);
+      expect(decision.providerState, containsPair('response_id', 'resp_unstored'));
+      expect(decision.toolCalls.single.providerCallId, 'fc_1');
+      expect(client.lastRequestBody?['previous_response_id'], 'resp_prev');
+    });
+
     test('chat completions decision preserves duplicate multi-tool calls as parsed',
         () async {
       final client = _RecordingHttpClient(
@@ -1482,6 +1538,80 @@ void main() {
           },
         ],
       });
+    });
+  });
+
+  group('ConfigurableHttpLLM.summarizeConversation', () {
+    test('replaces session summary instruction prompt instead of stacking it',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'role': 'assistant',
+                  'content': 'stable summary',
+                },
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+      );
+
+      final summary = await llm.summarizeConversation([
+        ChatMessage(
+          text: SessionSummaryService.summaryInstructionPrompt,
+          role: MessageRole.system,
+        ),
+        ChatMessage(text: '历史消息', role: MessageRole.user),
+      ]);
+
+      expect(summary, 'stable summary');
+      final messages = client.lastRequestBody?['messages'] as List<dynamic>?;
+      expect(messages, isNotNull);
+      expect(messages, hasLength(2));
+      expect(messages!.first['role'], 'system');
+      expect((messages.first['content'] as String), contains('Summarize and compress the conversation.'));
+      expect((messages.first['content'] as String),
+          isNot(contains('请将以下会话历史整理为稳定摘要')));
+    });
+
+    test('returns empty string when provider summary is empty', () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'role': 'assistant',
+                  'content': '   ',
+                },
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+      );
+
+      final summary = await llm.summarizeConversation([
+        ChatMessage(text: '历史消息', role: MessageRole.user),
+      ]);
+
+      expect(summary, isEmpty);
     });
   });
 }

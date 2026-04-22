@@ -21,10 +21,16 @@ class PromptBuilderService {
     List<String> runtimeSections = const [],
   }) {
     final sections = <String>[];
-    if (stage != PromptStage.summary) {
-      sections.add(_catalog.base(locale));
+    if (stage == PromptStage.summary) {
+      sections.add(_catalog.stageDelta(stage, locale));
+    } else {
+      sections.add(_catalog.identityAndCoreRules(locale));
+      sections.add(_catalog.doingTasks(locale));
+      sections.add(_catalog.usingTools(locale));
+      sections.add(_catalog.faithfulReporting(locale));
+      sections.add(_catalog.communication(locale));
+      sections.add(_catalog.stageDelta(stage, locale));
     }
-    sections.add(_catalog.stageDelta(stage, locale));
     sections.addAll(
       _runtimeContextBuilder.buildRuntimeSections(
         locale: locale,
@@ -32,6 +38,9 @@ class PromptBuilderService {
         runtimeSections: runtimeSections,
       ),
     );
-    return sections.map((section) => section.trim()).where((s) => s.isNotEmpty).join('\n\n');
+    return sections
+        .map((section) => section.trim())
+        .where((s) => s.isNotEmpty)
+        .join('\n\n');
   }
 }

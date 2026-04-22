@@ -10,7 +10,6 @@ void main() {
         definition: ToolDefinition(
           name: 'create_reminder',
           title: '创建提醒',
-          description: '创建系统提醒',
         ),
         executionDecision: ToolPolicyDecision.requireConfirmation,
         executionPolicyLabel: 'require_confirmation',
@@ -29,7 +28,6 @@ void main() {
       const definition = ToolDefinition(
         name: 'web_search',
         title: '联网搜索',
-        description: '搜索外部网页',
       );
 
       final snapshot = ToolAccessSnapshot.autoRun(definition: definition);
@@ -46,7 +44,6 @@ void main() {
         definition: const ToolDefinition(
           name: 'create_reminder',
           title: '创建提醒',
-          description: '创建系统提醒',
           requiresConfirmation: true,
         ),
         isBlocked: true,
@@ -55,7 +52,6 @@ void main() {
         definition: const ToolDefinition(
           name: 'Write',
           title: '写入文件',
-          description: '保存结构化笔记',
           requiresConfirmation: true,
         ),
       );
@@ -76,7 +72,6 @@ void main() {
       const definition = ToolDefinition(
         name: 'share_result',
         title: '分享结果',
-        description: '分享文本',
       );
 
       final blocked = ToolAccessSnapshot.fromDecision(

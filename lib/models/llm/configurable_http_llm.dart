@@ -14,6 +14,7 @@ import '../agent/planner_tool_choice.dart';
 import '../agent/planner_tool_option.dart';
 import '../chat_message.dart';
 import '../chat_turn.dart';
+import '../../services/session_summary_service.dart';
 import 'api_protocol_resolver.dart';
 import 'api_stream_parser.dart';
 import 'base_llm.dart';
@@ -157,29 +158,64 @@ class ConfigurableHttpLLM implements BaseLLM {
       Logger.i(_tag, '开始生成对话摘要，消息数量: ${messages.length}');
       final runtimeConfig = await _settingsRepository.getLlmConfig();
       _validateRuntimeConfig(runtimeConfig);
-      final summaryPrompt = [
-        ChatMessage(
-          text: _promptBuilder.buildSystemPrompt(
-            stage: PromptStage.summary,
-            locale: PromptLocale.english,
-          ),
-          role: MessageRole.system,
-        ),
-        ...messages,
-      ];
+      final summaryPrompt = _normalizeSummaryMessages(messages);
 
       final summary = await _sendTextRequest(
         runtimeConfig,
         config: ChatConfig(useReasoning: false, systemPrompt: ''),
         messages: summaryPrompt,
       );
-      Logger.i(_tag, '生成摘要成功: $summary');
-      return summary.trim();
+      final trimmedSummary = summary.trim();
+      if (trimmedSummary.isEmpty) {
+        Logger.w(_tag, '生成摘要返回空结果');
+        return '';
+      }
+      Logger.i(_tag, '生成摘要成功: $trimmedSummary');
+      return trimmedSummary;
     } catch (e, stackTrace) {
       Logger.e(_tag, '生成摘要失败', e);
       Logger.e(_tag, '堆栈跟踪', stackTrace);
       throw Exception('生成摘要失败: $e');
     }
+  }
+
+  List<ChatMessage> _normalizeSummaryMessages(List<ChatMessage> messages) {
+    final normalized = messages
+        .map(
+          (message) => ChatMessage(
+            text: message.text,
+            role: message.role,
+            status: message.status,
+          ),
+        )
+        .toList(growable: true);
+    final firstSystemIndex =
+        normalized.indexWhere((message) => message.role == MessageRole.system);
+    final stagePrompt = _promptBuilder.buildSystemPrompt(
+      stage: PromptStage.summary,
+      locale: PromptLocale.english,
+    );
+
+    if (firstSystemIndex == -1) {
+      normalized.insert(
+        0,
+        ChatMessage(
+          text: stagePrompt,
+          role: MessageRole.system,
+        ),
+      );
+      return normalized;
+    }
+
+    if (normalized[firstSystemIndex].text.trim() ==
+        SessionSummaryService.summaryInstructionPrompt.trim()) {
+      normalized[firstSystemIndex] = ChatMessage(
+        text: stagePrompt,
+        role: MessageRole.system,
+        status: normalized[firstSystemIndex].status,
+      );
+    }
+    return normalized;
   }
 
   @override
