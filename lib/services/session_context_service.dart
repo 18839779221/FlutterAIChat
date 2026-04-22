@@ -1,6 +1,7 @@
 import '../models/chat_event.dart';
 import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
+import '../models/session/context_compaction_config.dart';
 import '../models/session/session_context_snapshot.dart';
 import '../repositories/chat_event_repository.dart';
 import '../repositories/chat_turn_repository.dart';
@@ -11,8 +12,6 @@ import 'session_summary_service.dart';
 import 'session_token_budget_service.dart';
 
 class SessionContextService {
-  static const int _minimumCompressionReserveTokens = 160;
-
   SessionContextService({
     required ChatTurnRepository chatTurnRepository,
     required ChatEventRepository chatEventRepository,
@@ -44,8 +43,12 @@ class SessionContextService {
     required ChatConfig config,
   }) async {
     final snapshot = await _snapshotRepository.getLatestByGroup(groupId);
+    final modelName = _chatService.getModelName(config);
+    final profile = _tokenBudgetService.resolveProfile(modelName);
+    final compactionConfig = profile.compactionConfig;
+
     final allTurns = await _chatTurnRepository.getTurnsByGroup(groupId);
-    final historyTurns = allTurns.where((turn) {
+    final completedTurns = allTurns.where((turn) {
       final turnId = turn.id;
       if (turnId == null || turnId >= currentTurnId) {
         return false;
@@ -53,69 +56,69 @@ class SessionContextService {
       if (snapshot != null && turnId <= snapshot.coveredUntilTurnId) {
         return false;
       }
-      return true;
+      return turn.status == ChatTurnStatus.completed;
     }).toList(growable: false);
 
     final groupedHistoryEvents = await _loadHistoryEventsByTurn(
       groupId: groupId,
-      allowedTurnIds: historyTurns.map((turn) => turn.id!).toSet(),
+      allowedTurnIds: completedTurns.map((turn) => turn.id!).toSet(),
     );
     final historySegments = _buildHistorySegments(
-      historyTurns: historyTurns,
+      historyTurns: completedTurns,
       groupedEvents: groupedHistoryEvents,
     );
     final currentMessages =
         _contextProjector.projectEventsToContext(currentTurnTranscript);
-
-    final modelName = _chatService.getModelName(config);
-    final snapshotTokens = snapshot?.estimatedTokens ??
-        (snapshot == null
-            ? 0
-            : _tokenBudgetService.estimateTextTokens(snapshot.summaryText));
-    final fixedTokens = _tokenBudgetService.estimateTextTokens(
-          _resolveSystemPrompt(config),
-        ) +
+    final fixedPrefixTokens =
+        _tokenBudgetService.estimateTextTokens(_resolveSystemPrompt(config));
+    final currentTurnTokens =
         _tokenBudgetService.estimateMessagesTokens(currentMessages);
-    final historySplit = _planHistorySplit(
+
+    var activeSummary = snapshot;
+    var recentSegments = _selectRecentCompletedTurns(
       historySegments: historySegments,
-      targetHistoryTokens: _resolveTargetHistoryTokens(
-        modelName: modelName,
-        fixedTokens: fixedTokens,
-        snapshotTokens: snapshotTokens,
-      ),
+      usableInputBudget: profile.usableInputBudget,
+      compactionConfig: compactionConfig,
     );
-    final retainedHistoryMessages = historySplit.retainedSegments
-        .expand((segment) => segment.messages)
+    final olderSegments = historySegments
+        .take(historySegments.length - recentSegments.length)
         .toList(growable: false);
-    if (historySplit.segmentsToCompress.isNotEmpty) {
-      final projectedToCompress = [
-        if (snapshot != null)
-          _contextProjector.projectSnapshotToContext(snapshot.summaryText),
-        ...historySplit.segmentsToCompress
-            .expand((segment) => segment.messages),
-      ];
-      final summary = await _summaryService.summarize(
+
+    if (olderSegments.isNotEmpty) {
+      activeSummary = await _rollSummaryForward(
         groupId: groupId,
-        projectedHistory: projectedToCompress,
+        existingSnapshot: snapshot,
+        compactedSegments: olderSegments,
       );
-      final compressedSnapshot = SessionContextSnapshot(
+    }
+
+    var budget = _tokenBudgetService.evaluatePlannerBudget(
+      modelName: modelName,
+      fixedPrefixTokens: fixedPrefixTokens,
+      summaryTokens: _resolveSnapshotTokens(activeSummary),
+      recentTurnsTokens: _estimateSegmentsTokens(recentSegments),
+      currentTurnTokens: currentTurnTokens,
+    );
+
+    if (budget.shouldCompact) {
+      final compactionResult = await _compactHistory(
         groupId: groupId,
-        summaryText: summary.summaryText,
-        coveredUntilTurnId: historySplit.segmentsToCompress.last.turnId,
-        estimatedTokens: summary.estimatedTokens,
+        existingSnapshot: activeSummary,
+        historySegments: historySegments,
+        initialRecentSegments: recentSegments,
+        modelName: modelName,
+        fixedPrefixTokens: fixedPrefixTokens,
+        currentTurnTokens: currentTurnTokens,
+        compactionConfig: compactionConfig,
       );
-      await _snapshotRepository.upsertLatest(compressedSnapshot);
-      return [
-        _contextProjector.projectSnapshotToContext(summary.summaryText),
-        ...retainedHistoryMessages,
-        ...currentMessages,
-      ];
+      activeSummary = compactionResult.snapshot;
+      recentSegments = compactionResult.recentSegments;
     }
 
     return [
-      if (snapshot != null)
-        _contextProjector.projectSnapshotToContext(snapshot.summaryText),
-      ...retainedHistoryMessages,
+      if (activeSummary != null)
+        _contextProjector.projectSnapshotToContext(activeSummary.summaryText),
+      ...recentSegments.expand((segment) => segment.messages),
       ...currentMessages,
     ];
   }
@@ -165,72 +168,105 @@ class SessionContextService {
     return projected;
   }
 
-  int _resolveTargetHistoryTokens({
-    required String modelName,
-    required int fixedTokens,
-    required int snapshotTokens,
-  }) {
-    final budget = _tokenBudgetService.resolveBudget(modelName);
-    final thresholdBudget =
-        (budget.inputBudget * budget.pressureThreshold).floor();
-    final remaining = thresholdBudget - fixedTokens - snapshotTokens;
-    return remaining < 0 ? 0 : remaining;
-  }
-
-  _HistorySplitPlan _planHistorySplit({
+  List<_TurnContextSegment> _selectRecentCompletedTurns({
     required List<_TurnContextSegment> historySegments,
-    required int targetHistoryTokens,
+    required int usableInputBudget,
+    required ContextCompactionConfig compactionConfig,
   }) {
     if (historySegments.isEmpty) {
-      return const _HistorySplitPlan(
-        retainedSegments: [],
-        segmentsToCompress: [],
+      return const [];
+    }
+
+    final startIndex = historySegments.length >
+            compactionConfig.defaultRecentCompletedTurns
+        ? historySegments.length - compactionConfig.defaultRecentCompletedTurns
+        : 0;
+    final selected = historySegments.sublist(startIndex).toList(growable: true);
+    final maxRecentTokens =
+        (usableInputBudget * compactionConfig.recentTurnsMaxRatio).floor();
+
+    while (selected.length > compactionConfig.minRecentCompletedTurns &&
+        _estimateSegmentsTokens(selected) > maxRecentTokens) {
+      selected.removeAt(0);
+    }
+
+    return selected.toList(growable: false);
+  }
+
+  Future<_CompactionResult> _compactHistory({
+    required int groupId,
+    required SessionContextSnapshot? existingSnapshot,
+    required List<_TurnContextSegment> historySegments,
+    required List<_TurnContextSegment> initialRecentSegments,
+    required String modelName,
+    required int fixedPrefixTokens,
+    required int currentTurnTokens,
+    required ContextCompactionConfig compactionConfig,
+  }) async {
+    final targetHistoryTokens =
+        (_tokenBudgetService.resolveProfile(modelName).usableInputBudget *
+                compactionConfig.postCompressionHistoryRatio)
+            .floor();
+    final recentSegments = initialRecentSegments.toList(growable: true);
+    final compactedSegments = historySegments
+        .take(historySegments.length - recentSegments.length)
+        .toList(growable: true);
+
+    SessionContextSnapshot? activeSnapshot = existingSnapshot;
+
+    while (recentSegments.length > compactionConfig.minRecentCompletedTurns &&
+        _resolveSnapshotTokens(activeSnapshot) +
+                _estimateSegmentsTokens(recentSegments) >
+            targetHistoryTokens) {
+      compactedSegments.add(recentSegments.removeAt(0));
+    }
+
+    if (compactedSegments.isNotEmpty) {
+      activeSnapshot = await _rollSummaryForward(
+        groupId: groupId,
+        existingSnapshot: existingSnapshot,
+        compactedSegments: compactedSegments,
       );
     }
 
-    final retainedReversed = <_TurnContextSegment>[];
-    var retainedTokens = 0;
-    for (final segment in historySegments.reversed) {
-      final nextRetainedTokens = retainedTokens + segment.estimatedTokens;
-      if (nextRetainedTokens > targetHistoryTokens) {
-        break;
-      }
-      retainedReversed.add(segment);
-      retainedTokens = nextRetainedTokens;
-    }
-
-    final retainedSegments = retainedReversed.reversed.toList(growable: true);
-    var segmentsToCompress = historySegments
-        .take(historySegments.length - retainedSegments.length)
-        .toList(growable: true);
-
-    while (retainedSegments.isNotEmpty &&
-        retainedTokens + _estimateCompressionReserveTokens(segmentsToCompress) >
-            targetHistoryTokens) {
-      final removed = retainedSegments.removeAt(0);
-      retainedTokens -= removed.estimatedTokens;
-      segmentsToCompress.add(removed);
-    }
-
-    return _HistorySplitPlan(
-      retainedSegments: retainedSegments.toList(growable: false),
-      segmentsToCompress: historySegments
-          .take(historySegments.length - retainedSegments.length)
-          .toList(growable: false),
+    return _CompactionResult(
+      snapshot: activeSnapshot,
+      recentSegments: recentSegments.toList(growable: false),
     );
   }
 
-  int _estimateCompressionReserveTokens(
-      Iterable<_TurnContextSegment> segments) {
-    final sourceTokens =
-        segments.fold<int>(0, (total, item) => total + item.estimatedTokens);
-    if (sourceTokens <= 0) {
+  Future<SessionContextSnapshot> _rollSummaryForward({
+    required int groupId,
+    required SessionContextSnapshot? existingSnapshot,
+    required List<_TurnContextSegment> compactedSegments,
+  }) async {
+    final summary = await _summaryService.summarizeHistory(
+      previousSummary: existingSnapshot?.summaryText,
+      historicalMessages:
+          compactedSegments.expand((segment) => segment.messages).toList(),
+    );
+    final snapshot = SessionContextSnapshot(
+      groupId: groupId,
+      summaryText: summary.summaryText,
+      coveredUntilTurnId: compactedSegments.last.turnId,
+      estimatedTokens: summary.estimatedTokens,
+    );
+    await _snapshotRepository.upsertLatest(snapshot);
+    return snapshot;
+  }
+
+  int _estimateSegmentsTokens(Iterable<_TurnContextSegment> segments) {
+    return segments.fold<int>(0, (total, item) => total + item.estimatedTokens);
+  }
+
+  int _resolveSnapshotTokens(SessionContextSnapshot? snapshot) {
+    if (snapshot == null) {
       return 0;
     }
-    final estimated = (sourceTokens * 0.25).ceil();
-    return estimated < _minimumCompressionReserveTokens
-        ? _minimumCompressionReserveTokens
-        : estimated;
+    if (snapshot.estimatedTokens > 0) {
+      return snapshot.estimatedTokens;
+    }
+    return _tokenBudgetService.estimateTextTokens(snapshot.summaryText);
   }
 
   String _resolveSystemPrompt(ChatConfig config) {
@@ -254,12 +290,12 @@ class _TurnContextSegment {
   });
 }
 
-class _HistorySplitPlan {
-  final List<_TurnContextSegment> retainedSegments;
-  final List<_TurnContextSegment> segmentsToCompress;
+class _CompactionResult {
+  final SessionContextSnapshot? snapshot;
+  final List<_TurnContextSegment> recentSegments;
 
-  const _HistorySplitPlan({
-    required this.retainedSegments,
-    required this.segmentsToCompress,
+  const _CompactionResult({
+    required this.snapshot,
+    required this.recentSegments,
   });
 }

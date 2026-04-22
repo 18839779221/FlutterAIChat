@@ -20,6 +20,7 @@ import 'services/chat_service.dart';
 import 'services/chat_trace_recorder.dart';
 import 'services/agent_planner_service.dart';
 import 'services/default_file_tool_adapters.dart';
+import 'services/model_budget_registry.dart';
 import 'services/turn_harness.dart';
 import 'services/turn_verifier.dart';
 import 'services/tool_call_service.dart';
@@ -53,6 +54,7 @@ void main() async {
       LLMType.configurable,
       settingsRepository: settingsRepository,
     );
+    final modelBudgetRegistry = ModelBudgetRegistry();
     final fileToolAdapters = await buildDefaultFileToolHostAdapters();
     final tavilyWebSearcher = buildTavilyWebSearcher();
     final toolExecutor = ToolExecutor(
@@ -118,7 +120,9 @@ void main() async {
       chatEventRepository: eventRepository,
       snapshotRepository: SessionContextSnapshotRepository(storage),
       contextProjector: SessionContextProjector(),
-      tokenBudgetService: SessionTokenBudgetService(),
+      tokenBudgetService: SessionTokenBudgetService(
+        modelBudgetRegistry: modelBudgetRegistry,
+      ),
       summaryService: SessionSummaryService(chatService: chatService),
       chatService: chatService,
     );

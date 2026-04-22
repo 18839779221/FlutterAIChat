@@ -1,6 +1,7 @@
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
+import 'package:ai_chat/services/model_budget_registry.dart';
 import 'package:ai_chat/services/session_context_projector.dart';
 import 'package:ai_chat/services/session_context_service.dart';
 import 'package:ai_chat/services/session_summary_service.dart';
@@ -51,8 +52,14 @@ final sessionContextSnapshotRepositoryProvider =
 final sessionContextProjectorProvider =
     Provider<SessionContextProjector>((ref) => SessionContextProjector());
 
-final sessionTokenBudgetServiceProvider =
-    Provider<SessionTokenBudgetService>((ref) => SessionTokenBudgetService());
+final modelBudgetRegistryProvider =
+    Provider<ModelBudgetRegistry>((ref) => ModelBudgetRegistry());
+
+final sessionTokenBudgetServiceProvider = Provider<SessionTokenBudgetService>(
+  (ref) => SessionTokenBudgetService(
+    modelBudgetRegistry: ref.watch(modelBudgetRegistryProvider),
+  ),
+);
 
 final sessionSummaryServiceProvider = Provider<SessionSummaryService>((ref) {
   return SessionSummaryService(chatService: ref.watch(chatServiceProvider));

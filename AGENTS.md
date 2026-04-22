@@ -181,6 +181,7 @@ The app now uses a **Session Context** architecture for conversation context:
 
 - `SessionContextService` builds planner-visible context for one `group`/Session
 - `SessionContextProjector` converts prior messages, tool results, and interaction results into compact model-visible messages
+- `ModelBudgetRegistry` resolves model budget profiles from runtime provider/model overrides, built-in defaults, and conservative fallback values
 - `SessionTokenBudgetService` decides whether compression is needed based on token budget pressure
 - `SessionSummaryService` generates stable historical summaries
 - `session_context_snapshots` stores the latest persisted summary boundary for each Session
@@ -188,7 +189,7 @@ The app now uses a **Session Context** architecture for conversation context:
 The planner-visible context should be composed from:
 
 - latest snapshot summary
-- recent working set after the snapshot boundary
+- recent completed turns after the snapshot boundary
 - current turn transcript
 
 Important rules:
@@ -198,6 +199,9 @@ Important rules:
 - Do not persist compression summaries into UI timeline messages
 - Compression boundaries should prefer completed turn / completed interaction units, not arbitrary single-event slicing
 - The primary compression trigger is token budget pressure near the current model limit, not a fixed message count
+- planner-visible context must keep `history summary`、`recent completed turns`、`current turn transcript` mutually exclusive
+- `recent completed turns` should be selected by both default count and budget ratio limits, with at least the previous completed turn retained when available
+- older history that exits the recent working set must roll into snapshot summary instead of being dropped directly
 
 ### LLM Integration
 
