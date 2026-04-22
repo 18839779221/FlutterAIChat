@@ -10,7 +10,7 @@
 - 多会话管理，支持创建、切换、删除会话
 - 消息本地持久化，支持分页加载历史消息
 - 同一会话内支持 Session 级多轮上下文继承，planner 不再只看当前 turn transcript
-- 长对话会按 token budget 压力自动压缩为 session snapshot，再与最近工作集和当前 turn transcript 一起进入模型上下文
+- 长对话会按 token budget 压力自动压缩为 session snapshot；最终进入模型的会话上下文固定为 `history summary + recent completed turns + current turn transcript`
 - 进入会话默认定位到最新消息，向上滑动查看更早历史
 - 流式回复、手动中断、生成中自动跟随；手动上滑后可自由查看，点击回到底部后再恢复跟随
 - 深度思考模式、自定义系统提示词
@@ -100,17 +100,27 @@ Service 层负责 LLM 通信、Session 上下文编排、工具编排与 trace �
 ### Session 上下文层
 - `lib/services/session_context_service.dart`
 - `lib/services/session_context_projector.dart`
+- `lib/services/model_budget_registry.dart`
 - `lib/services/session_token_budget_service.dart`
 - `lib/services/session_summary_service.dart`
 - `lib/repositories/session_context_snapshot_repository.dart`
 - `lib/models/session/session_context_snapshot.dart`
+- `lib/models/session/model_budget_profile.dart`
+- `lib/models/session/context_compaction_config.dart`
 
 职责分工：
-- `SessionContextService`：为 planner 构建“历史摘要 + 最近工作集 + 当前 turn transcript”
+- `SessionContextService`：为 planner 构建 `history summary + recent completed turns + current turn transcript`，并保证三层边界互斥
 - `SessionContextProjector`：把消息、tool result、interaction result 投影成模型可见上下文
-- `SessionTokenBudgetService`：统一按模型上下文预算判断是否需要压缩
-- `SessionSummaryService`：把较早历史整理为固定栏目摘要
+- `ModelBudgetRegistry`：统一解析模型预算配置，优先使用运行时 provider/model 覆盖，再回落到内置默认表与 fallback
+- `SessionTokenBudgetService`：统一按模型上下文预算做分项估算，并判断是否需要压缩
+- `SessionSummaryService`：把退出 recent working set 的较早历史滚动整理为固定栏目摘要
 - `SessionContextSnapshotRepository`：持久化读取最近 session snapshot
+
+当前压缩策略：
+- recent 原文默认只保留最近少量 completed turns，而不是整个历史消息列表
+- recent completed turns 同时受“默认 N 个”和“可用输入预算占比上限”双约束
+- 更早历史会滚动并入 summary，不会因为 turn 较早而直接丢失语义
+- 当前 turn transcript 始终单独保留，不与 recent completed turns 重叠
 
 ## 消息发送链路
 

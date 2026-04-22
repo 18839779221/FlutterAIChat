@@ -33,6 +33,16 @@ class SessionSummaryService {
     required int groupId,
     required List<ChatMessage> projectedHistory,
   }) async {
+    return summarizeHistory(
+      previousSummary: null,
+      historicalMessages: projectedHistory,
+    );
+  }
+
+  Future<SessionSummaryResult> summarizeHistory({
+    String? previousSummary,
+    required List<ChatMessage> historicalMessages,
+  }) async {
     final generator = _resolveGenerator();
     final summaryPromptMessages = [
       ChatMessage(
@@ -40,7 +50,13 @@ class SessionSummaryService {
         role: MessageRole.system,
         status: MessageStatus.completed,
       ),
-      ...projectedHistory,
+      if ((previousSummary ?? '').trim().isNotEmpty)
+        ChatMessage(
+          text: previousSummary!.trim(),
+          role: MessageRole.system,
+          status: MessageStatus.completed,
+        ),
+      ...historicalMessages,
     ];
 
     final summaryText = (await generator(summaryPromptMessages)).trim();
@@ -71,6 +87,8 @@ class SessionSummaryService {
 当前目标：
 已确认事实：
 用户偏好/限制：
+已确认决策：
+已否决方案：
 重要工具结论：
 未完成事项：
 风险与下一步：

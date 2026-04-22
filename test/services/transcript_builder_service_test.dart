@@ -395,6 +395,7 @@ class _FakeChatEventRepository implements ChatEventRepository {
     required int groupId,
     required String content,
     String? errorCode,
+    Map<String, dynamic>? payloadJson,
   }) {
     throw UnimplementedError();
   }

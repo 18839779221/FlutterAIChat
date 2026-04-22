@@ -9,11 +9,14 @@ import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/agent/planner_tool_choice.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
+import 'package:ai_chat/models/session/context_compaction_config.dart';
+import 'package:ai_chat/models/session/model_budget_profile.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/repositories/session_context_snapshot_repository.dart';
 import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/services/model_budget_registry.dart';
 import 'package:ai_chat/services/session_context_projector.dart';
 import 'package:ai_chat/services/session_context_service.dart';
 import 'package:ai_chat/services/session_summary_service.dart';
@@ -143,7 +146,8 @@ void main() {
       await storage.deleteGroup(groupId);
     });
 
-    test('compresses history into a snapshot when budget pressure is high',
+    test(
+        'compresses older completed turns into a snapshot when budget pressure is high',
         () async {
       final storage = DatabaseHelper(
         databaseName: 'session_context_service_compress_test.db',
@@ -158,7 +162,14 @@ void main() {
         ChatTurn(
           groupId: groupId,
           status: ChatTurnStatus.completed,
-          userInput: '历史 turn',
+          userInput: '更早历史 turn',
+        ),
+      );
+      final recentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.completed,
+          userInput: '最近历史 turn',
         ),
       );
       final currentTurnId = await turnRepository.createTurn(
@@ -172,12 +183,17 @@ void main() {
       await eventRepository.appendUserMessage(
         turnId: historicalTurnId,
         groupId: groupId,
-        content: '我们要实现 Session 上下文管理，并且必须按 token budget 压缩',
+        content: '我们要实现 Session 上下文管理，并且必须按 token budget 压缩，这是更早的历史。',
       );
       await eventRepository.appendToolResult(
         turnId: historicalTurnId,
         groupId: groupId,
         content: '结果摘要：需要在接近上限时自动触发压缩',
+      );
+      await eventRepository.appendUserMessage(
+        turnId: recentTurnId,
+        groupId: groupId,
+        content: '最近历史：前一个 completed turn 应该保留原文',
       );
 
       final service = SessionContextService(
@@ -226,6 +242,10 @@ void main() {
       expect(snapshot, isNotNull);
       expect(snapshot!.coveredUntilTurnId, historicalTurnId);
       expect(plannerMessages.first.text, contains('当前目标'));
+      expect(
+        plannerMessages.map((message) => message.text).join('\n'),
+        contains('最近历史：前一个 completed turn 应该保留原文'),
+      );
       expect(plannerMessages.last.text, '继续');
 
       await storage.deleteGroup(groupId);
@@ -352,7 +372,221 @@ void main() {
 
       await storage.deleteGroup(groupId);
     });
+
+    test('keeps current turn separate from recent completed turns', () async {
+      final storage = DatabaseHelper(
+        databaseName:
+            'session_context_service_no_duplicate_current_turn_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(title: 'Session Context Current Turn Boundary'),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final eventRepository = ChatEventRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+
+      final previousTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.completed,
+          userInput: 'turn-29-user',
+        ),
+      );
+      await eventRepository.appendUserMessage(
+        turnId: previousTurnId,
+        groupId: groupId,
+        content: 'turn-29-user',
+      );
+
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: 'turn-30-user',
+        ),
+      );
+
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetRegistry: ModelBudgetRegistry(
+            profiles: {
+              'gpt-5.4': const ModelBudgetProfile(
+                modelId: 'gpt-5.4',
+                maxContextTokens: 10000,
+                reservedOutputTokens: 1000,
+                reasoningReserveTokens: 500,
+                safetyMarginTokens: 500,
+                compactionConfig: ContextCompactionConfig(),
+              ),
+            },
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw UnimplementedError(),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      );
+
+      final plannerMessages = await service.buildPlannerMessages(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: [
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: 'turn-30-user',
+          ),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: '你是一个助手'),
+      );
+
+      final combined =
+          plannerMessages.map((message) => message.text).join('\n');
+      expect(_countOccurrences(combined, 'turn-30-user'), 1);
+      expect(combined, contains('turn-29-user'));
+
+      await storage.deleteGroup(groupId);
+    });
+
+    test('caps recent completed turns by configured count and ratio', () async {
+      final storage = DatabaseHelper(
+        databaseName: 'session_context_service_recent_ratio_limit_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(title: 'Session Context Recent Ratio Limit'),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final eventRepository = ChatEventRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+
+      Future<int> createCompletedTurn(String text) async {
+        final turnId = await turnRepository.createTurn(
+          ChatTurn(
+            groupId: groupId,
+            status: ChatTurnStatus.completed,
+            userInput: text,
+          ),
+        );
+        await eventRepository.appendUserMessage(
+          turnId: turnId,
+          groupId: groupId,
+          content: text,
+        );
+        return turnId;
+      }
+
+      await createCompletedTurn('turn-1 old context that should be summarized');
+      final secondTurnId = await createCompletedTurn(
+          'turn-2 also old context that should be summarized');
+      await createCompletedTurn(
+          'turn-3 previous completed turn that must remain');
+
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: 'turn-4 current',
+        ),
+      );
+
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetRegistry: ModelBudgetRegistry(
+            profiles: {
+              'gpt-5.4': const ModelBudgetProfile(
+                modelId: 'gpt-5.4',
+                maxContextTokens: 300,
+                reservedOutputTokens: 50,
+                reasoningReserveTokens: 50,
+                safetyMarginTokens: 50,
+                compactionConfig: ContextCompactionConfig(
+                  compressionTriggerRatio: 0.80,
+                  postCompressionHistoryRatio: 0.15,
+                  defaultRecentCompletedTurns: 3,
+                  recentTurnsMaxRatio: 0.10,
+                  minRecentCompletedTurns: 1,
+                ),
+              ),
+            },
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (messages) async {
+            final combined = messages.map((item) => item.text).join('\n');
+            expect(combined, contains('turn-1 old context'));
+            expect(combined, contains('turn-2 also old context'));
+            return '''
+当前目标：保留最近 completed turn
+已确认事实：旧历史进入 summary
+用户偏好/限制：无
+已确认决策：recent turns 需要压缩
+已否决方案：无
+重要工具结论：无
+未完成事项：继续处理 turn-4
+风险与下一步：观察 recent ratio
+''';
+          },
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      );
+
+      final plannerMessages = await service.buildPlannerMessages(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: [
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: 'turn-4 current',
+          ),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: '你是一个助手'),
+      );
+
+      final combined =
+          plannerMessages.map((message) => message.text).join('\n');
+      expect(combined,
+          contains('turn-3 previous completed turn that must remain'));
+      expect(combined, isNot(contains('turn-2 also old context')));
+      expect(combined, isNot(contains('turn-1 old context')));
+
+      final snapshot = await snapshotRepository.getLatestByGroup(groupId);
+      expect(snapshot, isNotNull);
+      expect(snapshot!.coveredUntilTurnId, secondTurnId);
+
+      await storage.deleteGroup(groupId);
+    });
   });
+}
+
+int _countOccurrences(String source, String needle) {
+  if (needle.isEmpty) {
+    return 0;
+  }
+  var start = 0;
+  var count = 0;
+  while (true) {
+    final index = source.indexOf(needle, start);
+    if (index < 0) {
+      return count;
+    }
+    count += 1;
+    start = index + needle.length;
+  }
 }
 
 class _FakeBaseLlm implements BaseLLM {
