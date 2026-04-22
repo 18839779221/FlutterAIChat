@@ -75,7 +75,6 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
         _isNearBottom = isNearBottom;
       });
     }
-
   }
 
   void _scrollToBottom() {
@@ -372,11 +371,13 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
 
   List<Widget> _buildAssistantBlocks(
     List<ChatMessage> sourceMessages,
-    List<AssistantTurnBlock> blocks,
-    {bool markLatestTurnEnd = false,}
-  ) {
+    List<AssistantTurnBlock> blocks, {
+    bool markLatestTurnEnd = false,
+  }) {
     final widgets = <Widget>[];
-    final activeAskUserQuestion = ref.read(activeAskUserQuestionMessageProvider);
+    final activeAskUserQuestion =
+        ref.read(activeAskUserQuestionMessageProvider);
+    final toolUiRegistry = ref.read(toolUiRendererRegistryProvider);
 
     for (var index = 0; index < blocks.length; index += 1) {
       final block = blocks[index];
@@ -412,16 +413,17 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           );
           break;
         case AssistantTurnBlockType.structuredOutput:
-          if (sourceMessage?.contentType == MessageContentType.askUserQuestionPrompt) {
-            final isActivePrompt =
-                activeAskUserQuestion?.id != null &&
+          if (sourceMessage?.contentType ==
+              MessageContentType.askUserQuestionPrompt) {
+            final isActivePrompt = activeAskUserQuestion?.id != null &&
                 activeAskUserQuestion!.id == sourceMessage?.id;
             blockWidget = isActivePrompt
                 ? AskUserQuestionCard(message: sourceMessage!)
                 : AskUserQuestionTimelineCard(message: sourceMessage!);
             break;
           }
-          if (sourceMessage?.contentType == MessageContentType.askUserQuestionResult) {
+          if (sourceMessage?.contentType ==
+              MessageContentType.askUserQuestionResult) {
             blockWidget = AskUserQuestionResultCard(message: sourceMessage!);
             break;
           }
@@ -442,6 +444,16 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
             break;
           }
           final result = ToolResult.fromJson(payload);
+          final customResultWidget =
+              toolUiRegistry.findResultRenderer(result.toolName)?.buildResult(
+                    context,
+                    result: result,
+                    sourceMessage: sourceMessage,
+                  );
+          if (customResultWidget != null) {
+            blockWidget = customResultWidget;
+            break;
+          }
           final presentation = ToolCardPresentationMapper.mapResult(result);
           switch (presentation.variant) {
             case ToolCardPresentationVariant.outcomeCard:
@@ -462,14 +474,38 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           final steps = _extractWorkflowSteps(block);
           final manualExpandedStepId =
               ref.watch(toolWorkflowExpansionProvider)[block.turnId];
+          final expandedStepId = resolveWorkflowExpandedStepId(
+            turnId: block.turnId,
+            steps: steps,
+            manualExpandedStepId: manualExpandedStepId,
+          );
+          final latestStep = steps.isEmpty ? null : steps.last;
+          final customWorkflowWidget = latestStep == null
+              ? null
+              : toolUiRegistry
+                  .findWorkflowRenderer(latestStep.toolName)
+                  ?.buildWorkflowStep(
+                  context,
+                  steps: steps,
+                  sourceMessage: sourceMessage,
+                  isExpanded: latestStep.stepId == expandedStepId,
+                  onTap: () {
+                    ref
+                        .read(toolWorkflowExpansionProvider.notifier)
+                        .toggleExpandedStep(
+                          turnId: block.turnId,
+                          stepId: latestStep.stepId,
+                        );
+                  },
+                );
+          if (customWorkflowWidget != null) {
+            blockWidget = customWorkflowWidget;
+            break;
+          }
           blockWidget = ToolWorkflowCard(
             title: block.title ?? 'Tool Workflow',
             steps: steps,
-            expandedStepId: resolveWorkflowExpandedStepId(
-              turnId: block.turnId,
-              steps: steps,
-              manualExpandedStepId: manualExpandedStepId,
-            ),
+            expandedStepId: expandedStepId,
             onStepTapped: (stepId) {
               ref
                   .read(toolWorkflowExpansionProvider.notifier)
@@ -478,21 +514,6 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
                     stepId: stepId,
                   );
             },
-            onContinue: sourceMessage == null
-                ? null
-                : () => ref
-                    .read(chatControllerProvider)
-                    .confirmToolInvocation(sourceMessage),
-            onCancel: sourceMessage == null
-                ? null
-                : () => ref
-                    .read(chatControllerProvider)
-                    .cancelToolInvocation(sourceMessage),
-            onContinueAndTrust: sourceMessage == null
-                ? null
-                : () => ref
-                    .read(chatControllerProvider)
-                    .confirmToolInvocation(sourceMessage, trustTool: true),
           );
           break;
       }

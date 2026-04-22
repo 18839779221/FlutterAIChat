@@ -3,12 +3,14 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/debug/debug_test_case.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
+import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/pages/chat_page.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/debug_test_case_loader.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_message_list.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_card.dart';
+import 'package:ai_chat/widgets/tool_confirmation/tool_confirmation_bottom_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -248,6 +250,63 @@ void main() {
     await tester.pump();
 
     expect(find.byType(AskUserQuestionCard), findsNothing);
+  });
+
+  testWidgets('chat page renders bottom confirmation bar for active tool confirmation',
+      (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider.overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider.overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatDebugControllerProvider.overrideWith((ref) => _StubDebugController()),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.read(messagesProvider.notifier).setMessages([
+      ChatMessage(
+        id: 1,
+        text: '准备写入文件',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.actionConfirmation,
+        payloadJson: const ToolInvocation(
+          toolName: 'Write',
+          arguments: {'file_path': 'docs/plan.md'},
+          status: ToolInvocationStatus.awaitingConfirmation,
+          summary: '准备写入 docs/plan.md',
+          requiresConfirmation: true,
+        ).toJson(),
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(ToolConfirmationBottomBar), findsOneWidget);
+    expect(find.descendant(
+      of: find.byType(ToolConfirmationBottomBar),
+      matching: find.text('写入文件'),
+    ), findsOneWidget);
+    expect(find.descendant(
+      of: find.byType(ToolConfirmationBottomBar),
+      matching: find.text('准备写入 docs/plan.md'),
+    ), findsOneWidget);
   });
 
   testWidgets('debug cases picker populates input', (tester) async {

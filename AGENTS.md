@@ -164,6 +164,10 @@ The app uses **flutter_riverpod** with a split provider/controller architecture:
 - Put safety and correctness in execution-time guards, not decision-time heuristics:
   - confirmation, write-before-read, policy enforcement, and availability checks should be enforced by architecture, not only by model instructions
   - decision-time filtering should behave like a lightweight availability filter, not a handwritten tool router
+- Important: when solving model / agent reliability problems, do not default to hard-coded rules, keyword triggers, brittle text matching, or per-case prompt patching as the primary fix
+  - prefer fixing the contract between planner, orchestrator, executor, ledger, and UI through structured state, typed outputs, capability boundaries, verification gates, and execution-time safeguards
+  - treat heuristic patches as a last resort only when they are narrowly scoped, well-justified, and cannot be replaced by a more general architectural constraint
+  - do not "repair" model behavior by teaching the system an ever-growing list of special phrases, special cases, or hand-maintained if/else policies
 - Planner context should include structured summaries of prior tool attempts, latest tool results, and latest tool errors when available
 - `AgentTurnOrchestrator` should treat `planNextDecision()` as the only execution entry for tool loops
 - Legacy JSON planner compatibility has been removed; do not add fallback planner formats back in
@@ -175,6 +179,11 @@ The app uses **flutter_riverpod** with a split provider/controller architecture:
   - do persist its structured result into `ChatTurnStep.resultJson`
   - do allow provider continuation items to emit `function_call_output` from the completed interaction step
   - do keep the human-readable transcript text and structured payload in sync
+- Tool-use UI should keep status semantics shared but allow per-tool presentation overrides:
+  - preserve existing lifecycle enums and structured payload models instead of inventing a second UI-only state machine
+  - allow custom tool cards to read `ToolWorkflowStep.details` and `ToolResult.data` directly when richer explanation is needed
+  - keep `ToolWorkflowCard` and other generic cards as fallback renderers for tools without dedicated UI
+  - keep confirmation controls outside tool-specific timeline cards when possible; prefer a shared bottom confirmation surface over embedding action buttons into every tool card
 
 When adding a feature, prefer extending an existing bounded controller or creating a new narrow controller instead of growing `ChatController` back into a god object.
 

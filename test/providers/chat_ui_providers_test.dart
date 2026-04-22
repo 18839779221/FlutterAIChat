@@ -1,3 +1,7 @@
+import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/response/message_content_type.dart';
+import 'package:ai_chat/models/tool/tool_invocation.dart';
+import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_ui_providers.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,6 +29,76 @@ void main() {
         isA<TextEditingController>(),
       );
       expect(container.read(focusNodeProvider), isA<FocusNode>());
+    });
+
+    test('activePendingToolConfirmationProvider returns latest unresolved confirmation',
+        () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      container.read(messagesProvider.notifier).setMessages([
+        ChatMessage(
+          id: 1,
+          text: '旧确认',
+          role: MessageRole.assistant,
+          contentType: MessageContentType.actionConfirmation,
+          payloadJson: const ToolInvocation(
+            toolName: 'Write',
+            arguments: {'file_path': 'a.txt'},
+            status: ToolInvocationStatus.awaitingConfirmation,
+            summary: '准备写入 a.txt',
+            requiresConfirmation: true,
+          ).toJson(),
+        ),
+        ChatMessage(
+          id: 2,
+          text: '最新确认',
+          role: MessageRole.assistant,
+          contentType: MessageContentType.actionConfirmation,
+          payloadJson: const ToolInvocation(
+            toolName: 'Edit',
+            arguments: {'file_path': 'b.txt'},
+            status: ToolInvocationStatus.awaitingConfirmation,
+            summary: '准备编辑 b.txt',
+            requiresConfirmation: true,
+          ).toJson(),
+        ),
+      ]);
+
+      final pending = container.read(activePendingToolConfirmationProvider);
+
+      expect(pending, isNotNull);
+      expect(pending!.message.id, 2);
+      expect(pending.invocation.toolName, 'Edit');
+    });
+
+    test('activePendingToolConfirmationProvider ignores resolved messages', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      container.read(messagesProvider.notifier).setMessages([
+        ChatMessage(
+          id: 1,
+          text: '已运行',
+          role: MessageRole.assistant,
+          contentType: MessageContentType.toolInvocation,
+          payloadJson: const ToolInvocation(
+            toolName: 'Write',
+            arguments: {'file_path': 'a.txt'},
+            status: ToolInvocationStatus.running,
+            summary: '正在写入 a.txt',
+            requiresConfirmation: false,
+          ).toJson(),
+        ),
+        ChatMessage(
+          id: 2,
+          text: '已取消',
+          role: MessageRole.assistant,
+          contentType: MessageContentType.plainText,
+        ),
+      ]);
+
+      expect(container.read(activePendingToolConfirmationProvider), isNull);
     });
   });
 }
