@@ -1,3 +1,4 @@
+import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/debug/debug_test_case.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
@@ -23,7 +24,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('ChatMessageList block rendering', () {
-    testWidgets('empty conversations show a designed start state', (tester) async {
+    testWidgets('empty conversations show a designed start state',
+        (tester) async {
       await _pumpMessageList(tester, messages: const []);
 
       expect(find.text('开始一段新的对话'), findsOneWidget);
@@ -32,7 +34,8 @@ void main() {
       expect(find.text('单工具自动执行'), findsOneWidget);
     });
 
-    testWidgets('empty state suggestion fills the composer without auto sending',
+    testWidgets(
+        'empty state suggestion fills the composer without auto sending',
         (tester) async {
       final textController = TextEditingController();
       final focusNode = FocusNode();
@@ -123,7 +126,8 @@ void main() {
       expect(find.text('streaming reply'), findsOneWidget);
     });
 
-    testWidgets('structured assistant content renders as structured output block', (
+    testWidgets(
+        'structured assistant content renders as structured output block', (
       tester,
     ) async {
       await _pumpMessageList(
@@ -223,7 +227,9 @@ void main() {
       expect(find.text('联网搜索失败'), findsOneWidget);
     });
 
-    testWidgets('tool invocation renders as workflow card', (tester) async {
+    testWidgets(
+        'unregistered tool invocation still renders fallback workflow card',
+        (tester) async {
       await _pumpMessageList(
         tester,
         messages: [
@@ -232,10 +238,10 @@ void main() {
             role: MessageRole.assistant,
             contentType: MessageContentType.toolInvocation,
             payloadJson: const ToolInvocation(
-              toolName: 'fetch_webpage',
-              arguments: {'url': 'https://example.com'},
+              toolName: 'Read',
+              arguments: {'file_path': 'README.md'},
               status: ToolInvocationStatus.running,
-              summary: '正在执行工具：读取网页',
+              summary: '正在执行工具：读取文件',
               requiresConfirmation: false,
             ).toJson(),
           ),
@@ -243,7 +249,35 @@ void main() {
       );
 
       expect(find.byType(ToolWorkflowCard), findsOneWidget);
-      expect(find.text('正在执行工具：读取网页'), findsWidgets);
+      expect(find.text('正在执行工具：读取文件'), findsWidgets);
+    });
+
+    testWidgets('registered tool renderer overrides workflow fallback', (
+      tester,
+    ) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: 'Custom invocation',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const ToolInvocation(
+              toolName: 'Write',
+              arguments: {'file_path': 'docs/plan.md'},
+              status: ToolInvocationStatus.running,
+              summary: '准备写入 docs/plan.md',
+              requiresConfirmation: false,
+            ).toJson(),
+          ),
+        ],
+        registry: const ToolUiRendererRegistry(
+          renderers: [_FakeWriteWorkflowRenderer()],
+        ),
+      );
+
+      expect(find.text('custom workflow renderer'), findsOneWidget);
+      expect(find.byType(ToolWorkflowCard), findsNothing);
     });
 
     testWidgets('ask user question prompt renders compact placeholder card',
@@ -307,7 +341,8 @@ void main() {
       expect(find.text('Yes'), findsOneWidget);
     });
 
-    testWidgets('action confirmation renders workflow card with action buttons', (
+    testWidgets(
+        'action confirmation renders workflow card without inline actions', (
       tester,
     ) async {
       await _pumpMessageList(
@@ -329,11 +364,12 @@ void main() {
       );
 
       expect(find.byType(ToolWorkflowCard), findsOneWidget);
-      expect(find.text('继续，以后不再确认'), findsOneWidget);
+      expect(find.text('待确认'), findsOneWidget);
+      expect(find.text('继续'), findsNothing);
     });
 
     testWidgets(
-        'action confirmation keeps rendering workflow actions from execution policy payload',
+        'action confirmation keeps workflow status from execution policy payload',
         (tester) async {
       await _pumpMessageList(
         tester,
@@ -362,7 +398,8 @@ void main() {
       );
 
       expect(find.byType(ToolWorkflowCard), findsOneWidget);
-      expect(find.text('继续，以后不再确认'), findsOneWidget);
+      expect(find.text('待确认'), findsOneWidget);
+      expect(find.text('继续'), findsNothing);
     });
 
     testWidgets('invalid tool result payload falls back to plain text', (
@@ -400,8 +437,8 @@ void main() {
       expect(find.text('User message'), findsOneWidget);
     });
 
-    testWidgets('multi-turn conversations keep the latest turn anchor near the top',
-      (
+    testWidgets(
+        'multi-turn conversations keep the latest turn anchor near the top', (
       tester,
     ) async {
       await _pumpMessageList(
@@ -436,7 +473,8 @@ void main() {
       expect(latestTurnTop, lessThan(listBounds.center.dy));
     });
 
-    testWidgets('short conversations stay in the upper half instead of docking to the bottom',
+    testWidgets(
+        'short conversations stay in the upper half instead of docking to the bottom',
         (tester) async {
       await _pumpMessageList(
         tester,
@@ -460,7 +498,8 @@ void main() {
       expect(bubbleTop, lessThan(listBounds.center.dy));
     });
 
-    testWidgets('adding a new user message reanchors the newest turn near the top',
+    testWidgets(
+        'adding a new user message reanchors the newest turn near the top',
         (tester) async {
       final container = ProviderContainer(
         overrides: [
@@ -519,7 +558,9 @@ void main() {
       expect(latestTurnTop, lessThan(listBounds.center.dy));
     });
 
-    testWidgets('debug mode still exposes structured output action for assistant text', (
+    testWidgets(
+        'debug mode still exposes structured output action for assistant text',
+        (
       tester,
     ) async {
       await _pumpMessageList(
@@ -566,6 +607,7 @@ Future<void> _pumpMessageList(
   required List<ChatMessage> messages,
   TextEditingController? textController,
   FocusNode? focusNode,
+  ToolUiRendererRegistry? registry,
 }) async {
   final container = ProviderContainer(
     overrides: [
@@ -603,8 +645,7 @@ Future<void> _pumpMessageList(
             group: 'tool-call',
             title: '多工具串行执行',
             summary: '验证联网搜索和网页读取串行发生。',
-            prompt:
-                '先搜索 OpenAI 今天的最新消息，再读取你认为最相关的一篇网页，然后总结给我',
+            prompt: '先搜索 OpenAI 今天的最新消息，再读取你认为最相关的一篇网页，然后总结给我',
             tags: ['agent-loop'],
             featured: true,
             enabled: true,
@@ -620,8 +661,7 @@ Future<void> _pumpMessageList(
       ),
       if (textController != null)
         textControllerProvider.overrideWith((ref) => textController),
-      if (focusNode != null)
-        focusNodeProvider.overrideWith((ref) => focusNode),
+      if (focusNode != null) focusNodeProvider.overrideWith((ref) => focusNode),
       chatSendStateProvider.overrideWith(
         (ref) => ChatSendStateNotifier()
           ..update(
@@ -630,6 +670,8 @@ Future<void> _pumpMessageList(
           ),
       ),
       autoScrollToBottomProvider.overrideWith((ref) => true),
+      if (registry != null)
+        toolUiRendererRegistryProvider.overrideWith((ref) => registry),
     ],
   );
   addTearDown(() async {
@@ -687,4 +729,34 @@ ChatMessage _buildMessage({
     contentType: contentType,
     payloadJson: payloadJson,
   );
+}
+
+class _FakeWriteWorkflowRenderer implements ToolUiRenderer {
+  const _FakeWriteWorkflowRenderer();
+
+  @override
+  Widget? buildResult(
+    BuildContext context, {
+    required ToolResult result,
+    required ChatMessage? sourceMessage,
+  }) {
+    return null;
+  }
+
+  @override
+  Widget? buildWorkflowStep(
+    BuildContext context, {
+    required List<ToolWorkflowStep> steps,
+    required ChatMessage? sourceMessage,
+    required bool isExpanded,
+    required VoidCallback? onTap,
+  }) {
+    return const Text('custom workflow renderer');
+  }
+
+  @override
+  bool supportsResult(String toolName) => false;
+
+  @override
+  bool supportsWorkflowStep(String toolName) => toolName == 'Write';
 }

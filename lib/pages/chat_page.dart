@@ -12,6 +12,7 @@ import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/chat_drawer.dart';
 import '../widgets/debug/debug_test_case_sheet.dart';
+import '../widgets/tool_confirmation/tool_confirmation_bottom_bar.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({super.key, required this.title});
@@ -39,8 +40,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final systemPrompt = ref.watch(systemPromptProvider);
     final useReasoning = ref.watch(useReasoningProvider);
     final isLoadingMore = ref.watch(isLoadingMoreProvider);
+    final pendingConfirmation = ref.watch(activePendingToolConfirmationProvider);
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final colors = Theme.of(context).extension<AppColors>()!;
+    final chatController = ref.read(chatControllerProvider);
 
     return Scaffold(
       key: _scaffoldKey,
@@ -119,6 +122,22 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       ],
                     ),
                   ),
+                  if (pendingConfirmation != null)
+                    ToolConfirmationBottomBar(
+                      message: pendingConfirmation.message,
+                      invocation: pendingConfirmation.invocation,
+                      onContinue: () => chatController.confirmToolInvocation(
+                        pendingConfirmation.message,
+                      ),
+                      onCancel: () => chatController.cancelToolInvocation(
+                        pendingConfirmation.message,
+                      ),
+                      onContinueAndTrust: () =>
+                          chatController.confirmToolInvocation(
+                        pendingConfirmation.message,
+                        trustTool: true,
+                      ),
+                    ),
                   const ChatInput(),
                 ],
               ),

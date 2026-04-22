@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/debug/debug_test_case.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
+import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/services/debug_test_case_loader.dart';
 import 'package:flutter/material.dart';
@@ -73,6 +74,18 @@ final featuredDebugTestCasesProvider = Provider<List<DebugTestCase>>((ref) {
 final streamSubscriptionProvider =
     StateProvider<StreamSubscription?>((ref) => null);
 
+/// Pair of the message that currently owns the confirmation step and the
+/// parsed invocation payload used by the bottom confirmation bar.
+class PendingToolConfirmation {
+  const PendingToolConfirmation({
+    required this.message,
+    required this.invocation,
+  });
+
+  final ChatMessage message;
+  final ToolInvocation invocation;
+}
+
 /// Returns the latest unresolved ask-user-question prompt so the timeline can
 /// render it as the active interactive card while older/resolved prompts stay
 /// compact.
@@ -104,6 +117,39 @@ final activeAskUserQuestionMessageProvider = Provider<ChatMessage?>((ref) {
       continue;
     }
     return message;
+  }
+
+  return null;
+});
+
+/// Returns the latest unresolved tool confirmation so the page can render a
+/// single bottom confirmation bar outside the timeline cards.
+final activePendingToolConfirmationProvider =
+    Provider<PendingToolConfirmation?>((ref) {
+  final messages = ref.watch(messagesProvider);
+
+  for (final message in messages.reversed) {
+    final contentType = message.contentType;
+    if (contentType != MessageContentType.actionConfirmation &&
+        contentType != MessageContentType.toolInvocation) {
+      continue;
+    }
+
+    final payload = message.payloadJson;
+    if (payload == null) {
+      continue;
+    }
+
+    final invocation = ToolInvocation.fromJson(payload);
+    if (invocation.status != ToolInvocationStatus.awaitingConfirmation ||
+        !invocation.requiresConfirmation) {
+      continue;
+    }
+
+    return PendingToolConfirmation(
+      message: message,
+      invocation: invocation,
+    );
   }
 
   return null;

@@ -14,9 +14,6 @@ class ToolWorkflowCard extends StatelessWidget {
   final List<ToolWorkflowStep> steps;
   final String? expandedStepId;
   final ValueChanged<String>? onStepTapped;
-  final VoidCallback? onContinue;
-  final VoidCallback? onCancel;
-  final VoidCallback? onContinueAndTrust;
 
   const ToolWorkflowCard({
     super.key,
@@ -24,9 +21,6 @@ class ToolWorkflowCard extends StatelessWidget {
     required this.steps,
     this.expandedStepId,
     this.onStepTapped,
-    this.onContinue,
-    this.onCancel,
-    this.onContinueAndTrust,
   });
 
   @override
@@ -149,48 +143,8 @@ class ToolWorkflowCard extends StatelessWidget {
                                 height: 1.42,
                               ),
                             ),
-                            if (expanded && _showsConfirmationActions(step)) ...[
-                              SizedBox(height: spacing.sm),
-                              Wrap(
-                                spacing: spacing.xs,
-                                runSpacing: spacing.xs,
-                                children: [
-                                  FilledButton(
-                                    style: FilledButton.styleFrom(
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(
-                                          radius.pill,
-                                        ),
-                                      ),
-                                    ),
-                                    onPressed: onContinue,
-                                    child: const Text('继续'),
-                                  ),
-                                  OutlinedButton(
-                                    style: OutlinedButton.styleFrom(
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(
-                                          radius.pill,
-                                        ),
-                                      ),
-                                    ),
-                                    onPressed: onCancel,
-                                    child: const Text('取消'),
-                                  ),
-                                  OutlinedButton(
-                                    style: OutlinedButton.styleFrom(
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(
-                                          radius.pill,
-                                        ),
-                                      ),
-                                    ),
-                                    onPressed: onContinueAndTrust,
-                                    child: const Text('继续，以后不再确认'),
-                                  ),
-                                ],
-                              ),
-                            ],
+                            if (expanded && _showsConfirmationActions(step))
+                              SizedBox(height: spacing.xxs),
                           ],
                         ),
                       ),

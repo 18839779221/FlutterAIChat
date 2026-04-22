@@ -17,6 +17,8 @@
 
 ### Tool Call 与结构化输出
 - 支持工具决策、确认执行、执行结果展示、失败回退
+- tool use UI 支持“工具专属 renderer + 通用兜底卡片”双轨渲染；`Write`、`Edit`、`web_search`、`fetch_webpage` 已接入专属卡片
+- 工具确认交互已从时间线卡片内移出，改为聊天页底部统一确认区；时间线卡片只负责展示“准备做什么 / 做了什么”
 - 工具流程支持语义分型展示：上下文采集类工具默认折叠为低占用 inline step，外部动作类工具保留显式 outcome card，用户可处理失败升级为 exception card
 - 支持 `AskUserQuestion` interaction tool，可在同一个 turn 内挂起提问并在用户提交结构化答案后恢复
 - `AskUserQuestion` 支持单选、多选、自动追加 `Other`，并以 workflow 风格消息卡片承载交互
@@ -62,6 +64,7 @@ UI 只消费 Riverpod providers 和 controller 门面，不直接编排复杂业
 - [lib/providers/chat_ui_providers.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/providers/chat_ui_providers.dart)
 
 `chat_providers.dart` 现在主要负责 controller/provider 装配与 re-export，业务逻辑已拆出。
+- tool use 渲染通过 `toolUiRendererRegistryProvider` 分发：命中专属 renderer 时优先展示定制卡片，未命中时回退到默认通用卡片
 
 ### Controller 层
 - [lib/controllers/chat_controller.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_controller.dart)

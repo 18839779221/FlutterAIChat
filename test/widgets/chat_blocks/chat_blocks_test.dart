@@ -158,8 +158,7 @@ void main() {
       expect(find.byType(ToolInlineStepRow), findsOneWidget);
     });
 
-    testWidgets(
-        'workflow confirmation actions only show on expanded confirming step', (
+    testWidgets('workflow confirmation step no longer renders action buttons', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -185,13 +184,14 @@ void main() {
         ),
       );
 
-      expect(find.text('继续'), findsOneWidget);
-      expect(find.text('取消'), findsOneWidget);
-      expect(find.text('继续，以后不再确认'), findsOneWidget);
+      expect(find.text('待确认'), findsOneWidget);
+      expect(find.text('继续'), findsNothing);
+      expect(find.text('取消'), findsNothing);
+      expect(find.text('继续，以后不再确认'), findsNothing);
     });
 
     testWidgets(
-        'workflow confirmation actions can be driven by execution policy snapshot',
+        'workflow confirmation snapshot still renders confirmation status without buttons',
         (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -221,9 +221,10 @@ void main() {
         ),
       );
 
-      expect(find.text('继续'), findsOneWidget);
-      expect(find.text('取消'), findsOneWidget);
-      expect(find.text('继续，以后不再确认'), findsOneWidget);
+      expect(find.text('待确认'), findsOneWidget);
+      expect(find.text('继续'), findsNothing);
+      expect(find.text('取消'), findsNothing);
+      expect(find.text('继续，以后不再确认'), findsNothing);
     });
 
     testWidgets('tool result summary shows compact status and summary',
