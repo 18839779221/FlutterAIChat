@@ -28,9 +28,11 @@ fvm flutter run
 
 - Unless explicitly requested otherwise, prefer debug builds/runs for local development and device installation
 - On Android real devices, default to debug package install/run; only use `--release` or `--profile` when the user specifically asks for it
+- Prefer Android real devices for end-to-end verification when available, unless the task explicitly requires another platform
 - Before installing a debug package to a real device, rebuild it first so the installed APK matches the latest workspace code
   - Prefer `flutter build apk --debug` then `flutter install --debug`
   - If the active flutter is not `3.29.2`, prefer the same sequence with `fvm flutter`
+- When reinstalling on an Android real device, prefer overwrite install over uninstall/reinstall so app state is preserved unless a clean install is explicitly needed
 
 ### Installing Dependencies
 ```bash
@@ -78,6 +80,7 @@ fvm flutter test
   - Required runtime fields are typically `API Key`, `Model`, and `Base URL`
 
 ### Android Real-Device Automation
+- Prefer Android real-device end-to-end validation over Web/Desktop substitutes when the required scenario can be exercised on the connected device
 - Prefer the deterministic Droidrun driver smoke test for chat send regression:
   - `bash scripts/android_droidrun_driver_smoke.sh`
 - The driver smoke test uses Droidrun's low-level `AndroidDriver` directly instead of an LLM agent
