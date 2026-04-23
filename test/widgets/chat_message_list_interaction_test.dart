@@ -24,7 +24,6 @@ void main() {
               isGenerating: false,
             ),
         ),
-        autoScrollToBottomProvider.overrideWith((ref) => true),
         chatInteractionCoordinatorProvider.overrideWithValue(
           _NoopChatInteractionCoordinator(),
         ),
@@ -79,7 +78,7 @@ void main() {
     expect(find.text('Which storage layer should we use?'), findsOneWidget);
   });
 
-  testWidgets('manual upward browse disables auto follow until resume button tap',
+  testWidgets('manual upward browse does not show a resume-to-bottom button',
       (tester) async {
     final scrollController = ScrollController();
     final container = ProviderContainer(
@@ -93,7 +92,6 @@ void main() {
               isGenerating: true,
             ),
         ),
-        autoScrollToBottomProvider.overrideWith((ref) => true),
       ],
     );
     addTearDown(() async {
@@ -132,19 +130,202 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(container.read(autoScrollToBottomProvider), isTrue);
-
     await tester.drag(find.byType(CustomScrollView), const Offset(0, 600));
     await tester.pumpAndSettle();
 
-    expect(container.read(autoScrollToBottomProvider), isFalse);
-    expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
+    expect(find.byIcon(Icons.keyboard_arrow_down), findsNothing);
+  });
 
-    await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+  testWidgets(
+      'small manual browse from latest anchor keeps scrolling fully manual',
+      (tester) async {
+    final scrollController = ScrollController();
+    final container = ProviderContainer(
+      overrides: [
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+        scrollControllerProvider.overrideWith((ref) => scrollController),
+        chatSendStateProvider.overrideWith(
+          (ref) => ChatSendStateNotifier()
+            ..update(
+              phase: ChatSendPhase.streamingResponse,
+              isGenerating: true,
+            ),
+        ),
+      ],
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      scrollController.dispose();
+    });
+
+    container.read(messagesProvider.notifier).setMessages([
+      for (var i = 0; i < 30; i++) ...[
+        ChatMessage(
+          id: i * 2 + 1,
+          text: 'User message $i',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+        ),
+        ChatMessage(
+          id: i * 2 + 2,
+          text: 'Assistant message $i',
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+        ),
+      ],
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatMessageList()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -40));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 350));
 
-    expect(container.read(autoScrollToBottomProvider), isTrue);
+    expect(find.byIcon(Icons.keyboard_arrow_down), findsNothing);
+  });
+
+  testWidgets(
+      'scroll offset change away from latest anchor does not trigger forced re-follow',
+      (tester) async {
+    final scrollController = ScrollController();
+    final container = ProviderContainer(
+      overrides: [
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+        scrollControllerProvider.overrideWith((ref) => scrollController),
+        chatSendStateProvider.overrideWith(
+          (ref) => ChatSendStateNotifier()
+            ..update(
+              phase: ChatSendPhase.streamingResponse,
+              isGenerating: true,
+            ),
+        ),
+      ],
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      scrollController.dispose();
+    });
+
+    container.read(messagesProvider.notifier).setMessages([
+      for (var i = 0; i < 30; i++) ...[
+        ChatMessage(
+          id: i * 2 + 1,
+          text: 'User message $i',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+        ),
+        ChatMessage(
+          id: i * 2 + 2,
+          text: 'Assistant message $i',
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+        ),
+      ],
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatMessageList()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final bottomOffset = scrollController.offset;
+    scrollController.jumpTo(bottomOffset + 180);
+    await tester.pump();
+
+    final browsedOffset = scrollController.offset;
+    expect(browsedOffset, greaterThan(bottomOffset));
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(scrollController.offset, closeTo(browsedOffset, 0.1));
+  });
+
+  testWidgets('idle timeline does not snap back to latest anchor after manual browse',
+      (tester) async {
+    final scrollController = ScrollController();
+    final container = ProviderContainer(
+      overrides: [
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+        scrollControllerProvider.overrideWith((ref) => scrollController),
+        chatSendStateProvider.overrideWith(
+          (ref) => ChatSendStateNotifier()
+            ..update(
+              phase: ChatSendPhase.idle,
+              isGenerating: false,
+            ),
+        ),
+      ],
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      scrollController.dispose();
+    });
+
+    container.read(messagesProvider.notifier).setMessages([
+      for (var i = 0; i < 30; i++) ...[
+        ChatMessage(
+          id: i * 2 + 1,
+          text: 'User message $i',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+        ),
+        ChatMessage(
+          id: i * 2 + 2,
+          text: 'Assistant message $i',
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+        ),
+      ],
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatMessageList()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final bottomOffset = scrollController.offset;
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -600));
+    await tester.pump();
+
+    final browsedOffset = scrollController.offset;
+    expect(browsedOffset, greaterThan(bottomOffset));
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(scrollController.offset, closeTo(browsedOffset, 0.1));
   });
 
   testWidgets('loading older history preserves viewport anchor',
@@ -230,7 +411,6 @@ void main() {
               isGenerating: true,
             ),
         ),
-        autoScrollToBottomProvider.overrideWith((ref) => true),
         chatInteractionCoordinatorProvider.overrideWithValue(
           _NoopChatInteractionCoordinator(),
         ),
@@ -287,8 +467,6 @@ void main() {
 
     expect(find.byType(AskUserQuestionCard), findsOneWidget);
     expect(find.byType(AskUserQuestionTimelineCard), findsNothing);
-    expect(container.read(autoScrollToBottomProvider), isTrue);
-
     final outerOffsetBefore = scrollController.offset;
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -400));
     await tester.pumpAndSettle();

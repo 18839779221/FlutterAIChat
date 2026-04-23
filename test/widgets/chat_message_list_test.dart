@@ -499,11 +499,13 @@ void main() {
     });
 
     testWidgets(
-        'adding a new user message reanchors the newest turn near the top',
+        'adding a new user message does not auto-scroll the timeline',
         (tester) async {
+      final scrollController = ScrollController();
       final container = ProviderContainer(
         overrides: [
           hasMoreMessagesProvider.overrideWith((ref) => false),
+          scrollControllerProvider.overrideWith((ref) => scrollController),
           chatSendStateProvider.overrideWith(
             (ref) => ChatSendStateNotifier()
               ..update(
@@ -511,25 +513,27 @@ void main() {
                 isGenerating: false,
               ),
           ),
-          autoScrollToBottomProvider.overrideWith((ref) => true),
         ],
       );
       addTearDown(() async {
         await tester.pumpWidget(const SizedBox.shrink());
         container.dispose();
+        scrollController.dispose();
       });
 
       container.read(messagesProvider.notifier).setMessages([
-        _buildMessage(
-          text: 'older user',
-          role: MessageRole.user,
-          contentType: MessageContentType.plainText,
-        ),
-        _buildMessage(
-          text: 'older assistant',
-          role: MessageRole.assistant,
-          contentType: MessageContentType.plainText,
-        ),
+        for (var i = 0; i < 24; i++) ...[
+          _buildMessage(
+            text: 'older user $i',
+            role: MessageRole.user,
+            contentType: MessageContentType.plainText,
+          ),
+          _buildMessage(
+            text: 'older assistant $i',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
       ]);
 
       await tester.pumpWidget(
@@ -543,19 +547,21 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      final initialOffset = scrollController.offset;
+      scrollController.jumpTo(initialOffset + 180);
+      await tester.pump();
+
       container.read(messagesProvider.notifier).addMessage(
             _buildMessage(
               text: 'new user turn',
               role: MessageRole.user,
               contentType: MessageContentType.plainText,
             ),
-          );
+      );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 350));
 
-      final listBounds = tester.getRect(find.byType(ChatMessageList));
-      final latestTurnTop = tester.getTopLeft(find.text('new user turn')).dy;
-      expect(latestTurnTop, lessThan(listBounds.center.dy));
+      expect(scrollController.offset, closeTo(initialOffset + 180, 0.1));
     });
 
     testWidgets(
@@ -669,7 +675,6 @@ Future<void> _pumpMessageList(
             isGenerating: false,
           ),
       ),
-      autoScrollToBottomProvider.overrideWith((ref) => true),
       if (registry != null)
         toolUiRendererRegistryProvider.overrideWith((ref) => registry),
     ],
