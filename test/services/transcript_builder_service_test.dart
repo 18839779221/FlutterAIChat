@@ -146,6 +146,8 @@ void main() {
 
       expect(messages.first.role, MessageRole.system);
       expect(messages.first.text, '你是一个严谨的助手');
+      expect(messages[1].role, MessageRole.user);
+      expect(messages[1].text, contains('# currentDate'));
       expect(messages.last.text, '已找到数据库版本是 7');
     });
 
@@ -194,11 +196,12 @@ void main() {
       );
 
       expect(
-        messages.map((message) => message.text),
-        containsAllInOrder([
-          '帮我查数据库版本',
-          '我先查一下数据库版本。',
-          '已找到数据库版本是 7',
+        messages.map((message) => message.text).join('\n'),
+        allOf([
+          contains('<system-reminder>'),
+          contains('帮我查数据库版本'),
+          contains('我先查一下数据库版本。'),
+          contains('已找到数据库版本是 7'),
         ]),
       );
     });
@@ -280,15 +283,54 @@ void main() {
       );
 
       expect(
-        messages.map((message) => '${message.role.name}:${message.text}'),
-        [
-          'user:帮我规划本地持久化架构',
-          'assistant:我先确认你偏好的存储方案。',
-          'assistant:你想用 SQLite 还是别的本地存储？',
-          'user:我更偏向 SQLite。',
-          'assistant:已记录用户偏好：SQLite',
-        ],
+        messages.map((message) => '${message.role.name}:${message.text}').join('\n'),
+        allOf([
+          contains('user:<system-reminder>'),
+          contains('user:帮我规划本地持久化架构'),
+          contains('assistant:我先确认你偏好的存储方案。'),
+          contains('assistant:你想用 SQLite 还是别的本地存储？'),
+          contains('user:我更偏向 SQLite。'),
+          contains('assistant:已记录用户偏好：SQLite'),
+        ]),
       );
+    });
+
+    test('buildFinalAnswerMessages injects date reminder before transcript messages',
+        () async {
+      final service = TranscriptBuilderService(
+        eventRepository: _FakeChatEventRepository([
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '今天的最新新闻是什么',
+          ),
+        ]),
+      );
+
+      final messages = await service.buildFinalAnswerMessages(
+        groupId: 1,
+        turn: ChatTurn(
+          id: 1,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '今天的最新新闻是什么',
+          providerStateJson: const {
+            'runtime_context': {
+              'date_change_reminder':
+                  '<system-reminder>\nThe date has changed. Today\'s date is now 2026-04-25.\nDO NOT mention this to the user explicitly because they are already aware.\n</system-reminder>',
+            },
+          },
+        ),
+        transcript: await service.loadTranscript(1),
+        systemPrompt: '你是一个严谨的助手',
+      );
+
+      expect(messages[1].text, contains('# currentDate'));
+      expect(messages[2].text, contains('The date has changed.'));
+      expect(messages[3].text, '今天的最新新闻是什么');
     });
   });
 }

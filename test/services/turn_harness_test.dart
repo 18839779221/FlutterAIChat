@@ -20,6 +20,7 @@ import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
+import 'package:ai_chat/models/session/session_runtime_marker.dart';
 import 'package:ai_chat/models/tool/tool_call.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
@@ -2716,6 +2717,10 @@ class _NoopChatStorage implements ChatStorage {
       throw UnimplementedError();
 
   @override
+  Future<int> insertSessionRuntimeMarker(SessionRuntimeMarker marker) =>
+      throw UnimplementedError();
+
+  @override
   Future<int> insertTurn(ChatTurn turn) => throw UnimplementedError();
 
   @override
@@ -2723,6 +2728,12 @@ class _NoopChatStorage implements ChatStorage {
 
   @override
   Future<bool> testDatabaseConnection() async => true;
+
+  @override
+  Future<SessionRuntimeMarker?> getLatestSessionRuntimeMarkerByGroup(
+    int groupId,
+  ) async =>
+      null;
 
   @override
   Future<void> updateGroupLastMessageTime(int groupId) =>
@@ -2753,6 +2764,10 @@ class _NoopChatStorage implements ChatStorage {
   Future<void> updateSessionContextSnapshot(
     SessionContextSnapshot snapshot,
   ) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> updateSessionRuntimeMarker(SessionRuntimeMarker marker) =>
       throw UnimplementedError();
 
   @override

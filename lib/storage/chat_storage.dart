@@ -5,6 +5,7 @@ import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/response/message_content_type.dart';
 import '../models/session/session_context_snapshot.dart';
+import '../models/session/session_runtime_marker.dart';
 
 abstract class ChatStorage {
   Future<int> insertGroup(ChatGroup group);
@@ -34,6 +35,12 @@ abstract class ChatStorage {
     int groupId,
   );
   Future<void> updateSessionContextSnapshot(SessionContextSnapshot snapshot);
+
+  Future<int> insertSessionRuntimeMarker(SessionRuntimeMarker marker);
+  Future<SessionRuntimeMarker?> getLatestSessionRuntimeMarkerByGroup(
+    int groupId,
+  );
+  Future<void> updateSessionRuntimeMarker(SessionRuntimeMarker marker);
 
   Future<int> insertMessage(ChatMessage message, int groupId);
   Future<List<ChatMessage>> getMessagesByGroup(int groupId);

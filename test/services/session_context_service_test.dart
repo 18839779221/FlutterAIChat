@@ -136,12 +136,78 @@ void main() {
         config: ChatConfig(useReasoning: false, systemPrompt: '你是一个助手'),
       );
 
-      expect(plannerMessages.first.text, contains('当前目标'));
+      expect(plannerMessages.first.text, contains('# currentDate'));
       expect(
         plannerMessages.map((m) => m.text).join('\n'),
         contains('最近工作集：TurnHarness 还没接入'),
       );
       expect(plannerMessages.last.text, contains('TurnHarness 是主入口'));
+
+      await storage.deleteGroup(groupId);
+    });
+
+    test('prepends date change reminder before current turn transcript',
+        () async {
+      final storage = DatabaseHelper(
+        databaseName: 'session_context_service_date_reminder_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(title: 'Session Context Date Reminder'),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final eventRepository = ChatEventRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '今天的最新新闻是什么',
+          providerStateJson: const {
+            'runtime_context': {
+              'date_change_reminder':
+                  '<system-reminder>\nThe date has changed. Today\'s date is now 2026-04-25.\nDO NOT mention this to the user explicitly because they are already aware.\n</system-reminder>',
+            },
+          },
+        ),
+      );
+
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetResolver: (_) => const SessionModelBudget(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw UnimplementedError(),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      );
+
+      final plannerMessages = await service.buildPlannerMessages(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: [
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '今天的最新新闻是什么',
+          ),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: '你是一个助手'),
+      );
+
+      expect(plannerMessages.first.text, contains('# currentDate'));
+      expect(plannerMessages[1].text, contains('The date has changed.'));
+      expect(plannerMessages[2].text, '今天的最新新闻是什么');
 
       await storage.deleteGroup(groupId);
     });
@@ -334,7 +400,7 @@ void main() {
       final snapshot = await snapshotRepository.getLatestByGroup(groupId);
       expect(snapshot, isNotNull);
       expect(snapshot!.coveredUntilTurnId, historicalTurnId);
-      expect(plannerMessages.first.text, contains('当前目标'));
+      expect(plannerMessages.first.text, contains('# currentDate'));
       expect(
         plannerMessages.map((message) => message.text).join('\n'),
         contains('最近历史：前一个 completed turn 应该保留原文'),
@@ -453,7 +519,7 @@ void main() {
       final snapshot = await snapshotRepository.getLatestByGroup(groupId);
       expect(snapshot, isNotNull);
       expect(snapshot!.coveredUntilTurnId, lessThan(recentTurnId));
-      expect(plannerMessages.first.text, contains('旧历史已经被压缩'));
+      expect(plannerMessages.first.text, contains('# currentDate'));
       expect(
         plannerMessages.map((message) => message.text).join('\n'),
         contains('最近需求：确认 recent working set 应保留哪些 turn'),

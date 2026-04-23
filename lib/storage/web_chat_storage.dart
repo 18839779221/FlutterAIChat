@@ -9,6 +9,7 @@ import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/response/message_content_type.dart';
 import '../models/session/session_context_snapshot.dart';
+import '../models/session/session_runtime_marker.dart';
 import '../utils/logger.dart';
 import 'chat_storage.dart';
 
@@ -19,6 +20,7 @@ class WebChatStorage implements ChatStorage {
   static const String _messagesKey = 'web.chat_messages';
   static const String _sessionContextSnapshotsKey =
       'web.session_context_snapshots';
+  static const String _sessionRuntimeMarkersKey = 'web.session_runtime_markers';
   static const String _turnsKey = 'web.chat_turns';
   static const String _turnStepsKey = 'web.chat_turn_steps';
 
@@ -107,6 +109,7 @@ class WebChatStorage implements ChatStorage {
     final groups = await _readGroups();
     final messages = await _readMessages();
     final snapshots = await _readSessionContextSnapshots();
+    final runtimeMarkers = await _readSessionRuntimeMarkers();
     final turns = await _readTurns();
     final turnSteps = await _readTurnSteps();
     await _writeEvents(
@@ -117,6 +120,11 @@ class WebChatStorage implements ChatStorage {
         messages.where((message) => message['group_id'] != groupId).toList());
     await _writeSessionContextSnapshots(
       snapshots.where((snapshot) => snapshot['group_id'] != groupId).toList(),
+    );
+    await _writeSessionRuntimeMarkers(
+      runtimeMarkers
+          .where((marker) => marker['group_id'] != groupId)
+          .toList(),
     );
     await _writeTurns(
         turns.where((turn) => turn['group_id'] != groupId).toList());
@@ -312,6 +320,47 @@ class WebChatStorage implements ChatStorage {
   }
 
   @override
+  Future<int> insertSessionRuntimeMarker(SessionRuntimeMarker marker) async {
+    final markers = await _readSessionRuntimeMarkers();
+    final nextId = _nextId(markers.map((item) => item['id'] as int?));
+    markers.add({
+      ...marker.toMap(),
+      'id': nextId,
+    });
+    await _writeSessionRuntimeMarkers(markers);
+    return nextId;
+  }
+
+  @override
+  Future<SessionRuntimeMarker?> getLatestSessionRuntimeMarkerByGroup(
+    int groupId,
+  ) async {
+    final markers = await _readSessionRuntimeMarkers();
+    final matches =
+        markers.where((marker) => marker['group_id'] == groupId).toList()
+          ..sort(
+            (left, right) =>
+                (right['updated_at'] as int).compareTo(left['updated_at'] as int),
+          );
+    if (matches.isEmpty) {
+      return null;
+    }
+    return SessionRuntimeMarker.fromMap(matches.first);
+  }
+
+  @override
+  Future<void> updateSessionRuntimeMarker(SessionRuntimeMarker marker) async {
+    final markers = await _readSessionRuntimeMarkers();
+    final updated = markers.map((storedMarker) {
+      if (storedMarker['id'] != marker.id) {
+        return storedMarker;
+      }
+      return marker.toMap();
+    }).toList();
+    await _writeSessionRuntimeMarkers(updated);
+  }
+
+  @override
   Future<int> insertMessage(ChatMessage message, int groupId) async {
     final messages = await _readMessages();
     final nextId = _nextId(messages.map((item) => item['id'] as int?));
@@ -487,12 +536,37 @@ class WebChatStorage implements ChatStorage {
         .toList();
   }
 
+  Future<List<Map<String, dynamic>>> _readSessionRuntimeMarkers() async {
+    final raw = _preferences.getString(_sessionRuntimeMarkersKey);
+    if (raw == null || raw.isEmpty) {
+      return [];
+    }
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) {
+      Logger.w(_tag, 'Invalid stored session runtime markers payload');
+      return [];
+    }
+    return decoded
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+  }
+
   Future<void> _writeSessionContextSnapshots(
     List<Map<String, dynamic>> snapshots,
   ) async {
     await _preferences.setString(
       _sessionContextSnapshotsKey,
       jsonEncode(snapshots),
+    );
+  }
+
+  Future<void> _writeSessionRuntimeMarkers(
+    List<Map<String, dynamic>> markers,
+  ) async {
+    await _preferences.setString(
+      _sessionRuntimeMarkersKey,
+      jsonEncode(markers),
     );
   }
 

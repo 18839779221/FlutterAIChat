@@ -1643,6 +1643,47 @@ void main() {
       expect(preferencesController.reasoningValues, [true]);
     });
 
+    test('sendMessage stores runtime current date in turn provider state',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final orchestrator = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.finalAnswer,
+            role: MessageRole.assistant,
+            content: '这是今天的摘要。',
+          ),
+        ],
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(),
+        harness: orchestrator,
+      );
+      addTearDown(container.dispose);
+
+      final groupId = await databaseHelper.insertGroup(
+        ChatGroup(title: 'Date Aware Send Flow'),
+      );
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'Date Aware Send Flow');
+
+      await container.read(chatControllerProvider).sendMessage('今天有什么新消息？');
+
+      final recordedTurn = orchestrator.recordedTurns.single;
+      final runtimeContext =
+          recordedTurn.providerStateJson?['runtime_context'] as Map?;
+      expect(runtimeContext, isNotNull);
+      expect(runtimeContext?['current_date'], isA<String>());
+      expect(runtimeContext?.containsKey('date_change_reminder'), isFalse);
+
+      await databaseHelper.deleteGroup(groupId);
+    });
+
     test('需要确认的工具会让发送事务停留在 awaitingConfirmation', () async {
       final databaseHelper = _createTestDatabaseHelper();
       final orchestrator = _FakeTurnHarness(

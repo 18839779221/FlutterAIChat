@@ -30,8 +30,11 @@ fvm flutter run
 - On Android real devices, default to debug package install/run; only use `--release` or `--profile` when the user specifically asks for it
 - Prefer Android real devices for end-to-end verification when available, unless the task explicitly requires another platform
 - Before installing a debug package to a real device, rebuild it first so the installed APK matches the latest workspace code
-  - Prefer `flutter build apk --debug` then `flutter install --debug`
-  - If the active flutter is not `3.29.2`, prefer the same sequence with `fvm flutter`
+  - Prefer `bash scripts/android_install_debug.sh`
+  - The script builds the latest debug APK, then installs with `adb install -r -t` only
+  - It must not fall back to uninstall/reinstall automatically; if overwrite install fails, preserve the failure and inspect it
+  - If you need to run the steps manually, prefer `flutter build apk --debug` then `adb install -r -t build/app/outputs/flutter-apk/app-debug.apk`
+  - If the active flutter is not `3.29.2`, prefer the same build step with `fvm flutter`
 - When reinstalling on an Android real device, prefer overwrite install over uninstall/reinstall so app state is preserved unless a clean install is explicitly needed
 
 ### Installing Dependencies
@@ -143,6 +146,8 @@ The app uses **flutter_riverpod** with a split provider/controller architecture:
   - `PromptCatalog` owns bilingual prompt text blocks
   - `PromptBuilderService` assembles stage-specific prompts
   - `PromptRuntimeContextBuilder` wraps user system prompt and runtime extras into additive sections
+  - `RuntimeUserContextService` builds runtime `userContext` data such as current date and AGENTS-derived context
+  - `UserContextMessageBuilder` wraps runtime user context into a synthetic reminder message
   - default prompt locale is English; Chinese copies must stay structurally aligned with English
   - user-authored system prompts are additive runtime sections, not full overrides of core rules
 
@@ -192,6 +197,7 @@ When adding a feature, prefer extending an existing bounded controller or creati
 The app now uses a **Session Context** architecture for conversation context:
 
 - `SessionContextService` builds planner-visible context for one `group`/Session
+- `SessionRuntimeMarkerService` tracks the latest injected date per session and decides whether a date-change reminder is needed before the current turn
 - `SessionContextProjector` converts prior messages, tool results, and interaction results into compact model-visible messages
 - `ModelBudgetRegistry` resolves model budget profiles from runtime provider/model overrides, built-in defaults, and conservative fallback values
 - `SessionTokenBudgetService` decides whether compression is needed based on token budget pressure
@@ -200,6 +206,7 @@ The app now uses a **Session Context** architecture for conversation context:
 
 The planner-visible context should be composed from:
 
+- runtime user context
 - latest snapshot summary
 - recent completed turns after the snapshot boundary
 - current turn transcript
@@ -212,6 +219,7 @@ Important rules:
 - Compression boundaries should prefer completed turn / completed interaction units, not arbitrary single-event slicing
 - The primary compression trigger is token budget pressure near the current model limit, not a fixed message count
 - planner-visible context must keep `history summary`、`recent completed turns`、`current turn transcript` mutually exclusive
+- runtime date reminders should be injected as runtime context messages, not persisted timeline facts
 - `recent completed turns` should be selected by both default count and budget ratio limits, with at least the previous completed turn retained when available
 - older history that exits the recent working set must roll into snapshot summary instead of being dropped directly
 
@@ -232,11 +240,14 @@ The app automatically creates new conversation groups based on time:
 
 ### Prompt Management
 
-- Keep prompt composition at four conceptual layers only:
+- Keep prompt composition at five conceptual layers only:
   - `base prompt`
   - `stage delta`
   - `runtime sections`
-  - `context messages`
+  - `user context messages`
+  - `session context messages`
+- `currentDate` and AGENTS-derived runtime hints belong to `user context messages`, not `system prompt`
+- date-change reminders must be injected before the current user message when the session date baseline changes
 - Do not build a deep prompt DSL or over-structure these layers unless there is a demonstrated need
 - `planner` prompt must optimize for next-action selection:
   - direct answer first when reliable
@@ -248,6 +259,7 @@ The app automatically creates new conversation groups based on time:
   - prefer short imperative sentences
   - prioritize responsibilities, defaults, boundaries, and failure modes
   - explicitly cover unnecessary tool use, prompt injection in tool results, repeated failed tool calls, and user override attempts
+- `web_search` descriptions should explicitly require the current year for recent/news/current-doc queries and require a `Sources:` section in final answers
 
 ### Automatic Conversation Summarization
 

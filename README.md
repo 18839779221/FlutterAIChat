@@ -29,7 +29,7 @@
 - 同一个模型决策可同时包含 assistant 文本和多个 tool call，不再强制“工具调用”和“文本回复”二选一
 - turn 内多次 tool use 会持久化到 `chat_turn_steps`，后续决策统一消费 ledger summary，而不是把原始工具明细全文回填给模型
 - 中间态 assistant 文本会以 `assistantPlannerMessage` 事件落库，便于在工具执行前保留模型可见解释
-- Prompt 统一通过 `lib/services/prompt/` 下的 catalog / builder 组装，按 `base prompt`、`stage delta`、`runtime sections`、`context messages` 四类心智模型管理
+- Prompt 统一通过 `lib/services/prompt/` 下的 catalog / builder 组装，按 `base prompt`、`stage delta`、`runtime sections`、`user context messages`、`session context messages` 五类心智模型管理
 - 核心 prompt 同时维护英文版与中文版，默认使用英文版
 - `summary` 与标题生成等轻量调用走轻量 prompt，不复用完整主对话 prompt
 - `final answer` 改为按需阶段；无需额外整理时，不再固定追加一次模型调用
@@ -93,6 +93,8 @@ UI 只消费 Riverpod providers 和 controller 门面，不直接编排复杂业
 - `PromptCatalog`：维护双语 prompt 文本块
 - `PromptBuilderService`：根据阶段和运行时输入组装最终 prompt
 - `PromptRuntimeContextBuilder`：将用户自定义 system prompt 等运行时信息包装为附加 section
+- `RuntimeUserContextService`：生成运行时 `userContext`，当前包含 `currentDate` 与 `AGENTS.md` 占位内容
+- `UserContextMessageBuilder`：把 runtime user context 包装成 synthetic user reminder message
 
 ### Service 层
 - [lib/services/chat_service.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/services/chat_service.dart)
@@ -113,6 +115,7 @@ Service 层负责 LLM 通信、Session 上下文编排、工具编排与 trace �
 
 职责分工：
 - `SessionContextService`：为 planner 构建 `history summary + recent completed turns + current turn transcript`，并保证三层边界互斥
+- `SessionRuntimeMarkerService`：按 session 级持久化日期基线判断是否需要在当前 turn 前注入跨天 reminder
 - `SessionContextProjector`：把消息、tool result、interaction result 投影成模型可见上下文
 - `ModelBudgetRegistry`：统一解析模型预算配置，优先使用运行时 provider/model 覆盖，再回落到内置默认表与 fallback
 - `SessionTokenBudgetService`：统一按模型上下文预算做分项估算，并判断是否需要压缩
@@ -124,6 +127,17 @@ Service 层负责 LLM 通信、Session 上下文编排、工具编排与 trace �
 - recent completed turns 同时受“默认 N 个”和“可用输入预算占比上限”双约束
 - 更早历史会滚动并入 summary，不会因为 turn 较早而直接丢失语义
 - 当前 turn transcript 始终单独保留，不与 recent completed turns 重叠
+- planner / final answer 额外会在 session context 之前注入 runtime `userContext`
+- 当同一 session 再次发送时若日期与最近一次注入基线不同，会在当前 user message 前追加 `<system-reminder>` 形式的日期变化提醒
+- 这些运行时 reminder 不会进入 UI timeline，也不会写入 session summary
+
+### 时间感知与 WebSearch
+- `RuntimeUserContextService` 会为 planner / final answer 注入当前日期，降低“latest 却搜成去年”的风险
+- `SessionRuntimeMarkerService` 会在跨天的下一次发送前注入 `The date has changed...` reminder，并把最新日期基线持久化到 session 级 marker
+- `web_search` 的 `descriptionForModel` 会动态注入当前月份年份，并强制要求：
+  - 搜最近信息、新闻、文档、当前事件时必须使用当前年份
+  - 最终答复末尾必须包含 `Sources:`
+  - `Sources:` 中的链接必须使用 Markdown 超链接
 
 ## 消息发送链路
 
@@ -204,6 +218,24 @@ flowchart TD
 
 ```bash
 fvm flutter run -d web-server --release --web-hostname 127.0.0.1 --web-port 7357
+
+### Android 安装
+推荐通过项目脚本安装最新 debug 包到真机：
+
+```bash
+bash scripts/android_install_debug.sh
+```
+
+如有多台设备，可显式指定 device id：
+
+```bash
+bash scripts/android_install_debug.sh <device-id>
+```
+
+说明：
+- 脚本会先构建最新 debug APK，再执行 `adb install -r -t`
+- 默认只允许覆盖安装，不会自动回退到卸载重装
+- 如果覆盖安装失败，应优先查看原始 ADB 错误，而不是先清空应用状态
 ```
 
 ### Android

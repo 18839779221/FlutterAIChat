@@ -2,17 +2,28 @@ import '../models/chat_event.dart';
 import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../repositories/chat_event_repository.dart';
+import 'prompt/runtime_user_context_service.dart';
+import 'prompt/user_context_message_builder.dart';
+import 'session_runtime_marker_service.dart';
 import 'session_context_projector.dart';
 
 class TranscriptBuilderService {
   final ChatEventRepository _eventRepository;
   final SessionContextProjector _contextProjector;
+  final RuntimeUserContextService _runtimeUserContextService;
+  final UserContextMessageBuilder _userContextMessageBuilder;
 
   TranscriptBuilderService({
     required ChatEventRepository eventRepository,
     SessionContextProjector? contextProjector,
+    RuntimeUserContextService? runtimeUserContextService,
+    UserContextMessageBuilder? userContextMessageBuilder,
   })  : _eventRepository = eventRepository,
-        _contextProjector = contextProjector ?? SessionContextProjector();
+        _contextProjector = contextProjector ?? SessionContextProjector(),
+        _runtimeUserContextService =
+            runtimeUserContextService ?? RuntimeUserContextService(),
+        _userContextMessageBuilder =
+            userContextMessageBuilder ?? const UserContextMessageBuilder();
 
   Future<List<ChatEvent>> loadTranscript(int turnId) {
     return _eventRepository.listEventsByTurn(turnId);
@@ -92,6 +103,14 @@ class TranscriptBuilderService {
         ),
       );
     }
+    messages.add(
+      _userContextMessageBuilder.buildMessage(
+        snapshot: await _runtimeUserContextService.buildSnapshot(),
+      ),
+    );
+    if (_extractDateReminderMessage(turn) case final reminder?) {
+      messages.add(reminder);
+    }
 
     for (final event in transcript) {
       final projected = _contextProjector.projectEventToContext(event);
@@ -101,5 +120,23 @@ class TranscriptBuilderService {
     }
 
     return messages;
+  }
+
+  ChatMessage? _extractDateReminderMessage(ChatTurn turn) {
+    final runtimeContext = turn.providerStateJson?[
+        SessionRuntimeMarkerService.runtimeContextKey];
+    if (runtimeContext is! Map) {
+      return null;
+    }
+    final reminder =
+        runtimeContext[SessionRuntimeMarkerService.dateChangeReminderKey];
+    if (reminder is! String || reminder.trim().isEmpty) {
+      return null;
+    }
+    return ChatMessage(
+      text: reminder,
+      role: MessageRole.user,
+      status: MessageStatus.completed,
+    );
   }
 }

@@ -5,6 +5,7 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
+import 'package:ai_chat/models/session/session_runtime_marker.dart';
 import 'package:ai_chat/services/tool_executor.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:ai_chat/tools/default_tool_runtime_registry.dart';
@@ -94,6 +95,9 @@ class _FakeChatStorage implements ChatStorage {
       1;
 
   @override
+  Future<int> insertSessionRuntimeMarker(SessionRuntimeMarker marker) async => 1;
+
+  @override
   Future<int> insertTurn(ChatTurn turn) async => 1;
 
   @override
@@ -101,6 +105,12 @@ class _FakeChatStorage implements ChatStorage {
 
   @override
   Future<bool> testDatabaseConnection() async => true;
+
+  @override
+  Future<SessionRuntimeMarker?> getLatestSessionRuntimeMarkerByGroup(
+    int groupId,
+  ) async =>
+      null;
 
   @override
   Future<void> updateGroupLastMessageTime(int groupId) async {}
@@ -129,6 +139,9 @@ class _FakeChatStorage implements ChatStorage {
   Future<void> updateSessionContextSnapshot(
     SessionContextSnapshot snapshot,
   ) async {}
+
+  @override
+  Future<void> updateSessionRuntimeMarker(SessionRuntimeMarker marker) async {}
 
   @override
   Future<void> updateStructuredMessage(

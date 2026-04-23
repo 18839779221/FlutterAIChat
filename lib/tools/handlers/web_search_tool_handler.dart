@@ -13,28 +13,30 @@ import '../core/tool_handler.dart';
 class WebSearchToolHandler implements ToolHandler {
   WebSearchToolHandler({
     required WebSearcher webSearcher,
-  }) : _webSearcher = webSearcher;
+    String Function()? currentMonthYearProvider,
+  })  : _webSearcher = webSearcher,
+        _currentMonthYearProvider =
+            currentMonthYearProvider ?? _defaultCurrentMonthYearProvider;
 
   final WebSearcher _webSearcher;
+  final String Function() _currentMonthYearProvider;
 
   @override
-  ToolDefinition get definition => const ToolDefinition(
+  ToolDefinition get definition => ToolDefinition(
         name: 'web_search',
         title: 'Web Search',
-        localizedTitle: LocalizedToolText(english: 'Web Search', chinese: '联网搜索'),
-        descriptionForModel:
-            'Use this when the user needs real-time information, external references, official sources, or the latest updates from the web. Generate short, specific search queries. If the user already provided a URL, prefer fetch_webpage. If the question only depends on current chat context, prefer search_chat_history.',
+        localizedTitle:
+            const LocalizedToolText(english: 'Web Search', chinese: '联网搜索'),
+        descriptionForModel: _buildEnglishDescription(),
         localizedDescriptionForModel: LocalizedToolText(
-          english:
-              'Use this when the user needs real-time information, external references, official sources, or the latest updates from the web. Generate short, specific search queries. If the user already provided a URL, prefer fetch_webpage. If the question only depends on current chat context, prefer search_chat_history.',
-          chinese:
-              '当用户需要实时信息、外部资料、官网来源或网上最新进展时使用。应生成短而具体的搜索词。如果用户已经提供 URL，应优先使用 fetch_webpage；如果问题只依赖当前聊天上下文，应优先使用 search_chat_history。',
+          english: _buildEnglishDescription(),
+          chinese: _buildChineseDescription(),
         ),
-        parameters: {
+        parameters: const {
           'query': 'string',
           'maxResults': 'int?',
         },
-        argumentSchema: ToolArgumentSchema(
+        argumentSchema: const ToolArgumentSchema(
           properties: {
             'query': ToolArgumentProperty.string(
               description:
@@ -156,5 +158,60 @@ class WebSearchToolHandler implements ToolHandler {
       return value;
     }
     return '${value.substring(0, maxLength)}...';
+  }
+
+  String _buildEnglishDescription() {
+    final currentMonthYear = _currentMonthYearProvider();
+    return '''
+Allows the model to search the web and use the results to inform responses.
+Provides up-to-date information for current events, recent changes, and external references beyond the model's knowledge cutoff.
+Returns search result information including titles, snippets, and URLs that can be cited in the final answer.
+If the user already provided a URL, prefer fetch_webpage. If the question only depends on current chat context, prefer search_chat_history.
+
+CRITICAL REQUIREMENT - You MUST follow this:
+- After answering the user's question, you MUST include a "Sources:" section at the end of your response.
+- In the Sources section, list all relevant URLs from the search results as markdown hyperlinks: [Title](URL).
+- This is mandatory.
+
+IMPORTANT - Use the correct year in search queries:
+- The current month is $currentMonthYear. You MUST use this year when searching for recent information, documentation, or current events.
+- If the user asks for "latest" information, do not default to last year.
+''';
+  }
+
+  String _buildChineseDescription() {
+    final currentMonthYear = _currentMonthYearProvider();
+    return '''
+当用户需要联网获取最新信息、当前事件、近期变化、外部参考资料或超出模型知识截止时间的信息时使用。
+搜索结果会返回标题、摘要与 URL，供最终答复引用。
+如果用户已经提供 URL，应优先使用 fetch_webpage；如果问题只依赖当前聊天上下文，应优先使用 search_chat_history。
+
+关键要求：
+- 在基于联网搜索作答后，最终答复末尾必须包含 "Sources:" 小节。
+- 在 Sources 小节中，必须把相关链接写成 Markdown 超链接：[标题](URL)。
+
+重要要求 - 搜索查询必须使用正确的当前年份：
+- 当前月份是 $currentMonthYear。在搜索最新信息、最新文档、最近变化或当前事件时，必须使用当前年份。
+- 当用户要求“最新”内容时，不要默认使用去年的年份。
+''';
+  }
+
+  static String _defaultCurrentMonthYearProvider() {
+    final now = DateTime.now();
+    const months = <String>[
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return '${months[now.month - 1]} ${now.year}';
   }
 }

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
+import 'package:ai_chat/models/session/session_runtime_marker.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -14,11 +15,11 @@ void main() {
   });
 
   test(
-      'DatabaseHelper schema includes turn, step, event and snapshot tables in v10',
+      'DatabaseHelper schema includes turn, step, event, snapshot and runtime marker tables in v11',
       () {
     final source = File('lib/database/database_helper.dart').readAsStringSync();
 
-    expect(source, contains('version: 10'));
+    expect(source, contains('version: 11'));
     expect(
       source,
       contains(RegExp(r'CREATE TABLE chat_turns \(')),
@@ -36,6 +37,11 @@ void main() {
       contains(
           RegExp(r'CREATE TABLE IF NOT EXISTS session_context_snapshots \(')),
     );
+    expect(
+      source,
+      contains(
+          RegExp(r'CREATE TABLE IF NOT EXISTS session_runtime_markers \(')),
+    );
     expect(source, contains(RegExp(r'sequence INTEGER NOT NULL')));
     expect(source, contains(RegExp(r'provider_style TEXT')));
     expect(source, contains(RegExp(r'provider_state_json TEXT')));
@@ -52,18 +58,19 @@ void main() {
       contains(RegExp(r'CREATE UNIQUE INDEX idx_chat_events_turn_id_sequence')),
     );
     expect(source, contains('if (oldVersion < 10)'));
+    expect(source, contains('if (oldVersion < 11)'));
   });
 
   test(
-      'DatabaseHelper creates turn, step, event and snapshot tables with required indexes',
+      'DatabaseHelper creates turn, step, event, snapshot and runtime marker tables with required indexes',
       () async {
-    final helper = DatabaseHelper(databaseName: 'database_helper_test_v10.db');
+    final helper = DatabaseHelper(databaseName: 'database_helper_test_v11.db');
     final db = await helper.database;
 
     final tables = await db.rawQuery('''
       SELECT name
       FROM sqlite_master
-      WHERE type = 'table' AND name IN ('chat_turns', 'chat_turn_steps', 'chat_events', 'session_context_snapshots')
+      WHERE type = 'table' AND name IN ('chat_turns', 'chat_turn_steps', 'chat_events', 'session_context_snapshots', 'session_runtime_markers')
       ORDER BY name
     ''');
 
@@ -73,7 +80,8 @@ void main() {
         'chat_events',
         'chat_turn_steps',
         'chat_turns',
-        'session_context_snapshots'
+        'session_context_snapshots',
+        'session_runtime_markers',
       ],
     );
 
@@ -84,7 +92,8 @@ void main() {
         AND name IN (
           'idx_chat_events_turn_id_sequence',
           'idx_chat_turn_steps_turn_id_step_index',
-          'idx_session_context_snapshots_group_id_updated_at'
+          'idx_session_context_snapshots_group_id_updated_at',
+          'idx_session_runtime_markers_group_id_updated_at'
         )
       ORDER BY name
     ''');
@@ -95,6 +104,7 @@ void main() {
         'idx_chat_events_turn_id_sequence',
         'idx_chat_turn_steps_turn_id_step_index',
         'idx_session_context_snapshots_group_id_updated_at',
+        'idx_session_runtime_markers_group_id_updated_at',
       ],
     );
 
@@ -202,9 +212,42 @@ void main() {
     await helper.deleteGroup(groupId);
   });
 
-  test('DatabaseHelper upgrades v9 db and adds session context snapshot table',
+  test('DatabaseHelper can persist and update session runtime markers',
       () async {
-    const dbName = 'database_helper_upgrade_v9_to_v10.db';
+    final helper =
+        DatabaseHelper(databaseName: 'database_helper_runtime_marker.db');
+    final groupId =
+        await helper.insertGroup(ChatGroup(title: 'runtime marker group'));
+
+    final markerId = await helper.insertSessionRuntimeMarker(
+      SessionRuntimeMarker(
+        groupId: groupId,
+        lastInjectedDate: '2026-04-24',
+      ),
+    );
+
+    final created = await helper.getLatestSessionRuntimeMarkerByGroup(groupId);
+    expect(created, isNotNull);
+    expect(created!.id, markerId);
+    expect(created.lastInjectedDate, '2026-04-24');
+
+    await helper.updateSessionRuntimeMarker(
+      created.copyWith(
+        lastInjectedDate: '2026-04-25',
+      ),
+    );
+
+    final updated = await helper.getLatestSessionRuntimeMarkerByGroup(groupId);
+    expect(updated, isNotNull);
+    expect(updated!.lastInjectedDate, '2026-04-25');
+
+    await helper.deleteGroup(groupId);
+  });
+
+  test(
+      'DatabaseHelper upgrades v9 db and adds session context snapshot and runtime marker tables',
+      () async {
+    const dbName = 'database_helper_upgrade_v9_to_v11.db';
     final dbPath = p.join(await getDatabasesPath(), dbName);
     await databaseFactory.deleteDatabase(dbPath);
 
@@ -315,5 +358,10 @@ void main() {
       WHERE type = 'table' AND name = 'session_context_snapshots'
     """);
     expect(snapshotTables, hasLength(1));
+    final runtimeMarkerTables = await db.rawQuery("""
+      SELECT name FROM sqlite_master
+      WHERE type = 'table' AND name = 'session_runtime_markers'
+    """);
+    expect(runtimeMarkerTables, hasLength(1));
   });
 }
