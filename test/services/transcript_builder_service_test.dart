@@ -148,7 +148,7 @@ void main() {
       expect(messages.first.text, '你是一个严谨的助手');
       expect(messages[1].role, MessageRole.user);
       expect(messages[1].text, contains('# currentDate'));
-      expect(messages.last.text, '已找到数据库版本是 7');
+      expect(messages.last.text, '[user tool_result] 已找到数据库版本是 7');
     });
 
     test(
@@ -203,6 +203,77 @@ void main() {
           contains('我先查一下数据库版本。'),
           contains('已找到数据库版本是 7'),
         ]),
+      );
+    });
+
+    test('buildFinalAnswerMessages keeps tool-use and tool-result transcript structure',
+        () async {
+      final service = TranscriptBuilderService(
+        eventRepository: _FakeChatEventRepository([
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '请帮我更新爱好笔记',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.assistantToolCall,
+            role: MessageRole.assistant,
+            content: '准备执行工具：编辑文件',
+            payloadJson: const {
+              'toolName': 'Edit',
+              'arguments': {
+                'file_path': 'my_hobbies.md',
+                'old_string': '篮球',
+                'new_string': '篮球\n游戏',
+              },
+            },
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: '已编辑文件：my_hobbies.md',
+            payloadJson: const {
+              'toolName': 'Edit',
+              'status': 'success',
+              'summary': '已编辑文件：my_hobbies.md',
+              'toolResultText': 'Successfully edited my_hobbies.md',
+              'data': {
+                'filePath': 'my_hobbies.md',
+              },
+            },
+          ),
+        ]),
+      );
+
+      final messages = await service.buildFinalAnswerMessages(
+        groupId: 1,
+        turn: ChatTurn(
+          id: 1,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '请帮我更新爱好笔记',
+        ),
+        transcript: await service.loadTranscript(1),
+        systemPrompt: '',
+      );
+
+      final combined =
+          messages.map((message) => '${message.role.name}:${message.text}').join('\n');
+      expect(combined, contains('assistant:[assistant tool_use]'));
+      expect(combined, contains('Edit'));
+      expect(combined, contains('my_hobbies.md'));
+      expect(
+        combined,
+        contains('user:[user tool_result] Successfully edited my_hobbies.md'),
       );
     });
 
@@ -290,7 +361,7 @@ void main() {
           contains('assistant:我先确认你偏好的存储方案。'),
           contains('assistant:你想用 SQLite 还是别的本地存储？'),
           contains('user:我更偏向 SQLite。'),
-          contains('assistant:已记录用户偏好：SQLite'),
+          contains('user:[user tool_result] 已记录用户偏好：SQLite'),
         ]),
       );
     });

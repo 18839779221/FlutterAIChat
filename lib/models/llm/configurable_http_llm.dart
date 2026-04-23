@@ -27,6 +27,9 @@ class ConfigurableHttpLLM implements BaseLLM {
   static const String _tag = 'ConfigurableHttpLLM';
   static const Duration _defaultRequestTimeout = Duration(seconds: 60);
   static const Duration _defaultPlannerRequestTimeout = Duration(seconds: 60);
+  static const String _modelContextTypeKey = 'modelContextType';
+  static const String _assistantToolUseContextType = 'assistantToolUse';
+  static const String _userToolResultContextType = 'userToolResult';
 
   final AppSettingsRepository _settingsRepository;
   final ApiProtocolResolver _protocolResolver;
@@ -518,13 +521,16 @@ class ConfigurableHttpLLM implements BaseLLM {
   }) {
     final normalizedMessages =
         _normalizeMessagesWithConfiguredSystemPrompt(messages, config);
+    final transcriptState = _HistoricalToolTranscriptState('call_ctx_');
     return {
       'model': modelName,
       'messages': normalizedMessages
-          .map((msg) => {
-                'role': msg.role.toString().split('.').last,
-                'content': msg.text,
-              })
+          .map(
+            (msg) => _buildChatCompletionsMessage(
+              msg,
+              transcriptState: transcriptState,
+            ),
+          )
           .toList(),
       'stream': stream,
     };
@@ -570,20 +576,16 @@ class ConfigurableHttpLLM implements BaseLLM {
   }) {
     final normalizedMessages =
         _normalizeMessagesWithConfiguredSystemPrompt(messages, config);
+    final transcriptState = _HistoricalToolTranscriptState('fc_ctx_');
     return {
       'model': modelName,
       'input': normalizedMessages
-          .map((msg) => {
-                'role': msg.role.toString().split('.').last,
-                'content': [
-                  {
-                    'type': msg.role == MessageRole.assistant
-                        ? 'output_text'
-                        : 'input_text',
-                    'text': msg.text,
-                  },
-                ],
-              })
+          .map(
+            (msg) => _buildResponsesInputItem(
+              msg,
+              transcriptState: transcriptState,
+            ),
+          )
           .toList(),
       'stream': stream,
       'store': false,
@@ -634,6 +636,7 @@ class ConfigurableHttpLLM implements BaseLLM {
     }
 
     final normalizedMessages = <Map<String, dynamic>>[];
+    final transcriptState = _HistoricalToolTranscriptState('toolu_ctx_');
     for (final message in messages) {
       final trimmedText = message.text.trim();
       if (trimmedText.isEmpty) {
@@ -643,15 +646,12 @@ class ConfigurableHttpLLM implements BaseLLM {
         systemSegments.add(trimmedText);
         continue;
       }
-      normalizedMessages.add({
-        'role': message.role == MessageRole.assistant ? 'assistant' : 'user',
-        'content': [
-          {
-            'type': 'text',
-            'text': message.text,
-          },
-        ],
-      });
+      normalizedMessages.add(
+        _buildAnthropicMessage(
+          message,
+          transcriptState: transcriptState,
+        ),
+      );
     }
 
     if (continuationItems.isNotEmpty) {
@@ -666,6 +666,141 @@ class ConfigurableHttpLLM implements BaseLLM {
       'messages': normalizedMessages,
       'stream': stream,
       'max_tokens': 4096,
+    };
+  }
+
+  Map<String, dynamic> _buildChatCompletionsMessage(
+    ChatMessage message, {
+    required _HistoricalToolTranscriptState transcriptState,
+  }) {
+    final contextType = _modelContextTypeOf(message);
+    if (contextType == _assistantToolUseContextType) {
+      final toolName = _toolNameOf(message);
+      if (toolName != null) {
+        final callId = transcriptState.register(toolName);
+        return {
+          'role': 'assistant',
+          'content': '',
+          'tool_calls': [
+            {
+              'id': callId,
+              'type': 'function',
+              'function': {
+                'name': toolName,
+                'arguments': jsonEncode(_toolArgumentsOf(message) ?? const {}),
+              },
+            },
+          ],
+        };
+      }
+    }
+    if (contextType == _userToolResultContextType) {
+      final invocation = transcriptState.consume(
+        preferredToolName: _toolNameOf(message),
+      );
+      if (invocation != null) {
+        return {
+          'role': 'tool',
+          'tool_call_id': invocation.id,
+          'content': message.text,
+        };
+      }
+    }
+    return {
+      'role': message.role.toString().split('.').last,
+      'content': message.text,
+    };
+  }
+
+  Map<String, dynamic> _buildResponsesInputItem(
+    ChatMessage message, {
+    required _HistoricalToolTranscriptState transcriptState,
+  }) {
+    final contextType = _modelContextTypeOf(message);
+    if (contextType == _assistantToolUseContextType) {
+      final toolName = _toolNameOf(message);
+      if (toolName != null) {
+        final callId = transcriptState.register(toolName);
+        return {
+          'type': 'function_call',
+          'call_id': callId,
+          'name': toolName,
+          'arguments': jsonEncode(_toolArgumentsOf(message) ?? const {}),
+        };
+      }
+    }
+    if (contextType == _userToolResultContextType) {
+      final invocation = transcriptState.consume(
+        preferredToolName: _toolNameOf(message),
+      );
+      if (invocation != null) {
+        return {
+          'type': 'function_call_output',
+          'call_id': invocation.id,
+          'output': message.text,
+        };
+      }
+    }
+    return {
+      'role': message.role.toString().split('.').last,
+      'content': [
+        {
+          'type': message.role == MessageRole.assistant
+              ? 'output_text'
+              : 'input_text',
+          'text': message.text,
+        },
+      ],
+    };
+  }
+
+  Map<String, dynamic> _buildAnthropicMessage(
+    ChatMessage message, {
+    required _HistoricalToolTranscriptState transcriptState,
+  }) {
+    final contextType = _modelContextTypeOf(message);
+    if (contextType == _assistantToolUseContextType) {
+      final toolName = _toolNameOf(message);
+      if (toolName != null) {
+        final toolUseId = transcriptState.register(toolName);
+        return {
+          'role': 'assistant',
+          'content': [
+            {
+              'type': 'tool_use',
+              'id': toolUseId,
+              'name': toolName,
+              'input': _toolArgumentsOf(message) ?? const {},
+            },
+          ],
+        };
+      }
+    }
+    if (contextType == _userToolResultContextType) {
+      final invocation = transcriptState.consume(
+        preferredToolName: _toolNameOf(message),
+      );
+      if (invocation != null) {
+        return {
+          'role': 'user',
+          'content': [
+            {
+              'type': 'tool_result',
+              'tool_use_id': invocation.id,
+              'content': message.text,
+            },
+          ],
+        };
+      }
+    }
+    return {
+      'role': message.role == MessageRole.assistant ? 'assistant' : 'user',
+      'content': [
+        {
+          'type': 'text',
+          'text': message.text,
+        },
+      ],
     };
   }
 
@@ -1179,6 +1314,30 @@ class ConfigurableHttpLLM implements BaseLLM {
     return null;
   }
 
+  String? _modelContextTypeOf(ChatMessage message) {
+    final payload = message.payloadJson;
+    if (payload == null) {
+      return null;
+    }
+    return _normalizeText(payload[_modelContextTypeKey]);
+  }
+
+  String? _toolNameOf(ChatMessage message) {
+    final payload = message.payloadJson;
+    if (payload == null) {
+      return null;
+    }
+    return _normalizeText(payload['toolName']);
+  }
+
+  Map<String, dynamic>? _toolArgumentsOf(ChatMessage message) {
+    final payload = message.payloadJson;
+    if (payload == null) {
+      return null;
+    }
+    return _decodeToolArguments(payload['arguments']);
+  }
+
   String? _normalizeText(dynamic value) {
     if (value is! String) {
       return null;
@@ -1322,4 +1481,49 @@ class ConfigurableHttpLLM implements BaseLLM {
 
     return 'keys=${payload.keys.join(',')}';
   }
+}
+
+class _HistoricalToolTranscriptState {
+  _HistoricalToolTranscriptState(this._idPrefix);
+
+  final String _idPrefix;
+  final List<_HistoricalToolInvocation> _pendingInvocations =
+      <_HistoricalToolInvocation>[];
+  int _nextId = 0;
+
+  String register(String toolName) {
+    _nextId += 1;
+    final invocation = _HistoricalToolInvocation(
+      id: '$_idPrefix$_nextId',
+      toolName: toolName,
+    );
+    _pendingInvocations.add(invocation);
+    return invocation.id;
+  }
+
+  _HistoricalToolInvocation? consume({String? preferredToolName}) {
+    if (_pendingInvocations.isEmpty) {
+      return null;
+    }
+    if (preferredToolName != null) {
+      for (var index = 0; index < _pendingInvocations.length; index += 1) {
+        final invocation = _pendingInvocations[index];
+        if (invocation.toolName == preferredToolName) {
+          _pendingInvocations.removeAt(index);
+          return invocation;
+        }
+      }
+    }
+    return _pendingInvocations.removeAt(0);
+  }
+}
+
+class _HistoricalToolInvocation {
+  const _HistoricalToolInvocation({
+    required this.id,
+    required this.toolName,
+  });
+
+  final String id;
+  final String toolName;
 }

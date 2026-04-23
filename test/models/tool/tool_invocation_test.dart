@@ -86,6 +86,18 @@ void main() {
         'auto_run',
       );
     });
+
+    test('prefers contextText over toolResultText when resolving context text', () {
+      const result = ToolResult(
+        toolName: 'Read',
+        status: ToolExecutionStatus.success,
+        summary: '已读取文件：demo.md',
+        toolResultText: '完整文件内容',
+        contextText: '裁剪后的文件内容',
+      );
+
+      expect(result.resolvedContextText, '裁剪后的文件内容');
+    });
   });
 
   group('MessageContentType', () {

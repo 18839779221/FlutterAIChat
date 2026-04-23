@@ -1,6 +1,7 @@
 import '../models/chat_event.dart';
 import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
+import '../models/context/model_context_item.dart';
 import '../repositories/chat_event_repository.dart';
 import 'prompt/runtime_user_context_service.dart';
 import 'prompt/user_context_message_builder.dart';
@@ -109,15 +110,16 @@ class TranscriptBuilderService {
       ),
     );
     if (_extractDateReminderMessage(turn) case final reminder?) {
-      messages.add(reminder);
+      messages.addAll(
+        _contextProjector.encodeContextItems(
+          _contextProjector.projectMessagesToContextItems([reminder]),
+        ),
+      );
     }
-
-    for (final event in transcript) {
-      final projected = _contextProjector.projectEventToContext(event);
-      if (projected != null) {
-        messages.add(projected);
-      }
-    }
+    final transcriptItems = <ModelContextItem>[
+      ..._contextProjector.projectEventsToContextItems(transcript),
+    ];
+    messages.addAll(_contextProjector.encodeContextItems(transcriptItems));
 
     return messages;
   }

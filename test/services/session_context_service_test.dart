@@ -532,6 +532,113 @@ void main() {
       await storage.deleteGroup(groupId);
     });
 
+    test(
+        'recent completed turns keep tool transcript structure instead of assistant write summaries',
+        () async {
+      final storage = DatabaseHelper(
+        databaseName: 'session_context_service_tool_transcript_fidelity_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(title: 'Session Context Tool Transcript Fidelity'),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final eventRepository = ChatEventRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+
+      final previousTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.completed,
+          userInput: '请帮我更新爱好笔记',
+        ),
+      );
+      await eventRepository.appendUserMessage(
+        turnId: previousTurnId,
+        groupId: groupId,
+        content: '请帮我更新爱好笔记',
+      );
+      await eventRepository.appendToolCall(
+        turnId: previousTurnId,
+        groupId: groupId,
+        toolName: 'Edit',
+        arguments: const {
+          'file_path': 'my_hobbies.md',
+          'old_string': '篮球',
+          'new_string': '篮球\n游戏',
+        },
+        summary: '准备执行工具：编辑文件',
+      );
+      await eventRepository.appendToolResult(
+        turnId: previousTurnId,
+        groupId: groupId,
+        content: '已编辑文件：my_hobbies.md',
+        payloadJson: const {
+          'toolName': 'Edit',
+          'status': 'success',
+          'summary': '已编辑文件：my_hobbies.md',
+          'toolResultText': 'Successfully edited my_hobbies.md',
+          'data': {
+            'filePath': 'my_hobbies.md',
+          },
+        },
+      );
+      await eventRepository.appendFinalAnswer(
+        turnId: previousTurnId,
+        groupId: groupId,
+        content: '已经帮你更新好爱好笔记。',
+      );
+
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '再顺手把最近新增的爱好移到最前面',
+        ),
+      );
+
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetResolver: (_) => const SessionModelBudget(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw UnimplementedError(),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      );
+
+      final plannerMessages = await service.buildPlannerMessages(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: [
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '再顺手把最近新增的爱好移到最前面',
+          ),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: '你是一个助手'),
+      );
+
+      final combined = plannerMessages.map((message) => message.text).join('\n');
+      expect(combined, contains('[assistant tool_use]'));
+      expect(combined, contains('Edit'));
+      expect(combined, contains('[user tool_result] Successfully edited my_hobbies.md'));
+      expect(combined, isNot(contains('\n已编辑文件：my_hobbies.md\n已经帮你更新好爱好笔记。')));
+
+      await storage.deleteGroup(groupId);
+    });
+
     test('keeps current turn separate from recent completed turns', () async {
       final storage = DatabaseHelper(
         databaseName:

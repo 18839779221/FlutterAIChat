@@ -174,6 +174,10 @@ The app uses **flutter_riverpod** with a split provider/controller architecture:
   - treat heuristic patches as a last resort only when they are narrowly scoped, well-justified, and cannot be replaced by a more general architectural constraint
   - do not "repair" model behavior by teaching the system an ever-growing list of special phrases, special cases, or hand-maintained if/else policies
 - Planner context should include structured summaries of prior tool attempts, latest tool results, and latest tool errors when available
+- Preserve tool transcript semantics in model-visible context:
+  - do not flatten tool-use history into summary-style assistant replies such as "已写入文件 ..."
+  - keep tool initiation and tool result distinguishable when projecting recent turns / current turn for the model
+  - if a tool result needs truncation for budget reasons, prefer a tool-specific context transform over replacing it with a generic assistant summary
 - `AgentTurnOrchestrator` should treat `planNextDecision()` as the only execution entry for tool loops
 - Legacy JSON planner compatibility has been removed; do not add fallback planner formats back in
 - Do not re-inject raw `additionalContextMessages` / search hit details verbatim into the next planner or final-answer prompt; persist tool outcomes into turn-step ledger summaries and feed the model with compact structured summaries instead

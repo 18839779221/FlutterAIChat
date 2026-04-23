@@ -29,14 +29,15 @@ void main() {
         ApiStyle.anthropicMessages,
       );
       expect(
-        resolver.buildRequestUri(
-          'https://anthropic.example',
-          ApiStyle.anthropicMessages,
-        ).toString(),
+        resolver
+            .buildRequestUri(
+              'https://anthropic.example',
+              ApiStyle.anthropicMessages,
+            )
+            .toString(),
         'https://anthropic.example/v1/messages',
       );
     });
-
   });
 
   group('ConfigurableHttpLLM.planNextToolChoice', () {
@@ -288,7 +289,8 @@ void main() {
       expect(client.lastRequestBody?['messages'], isNotNull);
       expect(client.lastRequestBody?['input'], isNull);
       expect(decision, isNotNull);
-      expect(decision!.providerStyle, ChatTurnProviderStyle.openaiChatCompletions);
+      expect(
+          decision!.providerStyle, ChatTurnProviderStyle.openaiChatCompletions);
     });
 
     test('responses payload includes planner tools and parses function call',
@@ -383,7 +385,8 @@ void main() {
       ]);
     });
 
-    test('responses planner payload injects config system prompt as system input',
+    test(
+        'responses planner payload injects config system prompt as system input',
         () async {
       final client = _RecordingHttpClient(
         handler: (request) => http.Response(
@@ -944,7 +947,8 @@ void main() {
       expect(client.lastRequestBody?['previous_response_id'], 'resp_prev');
     });
 
-    test('responses decision preserves response_id even when payload store is false',
+    test(
+        'responses decision preserves response_id even when payload store is false',
         () async {
       final client = _RecordingHttpClient(
         handler: (request) => http.Response(
@@ -994,12 +998,14 @@ void main() {
 
       expect(decision, isNotNull);
       expect(decision!.providerStyle, ChatTurnProviderStyle.openaiResponses);
-      expect(decision.providerState, containsPair('response_id', 'resp_unstored'));
+      expect(
+          decision.providerState, containsPair('response_id', 'resp_unstored'));
       expect(decision.toolCalls.single.providerCallId, 'fc_1');
       expect(client.lastRequestBody?['previous_response_id'], 'resp_prev');
     });
 
-    test('chat completions decision preserves duplicate multi-tool calls as parsed',
+    test(
+        'chat completions decision preserves duplicate multi-tool calls as parsed',
         () async {
       final client = _RecordingHttpClient(
         handler: (request) => http.Response(
@@ -1579,7 +1585,8 @@ void main() {
       expect(messages, isNotNull);
       expect(messages, hasLength(2));
       expect(messages!.first['role'], 'system');
-      expect((messages.first['content'] as String), contains('Summarize and compress the conversation.'));
+      expect((messages.first['content'] as String),
+          contains('Summarize and compress the conversation.'));
       expect((messages.first['content'] as String),
           isNot(contains('请将以下会话历史整理为稳定摘要')));
     });
@@ -1612,6 +1619,218 @@ void main() {
       ]);
 
       expect(summary, isEmpty);
+    });
+  });
+
+  group('ConfigurableHttpLLM structured tool transcript payloads', () {
+    test(
+        'chat completions payload preserves assistant tool use and user tool result semantics',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'role': 'assistant',
+                  'content': '继续处理',
+                },
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+      );
+
+      await llm.planNextAction(
+        messages: [
+          ChatMessage(text: '请新增 scripts/check-env.ts', role: MessageRole.user),
+          ChatMessage(
+            text:
+                '[assistant tool_use] write_file file_path=scripts/check-env.ts',
+            role: MessageRole.assistant,
+            payloadJson: const {
+              'modelContextType': 'assistantToolUse',
+              'toolName': 'write_file',
+              'arguments': {
+                'file_path': 'scripts/check-env.ts',
+              },
+            },
+          ),
+          ChatMessage(
+            text: 'Successfully wrote scripts/check-env.ts',
+            role: MessageRole.user,
+            payloadJson: const {
+              'modelContextType': 'userToolResult',
+              'toolName': 'write_file',
+            },
+          ),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+      );
+
+      final messages = client.lastRequestBody?['messages'] as List<dynamic>?;
+      expect(messages, isNotNull);
+      expect(messages, hasLength(3));
+      expect(messages![1]['role'], 'assistant');
+      expect(messages[1]['content'], '');
+      expect(messages[1]['tool_calls'], hasLength(1));
+      expect(messages[1]['tool_calls'][0]['type'], 'function');
+      expect(messages[1]['tool_calls'][0]['function'], {
+        'name': 'write_file',
+        'arguments': '{"file_path":"scripts/check-env.ts"}',
+      });
+      expect(messages[2], {
+        'role': 'tool',
+        'tool_call_id': 'call_ctx_1',
+        'content': 'Successfully wrote scripts/check-env.ts',
+      });
+      expect(messages[1]['tool_calls'][0]['id'], 'call_ctx_1');
+    });
+
+    test(
+        'responses payload preserves assistant tool use and user tool result semantics',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'output_text': '继续处理',
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1',
+        httpClient: client,
+      );
+
+      await llm.planNextAction(
+        messages: [
+          ChatMessage(text: '请新增 scripts/check-env.ts', role: MessageRole.user),
+          ChatMessage(
+            text:
+                '[assistant tool_use] write_file file_path=scripts/check-env.ts',
+            role: MessageRole.assistant,
+            payloadJson: const {
+              'modelContextType': 'assistantToolUse',
+              'toolName': 'write_file',
+              'arguments': {
+                'file_path': 'scripts/check-env.ts',
+              },
+            },
+          ),
+          ChatMessage(
+            text: 'Successfully wrote scripts/check-env.ts',
+            role: MessageRole.user,
+            payloadJson: const {
+              'modelContextType': 'userToolResult',
+              'toolName': 'write_file',
+            },
+          ),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+      );
+
+      final input = client.lastRequestBody?['input'] as List<dynamic>?;
+      expect(input, isNotNull);
+      expect(input, hasLength(3));
+      expect(input![1], {
+        'type': 'function_call',
+        'call_id': 'fc_ctx_1',
+        'name': 'write_file',
+        'arguments': '{"file_path":"scripts/check-env.ts"}',
+      });
+      expect(input[2], {
+        'type': 'function_call_output',
+        'call_id': 'fc_ctx_1',
+        'output': 'Successfully wrote scripts/check-env.ts',
+      });
+    });
+
+    test(
+        'anthropic payload preserves assistant tool use and user tool result semantics',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'content': [
+              {
+                'type': 'text',
+                'text': '继续处理',
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://anthropic.example/v1/messages',
+        httpClient: client,
+      );
+
+      await llm.planNextAction(
+        messages: [
+          ChatMessage(text: '请新增 scripts/check-env.ts', role: MessageRole.user),
+          ChatMessage(
+            text:
+                '[assistant tool_use] write_file file_path=scripts/check-env.ts',
+            role: MessageRole.assistant,
+            payloadJson: const {
+              'modelContextType': 'assistantToolUse',
+              'toolName': 'write_file',
+              'arguments': {
+                'file_path': 'scripts/check-env.ts',
+              },
+            },
+          ),
+          ChatMessage(
+            text: 'Successfully wrote scripts/check-env.ts',
+            role: MessageRole.user,
+            payloadJson: const {
+              'modelContextType': 'userToolResult',
+              'toolName': 'write_file',
+            },
+          ),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+      );
+
+      final messages = client.lastRequestBody?['messages'] as List<dynamic>?;
+      expect(messages, isNotNull);
+      expect(messages, hasLength(3));
+      expect(messages![1], {
+        'role': 'assistant',
+        'content': [
+          {
+            'type': 'tool_use',
+            'id': 'toolu_ctx_1',
+            'name': 'write_file',
+            'input': {
+              'file_path': 'scripts/check-env.ts',
+            },
+          },
+        ],
+      });
+      expect(messages[2], {
+        'role': 'user',
+        'content': [
+          {
+            'type': 'tool_result',
+            'tool_use_id': 'toolu_ctx_1',
+            'content': 'Successfully wrote scripts/check-env.ts',
+          },
+        ],
+      });
     });
   });
 }

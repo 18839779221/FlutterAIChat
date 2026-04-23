@@ -1,35 +1,68 @@
 import '../models/chat_event.dart';
 import '../models/chat_message.dart';
+import '../models/context/model_context_item.dart';
 import '../models/tool/tool_result.dart';
+import 'model_context_item_encoder.dart';
 
 class SessionContextProjector {
+  SessionContextProjector({
+    ModelContextItemEncoder? contextItemEncoder,
+  }) : _contextItemEncoder = contextItemEncoder ?? const ModelContextItemEncoder();
+
+  final ModelContextItemEncoder _contextItemEncoder;
+
   List<ChatMessage> projectMessagesToContext(
     List<ChatMessage> messages,
   ) {
-    return messages
-        .where((message) => message.text.trim().isNotEmpty)
-        .map(
-          (message) => ChatMessage(
-            text: message.text,
-            role: message.role,
-            id: message.id,
-            timestamp: message.timestamp,
-            status: MessageStatus.completed,
-            reasoningContent: message.reasoningContent,
-            contentType: message.contentType,
-            payloadJson: message.payloadJson,
-            referenceJson: message.referenceJson,
-          ),
-        )
-        .toList(growable: false);
+    return _contextItemEncoder.encodeAll(
+      projectMessagesToContextItems(messages),
+    );
   }
 
   List<ChatMessage> projectEventsToContext(
     List<ChatEvent> events,
   ) {
+    return encodeContextItems(
+      projectEventsToContextItems(events),
+    );
+  }
+
+  List<ChatMessage> encodeContextItems(
+    List<ModelContextItem> items,
+  ) {
+    return _contextItemEncoder.encodeAll(items);
+  }
+
+  List<ModelContextItem> projectMessagesToContextItems(
+    List<ChatMessage> messages,
+  ) {
+    return messages
+        .where((message) => message.text.trim().isNotEmpty)
+        .map(
+          (message) => switch (message.role) {
+            MessageRole.system => ModelContextItem.systemMessage(
+                message.text,
+                timestamp: message.timestamp,
+              ),
+            MessageRole.user => ModelContextItem.userMessage(
+                message.text,
+                timestamp: message.timestamp,
+              ),
+            MessageRole.assistant => ModelContextItem.assistantMessage(
+                message.text,
+                timestamp: message.timestamp,
+              ),
+          },
+        )
+        .toList(growable: false);
+  }
+
+  List<ModelContextItem> projectEventsToContextItems(
+    List<ChatEvent> events,
+  ) {
     return events
-        .map(projectEventToContext)
-        .whereType<ChatMessage>()
+        .map(projectEventToContextItem)
+        .whereType<ModelContextItem>()
         .toList(growable: false);
   }
 
@@ -37,71 +70,105 @@ class SessionContextProjector {
     String summaryText, {
     DateTime? timestamp,
   }) {
-    return ChatMessage(
-      text: summaryText,
-      role: MessageRole.system,
+    return _contextItemEncoder.encode(
+          projectSnapshotToContextItem(
+            summaryText,
+            timestamp: timestamp,
+          ),
+        ) ??
+        ChatMessage(
+          text: summaryText,
+          role: MessageRole.system,
+          timestamp: timestamp,
+          status: MessageStatus.completed,
+        );
+  }
+
+  ModelContextItem projectSnapshotToContextItem(
+    String summaryText, {
+    DateTime? timestamp,
+  }) {
+    return ModelContextItem.systemMessage(
+      summaryText,
       timestamp: timestamp,
-      status: MessageStatus.completed,
     );
   }
 
   ChatMessage? projectEventToContext(ChatEvent event) {
-    final content = _resolveContextContent(event);
-    if (content.isEmpty) {
+    final item = projectEventToContextItem(event);
+    if (item == null) {
       return null;
     }
-
-    final projectedRole = _projectRole(event);
-    if (projectedRole == null) {
-      return null;
-    }
-
-    return ChatMessage(
-      text: content,
-      role: projectedRole,
-      timestamp: event.createdAt,
-      status: MessageStatus.completed,
-    );
+    return _contextItemEncoder.encode(item);
   }
 
-  String _resolveContextContent(ChatEvent event) {
-    final modelContextText = _extractModelContextText(event);
-    if (modelContextText != null) {
-      return modelContextText;
-    }
-    final content = event.content?.trim() ?? '';
-    return content;
-  }
-
-  String? _extractModelContextText(ChatEvent event) {
-    if (event.eventType != ChatEventType.toolResult &&
-        event.eventType != ChatEventType.toolError) {
-      return null;
-    }
-    final payload = event.payloadJson;
-    if (payload == null) {
-      return null;
-    }
-    return ToolResult.fromJson(payload).resolvedToolResultText;
-  }
-
-  MessageRole? _projectRole(ChatEvent event) {
+  ModelContextItem? projectEventToContextItem(ChatEvent event) {
     switch (event.eventType) {
       case ChatEventType.userMessage:
-        return MessageRole.user;
+        final content = event.content?.trim() ?? '';
+        if (content.isEmpty) {
+          return null;
+        }
+        return ModelContextItem.userMessage(
+          content,
+          timestamp: event.createdAt,
+        );
       case ChatEventType.userInteractionResult:
-        return MessageRole.user;
+        final content = event.content?.trim() ?? '';
+        if (content.isEmpty) {
+          return null;
+        }
+        return ModelContextItem.userMessage(
+          content,
+          timestamp: event.createdAt,
+        );
       case ChatEventType.assistantPlannerMessage:
       case ChatEventType.assistantQuestionPrompt:
+      case ChatEventType.finalAnswer:
+        final content = event.content?.trim() ?? '';
+        if (content.isEmpty) {
+          return null;
+        }
+        return ModelContextItem.assistantMessage(
+          content,
+          timestamp: event.createdAt,
+        );
+      case ChatEventType.assistantToolCall:
+      case ChatEventType.assistantToolConfirmation:
+        final payload = event.payloadJson;
+        final toolName = payload?['toolName']?.toString().trim();
+        final summary =
+            payload?['summary']?.toString().trim() ?? event.content?.trim() ?? '';
+        if (summary.isEmpty && (toolName == null || toolName.isEmpty)) {
+          return null;
+        }
+        return ModelContextItem.assistantToolUse(
+          text: summary,
+          toolName: toolName,
+          arguments: payload?['arguments'] is Map
+              ? Map<String, dynamic>.from(
+                  payload!['arguments'] as Map<dynamic, dynamic>,
+                )
+              : null,
+          timestamp: event.createdAt,
+        );
       case ChatEventType.toolResult:
       case ChatEventType.toolError:
-      case ChatEventType.finalAnswer:
-        return MessageRole.assistant;
+        final payload = event.payloadJson;
+        final content = payload == null
+            ? event.content?.trim() ?? ''
+            : ToolResult.fromJson(payload).resolvedContextText.trim();
+        if (content.isEmpty) {
+          return null;
+        }
+        return ModelContextItem.userToolResult(
+          text: content,
+          toolName: payload?['toolName']?.toString(),
+          timestamp: event.createdAt,
+        );
       case ChatEventType.assistantReasoningDelta:
       case ChatEventType.assistantTextDelta:
       case ChatEventType.assistantTextFinal:
-      case ChatEventType.assistantToolCall:
-      case ChatEventType.assistantToolConfirmation:
       case ChatEventType.toolExecutionStarted:
       case ChatEventType.turnStatus:
       case ChatEventType.error:
