@@ -84,8 +84,6 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       },
     );
 
-    _ref.read(autoScrollToBottomProvider.notifier).state = true;
-
     if (currentGroup.id == null) {
       try {
         final dbHelper = _ref.read(databaseProvider);

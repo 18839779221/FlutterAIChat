@@ -13,7 +13,6 @@ void main() {
       final container = ProviderContainer();
       addTearDown(container.dispose);
 
-      expect(container.read(autoScrollToBottomProvider), isTrue);
       expect(container.read(hasMoreMessagesProvider), isTrue);
       expect(container.read(isLoadingMoreProvider), isFalse);
       expect(container.read(isInitializingProvider), isTrue);
