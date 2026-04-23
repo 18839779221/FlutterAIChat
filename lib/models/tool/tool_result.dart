@@ -21,6 +21,11 @@ class ToolResult {
   /// than [summary], while keeping the transcript itself compact.
   final String? toolResultText;
 
+  /// Optional tool-authored context text for future model turns.
+  /// When provided, this takes precedence over [toolResultText] so individual
+  /// tools can trim or normalize large outputs before they re-enter context.
+  final String? contextText;
+
   /// Structured tool payload for machine consumption, such as file metadata,
   /// search hits, identifiers, or other typed execution details.
   final Map<String, dynamic> data;
@@ -42,6 +47,7 @@ class ToolResult {
     required this.status,
     String? summary,
     this.toolResultText,
+    this.contextText,
     Map<String, dynamic>? data,
     this.executionPolicy,
     this.toolAccess,
@@ -63,6 +69,21 @@ class ToolResult {
       return null;
     }
     return trimmed;
+  }
+
+  /// Returns the effective text that should re-enter planner/session context.
+  /// Defaults to passthrough behavior so tools are unchanged unless they
+  /// explicitly provide a transformed [contextText].
+  String get resolvedContextText {
+    final normalizedContextText = contextText?.trim();
+    if (normalizedContextText != null && normalizedContextText.isNotEmpty) {
+      return normalizedContextText;
+    }
+    final normalizedToolResultText = resolvedToolResultText;
+    if (normalizedToolResultText != null) {
+      return normalizedToolResultText;
+    }
+    return summary.trim();
   }
 
   /// Whether this result belongs to an external-action tool family.
@@ -128,6 +149,7 @@ class ToolResult {
       'status': status.name,
       'summary': summary,
       if (resolvedToolResultText != null) 'toolResultText': resolvedToolResultText,
+      if (contextText?.trim().isNotEmpty == true) 'contextText': contextText!.trim(),
       'data': data,
       if (resolvedExecutionPolicy != null && toolAccess == null)
         'executionPolicy': resolvedExecutionPolicy,
@@ -149,6 +171,7 @@ class ToolResult {
           : matchedStatus.first,
       summary: (json['summary'] ?? json['displayText']) as String? ?? '',
       toolResultText: json['toolResultText'] as String?,
+      contextText: json['contextText'] as String?,
       data: json['data'] is Map<String, dynamic>
           ? json['data'] as Map<String, dynamic>
           : json['data'] is Map

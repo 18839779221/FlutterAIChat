@@ -130,6 +130,8 @@ Service 层负责 LLM 通信、Session 上下文编排、工具编排与 trace �
 - planner / final answer 额外会在 session context 之前注入 runtime `userContext`
 - 当同一 session 再次发送时若日期与最近一次注入基线不同，会在当前 user message 前追加 `<system-reminder>` 形式的日期变化提醒
 - 这些运行时 reminder 不会进入 UI timeline，也不会写入 session summary
+- tool transcript 进入 planner / final answer 上下文时会尽量保留“tool use 发起 + tool result 返回”的结构语义，而不是统一改写成摘要式 assistant 历史文本
+- 对超长 `tool_result`，架构上允许未来增加工具级 context transform；默认仍保持原样透传
 
 ### 时间感知与 WebSearch
 - `RuntimeUserContextService` 会为 planner / final answer 注入当前日期，降低“latest 却搜成去年”的风险

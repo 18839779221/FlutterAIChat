@@ -1,6 +1,7 @@
 import '../models/chat_event.dart';
 import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
+import '../models/context/model_context_item.dart';
 import '../models/session/context_compaction_config.dart';
 import '../models/session/session_context_snapshot.dart';
 import '../repositories/chat_event_repository.dart';
@@ -85,16 +86,18 @@ class SessionContextService {
     final userContextMessage = _userContextMessageBuilder.buildMessage(
       snapshot: await _runtimeUserContextService.buildSnapshot(),
     );
-    final currentMessages = [
+    final currentItems = <ModelContextItem>[
       if (_extractDateReminderMessage(currentTurn) case final reminder?)
-        reminder,
-      ..._contextProjector.projectEventsToContext(currentTurnTranscript),
+        ..._contextProjector.projectMessagesToContextItems([reminder]),
+      ..._contextProjector.projectEventsToContextItems(currentTurnTranscript),
     ];
+    final normalizedCurrentMessages =
+        _contextProjector.encodeContextItems(currentItems);
     final fixedPrefixTokens =
         _tokenBudgetService.estimateTextTokens(_resolveSystemPrompt(config)) +
             _tokenBudgetService.estimateMessagesTokens([userContextMessage]);
     final currentTurnTokens =
-        _tokenBudgetService.estimateMessagesTokens(currentMessages);
+        _tokenBudgetService.estimateMessagesTokens(normalizedCurrentMessages);
 
     var activeSummary = snapshot;
     var recentSegments = _selectRecentCompletedTurns(
@@ -139,7 +142,7 @@ class SessionContextService {
       if (activeSummary != null)
         _contextProjector.projectSnapshotToContext(activeSummary.summaryText),
       ...recentSegments.expand((segment) => segment.messages),
-      ...currentMessages,
+      ...normalizedCurrentMessages,
     ];
   }
 
