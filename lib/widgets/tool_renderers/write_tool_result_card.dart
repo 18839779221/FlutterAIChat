@@ -4,6 +4,7 @@ import '../../models/tool/tool_result.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
+import 'file_change_preview.dart';
 
 class WriteToolResultCard extends StatefulWidget {
   const WriteToolResultCard({
@@ -31,6 +32,9 @@ class _WriteToolResultCardState extends State<WriteToolResultCard> {
     final oldLength = data['oldLength'];
     final newLength = data['newLength'];
     final postWriteData = data['postWriteData'];
+    final oldContentPreview = (data['oldContentPreview'] ?? '').toString();
+    final newContentPreview = (data['newContentPreview'] ?? '').toString();
+    final hasPreview = newContentPreview.isNotEmpty;
 
     return Container(
       width: double.infinity,
@@ -78,6 +82,15 @@ class _WriteToolResultCardState extends State<WriteToolResultCard> {
               height: 1.42,
             ),
           ),
+          if (hasPreview) ...[
+            SizedBox(height: spacing.sm),
+            FileChangePreview(
+              oldContent: oldContentPreview,
+              newContent: newContentPreview,
+              truncated: data['contentPreviewTruncated'] == true,
+              forceAdded: !existed,
+            ),
+          ],
           SizedBox(height: spacing.sm),
           TextButton(
             onPressed: () => setState(() => _expanded = !_expanded),
@@ -95,11 +108,11 @@ class _WriteToolResultCardState extends State<WriteToolResultCard> {
                 value: 'postWriteData',
               ),
               ..._expandMap(postWriteData).entries.map(
-                (entry) => _DetailLine(
-                  label: '',
-                  value: '${entry.key}: ${entry.value}',
-                ),
-              ),
+                    (entry) => _DetailLine(
+                      label: '',
+                      value: '${entry.key}: ${entry.value}',
+                    ),
+                  ),
             ],
           ],
         ],

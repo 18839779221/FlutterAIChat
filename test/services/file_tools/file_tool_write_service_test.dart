@@ -59,6 +59,9 @@ void main() {
 
       expect(outcome.filePreviouslyExisted, isFalse);
       expect(outcome.newLength, 5);
+      expect(outcome.oldContentPreview, isEmpty);
+      expect(outcome.newContentPreview, 'hello');
+      expect(outcome.contentPreviewTruncated, isFalse);
       expect(guard.hasSeen('artifacts/report.md'), isTrue);
     });
 
@@ -107,6 +110,9 @@ void main() {
       );
 
       expect(outcome.replacementCount, 1);
+      expect(outcome.oldContentPreview, 'alpha\nbeta\ngamma');
+      expect(outcome.newContentPreview, 'alpha\ndelta\ngamma');
+      expect(outcome.contentPreviewTruncated, isFalse);
       expect(await file.readAsString(), contains('delta'));
       expect(guard.hasSeen('memories/demo.md'), isTrue);
     });

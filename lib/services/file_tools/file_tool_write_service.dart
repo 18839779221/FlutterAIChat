@@ -3,6 +3,8 @@ import 'file_tool_post_write_hook.dart';
 import 'file_tool_root_service.dart';
 import 'file_tool_session_guard.dart';
 
+const int _contentPreviewMaxChars = 12000;
+
 class FileToolWriteException implements Exception {
   FileToolWriteException(this.code);
 
@@ -13,12 +15,34 @@ class FileToolWriteException implements Exception {
 }
 
 class FileToolWriteOutcome {
+  /// Relative sandbox path that was created, overwritten, or edited.
   final String filePath;
+
+  /// Whether the target existed before this write transaction.
   final bool filePreviouslyExisted;
+
+  /// File version snapshot after the write transaction completed.
   final FileToolVersionSnapshot version;
+
+  /// Character count before the mutation. New files report zero.
   final int oldLength;
+
+  /// Character count after the mutation.
   final int newLength;
+
+  /// Number of replacements performed by Edit. Write reports zero.
   final int replacementCount;
+
+  /// Lightweight old-content preview used by the UI to render change review.
+  final String oldContentPreview;
+
+  /// Lightweight new-content preview used by the UI to render change review.
+  final String newContentPreview;
+
+  /// Whether either preview was shortened before being persisted to payloads.
+  final bool contentPreviewTruncated;
+
+  /// Tool-host metadata produced after the write, such as format results.
   final Map<String, dynamic> postWriteData;
 
   const FileToolWriteOutcome({
@@ -28,6 +52,9 @@ class FileToolWriteOutcome {
     required this.oldLength,
     required this.newLength,
     required this.replacementCount,
+    required this.oldContentPreview,
+    required this.newContentPreview,
+    required this.contentPreviewTruncated,
     required this.postWriteData,
   });
 
@@ -39,6 +66,9 @@ class FileToolWriteOutcome {
       'oldLength': oldLength,
       'newLength': newLength,
       'replacementCount': replacementCount,
+      'oldContentPreview': oldContentPreview,
+      'newContentPreview': newContentPreview,
+      'contentPreviewTruncated': contentPreviewTruncated,
       'postWriteData': postWriteData,
     };
   }
@@ -91,6 +121,10 @@ class FileToolWriteService {
       oldLength: oldContent?.length ?? 0,
       newLength: content.length,
       replacementCount: 0,
+      oldContentPreview: _previewContent(oldContent ?? ''),
+      newContentPreview: _previewContent(content),
+      contentPreviewTruncated:
+          _isPreviewTruncated(oldContent ?? '') || _isPreviewTruncated(content),
       postWriteData: postWriteData,
     );
   }
@@ -142,8 +176,23 @@ class FileToolWriteService {
       oldLength: originalContent.length,
       newLength: nextContent.length,
       replacementCount: replaceAll ? matchCount : 1,
+      oldContentPreview: _previewContent(originalContent),
+      newContentPreview: _previewContent(nextContent),
+      contentPreviewTruncated: _isPreviewTruncated(originalContent) ||
+          _isPreviewTruncated(nextContent),
       postWriteData: postWriteData,
     );
+  }
+
+  String _previewContent(String content) {
+    if (!_isPreviewTruncated(content)) {
+      return content;
+    }
+    return content.substring(0, _contentPreviewMaxChars);
+  }
+
+  bool _isPreviewTruncated(String content) {
+    return content.length > _contentPreviewMaxChars;
   }
 
   int _countOccurrences(String text, String pattern) {

@@ -54,10 +54,48 @@ void main() {
       expect(find.text('写入文件'), findsOneWidget);
       expect(find.text('最近一次写入：docs/tasks.md'), findsOneWidget);
       expect(find.text('这次写入一共进行了 2 次文件操作'), findsOneWidget);
-      expect(find.text('步骤 1'), findsOneWidget);
-      expect(find.text('步骤 2'), findsOneWidget);
-      expect(find.text('整文件写入 1 行 -> docs/plan.md'), findsOneWidget);
-      expect(find.text('整文件写入 1 行 -> docs/tasks.md'), findsOneWidget);
+      expect(find.text('docs/plan.md'), findsOneWidget);
+      expect(find.text('docs/tasks.md'), findsOneWidget);
+      expect(find.text('步骤 1'), findsNothing);
+      expect(find.text('步骤 2'), findsNothing);
+      expect(find.text('整文件写入 1 行 -> docs/plan.md'), findsNothing);
+      expect(find.text('整文件写入 1 行 -> docs/tasks.md'), findsNothing);
+    });
+
+    testWidgets('workflow card previews proposed write content when expanded', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: WriteToolWorkflowCard(
+              isExpanded: true,
+              steps: [
+                ToolWorkflowStep(
+                  stepId: 'write-1',
+                  turnId: 'turn-1',
+                  toolName: 'Write',
+                  title: '写入文件',
+                  summary: '准备写入 hobby.txt',
+                  status: ToolWorkflowStepStatus.completed,
+                  requiresConfirmation: false,
+                  details: {
+                    'file_path': 'hobby.txt',
+                    'content': '我的爱好是打篮球。',
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      expect(find.textContaining('+ 我的爱好是打篮球。'), findsOneWidget);
+      expect(find.text('hobby.txt'), findsOneWidget);
+      expect(find.text('步骤 1'), findsNothing);
+      expect(find.textContaining('写入内容预览'), findsNothing);
+      expect(find.text('1'), findsOneWidget);
     });
 
     testWidgets('result card shows summary first and evidence after expand', (
@@ -100,6 +138,38 @@ void main() {
 
       expect(find.text('postWriteData'), findsOneWidget);
       expect(find.text('formatted: true'), findsOneWidget);
+    });
+
+    testWidgets('result card previews written content with line numbers', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: WriteToolResultCard(
+              result: ToolResult(
+                toolName: 'Write',
+                status: ToolExecutionStatus.success,
+                summary: '已写入文件：docs/plan.md',
+                data: {
+                  'filePath': 'docs/plan.md',
+                  'filePreviouslyExisted': false,
+                  'oldLength': 0,
+                  'newLength': 27,
+                  'newContentPreview': '# Plan\n- Build preview',
+                  'contentPreviewTruncated': false,
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.textContaining('+ # Plan'), findsOneWidget);
+      expect(find.textContaining('+ - Build preview'), findsOneWidget);
+      expect(find.text('1'), findsOneWidget);
+      expect(find.text('2'), findsOneWidget);
     });
   });
 }

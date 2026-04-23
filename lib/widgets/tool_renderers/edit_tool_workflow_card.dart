@@ -8,6 +8,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import 'edit_tool_result_card.dart';
+import 'file_change_preview.dart';
 
 class EditToolWorkflowCard extends StatelessWidget {
   const EditToolWorkflowCard({
@@ -30,6 +31,7 @@ class EditToolWorkflowCard extends StatelessWidget {
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
     final latestStep = steps.isEmpty ? null : steps.last;
+    final hideOverview = isExpanded && steps.length == 1;
 
     return InkWell(
       onTap: onTap,
@@ -67,7 +69,7 @@ class EditToolWorkflowCard extends StatelessWidget {
                   ),
               ],
             ),
-            if (latestStep != null) ...[
+            if (!hideOverview && latestStep != null) ...[
               SizedBox(height: spacing.xs),
               Text(
                 _buildOverview(latestStep),
@@ -79,27 +81,30 @@ class EditToolWorkflowCard extends StatelessWidget {
                 ),
               ),
             ],
-            SizedBox(height: spacing.xxs),
-            Text(
-              steps.length <= 1
-                  ? _replaceModeLabel(latestStep)
-                  : '这次编辑一共执行了 ${steps.length} 次替换动作',
-              style: TextStyle(
-                color: colors.secondaryText,
-                fontSize: 12,
-                height: 1.4,
+            if (!hideOverview) ...[
+              SizedBox(height: spacing.xxs),
+              Text(
+                steps.length <= 1
+                    ? _replaceModeLabel(latestStep)
+                    : '这次编辑一共执行了 ${steps.length} 次替换动作',
+                style: TextStyle(
+                  color: colors.secondaryText,
+                  fontSize: 12,
+                  height: 1.4,
+                ),
               ),
-            ),
+            ],
             if (isExpanded && steps.isNotEmpty) ...[
               SizedBox(height: spacing.sm),
               ...steps.asMap().entries.map(
                     (entry) => Padding(
                       padding: EdgeInsets.only(bottom: spacing.xs),
                       child: _WorkflowStepDetailRow(
-                        index: entry.key + 1,
-                        title: _buildStepTitle(entry.value),
-                        summary: _buildStepSummary(entry.value),
-                        status: entry.value.status,
+                        filePath: _filePathFor(entry.value),
+                        oldContent: (entry.value.details['old_string'] ?? '')
+                            .toString(),
+                        newContent: (entry.value.details['new_string'] ?? '')
+                            .toString(),
                       ),
                     ),
                   ),
@@ -119,37 +124,11 @@ class EditToolWorkflowCard extends StatelessWidget {
     return '$prefix，共发生 ${steps.length} 次编辑动作';
   }
 
-  String _buildStepTitle(ToolWorkflowStep step) {
-    final filePath = _filePathFor(step);
-    final replaceMode = step.details['replace_all'] == true ? '全量替换' : '单次替换';
-    if (filePath.isEmpty) {
-      return replaceMode;
-    }
-    return '$replaceMode -> $filePath';
-  }
-
-  String _buildStepSummary(ToolWorkflowStep step) {
-    final oldString = (step.details['old_string'] ?? '').toString().trim();
-    final newString = (step.details['new_string'] ?? '').toString().trim();
-    if (oldString.isEmpty && newString.isEmpty) {
-      return step.summary;
-    }
-    return '把 "${_compactSnippet(oldString)}" 替换为 "${_compactSnippet(newString)}"';
-  }
-
   String _replaceModeLabel(ToolWorkflowStep? step) {
     if (step == null) {
       return '替换首个匹配';
     }
     return step.details['replace_all'] == true ? '替换全部匹配' : '替换首个匹配';
-  }
-
-  String _compactSnippet(String value) {
-    final normalized = value.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (normalized.length <= 28) {
-      return normalized;
-    }
-    return '${normalized.substring(0, 28)}...';
   }
 
   String _filePathFor(ToolWorkflowStep step) {
@@ -193,16 +172,14 @@ class EditToolUiRenderer extends ToolUiRenderer {
 
 class _WorkflowStepDetailRow extends StatelessWidget {
   const _WorkflowStepDetailRow({
-    required this.index,
-    required this.title,
-    required this.summary,
-    required this.status,
+    required this.filePath,
+    required this.oldContent,
+    required this.newContent,
   });
 
-  final int index;
-  final String title;
-  final String summary;
-  final ToolWorkflowStepStatus status;
+  final String filePath;
+  final String oldContent;
+  final String newContent;
 
   @override
   Widget build(BuildContext context) {
@@ -220,65 +197,26 @@ class _WorkflowStepDetailRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Text(
-                '步骤 $index',
-                style: TextStyle(
-                  color: colors.primaryText,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
+          if (filePath.isNotEmpty)
+            Text(
+              filePath,
+              style: TextStyle(
+                color: colors.primaryText,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                height: 1.35,
               ),
-              SizedBox(width: spacing.xs),
-              Text(
-                _statusLabel(status),
-                style: TextStyle(
-                  color: colors.secondaryText,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: spacing.xxs),
-          Text(
-            title,
-            style: TextStyle(
-              color: colors.primaryText,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              height: 1.35,
             ),
-          ),
-          SizedBox(height: spacing.xxs),
-          Text(
-            summary,
-            style: TextStyle(
-              color: colors.secondaryText,
-              fontSize: 11.5,
-              height: 1.4,
+          if (oldContent.isNotEmpty || newContent.isNotEmpty) ...[
+            SizedBox(height: spacing.xs),
+            FileChangePreview(
+              oldContent: oldContent,
+              newContent: newContent,
+              truncated: false,
             ),
-          ),
+          ],
         ],
       ),
     );
-  }
-
-  String _statusLabel(ToolWorkflowStepStatus status) {
-    switch (status) {
-      case ToolWorkflowStepStatus.proposed:
-        return '已提议';
-      case ToolWorkflowStepStatus.awaitingConfirmation:
-        return '待确认';
-      case ToolWorkflowStepStatus.running:
-        return '执行中';
-      case ToolWorkflowStepStatus.completed:
-        return '完成';
-      case ToolWorkflowStepStatus.failed:
-        return '失败';
-      case ToolWorkflowStepStatus.cancelled:
-        return '已取消';
-    }
   }
 }
