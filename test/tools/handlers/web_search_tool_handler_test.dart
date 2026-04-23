@@ -74,5 +74,24 @@ void main() {
       expect(resolution.normalizedArguments['query'], 'OpenAI latest news');
       expect(resolution.normalizedArguments['maxResults'], 10);
     });
+
+    test('description includes current month-year and sources requirement', () {
+      final handler = WebSearchToolHandler(
+        webSearcher: ({required query, maxResults}) async => const ToolResult(
+          toolName: 'web_search',
+          status: ToolExecutionStatus.success,
+          summary: 'ok',
+        ),
+        currentMonthYearProvider: () => 'April 2026',
+      );
+
+      final description = handler.definition.descriptionForModel;
+
+      expect(description, contains('Sources:'));
+      expect(description, contains('April 2026'));
+      expect(description, contains('You MUST use this year'));
+      expect(description, contains('fetch_webpage'));
+      expect(description, contains('search_chat_history'));
+    });
   });
 }

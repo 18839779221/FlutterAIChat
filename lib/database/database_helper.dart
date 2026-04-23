@@ -9,6 +9,7 @@ import '../models/response/message_content_type.dart';
 import '../models/chat_group.dart';
 import '../models/chat_turn.dart';
 import '../models/session/session_context_snapshot.dart';
+import '../models/session/session_runtime_marker.dart';
 import '../storage/chat_storage.dart';
 import '../utils/logger.dart';
 
@@ -43,7 +44,7 @@ class DatabaseHelper implements ChatStorage {
 
       return await openDatabase(
         path,
-        version: 10,
+        version: 11,
         onCreate: (Database db, int version) async {
           Logger.i(_tag, '创建数据库表...');
           // 创建分组表
@@ -76,6 +77,7 @@ class DatabaseHelper implements ChatStorage {
           ''');
           await _createAgentLoopTables(db);
           await _createSessionContextSnapshotTable(db);
+          await _createSessionRuntimeMarkerTable(db);
           Logger.i(_tag, '数据库表创建成功');
         },
         onUpgrade: (Database db, int oldVersion, int newVersion) async {
@@ -222,6 +224,9 @@ class DatabaseHelper implements ChatStorage {
           if (oldVersion < 10) {
             await _createSessionContextSnapshotTable(db);
           }
+          if (oldVersion < 11) {
+            await _createSessionRuntimeMarkerTable(db);
+          }
         },
       );
     } catch (e, stackTrace) {
@@ -322,6 +327,22 @@ class DatabaseHelper implements ChatStorage {
     await db.execute('''
       CREATE INDEX IF NOT EXISTS idx_session_context_snapshots_group_id_updated_at
       ON session_context_snapshots(group_id, updated_at DESC)
+    ''');
+  }
+
+  Future<void> _createSessionRuntimeMarkerTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS session_runtime_markers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id INTEGER NOT NULL,
+        last_injected_date TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (group_id) REFERENCES chat_groups (id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_session_runtime_markers_group_id_updated_at
+      ON session_runtime_markers(group_id, updated_at DESC)
     ''');
   }
 
@@ -703,6 +724,64 @@ class DatabaseHelper implements ChatStorage {
       );
     } catch (e) {
       Logger.e(_tag, '更新 Session 上下文快照失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<int> insertSessionRuntimeMarker(SessionRuntimeMarker marker) async {
+    try {
+      final db = await database;
+      return await db.insert(
+        'session_runtime_markers',
+        marker.toMap(),
+      );
+    } catch (e) {
+      Logger.e(_tag, '插入 Session 运行时标记失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<SessionRuntimeMarker?> getLatestSessionRuntimeMarkerByGroup(
+    int groupId,
+  ) async {
+    try {
+      final db = await database;
+      final maps = await db.query(
+        'session_runtime_markers',
+        where: 'group_id = ?',
+        whereArgs: [groupId],
+        orderBy: 'updated_at DESC, id DESC',
+        limit: 1,
+      );
+      if (maps.isEmpty) {
+        return null;
+      }
+      return SessionRuntimeMarker.fromMap(maps.first);
+    } catch (e) {
+      Logger.e(_tag, '获取最新 Session 运行时标记失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> updateSessionRuntimeMarker(
+    SessionRuntimeMarker marker,
+  ) async {
+    try {
+      if (marker.id == null) {
+        throw ArgumentError('SessionRuntimeMarker.id is required for update');
+      }
+      final db = await database;
+      await db.update(
+        'session_runtime_markers',
+        marker.toMap(),
+        where: 'id = ?',
+        whereArgs: [marker.id],
+      );
+    } catch (e) {
+      Logger.e(_tag, '更新 Session 运行时标记失败', e);
       rethrow;
     }
   }

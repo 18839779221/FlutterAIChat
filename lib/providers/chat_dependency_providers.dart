@@ -2,8 +2,11 @@ import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/model_budget_registry.dart';
+import 'package:ai_chat/repositories/session_runtime_marker_repository.dart';
+import 'package:ai_chat/services/prompt/runtime_user_context_service.dart';
 import 'package:ai_chat/services/session_context_projector.dart';
 import 'package:ai_chat/services/session_context_service.dart';
+import 'package:ai_chat/services/session_runtime_marker_service.dart';
 import 'package:ai_chat/services/session_summary_service.dart';
 import 'package:ai_chat/services/session_token_budget_service.dart';
 import 'package:ai_chat/services/turn_harness.dart';
@@ -49,8 +52,24 @@ final sessionContextSnapshotRepositoryProvider =
   return SessionContextSnapshotRepository(ref.watch(databaseProvider));
 });
 
+final sessionRuntimeMarkerRepositoryProvider =
+    Provider<SessionRuntimeMarkerRepository>((ref) {
+  return SessionRuntimeMarkerRepository(ref.watch(databaseProvider));
+});
+
 final sessionContextProjectorProvider =
     Provider<SessionContextProjector>((ref) => SessionContextProjector());
+
+final runtimeUserContextServiceProvider = Provider<RuntimeUserContextService>(
+  (ref) => RuntimeUserContextService(),
+);
+
+final sessionRuntimeMarkerServiceProvider =
+    Provider<SessionRuntimeMarkerService>((ref) {
+  return SessionRuntimeMarkerService(
+    repository: ref.watch(sessionRuntimeMarkerRepositoryProvider),
+  );
+});
 
 final modelBudgetRegistryProvider =
     Provider<ModelBudgetRegistry>((ref) => ModelBudgetRegistry());

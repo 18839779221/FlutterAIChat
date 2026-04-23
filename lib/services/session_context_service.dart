@@ -8,6 +8,9 @@ import '../repositories/chat_turn_repository.dart';
 import '../repositories/session_context_snapshot_repository.dart';
 import '../utils/logger.dart';
 import 'chat_service.dart';
+import 'prompt/runtime_user_context_service.dart';
+import 'prompt/user_context_message_builder.dart';
+import 'session_runtime_marker_service.dart';
 import 'session_context_projector.dart';
 import 'session_summary_service.dart';
 import 'session_token_budget_service.dart';
@@ -23,13 +26,19 @@ class SessionContextService {
     required SessionTokenBudgetService tokenBudgetService,
     required SessionSummaryService summaryService,
     required ChatService chatService,
+    RuntimeUserContextService? runtimeUserContextService,
+    UserContextMessageBuilder? userContextMessageBuilder,
   })  : _chatTurnRepository = chatTurnRepository,
         _chatEventRepository = chatEventRepository,
         _snapshotRepository = snapshotRepository,
         _contextProjector = contextProjector,
         _tokenBudgetService = tokenBudgetService,
         _summaryService = summaryService,
-        _chatService = chatService;
+        _chatService = chatService,
+        _runtimeUserContextService =
+            runtimeUserContextService ?? RuntimeUserContextService(),
+        _userContextMessageBuilder =
+            userContextMessageBuilder ?? const UserContextMessageBuilder();
 
   final ChatTurnRepository _chatTurnRepository;
   final ChatEventRepository _chatEventRepository;
@@ -38,6 +47,8 @@ class SessionContextService {
   final SessionTokenBudgetService _tokenBudgetService;
   final SessionSummaryService _summaryService;
   final ChatService _chatService;
+  final RuntimeUserContextService _runtimeUserContextService;
+  final UserContextMessageBuilder _userContextMessageBuilder;
 
   Future<List<ChatMessage>> buildPlannerMessages({
     required int groupId,
@@ -46,6 +57,7 @@ class SessionContextService {
     required ChatConfig config,
   }) async {
     final snapshot = await _snapshotRepository.getLatestByGroup(groupId);
+    final currentTurn = await _chatTurnRepository.getTurn(currentTurnId);
     final modelName = _chatService.getModelName(config);
     final profile = _tokenBudgetService.resolveProfile(modelName);
     final compactionConfig = profile.compactionConfig;
@@ -70,10 +82,17 @@ class SessionContextService {
       historyTurns: completedTurns,
       groupedEvents: groupedHistoryEvents,
     );
-    final currentMessages =
-        _contextProjector.projectEventsToContext(currentTurnTranscript);
+    final userContextMessage = _userContextMessageBuilder.buildMessage(
+      snapshot: await _runtimeUserContextService.buildSnapshot(),
+    );
+    final currentMessages = [
+      if (_extractDateReminderMessage(currentTurn) case final reminder?)
+        reminder,
+      ..._contextProjector.projectEventsToContext(currentTurnTranscript),
+    ];
     final fixedPrefixTokens =
-        _tokenBudgetService.estimateTextTokens(_resolveSystemPrompt(config));
+        _tokenBudgetService.estimateTextTokens(_resolveSystemPrompt(config)) +
+            _tokenBudgetService.estimateMessagesTokens([userContextMessage]);
     final currentTurnTokens =
         _tokenBudgetService.estimateMessagesTokens(currentMessages);
 
@@ -116,6 +135,7 @@ class SessionContextService {
     }
 
     return [
+      userContextMessage,
       if (activeSummary != null)
         _contextProjector.projectSnapshotToContext(activeSummary.summaryText),
       ...recentSegments.expand((segment) => segment.messages),
@@ -293,6 +313,24 @@ class SessionContextService {
       config.userSystemPrompt.trim(),
     ].where((part) => part.isNotEmpty).toList(growable: false);
     return parts.join('\n');
+  }
+
+  ChatMessage? _extractDateReminderMessage(ChatTurn? turn) {
+    final runtimeContext = turn?.providerStateJson?[
+        SessionRuntimeMarkerService.runtimeContextKey];
+    if (runtimeContext is! Map) {
+      return null;
+    }
+    final reminder =
+        runtimeContext[SessionRuntimeMarkerService.dateChangeReminderKey];
+    if (reminder is! String || reminder.trim().isEmpty) {
+      return null;
+    }
+    return ChatMessage(
+      text: reminder,
+      role: MessageRole.user,
+      status: MessageStatus.completed,
+    );
   }
 }
 

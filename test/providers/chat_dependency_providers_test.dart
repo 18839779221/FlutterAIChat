@@ -9,6 +9,7 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
+import 'package:ai_chat/models/session/session_runtime_marker.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
@@ -121,6 +122,12 @@ class _NoopChatStorage implements ChatStorage {
       null;
 
   @override
+  Future<SessionRuntimeMarker?> getLatestSessionRuntimeMarkerByGroup(
+    int groupId,
+  ) async =>
+      null;
+
+  @override
   Future<List<ChatMessage>> getMessagesByGroup(int groupId) async => const [];
 
   @override
@@ -161,6 +168,9 @@ class _NoopChatStorage implements ChatStorage {
       1;
 
   @override
+  Future<int> insertSessionRuntimeMarker(SessionRuntimeMarker marker) async => 1;
+
+  @override
   Future<int> insertTurn(ChatTurn turn) async => 1;
 
   @override
@@ -193,6 +203,9 @@ class _NoopChatStorage implements ChatStorage {
   Future<void> updateSessionContextSnapshot(
     SessionContextSnapshot snapshot,
   ) async {}
+
+  @override
+  Future<void> updateSessionRuntimeMarker(SessionRuntimeMarker marker) async {}
 
   @override
   Future<void> updateStructuredMessage(

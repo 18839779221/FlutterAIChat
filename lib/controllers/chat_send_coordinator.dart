@@ -17,6 +17,7 @@ import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/assistant_stream_output_buffer.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
+import 'package:ai_chat/services/session_runtime_marker_service.dart';
 import 'package:ai_chat/services/turn_harness.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:ai_chat/utils/logger.dart';
@@ -119,6 +120,11 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     try {
       final dbHelper = _ref.read(databaseProvider);
       final currentGroupId = _ref.read(currentGroupProvider)!.id!;
+      final runtimeMarkerService = _ref.read(sessionRuntimeMarkerServiceProvider);
+      final runtimeMarkerPreparation =
+          await runtimeMarkerService.prepareForUserMessage(
+        groupId: currentGroupId,
+      );
 
       Logger.d(_tag, '保存用户消息到数据库...');
       final userMessageId =
@@ -135,6 +141,8 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         userMessage: userMessage,
         turnId: turnId,
         harness: turnHarness,
+        runtimeMarkerPreparation: runtimeMarkerPreparation,
+        runtimeMarkerService: runtimeMarkerService,
         scheduleAutoSummary: scheduleAutoSummary,
       );
     } catch (e, stackTrace) {
@@ -170,6 +178,8 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     required ChatMessage userMessage,
     required String turnId,
     required TurnHarness harness,
+    required SessionRuntimeMarkerPreparation runtimeMarkerPreparation,
+    required SessionRuntimeMarkerService runtimeMarkerService,
     required VoidCallback scheduleAutoSummary,
   }) async {
     final dbHelper = _ref.read(databaseProvider);
@@ -179,9 +189,16 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       groupId: currentGroupId,
       status: ChatTurnStatus.running,
       userInput: text,
+      providerStateJson: runtimeMarkerService.buildTurnRuntimeContext(
+        runtimeMarkerPreparation,
+      ),
     );
     final turnRecordId = await turnRepository.createTurn(createdTurn);
     final persistedTurn = createdTurn.copyWith(id: turnRecordId);
+    await runtimeMarkerService.persistInjectedDate(
+      groupId: currentGroupId,
+      currentDate: runtimeMarkerPreparation.currentDate,
+    );
     final config = ChatConfig(
       useReasoning: _ref.read(useReasoningProvider),
       systemPrompt: _ref.read(systemPromptProvider) ?? '',

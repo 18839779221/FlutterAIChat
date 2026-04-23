@@ -102,10 +102,11 @@ void main() {
       final shareResult =
           definitions.firstWhere((item) => item.name == 'share_result');
 
-      expect(webSearch.descriptionForModel, contains('real-time'));
+      expect(webSearch.descriptionForModel, contains('Sources:'));
+      expect(webSearch.descriptionForModel, contains('You MUST use this year'));
       expect(
         webSearch.resolveDescriptionForModel(PromptLocale.chinese),
-        contains('实时'),
+        contains('当前年份'),
       );
       expect(webSearch.argumentSchema?.required, contains('query'));
 
