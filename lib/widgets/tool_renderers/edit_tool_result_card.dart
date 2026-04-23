@@ -4,6 +4,7 @@ import '../../models/tool/tool_result.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
+import 'file_change_preview.dart';
 
 class EditToolResultCard extends StatefulWidget {
   const EditToolResultCard({
@@ -30,6 +31,10 @@ class _EditToolResultCardState extends State<EditToolResultCard> {
     final replacementCount = data['replacementCount'];
     final oldLength = data['oldLength'];
     final newLength = data['newLength'];
+    final oldContentPreview = (data['oldContentPreview'] ?? '').toString();
+    final newContentPreview = (data['newContentPreview'] ?? '').toString();
+    final hasPreview =
+        oldContentPreview.isNotEmpty || newContentPreview.isNotEmpty;
 
     return Container(
       width: double.infinity,
@@ -79,6 +84,14 @@ class _EditToolResultCardState extends State<EditToolResultCard> {
               height: 1.42,
             ),
           ),
+          if (hasPreview) ...[
+            SizedBox(height: spacing.sm),
+            FileChangePreview(
+              oldContent: oldContentPreview,
+              newContent: newContentPreview,
+              truncated: data['contentPreviewTruncated'] == true,
+            ),
+          ],
           SizedBox(height: spacing.sm),
           TextButton(
             onPressed: () => setState(() => _expanded = !_expanded),

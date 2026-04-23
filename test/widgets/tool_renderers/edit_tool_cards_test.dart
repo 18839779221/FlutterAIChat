@@ -57,13 +57,54 @@ void main() {
 
       expect(find.text('编辑文件'), findsOneWidget);
       expect(
-          find.text('最近一次编辑：test/main_test.dart，共发生 2 次编辑动作'), findsOneWidget);
+        find.text('最近一次编辑：test/main_test.dart，共发生 2 次编辑动作'),
+        findsOneWidget,
+      );
       expect(find.text('这次编辑一共执行了 2 次替换动作'), findsOneWidget);
-      expect(find.text('步骤 1'), findsOneWidget);
-      expect(find.text('步骤 2'), findsOneWidget);
-      expect(find.text('全量替换 -> lib/main.dart'), findsOneWidget);
-      expect(find.text('单次替换 -> test/main_test.dart'), findsOneWidget);
-      expect(find.text('把 "old text" 替换为 "new text"'), findsOneWidget);
+      expect(find.text('lib/main.dart'), findsOneWidget);
+      expect(find.text('test/main_test.dart'), findsOneWidget);
+      expect(find.text('步骤 1'), findsNothing);
+      expect(find.text('步骤 2'), findsNothing);
+      expect(find.text('全量替换 -> lib/main.dart'), findsNothing);
+      expect(find.text('单次替换 -> test/main_test.dart'), findsNothing);
+      expect(find.text('把 "old text" 替换为 "new text"'), findsNothing);
+    });
+
+    testWidgets('workflow card previews proposed edit diff when expanded', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: EditToolWorkflowCard(
+              isExpanded: true,
+              steps: [
+                ToolWorkflowStep(
+                  stepId: 'edit-1',
+                  turnId: 'turn-1',
+                  toolName: 'Edit',
+                  title: '编辑文件',
+                  summary: '准备编辑 hobby.txt',
+                  status: ToolWorkflowStepStatus.awaitingConfirmation,
+                  requiresConfirmation: true,
+                  details: {
+                    'file_path': 'hobby.txt',
+                    'old_string': '我的爱好是足球。',
+                    'new_string': '我的爱好是打篮球。',
+                    'replace_all': false,
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      expect(find.textContaining('- 我的爱好是足球。'), findsOneWidget);
+      expect(find.textContaining('+ 我的爱好是打篮球。'), findsOneWidget);
+      expect(find.text('hobby.txt'), findsOneWidget);
+      expect(find.text('步骤 1'), findsNothing);
     });
 
     testWidgets(
@@ -102,6 +143,38 @@ void main() {
 
       expect(find.text('old text'), findsOneWidget);
       expect(find.text('new text'), findsOneWidget);
+    });
+
+    testWidgets('result card renders a unified diff from preview content', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: EditToolResultCard(
+              result: ToolResult(
+                toolName: 'Edit',
+                status: ToolExecutionStatus.success,
+                summary: '已编辑文件：lib/main.dart',
+                data: {
+                  'filePath': 'lib/main.dart',
+                  'replacementCount': 1,
+                  'oldLength': 26,
+                  'newLength': 26,
+                  'oldContentPreview': 'final value = old;\nprint(value);',
+                  'newContentPreview': 'final value = new;\nprint(value);',
+                  'contentPreviewTruncated': false,
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.textContaining('- final value = old;'), findsOneWidget);
+      expect(find.textContaining('+ final value = new;'), findsOneWidget);
+      expect(find.textContaining('  print(value);'), findsOneWidget);
     });
   });
 }
