@@ -7,6 +7,7 @@ import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/providers/chat_send_state_providers.dart';
 import 'package:ai_chat/providers/chat_ui_providers.dart';
 import 'package:ai_chat/utils/logger.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 abstract class ChatSummaryController {
@@ -119,9 +120,16 @@ class DefaultChatSummaryController implements ChatSummaryController {
     }
   }
 
-  bool _isDefaultTitle(String title) {
-    return title.startsWith('新对话') || title == 'AI Chat' || title == '默认对话';
+  static final RegExp _defaultTitlePattern = RegExp(r'^新对话 \d+$');
+
+  @visibleForTesting
+  static bool isDefaultTitle(String title) {
+    return _defaultTitlePattern.hasMatch(title) ||
+        title == 'AI Chat' ||
+        title == '默认对话';
   }
+
+  bool _isDefaultTitle(String title) => isDefaultTitle(title);
 
   @override
   void cancelAutoSummaryTimer() {
