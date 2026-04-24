@@ -223,7 +223,7 @@ String _statusLabelForStep(ToolWorkflowStep step) {
 Color _statusColorForStep(ToolWorkflowStep? step) {
   switch (step?.status) {
     case ToolWorkflowStepStatus.completed:
-      return const Color(0xFF3FAE6F);
+      return const Color(0xFF2F7D58);
     case ToolWorkflowStepStatus.failed:
     case ToolWorkflowStepStatus.cancelled:
       return const Color(0xFFD98A34);
@@ -237,7 +237,7 @@ Color _statusColorForStep(ToolWorkflowStep? step) {
 
 Color _statusColorForResult(ToolResult result) {
   return result.status == ToolExecutionStatus.success
-      ? const Color(0xFF3FAE6F)
+      ? const Color(0xFF2F7D58)
       : const Color(0xFFD98A34);
 }
 
