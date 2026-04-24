@@ -8,6 +8,7 @@ import 'package:ai_chat/controllers/chat_summary_controller.dart';
 import 'package:ai_chat/services/tool_ui_renderer_registry.dart';
 import 'package:ai_chat/widgets/tool_renderers/edit_tool_workflow_card.dart';
 import 'package:ai_chat/widgets/tool_renderers/fetch_webpage_tool_workflow_card.dart';
+import 'package:ai_chat/widgets/tool_renderers/read_tool_workflow_card.dart';
 import 'package:ai_chat/widgets/tool_renderers/web_search_tool_workflow_card.dart';
 import 'package:ai_chat/widgets/tool_renderers/write_tool_workflow_card.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -72,6 +73,7 @@ final chatControllerProvider = Provider<ChatController>((ref) {
 final toolUiRendererRegistryProvider = Provider<ToolUiRendererRegistry>((ref) {
   return const ToolUiRendererRegistry(
     renderers: [
+      ReadToolUiRenderer(),
       WriteToolUiRenderer(),
       EditToolUiRenderer(),
       WebSearchToolUiRenderer(),
