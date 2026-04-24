@@ -10,7 +10,7 @@ class ChatEventRepository {
 
   ChatEventRepository(this._storage);
 
-  Future<int> appendUserMessage({
+  Future<ChatEvent> appendUserMessage({
     required int turnId,
     required int groupId,
     required String content,
@@ -24,7 +24,7 @@ class ChatEventRepository {
     );
   }
 
-  Future<int> appendToolResult({
+  Future<ChatEvent> appendToolResult({
     required int turnId,
     required int groupId,
     required String content,
@@ -40,7 +40,7 @@ class ChatEventRepository {
     );
   }
 
-  Future<int> appendToolCall({
+  Future<ChatEvent> appendToolCall({
     required int turnId,
     required int groupId,
     required String toolName,
@@ -65,7 +65,7 @@ class ChatEventRepository {
     );
   }
 
-  Future<int> appendToolConfirmation({
+  Future<ChatEvent> appendToolConfirmation({
     required int turnId,
     required int groupId,
     required String toolName,
@@ -90,7 +90,7 @@ class ChatEventRepository {
     );
   }
 
-  Future<int> appendToolExecutionStarted({
+  Future<ChatEvent> appendToolExecutionStarted({
     required int turnId,
     required int groupId,
     required String content,
@@ -106,7 +106,7 @@ class ChatEventRepository {
     );
   }
 
-  Future<int> appendAssistantQuestionPrompt({
+  Future<ChatEvent> appendAssistantQuestionPrompt({
     required int turnId,
     required int groupId,
     required AskUserQuestionRequest request,
@@ -122,7 +122,7 @@ class ChatEventRepository {
     );
   }
 
-  Future<int> appendUserInteractionResult({
+  Future<ChatEvent> appendUserInteractionResult({
     required int turnId,
     required int groupId,
     required AskUserQuestionResponse response,
@@ -138,7 +138,7 @@ class ChatEventRepository {
     );
   }
 
-  Future<int> appendToolError({
+  Future<ChatEvent> appendToolError({
     required int turnId,
     required int groupId,
     required String content,
@@ -156,7 +156,7 @@ class ChatEventRepository {
     );
   }
 
-  Future<int> appendAssistantTextDelta({
+  Future<ChatEvent> appendAssistantTextDelta({
     required int turnId,
     required int groupId,
     required String content,
@@ -170,7 +170,7 @@ class ChatEventRepository {
     );
   }
 
-  Future<int> appendAssistantPlannerMessage({
+  Future<ChatEvent> appendAssistantPlannerMessage({
     required int turnId,
     required int groupId,
     required String content,
@@ -186,7 +186,7 @@ class ChatEventRepository {
     );
   }
 
-  Future<int> appendAssistantTextFinal({
+  Future<ChatEvent> appendAssistantTextFinal({
     required int turnId,
     required int groupId,
     required String content,
@@ -200,7 +200,7 @@ class ChatEventRepository {
     );
   }
 
-  Future<int> appendFinalAnswer({
+  Future<ChatEvent> appendFinalAnswer({
     required int turnId,
     required int groupId,
     required String content,
@@ -214,7 +214,7 @@ class ChatEventRepository {
     );
   }
 
-  Future<int> appendTurnStatus({
+  Future<ChatEvent> appendTurnStatus({
     required int turnId,
     required int groupId,
     required String content,
@@ -236,7 +236,7 @@ class ChatEventRepository {
     return _storage.getEventsByGroup(groupId);
   }
 
-  Future<int> _appendEvent({
+  Future<ChatEvent> _appendEvent({
     required int turnId,
     required int groupId,
     required ChatEventType eventType,
@@ -245,17 +245,18 @@ class ChatEventRepository {
     String? status,
     Map<String, dynamic>? payloadJson,
   }) async {
-    final existingEvents = await _storage.getEventsByTurn(turnId);
+    final sequence = await _storage.getNextEventSequence(turnId);
     final event = ChatEvent(
       turnId: turnId,
       groupId: groupId,
-      sequence: existingEvents.length + 1,
+      sequence: sequence,
       eventType: eventType,
       role: role,
       status: status,
       content: content,
       payloadJson: payloadJson,
     );
-    return _storage.insertEvent(event);
+    final id = await _storage.insertEvent(event);
+    return event.copyWith(id: id);
   }
 }

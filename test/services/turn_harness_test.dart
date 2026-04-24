@@ -2343,7 +2343,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
   _InMemoryChatEventRepository() : super(_NoopChatStorage());
 
   @override
-  Future<int> appendUserMessage({
+  Future<ChatEvent> appendUserMessage({
     required int turnId,
     required int groupId,
     required String content,
@@ -2358,7 +2358,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
   }
 
   @override
-  Future<int> appendToolResult({
+  Future<ChatEvent> appendToolResult({
     required int turnId,
     required int groupId,
     required String content,
@@ -2375,7 +2375,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
   }
 
   @override
-  Future<int> appendToolCall({
+  Future<ChatEvent> appendToolCall({
     required int turnId,
     required int groupId,
     required String toolName,
@@ -2398,7 +2398,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
   }
 
   @override
-  Future<int> appendToolConfirmation({
+  Future<ChatEvent> appendToolConfirmation({
     required int turnId,
     required int groupId,
     required String toolName,
@@ -2421,7 +2421,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
   }
 
   @override
-  Future<int> appendToolExecutionStarted({
+  Future<ChatEvent> appendToolExecutionStarted({
     required int turnId,
     required int groupId,
     required String content,
@@ -2438,7 +2438,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
   }
 
   @override
-  Future<int> appendAssistantQuestionPrompt({
+  Future<ChatEvent> appendAssistantQuestionPrompt({
     required int turnId,
     required int groupId,
     required AskUserQuestionRequest request,
@@ -2455,7 +2455,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
   }
 
   @override
-  Future<int> appendUserInteractionResult({
+  Future<ChatEvent> appendUserInteractionResult({
     required int turnId,
     required int groupId,
     required AskUserQuestionResponse response,
@@ -2472,7 +2472,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
   }
 
   @override
-  Future<int> appendToolError({
+  Future<ChatEvent> appendToolError({
     required int turnId,
     required int groupId,
     required String content,
@@ -2491,7 +2491,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
   }
 
   @override
-  Future<int> appendAssistantTextDelta({
+  Future<ChatEvent> appendAssistantTextDelta({
     required int turnId,
     required int groupId,
     required String content,
@@ -2506,7 +2506,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
   }
 
   @override
-  Future<int> appendAssistantPlannerMessage({
+  Future<ChatEvent> appendAssistantPlannerMessage({
     required int turnId,
     required int groupId,
     required String content,
@@ -2523,7 +2523,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
   }
 
   @override
-  Future<int> appendAssistantTextFinal({
+  Future<ChatEvent> appendAssistantTextFinal({
     required int turnId,
     required int groupId,
     required String content,
@@ -2538,7 +2538,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
   }
 
   @override
-  Future<int> appendFinalAnswer({
+  Future<ChatEvent> appendFinalAnswer({
     required int turnId,
     required int groupId,
     required String content,
@@ -2553,7 +2553,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
   }
 
   @override
-  Future<int> appendTurnStatus({
+  Future<ChatEvent> appendTurnStatus({
     required int turnId,
     required int groupId,
     required String content,
@@ -2572,12 +2572,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
     return events.where((event) => event.turnId == turnId).toList();
   }
 
-  Future<int> appendEvent(ChatEvent event) async {
-    events.add(event);
-    return events.length;
-  }
-
-  Future<int> _append({
+  Future<ChatEvent> _append({
     required int turnId,
     required int groupId,
     required ChatEventType eventType,
@@ -2587,6 +2582,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
     String? status,
   }) async {
     final event = ChatEvent(
+      id: events.length + 1,
       turnId: turnId,
       groupId: groupId,
       sequence: events.where((item) => item.turnId == turnId).length + 1,
@@ -2597,7 +2593,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
       status: status,
     );
     events.add(event);
-    return events.length;
+    return event;
   }
 }
 
@@ -2663,6 +2659,9 @@ class _NoopChatStorage implements ChatStorage {
 
   @override
   Future<List<ChatEvent>> getEventsByTurn(int turnId) async => const [];
+
+  @override
+  Future<int> getNextEventSequence(int turnId) async => 1;
 
   @override
   Future<List<ChatGroup>> getAllGroups() => throw UnimplementedError();

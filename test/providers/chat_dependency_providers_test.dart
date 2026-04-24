@@ -113,6 +113,9 @@ class _NoopChatStorage implements ChatStorage {
   Future<List<ChatEvent>> getEventsByTurn(int turnId) async => const [];
 
   @override
+  Future<int> getNextEventSequence(int turnId) async => 1;
+
+  @override
   Future<ChatGroup?> getLatestGroup() async => null;
 
   @override

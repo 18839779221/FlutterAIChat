@@ -181,6 +181,9 @@ class _FakeChatStorage implements ChatStorage {
       throw UnimplementedError();
 
   @override
+  Future<int> getNextEventSequence(int turnId) async => 1;
+
+  @override
   Future<List<ChatEvent>> getEventsByGroup(int groupId) =>
       throw UnimplementedError();
 

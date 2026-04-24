@@ -244,6 +244,20 @@ class WebChatStorage implements ChatStorage {
   }
 
   @override
+  Future<int> getNextEventSequence(int turnId) async {
+    final events = await _readEvents();
+    var maxSequence = 0;
+    for (final event in events) {
+      if (event['turn_id'] != turnId) continue;
+      final sequence = event['sequence'];
+      if (sequence is int && sequence > maxSequence) {
+        maxSequence = sequence;
+      }
+    }
+    return maxSequence + 1;
+  }
+
+  @override
   Future<List<ChatEvent>> getEventsByTurn(int turnId) async {
     final events = await _readEvents();
     final filtered = events
