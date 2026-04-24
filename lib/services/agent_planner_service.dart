@@ -290,6 +290,20 @@ class AgentPlannerService {
         }
 
         final items = <Map<String, dynamic>>[];
+        final contentBlocks = turn.providerStateJson?['content_blocks'];
+        if (contentBlocks is List) {
+          final normalizedBlocks = contentBlocks
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList(growable: false);
+          if (normalizedBlocks.isNotEmpty) {
+            items.add({
+              'role': 'assistant',
+              'content': normalizedBlocks,
+            });
+          }
+        }
+
         for (final step in steps) {
           if (step.providerResponseId != messageId ||
               (step.providerCallId ?? '').trim().isEmpty) {
@@ -299,17 +313,19 @@ class AgentPlannerService {
               step.status != ChatTurnStepStatus.failed) {
             continue;
           }
-          items.add({
-            'role': 'assistant',
-            'content': [
-              {
-                'type': 'tool_use',
-                'id': step.providerCallId!.trim(),
-                'name': step.toolName,
-                'input': step.toolArgsJson,
-              },
-            ],
-          });
+          if (items.isEmpty) {
+            items.add({
+              'role': 'assistant',
+              'content': [
+                {
+                  'type': 'tool_use',
+                  'id': step.providerCallId!.trim(),
+                  'name': step.toolName,
+                  'input': step.toolArgsJson,
+                },
+              ],
+            });
+          }
           items.add({
             'role': 'user',
             'content': [

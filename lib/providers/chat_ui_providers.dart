@@ -18,9 +18,6 @@ final isLoadingMoreProvider = StateProvider<bool>((ref) => false);
 // 是否有更多消息提供者
 final hasMoreMessagesProvider = StateProvider<bool>((ref) => true);
 
-// 推理模式提供者
-final useReasoningProvider = StateProvider<bool>((ref) => false);
-
 // 初始化状态提供者
 final isInitializingProvider = StateProvider<bool>((ref) => true);
 
