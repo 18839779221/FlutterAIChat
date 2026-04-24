@@ -74,14 +74,11 @@ class TurnHarness {
       _tag,
       'runTurn start turnId=$turnId groupId=${turn.groupId} iteration=${turn.iterationCount} toolCalls=${turn.toolCallCount} userInput=${_preview(turn.userInput)}',
     );
-    yield await _appendAndLoad(
-      turnId,
-      () => _eventRepository.appendUserMessage(
+    yield await _eventRepository.appendUserMessage(
         turnId: turnId,
         groupId: turn.groupId,
         content: turn.userInput,
-      ),
-    );
+      );
 
     yield* _continueTurnLoop(
       turn: turn,
@@ -141,15 +138,12 @@ class TurnHarness {
       },
     );
     await _turnRepository.markRunning(turnId);
-    yield await _appendAndLoad(
-      turnId,
-      () => _eventRepository.appendUserInteractionResult(
+    yield await _eventRepository.appendUserInteractionResult(
         turnId: turnId,
         groupId: currentTurn.groupId,
         response: response,
         content: _formatUserInteractionTranscript(request, response),
-      ),
-    );
+      );
     if (request.stepId != null) {
       final transcriptContent = _formatUserInteractionTranscript(
         request,
@@ -188,14 +182,11 @@ class TurnHarness {
           turnId,
           errorMessage: 'max_iterations_reached',
         );
-        yield await _appendAndLoad(
-          turnId,
-          () => _eventRepository.appendTurnStatus(
+        yield await _eventRepository.appendTurnStatus(
             turnId: turnId,
             groupId: currentTurn.groupId,
             content: 'max_iterations_reached',
-          ),
-        );
+          );
         break;
       }
 
@@ -264,9 +255,7 @@ class TurnHarness {
       final shouldPersistPlannerMessage = plannerAssistantMessage.isNotEmpty &&
           !(decision.isTerminal && decision.toolCalls.isEmpty);
       if (shouldPersistPlannerMessage) {
-        yield await _appendAndLoad(
-          turnId,
-          () => _eventRepository.appendAssistantPlannerMessage(
+        yield await _eventRepository.appendAssistantPlannerMessage(
             turnId: turnId,
             groupId: runtimeTurn.groupId,
             content: plannerAssistantMessage,
@@ -279,20 +268,16 @@ class TurnHarness {
                   .isNotEmpty)
                 'responseId': decision.providerState['response_id'],
             },
-          ),
-        );
+          );
       }
       final decisionResponseId = _resolveDecisionResponseId(decision);
       if (decision.toolCalls.isNotEmpty) {
         await _turnRepository.incrementIteration(turnId);
-        yield await _appendAndLoad(
-          turnId,
-          () => _eventRepository.appendTurnStatus(
+        yield await _eventRepository.appendTurnStatus(
             turnId: turnId,
             groupId: runtimeTurn.groupId,
             content: _decisionStatusContent(decision),
-          ),
-        );
+          );
 
         var shouldBreakBatch = false;
         for (final toolCall in decision.toolCalls) {
@@ -375,14 +360,11 @@ class TurnHarness {
 
       if (decision.isTerminal &&
           (decision.assistantMessage ?? '').trim().isNotEmpty) {
-        yield await _appendAndLoad(
-          turnId,
-          () => _eventRepository.appendTurnStatus(
+        yield await _eventRepository.appendTurnStatus(
             turnId: turnId,
             groupId: runtimeTurn.groupId,
             content: _decisionStatusContent(decision),
-          ),
-        );
+          );
         Logger.i(
           _tag,
           'planner chose final response path for turnId=$turnId responsePreview=${_preview(decision.assistantMessage ?? '')}',
@@ -393,14 +375,11 @@ class TurnHarness {
             _tag,
             'planner_request_failed short-circuits final-answer streaming for turnId=$turnId',
           );
-          yield await _appendAndLoad(
-            turnId,
-            () => _eventRepository.appendFinalAnswer(
+          yield await _eventRepository.appendFinalAnswer(
               turnId: turnId,
               groupId: runtimeTurn.groupId,
               content: decision.assistantMessage ?? '规划请求失败',
-            ),
-          );
+            );
           await _turnRepository.markFailed(
             turnId,
             errorMessage: decision.diagnosticCode ?? 'planner_request_failed',
@@ -438,14 +417,11 @@ class TurnHarness {
               'reason': verifyResult.reason,
             },
           );
-          yield await _appendAndLoad(
-            turnId,
-            () => _eventRepository.appendFinalAnswer(
+          yield await _eventRepository.appendFinalAnswer(
               turnId: turnId,
               groupId: runtimeTurn.groupId,
               content: latestAssistantText,
-            ),
-          );
+            );
           await _turnRepository.markCompleted(
             turnId,
             stopReason: verifyResult.reason,
@@ -454,14 +430,11 @@ class TurnHarness {
           break;
         }
 
-        yield await _appendAndLoad(
-          turnId,
-          () => _eventRepository.appendTurnStatus(
+        yield await _eventRepository.appendTurnStatus(
             turnId: turnId,
             groupId: runtimeTurn.groupId,
             content: verifyResult.reason,
-          ),
-        );
+          );
         Logger.w(
           _tag,
           'stop verifier requested another iteration for turnId=$turnId reason=${verifyResult.reason}',
@@ -491,14 +464,11 @@ class TurnHarness {
         turnId,
         errorMessage: 'planner_no_terminal_decision',
       );
-      yield await _appendAndLoad(
-        turnId,
-        () => _eventRepository.appendTurnStatus(
+      yield await _eventRepository.appendTurnStatus(
           turnId: turnId,
           groupId: runtimeTurn.groupId,
           content: 'planner_no_terminal_decision',
-        ),
-      );
+        );
       break;
     }
   }
@@ -560,24 +530,21 @@ class TurnHarness {
       _tag,
       'planner chose tool ${toolCall.toolName} with args=${toolCall.arguments}',
     );
-    yield await _appendAndLoad(
-      turn.id!,
-      () => _eventRepository.appendToolCall(
-        turnId: turn.id!,
-        groupId: turn.groupId,
-        toolName: toolCall.toolName,
-        arguments: toolCall.arguments,
-        summary: '准备执行工具：$toolDisplayName',
-        payloadJson: {
-          'toolName': toolCall.toolName,
-          'arguments': toolCall.arguments,
-          'providerCallId': toolCall.providerCallId,
-          'status': ToolInvocationStatus.proposed.name,
-          'summary': '准备执行工具：$toolDisplayName',
-          'requiresConfirmation': false,
-          'stepId': stepId,
-        },
-      ),
+    yield await _eventRepository.appendToolCall(
+      turnId: turn.id!,
+      groupId: turn.groupId,
+      toolName: toolCall.toolName,
+      arguments: toolCall.arguments,
+      summary: '准备执行工具：$toolDisplayName',
+      payloadJson: {
+        'toolName': toolCall.toolName,
+        'arguments': toolCall.arguments,
+        'providerCallId': toolCall.providerCallId,
+        'status': ToolInvocationStatus.proposed.name,
+        'summary': '准备执行工具：$toolDisplayName',
+        'requiresConfirmation': false,
+        'stepId': stepId,
+      },
     );
 
     final definition = _toolCallService.findDefinition(toolCall.toolName);
@@ -599,14 +566,11 @@ class TurnHarness {
           'questionCount': request.questions.length,
         },
       );
-      yield await _appendAndLoad(
-        turn.id!,
-        () => _eventRepository.appendAssistantQuestionPrompt(
-          turnId: turn.id!,
-          groupId: turn.groupId,
-          request: request,
-          content: _buildQuestionPromptSummary(request),
-        ),
+      yield await _eventRepository.appendAssistantQuestionPrompt(
+        turnId: turn.id!,
+        groupId: turn.groupId,
+        request: request,
+        content: _buildQuestionPromptSummary(request),
       );
       return;
     }
@@ -665,29 +629,23 @@ class TurnHarness {
           'toolName': toolInvocation.toolName,
         },
       );
-      yield await _appendAndLoad(
-        turnId,
-        () => _eventRepository.appendToolConfirmation(
+      yield await _eventRepository.appendToolConfirmation(
           turnId: turnId,
           groupId: groupId,
           toolName: toolInvocation.toolName,
           arguments: toolInvocation.arguments,
           summary: toolInvocation.summary,
           payloadJson: toolPayload,
-        ),
-      );
+        );
       return;
     }
 
-    yield await _appendAndLoad(
-      turnId,
-      () => _eventRepository.appendToolExecutionStarted(
+    yield await _eventRepository.appendToolExecutionStarted(
         turnId: turnId,
         groupId: groupId,
         content: toolInvocation?.summary ?? invocation.summary,
         payloadJson: toolPayload,
-      ),
-    );
+      );
     if (stepId != null) {
       await _stepRepository?.markRunning(stepId);
     }
@@ -710,16 +668,13 @@ class TurnHarness {
         _tag,
         'tool execution failed for ${invocation.toolName}: ${toolResult?.errorMessage ?? 'tool_execution_failed'}',
       );
-      yield await _appendAndLoad(
-        turnId,
-        () => _eventRepository.appendToolError(
+      yield await _eventRepository.appendToolError(
           turnId: turnId,
           groupId: groupId,
           content: toolResult?.summary ?? 'tool_execution_failed',
           errorCode: toolResult?.errorMessage,
           payloadJson: toolResult?.toJson(),
-        ),
-      );
+        );
       await _turnRepository.incrementToolCallCount(turnId);
       if (stepId != null) {
         await _stepRepository?.markFailed(
@@ -753,15 +708,12 @@ class TurnHarness {
         'toolName': invocation.toolName,
       },
     );
-    yield await _appendAndLoad(
-      turnId,
-      () => _eventRepository.appendToolResult(
+    yield await _eventRepository.appendToolResult(
         turnId: turnId,
         groupId: groupId,
         content: toolResult.summary,
         payloadJson: toolResult.toJson(),
-      ),
-    );
+      );
     await _turnRepository.incrementToolCallCount(turnId);
     if (stepId != null) {
       await _stepRepository?.markCompleted(
@@ -787,15 +739,6 @@ class TurnHarness {
       throw StateError('Turn $turnId not found');
     }
     return turn;
-  }
-
-  Future<ChatEvent> _appendAndLoad(
-    int turnId,
-    Future<int> Function() append,
-  ) async {
-    await append();
-    final events = await _eventRepository.listEventsByTurn(turnId);
-    return events.last;
   }
 
   String _summarizeTranscript(List<ChatEvent> transcript) {

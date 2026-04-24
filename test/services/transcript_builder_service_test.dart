@@ -412,7 +412,7 @@ class _FakeChatEventRepository implements ChatEventRepository {
   _FakeChatEventRepository(this.events);
 
   @override
-  Future<int> appendToolResult({
+  Future<ChatEvent> appendToolResult({
     required int turnId,
     required int groupId,
     required String content,
@@ -422,7 +422,7 @@ class _FakeChatEventRepository implements ChatEventRepository {
   }
 
   @override
-  Future<int> appendAssistantTextDelta({
+  Future<ChatEvent> appendAssistantTextDelta({
     required int turnId,
     required int groupId,
     required String content,
@@ -431,7 +431,7 @@ class _FakeChatEventRepository implements ChatEventRepository {
   }
 
   @override
-  Future<int> appendAssistantTextFinal({
+  Future<ChatEvent> appendAssistantTextFinal({
     required int turnId,
     required int groupId,
     required String content,
@@ -440,7 +440,7 @@ class _FakeChatEventRepository implements ChatEventRepository {
   }
 
   @override
-  Future<int> appendAssistantPlannerMessage({
+  Future<ChatEvent> appendAssistantPlannerMessage({
     required int turnId,
     required int groupId,
     required String content,
@@ -450,7 +450,7 @@ class _FakeChatEventRepository implements ChatEventRepository {
   }
 
   @override
-  Future<int> appendFinalAnswer({
+  Future<ChatEvent> appendFinalAnswer({
     required int turnId,
     required int groupId,
     required String content,
@@ -459,7 +459,7 @@ class _FakeChatEventRepository implements ChatEventRepository {
   }
 
   @override
-  Future<int> appendToolCall({
+  Future<ChatEvent> appendToolCall({
     required int turnId,
     required int groupId,
     required String toolName,
@@ -471,7 +471,7 @@ class _FakeChatEventRepository implements ChatEventRepository {
   }
 
   @override
-  Future<int> appendToolConfirmation({
+  Future<ChatEvent> appendToolConfirmation({
     required int turnId,
     required int groupId,
     required String toolName,
@@ -483,7 +483,7 @@ class _FakeChatEventRepository implements ChatEventRepository {
   }
 
   @override
-  Future<int> appendAssistantQuestionPrompt({
+  Future<ChatEvent> appendAssistantQuestionPrompt({
     required int turnId,
     required int groupId,
     required AskUserQuestionRequest request,
@@ -493,7 +493,7 @@ class _FakeChatEventRepository implements ChatEventRepository {
   }
 
   @override
-  Future<int> appendUserInteractionResult({
+  Future<ChatEvent> appendUserInteractionResult({
     required int turnId,
     required int groupId,
     required AskUserQuestionResponse response,
@@ -503,7 +503,7 @@ class _FakeChatEventRepository implements ChatEventRepository {
   }
 
   @override
-  Future<int> appendToolError({
+  Future<ChatEvent> appendToolError({
     required int turnId,
     required int groupId,
     required String content,
@@ -514,7 +514,7 @@ class _FakeChatEventRepository implements ChatEventRepository {
   }
 
   @override
-  Future<int> appendToolExecutionStarted({
+  Future<ChatEvent> appendToolExecutionStarted({
     required int turnId,
     required int groupId,
     required String content,
@@ -524,7 +524,7 @@ class _FakeChatEventRepository implements ChatEventRepository {
   }
 
   @override
-  Future<int> appendTurnStatus({
+  Future<ChatEvent> appendTurnStatus({
     required int turnId,
     required int groupId,
     required String content,
@@ -533,7 +533,7 @@ class _FakeChatEventRepository implements ChatEventRepository {
   }
 
   @override
-  Future<int> appendUserMessage({
+  Future<ChatEvent> appendUserMessage({
     required int turnId,
     required int groupId,
     required String content,

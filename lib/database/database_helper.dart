@@ -613,6 +613,28 @@ class DatabaseHelper implements ChatStorage {
   }
 
   @override
+  Future<int> getNextEventSequence(int turnId) async {
+    try {
+      final db = await database;
+      final rows = await db.rawQuery(
+        'SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM chat_events WHERE turn_id = ?',
+        [turnId],
+      );
+      if (rows.isEmpty) {
+        return 1;
+      }
+      final value = rows.first['next'];
+      if (value is int) {
+        return value;
+      }
+      return int.tryParse(value?.toString() ?? '') ?? 1;
+    } catch (e) {
+      Logger.e(_tag, '读取 event sequence 失败', e);
+      rethrow;
+    }
+  }
+
+  @override
   Future<List<ChatEvent>> getEventsByTurn(int turnId) async {
     try {
       final db = await database;

@@ -282,6 +282,9 @@ class _FakeChatStorage implements ChatStorage {
   Future<List<ChatEvent>> getEventsByTurn(int turnId) async => const [];
 
   @override
+  Future<int> getNextEventSequence(int turnId) async => 1;
+
+  @override
   Future<int> getGroupMessageCount(int groupId) async => 0;
 
   @override

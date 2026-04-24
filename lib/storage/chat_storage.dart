@@ -27,6 +27,7 @@ abstract class ChatStorage {
   Future<void> updateTurnStep(ChatTurnStep step);
 
   Future<int> insertEvent(ChatEvent event);
+  Future<int> getNextEventSequence(int turnId);
   Future<List<ChatEvent>> getEventsByTurn(int turnId);
   Future<List<ChatEvent>> getEventsByGroup(int groupId);
 

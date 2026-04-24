@@ -45,6 +45,21 @@ class ChatEvent {
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
+  ChatEvent copyWith({int? id}) {
+    return ChatEvent(
+      id: id ?? this.id,
+      turnId: turnId,
+      groupId: groupId,
+      sequence: sequence,
+      eventType: eventType,
+      role: role,
+      status: status,
+      content: content,
+      payloadJson: payloadJson,
+      createdAt: createdAt,
+    );
+  }
+
   Map<String, dynamic> toMap() {
     return {
       if (id != null) 'id': id,
