@@ -117,7 +117,4 @@ class _StubDebugController implements ChatDebugController {
 class _StubPreferencesController implements ChatPreferencesController {
   @override
   Future<void> setSystemPrompt(String? prompt) async {}
-
-  @override
-  void setUseReasoning(bool value) {}
 }

@@ -5,12 +5,16 @@ class AnthropicMessagesToolLoopAdapter {
   const AnthropicMessagesToolLoopAdapter();
 
   ModelTurnDecision? parseDecision(Map<String, dynamic> payload) {
+    final content = payload['content'];
     final providerState = <String, dynamic>{
       if (payload['id'] is String && (payload['id'] as String).trim().isNotEmpty)
         'message_id': payload['id'],
+      if (content is List)
+        'content_blocks': content
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList(growable: false),
     };
-
-    final content = payload['content'];
     if (content is! List) {
       return null;
     }

@@ -119,10 +119,6 @@ class ChatController {
     await _preferencesController.setSystemPrompt(prompt);
   }
 
-  void setUseReasoning(bool value) {
-    _preferencesController.setUseReasoning(value);
-  }
-
   Future<void> selectGroup(ChatGroup group) async {
     await _sessionCoordinator.selectGroup(group);
   }

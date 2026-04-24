@@ -55,6 +55,43 @@ void main() {
     expect(headerSize.height, lessThanOrEqualTo(56));
   });
 
+  testWidgets('chat page more actions no longer exposes reasoning mode toggle',
+      (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider.overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider.overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatDebugControllerProvider.overrideWith((ref) => _StubDebugController()),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
+
+    expect(find.text('设置系统提示词'), findsOneWidget);
+    expect(find.text('开启深度模式'), findsNothing);
+    expect(find.text('关闭深度模式'), findsNothing);
+  });
+
   testWidgets('chat page anchors viewport near the latest turn end',
       (tester) async {
     final container = ProviderContainer(
@@ -493,9 +530,6 @@ class _StubDebugController implements ChatDebugController {
 class _StubPreferencesController implements ChatPreferencesController {
   @override
   Future<void> setSystemPrompt(String? prompt) async {}
-
-  @override
-  void setUseReasoning(bool value) {}
 }
 
 class _FakeDebugTestCaseLoader implements DebugTestCaseLoader {

@@ -360,6 +360,11 @@ class ConfigurableHttpLLM implements BaseLLM {
         providerStyle: providerStyle,
         providerState: providerState,
       );
+      final normalizedContinuationItems = _normalizePlannerContinuationItems(
+        apiStyle: apiStyle,
+        providerState: providerState,
+        continuationItems: providerContinuationItems,
+      );
       final payload = _buildPlannerPayloadForStyle(
         apiStyle,
         messages,
@@ -368,7 +373,7 @@ class ConfigurableHttpLLM implements BaseLLM {
         availableTools: availableTools,
         parallelToolCalls: true,
         previousResponseId: previousResponseId,
-        continuationItems: providerContinuationItems,
+        continuationItems: normalizedContinuationItems,
       );
       Logger.i(_tag, 'native planner 请求体: ${jsonEncode(payload)}');
       final response = await _httpClient
@@ -1356,6 +1361,47 @@ class ConfigurableHttpLLM implements BaseLLM {
     return previousResponseId != null &&
         previousResponseId.isNotEmpty &&
         continuationItems.isNotEmpty;
+  }
+
+  List<Map<String, dynamic>> _normalizePlannerContinuationItems({
+    required ApiStyle apiStyle,
+    required Map<String, dynamic>? providerState,
+    required List<Map<String, dynamic>> continuationItems,
+  }) {
+    if (apiStyle != ApiStyle.anthropicMessages || continuationItems.isEmpty) {
+      return continuationItems;
+    }
+
+    final hasAssistantContinuation = continuationItems.any((item) {
+      if (item['role'] != 'assistant') {
+        return false;
+      }
+      final content = item['content'];
+      return content is List && content.isNotEmpty;
+    });
+    if (hasAssistantContinuation) {
+      return continuationItems;
+    }
+
+    final contentBlocks = providerState?['content_blocks'];
+    if (contentBlocks is! List) {
+      return continuationItems;
+    }
+    final normalizedBlocks = contentBlocks
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
+    if (normalizedBlocks.isEmpty) {
+      return continuationItems;
+    }
+
+    return [
+      {
+        'role': 'assistant',
+        'content': normalizedBlocks,
+      },
+      ...continuationItems,
+    ];
   }
 
   Future<String> _sendTextRequest(

@@ -200,7 +200,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       currentDate: runtimeMarkerPreparation.currentDate,
     );
     final config = ChatConfig(
-      useReasoning: _ref.read(useReasoningProvider),
+      useReasoning: false,
       systemPrompt: _ref.read(systemPromptProvider) ?? '',
       userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
     );
@@ -682,7 +682,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
           request: request,
           response: response,
           config: ChatConfig(
-            useReasoning: _ref.read(useReasoningProvider),
+            useReasoning: false,
             systemPrompt: _ref.read(systemPromptProvider) ?? '',
             userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
           ),
@@ -946,7 +946,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       turnId: turnId,
       invocation: invocation,
       config: ChatConfig(
-        useReasoning: _ref.read(useReasoningProvider),
+        useReasoning: false,
         systemPrompt: _ref.read(systemPromptProvider) ?? '',
         userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
       ),

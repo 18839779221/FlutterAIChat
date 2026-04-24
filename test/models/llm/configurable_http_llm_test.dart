@@ -1545,6 +1545,105 @@ void main() {
         ],
       });
     });
+
+    test('anthropic continuation preserves prior thinking blocks', () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'id': 'msg_456',
+            'content': [
+              {
+                'type': 'text',
+                'text': '继续处理完成。',
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://anthropic.example/v1/messages',
+        httpClient: client,
+      );
+
+      await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '继续', role: MessageRole.user),
+        ],
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        availableTools: const [],
+        providerStyle: ChatTurnProviderStyle.anthropicMessages,
+        providerState: const {
+          'message_id': 'msg_123',
+          'content_blocks': [
+            {
+              'type': 'thinking',
+              'thinking': '先分析一下工具结果。',
+              'signature': 'sig_123',
+            },
+            {
+              'type': 'tool_use',
+              'id': 'toolu_123',
+              'name': 'web_search',
+              'input': {'query': 'latest deepseek docs'},
+            },
+          ],
+        },
+        providerContinuationItems: const [
+          {
+            'role': 'user',
+            'content': [
+              {
+                'type': 'tool_result',
+                'tool_use_id': 'toolu_123',
+                'content': '{"status":"success","summary":"已完成"}',
+              },
+            ],
+          },
+        ],
+      );
+
+      final messages = client.lastRequestBody?['messages'] as List<dynamic>?;
+      expect(messages, isNotNull);
+      expect(messages, hasLength(3));
+      expect(messages!.first, {
+        'role': 'user',
+        'content': [
+          {
+            'type': 'text',
+            'text': '继续',
+          },
+        ],
+      });
+      expect(messages[1], {
+        'role': 'assistant',
+        'content': [
+          {
+            'type': 'thinking',
+            'thinking': '先分析一下工具结果。',
+            'signature': 'sig_123',
+          },
+          {
+            'type': 'tool_use',
+            'id': 'toolu_123',
+            'name': 'web_search',
+            'input': {'query': 'latest deepseek docs'},
+          },
+        ],
+      });
+      expect(messages[2], {
+        'role': 'user',
+        'content': [
+          {
+            'type': 'tool_result',
+            'tool_use_id': 'toolu_123',
+            'content': '{"status":"success","summary":"已完成"}',
+          },
+        ],
+      });
+    });
   });
 
   group('ConfigurableHttpLLM.summarizeConversation', () {

@@ -38,7 +38,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final sendPhase = ref.watch(sendPhaseProvider);
     final isSendInFlight = sendPhase != ChatSendPhase.idle;
     final systemPrompt = ref.watch(systemPromptProvider);
-    final useReasoning = ref.watch(useReasoningProvider);
     final isLoadingMore = ref.watch(isLoadingMoreProvider);
     final pendingConfirmation = ref.watch(activePendingToolConfirmationProvider);
     final spacing = Theme.of(context).extension<AppSpacing>()!;
@@ -159,7 +158,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     context,
                     hasSystemPrompt:
                         systemPrompt != null && systemPrompt.isNotEmpty,
-                    useReasoning: useReasoning,
                   ),
                 ),
               ),
@@ -199,7 +197,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   void _showHeaderActions(
     BuildContext context, {
     required bool hasSystemPrompt,
-    required bool useReasoning,
   }) {
     showCupertinoModalPopup(
       context: context,
@@ -211,13 +208,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             onPressed: () {
               Navigator.pop(context);
               _showSystemPromptDialog(context);
-            },
-          ),
-          CupertinoActionSheetAction(
-            child: Text(useReasoning ? '关闭深度模式' : '开启深度模式'),
-            onPressed: () {
-              ref.read(chatControllerProvider).setUseReasoning(!useReasoning);
-              Navigator.pop(context);
             },
           ),
         ],

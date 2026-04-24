@@ -196,9 +196,6 @@ class _NoopChatDebugController implements ChatDebugController {
 
 class _NoopChatPreferencesController implements ChatPreferencesController {
   @override
-  void setUseReasoning(bool value) {}
-
-  @override
   Future<void> setSystemPrompt(String? prompt) async {}
 }
 

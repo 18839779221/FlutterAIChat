@@ -1637,10 +1637,8 @@ void main() {
       await container
           .read(chatControllerProvider)
           .setSystemPrompt('new prompt');
-      container.read(chatControllerProvider).setUseReasoning(true);
 
       expect(preferencesController.systemPrompts, ['new prompt']);
-      expect(preferencesController.reasoningValues, [true]);
     });
 
     test('sendMessage stores runtime current date in turn provider state',
@@ -2122,15 +2120,9 @@ class _FakeChatDebugController implements ChatDebugController {
 
 class _FakeChatPreferencesController implements ChatPreferencesController {
   final List<String?> systemPrompts = [];
-  final List<bool> reasoningValues = [];
 
   @override
   Future<void> setSystemPrompt(String? prompt) async {
     systemPrompts.add(prompt);
-  }
-
-  @override
-  void setUseReasoning(bool value) {
-    reasoningValues.add(value);
   }
 }
