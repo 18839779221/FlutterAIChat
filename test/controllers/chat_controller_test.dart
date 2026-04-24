@@ -89,6 +89,69 @@ void main() {
     expect(container.read(messagesProvider).single.status,
         MessageStatus.interrupted);
   });
+
+  group('group switches cancel auto-summary timer', () {
+    Future<void> runCase(
+      String description,
+      Future<void> Function(ChatController controller) action,
+    ) async {
+      final summarySpy = _SpyChatSummaryController();
+      final container = ProviderContainer(
+        overrides: [
+          databaseProvider.overrideWithValue(_FakeChatStorage()),
+          chatControllerProvider.overrideWith(
+            (ref) => ChatController(
+              ref,
+              sendCoordinator: _NoopChatSendCoordinator(),
+              sessionCoordinator: _NoopChatSessionCoordinator(),
+              summaryController: summarySpy,
+              debugController: _NoopChatDebugController(),
+              preferencesController: _NoopChatPreferencesController(),
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final controller = container.read(chatControllerProvider);
+      await action(controller);
+
+      expect(
+        summarySpy.cancelCalls,
+        1,
+        reason: '$description should cancel auto-summary timer exactly once',
+      );
+    }
+
+    test('loadCurrentGroup cancels', () async {
+      await runCase('loadCurrentGroup', (c) => c.loadCurrentGroup());
+    });
+    test('createNewGroup cancels', () async {
+      await runCase('createNewGroup', (c) => c.createNewGroup());
+    });
+    test('deleteGroup cancels', () async {
+      await runCase('deleteGroup', (c) => c.deleteGroup(1));
+    });
+    test('selectGroup cancels', () async {
+      final group = ChatGroup(id: 1, title: '新对话 1', systemPrompt: '');
+      await runCase('selectGroup', (c) => c.selectGroup(group));
+    });
+  });
+}
+
+class _SpyChatSummaryController implements ChatSummaryController {
+  int cancelCalls = 0;
+
+  @override
+  void cancelAutoSummaryTimer() {
+    cancelCalls += 1;
+  }
+
+  @override
+  void scheduleAutoSummary() {}
+
+  @override
+  Future<String?> summarizeAndUpdateTitle() async => null;
 }
 
 class _FakeStreamSubscription implements StreamSubscription<void> {

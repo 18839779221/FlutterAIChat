@@ -37,14 +37,17 @@ class ChatController {
   }
 
   Future<void> loadCurrentGroup() async {
+    _summaryController.cancelAutoSummaryTimer();
     await _sessionCoordinator.loadCurrentGroup();
   }
 
   Future<void> createNewGroup() async {
+    _summaryController.cancelAutoSummaryTimer();
     await _sessionCoordinator.createNewGroup();
   }
 
   Future<void> deleteGroup(int id) async {
+    _summaryController.cancelAutoSummaryTimer();
     await _sessionCoordinator.deleteGroup(id);
   }
 
@@ -120,6 +123,7 @@ class ChatController {
   }
 
   Future<void> selectGroup(ChatGroup group) async {
+    _summaryController.cancelAutoSummaryTimer();
     await _sessionCoordinator.selectGroup(group);
   }
 

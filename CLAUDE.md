@@ -93,7 +93,7 @@ The app automatically generates conversation summaries using a Hybrid Approach:
 
 **Trigger Conditions (ALL must be met):**
 1. At least 6 completed messages (3 user + 3 AI pairs)
-2. Current group title is default/generic (starts with "新对话", equals "AI Chat" or "默认对话")
+2. Current group title is default/generic (matches `新对话 <digits>`, equals "AI Chat" or "默认对话")
 3. Last message completed at least 30 seconds ago
 4. Not already summarizing (prevents duplicate calls)
 5. Group hasn't been summarized before (`isSummarized` flag)
