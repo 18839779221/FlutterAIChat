@@ -1266,6 +1266,124 @@ void main() {
     });
 
     test(
+        'submitQuestionAnswers replaces ask-prompt message with askUserQuestionResult',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final orchestrator = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: const [],
+        resumedQuestionEvents: [
+          ChatEvent(
+            turnId: 42,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.userInteractionResult,
+            role: MessageRole.user,
+            content: '已选择：移动端（iOS/Android）',
+          ),
+          ChatEvent(
+            turnId: 42,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.finalAnswer,
+            role: MessageRole.assistant,
+            content: '收到，继续推进移动端方案。',
+          ),
+        ],
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(),
+        harness: orchestrator,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      const promptPayload = {
+        'questions': [
+          {
+            'id': 'primary-platform',
+            'header': 'Platform',
+            'question': '目标平台是什么？',
+            'multiSelect': false,
+            'options': [
+              {
+                'label': '移动端（iOS/Android）',
+                'description': '手机端优先',
+              },
+            ],
+          },
+        ],
+        'agentTurnId': 42,
+      };
+      final promptId = await databaseHelper.insertMessage(
+        ChatMessage(
+          text: '请先回答几个问题',
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.askUserQuestionPrompt,
+          payloadJson: promptPayload,
+        ),
+        groupId,
+      );
+      final promptMessage = ChatMessage(
+        id: promptId,
+        text: '请先回答几个问题',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.askUserQuestionPrompt,
+        payloadJson: promptPayload,
+      );
+      container.read(messagesProvider.notifier).addMessage(promptMessage);
+
+      await container
+          .read(chatSendCoordinatorProvider)
+          .submitQuestionAnswers(
+            promptMessage,
+            response: const AskUserQuestionResponse(
+              answersByQuestionId: {
+                'primary-platform': '移动端（iOS/Android）',
+              },
+              selectedOptionLabelsByQuestionId: {
+                'primary-platform': ['移动端（iOS/Android）'],
+              },
+              freeTextAnswersByQuestionId: {},
+            ),
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final messages = container.read(messagesProvider);
+      final replaced = messages.firstWhere((m) => m.id == promptId);
+      expect(replaced.contentType, MessageContentType.askUserQuestionResult);
+      expect(replaced.text, '已选择：移动端（iOS/Android）');
+      expect(replaced.payloadJson?['status'], 'submitted');
+      expect(replaced.payloadJson?['submittedAnswers'], isA<Map>());
+
+      // No extra askUserQuestionResult message added
+      final resultMessages = messages.where(
+        (m) => m.contentType == MessageContentType.askUserQuestionResult,
+      );
+      expect(resultMessages.length, 1);
+
+      // Final assistant answer still appended
+      expect(
+        messages.any(
+          (m) =>
+              m.isAssistant &&
+              m.status == MessageStatus.completed &&
+              m.text == '收到，继续推进移动端方案。',
+        ),
+        isTrue,
+      );
+
+      await databaseHelper.deleteGroup(groupId);
+    });
+
+    test(
         'submitQuestionAnswers keeps resumed loop cancellable and visible while waiting',
         () async {
       final databaseHelper = _createTestDatabaseHelper();

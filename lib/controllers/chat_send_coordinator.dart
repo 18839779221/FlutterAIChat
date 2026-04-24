@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
@@ -15,14 +14,14 @@ import 'package:ai_chat/providers/chat_send_state_providers.dart';
 import 'package:ai_chat/providers/chat_ui_providers.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/services/chat_service.dart';
-import 'package:ai_chat/services/assistant_stream_output_buffer.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/session_runtime_marker_service.dart';
 import 'package:ai_chat/services/turn_harness.dart';
-import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:ai_chat/utils/logger.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'agent_event_processor.dart';
 
 const String traceTurnIdPayloadKey = 'traceTurnId';
 
@@ -205,67 +204,13 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
     );
 
-    int? assistantMessageId;
-    ChatMessage? assistantMessage;
-    AssistantStreamOutputBuffer? assistantStreamBuffer;
-    final completion = Completer<void>();
-
-    final subscription = harness
-        .runTurn(
-      turn: persistedTurn,
-      config: config,
-    )
-        .asyncMap((event) async {
-      switch (event.eventType) {
-        case ChatEventType.userMessage:
-          return;
-        case ChatEventType.assistantPlannerMessage:
-          final plannerMessage = ChatMessage(
-            text: event.content ?? '',
-            role: MessageRole.assistant,
-            status: MessageStatus.completed,
-            payloadJson: event.payloadJson,
-          );
-          final plannerMessageId =
-              await dbHelper.insertMessage(plannerMessage, currentGroupId);
-          plannerMessage.id = plannerMessageId;
-          _ref.read(messagesProvider.notifier).addMessage(plannerMessage);
-          break;
-        case ChatEventType.assistantToolCall:
-          final message = ChatMessage(
-            text: event.content ?? '准备执行工具',
-            role: MessageRole.assistant,
-            status: MessageStatus.completed,
-            contentType: MessageContentType.toolInvocation,
-            payloadJson: event.payloadJson,
-          );
-          final messageId = await dbHelper.insertMessage(message, currentGroupId);
-          message.id = messageId;
-          _ref.read(messagesProvider.notifier).addMessage(message);
-          break;
-        case ChatEventType.assistantToolConfirmation:
-          _ref.read(chatSendStateProvider.notifier).update(
-                isGenerating: false,
-                phase: ChatSendPhase.awaitingConfirmation,
-              );
-          final payloadJson = {
-            ...?event.payloadJson,
-            'status': ToolInvocationStatus.awaitingConfirmation.name,
-            'summary': event.content ?? '准备执行工具',
-            'requiresConfirmation': true,
-            'agentTurnId': turnRecordId,
-            traceTurnIdPayloadKey: turnId,
-          };
-          final message = ChatMessage(
-            text: event.content ?? '准备执行工具',
-            role: MessageRole.assistant,
-            status: MessageStatus.completed,
-            contentType: MessageContentType.actionConfirmation,
-            payloadJson: payloadJson,
-          );
-          final messageId = await dbHelper.insertMessage(message, currentGroupId);
-          message.id = messageId;
-          _ref.read(messagesProvider.notifier).addMessage(message);
+    final processor = AgentEventProcessor(
+      ref: _ref,
+      groupId: currentGroupId,
+      traceTurnId: turnId,
+      agentTurnId: turnRecordId,
+      hooks: AgentEventHooks(
+        onAssistantToolConfirmation: (event) {
           traceRecorder.record(
             turnId: turnId,
             stage: ChatTraceStage.sendDone,
@@ -273,149 +218,11 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
             summary: '发送进入确认态',
             data: {
               'phase': ChatSendPhase.awaitingConfirmation.name,
-              'toolName': payloadJson['toolName'],
+              'toolName': event.payloadJson?['toolName'],
             },
           );
-          break;
-        case ChatEventType.assistantQuestionPrompt:
-          _ref.read(chatSendStateProvider.notifier).update(
-                isGenerating: false,
-                phase: ChatSendPhase.idle,
-              );
-          final promptMessage = ChatMessage(
-            text: event.content ?? '请先回答几个问题',
-            role: MessageRole.assistant,
-            status: MessageStatus.completed,
-            contentType: MessageContentType.askUserQuestionPrompt,
-            payloadJson: {
-              ...?event.payloadJson,
-              'agentTurnId': turnRecordId,
-              traceTurnIdPayloadKey: turnId,
-            },
-          );
-          final promptMessageId =
-              await dbHelper.insertMessage(promptMessage, currentGroupId);
-          promptMessage.id = promptMessageId;
-          _ref.read(messagesProvider.notifier).addMessage(promptMessage);
-          break;
-        case ChatEventType.toolExecutionStarted:
-          _ref.read(chatSendStateProvider.notifier).setPhase(
-                ChatSendPhase.executingTool,
-              );
-          final message = ChatMessage(
-            text: event.content ?? '正在执行工具',
-            role: MessageRole.assistant,
-            status: MessageStatus.completed,
-            contentType: MessageContentType.toolInvocation,
-            payloadJson: event.payloadJson,
-          );
-          final messageId = await dbHelper.insertMessage(message, currentGroupId);
-          message.id = messageId;
-          _ref.read(messagesProvider.notifier).addMessage(message);
-          break;
-        case ChatEventType.toolResult:
-          final message = ChatMessage(
-            text: event.content ?? '',
-            role: MessageRole.assistant,
-            status: MessageStatus.completed,
-            contentType: MessageContentType.toolResult,
-            payloadJson: event.payloadJson,
-          );
-          final messageId = await dbHelper.insertMessage(message, currentGroupId);
-          message.id = messageId;
-          _ref.read(messagesProvider.notifier).addMessage(message);
-          break;
-        case ChatEventType.userInteractionResult:
-          final resultMessage = ChatMessage(
-            text: event.content ?? '',
-            role: MessageRole.assistant,
-            status: MessageStatus.completed,
-            contentType: MessageContentType.askUserQuestionResult,
-            payloadJson: {
-              ...?event.payloadJson,
-              'agentTurnId': turnRecordId,
-              traceTurnIdPayloadKey: turnId,
-            },
-          );
-          final resultMessageId =
-              await dbHelper.insertMessage(resultMessage, currentGroupId);
-          resultMessage.id = resultMessageId;
-          _ref.read(messagesProvider.notifier).addMessage(resultMessage);
-          break;
-        case ChatEventType.toolError:
-          await _appendToolResultMessage(
-            dbHelper: dbHelper,
-            groupId: currentGroupId,
-            event: event,
-            fallbackText: '工具执行失败',
-            payloadJson: _buildToolFailurePayload(event),
-          );
-          break;
-        case ChatEventType.assistantTextDelta:
-          if (assistantMessageId == null) {
-            final placeholder = ChatMessage(
-              text: '',
-              role: MessageRole.assistant,
-              status: MessageStatus.generating,
-            );
-            assistantMessageId =
-                await dbHelper.insertMessage(placeholder, currentGroupId);
-            placeholder.id = assistantMessageId;
-            assistantMessage = placeholder;
-            _ref.read(messagesProvider.notifier).addMessage(placeholder);
-          }
-          _ref.read(chatSendStateProvider.notifier).update(
-                isGenerating: true,
-                phase: ChatSendPhase.streamingResponse,
-              );
-          final activeAssistantMessageId =
-              assistantMessageId ?? (throw StateError('missing assistant message id'));
-          final activeAssistantMessage =
-              assistantMessage ?? (throw StateError('missing assistant message'));
-          assistantStreamBuffer ??= _createAssistantStreamBuffer(
-            messageId: activeAssistantMessageId,
-            message: activeAssistantMessage,
-            dbHelper: dbHelper,
-          );
-          assistantStreamBuffer!.onDelta(event.content ?? '');
-          break;
-        case ChatEventType.assistantTextFinal:
-          break;
-        case ChatEventType.finalAnswer:
-          if (assistantMessageId == null) {
-            final message = ChatMessage(
-              text: event.content ?? '',
-              role: MessageRole.assistant,
-              status: MessageStatus.completed,
-            );
-            assistantMessageId =
-                await dbHelper.insertMessage(message, currentGroupId);
-            message.id = assistantMessageId;
-            assistantMessage = message;
-            _ref.read(messagesProvider.notifier).addMessage(message);
-          } else {
-            await _finalizeAssistantText(
-              buffer: assistantStreamBuffer,
-              messageId: assistantMessageId!,
-              message: assistantMessage,
-              dbHelper: dbHelper,
-              fallbackText: event.content ?? assistantMessage?.text ?? '',
-              explicitText: event.content,
-            );
-            _ref
-                .read(messagesProvider.notifier)
-                .updateMessageStatus(assistantMessageId!, MessageStatus.completed);
-            await dbHelper.updateMessageStatus(
-              assistantMessageId!,
-              MessageStatus.completed,
-            );
-          }
-          assistantStreamBuffer?.dispose();
-          assistantStreamBuffer = null;
-          _ref.read(chatSendStateProvider.notifier).update(
-                isGenerating: false,
-                phase: ChatSendPhase.idle,
-              );
+        },
+        onFinalAnswer: (event) {
           traceRecorder.record(
             turnId: turnId,
             stage: ChatTraceStage.sendDone,
@@ -426,18 +233,22 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
             },
           );
           scheduleAutoSummary();
-          break;
-        case ChatEventType.turnStatus:
-        case ChatEventType.error:
-        case ChatEventType.assistantReasoningDelta:
-          break;
-      }
+        },
+      ),
+    );
+    final completion = Completer<void>();
+
+    final subscription = harness
+        .runTurn(
+      turn: persistedTurn,
+      config: config,
+    )
+        .asyncMap((event) async {
+      await processor.handle(event);
     }).listen(
       (_) {},
       onError: (error, stackTrace) {
-        unawaited(assistantStreamBuffer?.cancel());
-        assistantStreamBuffer?.dispose();
-        assistantStreamBuffer = null;
+        unawaited(processor.dispose());
         traceRecorder.record(
           turnId: turnId,
           stage: ChatTraceStage.sendFailed,
@@ -449,7 +260,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         );
         _syncAssistantFailureState(
           groupId: currentGroupId,
-          assistantMessageId: assistantMessageId,
+          assistantMessageId: processor.assistantMessageId,
           rawError: error,
         );
         _ref.read(chatSendStateProvider.notifier).update(
@@ -472,8 +283,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     try {
       await completion.future;
     } finally {
-      await assistantStreamBuffer?.cancel();
-      assistantStreamBuffer?.dispose();
+      await processor.dispose();
     }
   }
 
@@ -668,28 +478,17 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     final traceTurnId = _resolveTraceTurnId(payload, traceRecorder);
     final dbHelper = _ref.read(databaseProvider);
     final currentGroupId = currentGroup!.id!;
-    int? assistantMessageId;
-    ChatMessage? assistantMessage;
-    AssistantStreamOutputBuffer? assistantStreamBuffer;
     _ref.read(chatSendStateProvider.notifier).update(
           isGenerating: false,
           phase: ChatSendPhase.preparing,
         );
-    final completion = Completer<void>();
-    final subscription = harness
-        .resumeAfterQuestionAnswered(
-          turnId: turnId,
-          request: request,
-          response: response,
-          config: ChatConfig(
-            useReasoning: false,
-            systemPrompt: _ref.read(systemPromptProvider) ?? '',
-            userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
-          ),
-        )
-        .asyncMap((event) async {
-      switch (event.eventType) {
-        case ChatEventType.userInteractionResult:
+    final processor = AgentEventProcessor(
+      ref: _ref,
+      groupId: currentGroupId,
+      traceTurnId: traceTurnId,
+      agentTurnId: turnId,
+      hooks: AgentEventHooks(
+        onUserInteractionResult: (event) async {
           final resultMessage = message.copyWith(
             text: event.content ?? message.text,
             contentType: MessageContentType.askUserQuestionResult,
@@ -709,185 +508,28 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
             contentType: resultMessage.contentType,
             payloadJson: jsonEncode(resultMessage.payloadJson),
           );
-          break;
-        case ChatEventType.assistantPlannerMessage:
-          final plannerMessage = ChatMessage(
-            text: event.content ?? '',
-            role: MessageRole.assistant,
-            status: MessageStatus.completed,
-            payloadJson: {
-              ...?event.payloadJson,
-              'agentTurnId': turnId,
-              traceTurnIdPayloadKey: traceTurnId,
-            },
-          );
-          final plannerMessageId =
-              await dbHelper.insertMessage(plannerMessage, currentGroupId);
-          plannerMessage.id = plannerMessageId;
-          _ref.read(messagesProvider.notifier).addMessage(plannerMessage);
-          break;
-        case ChatEventType.assistantQuestionPrompt:
-          _ref.read(chatSendStateProvider.notifier).update(
-                isGenerating: false,
-                phase: ChatSendPhase.idle,
-              );
-          break;
-        case ChatEventType.assistantToolCall:
-          final toolCallMessage = ChatMessage(
-            text: event.content ?? '准备执行工具',
-            role: MessageRole.assistant,
-            status: MessageStatus.completed,
-            contentType: MessageContentType.toolInvocation,
-            payloadJson: {
-              ...?event.payloadJson,
-              'agentTurnId': turnId,
-              traceTurnIdPayloadKey: traceTurnId,
-            },
-          );
-          final toolCallMessageId =
-              await dbHelper.insertMessage(toolCallMessage, currentGroupId);
-          toolCallMessage.id = toolCallMessageId;
-          _ref.read(messagesProvider.notifier).addMessage(toolCallMessage);
-          break;
-        case ChatEventType.assistantToolConfirmation:
-          final confirmationMessage = ChatMessage(
-            text: event.content ?? '准备执行工具',
-            role: MessageRole.assistant,
-            status: MessageStatus.completed,
-            contentType: MessageContentType.actionConfirmation,
-            payloadJson: {
-              ...?event.payloadJson,
-              'agentTurnId': turnId,
-              traceTurnIdPayloadKey: traceTurnId,
-            },
-          );
-          final confirmationMessageId =
-              await dbHelper.insertMessage(confirmationMessage, currentGroupId);
-          confirmationMessage.id = confirmationMessageId;
-          _ref.read(messagesProvider.notifier).addMessage(confirmationMessage);
-          _ref.read(chatSendStateProvider.notifier).update(
-                isGenerating: false,
-                phase: ChatSendPhase.awaitingConfirmation,
-              );
-          break;
-        case ChatEventType.toolExecutionStarted:
-          _ref.read(chatSendStateProvider.notifier).setPhase(
-                ChatSendPhase.executingTool,
-              );
-          final runningMessage = ChatMessage(
-            text: event.content ?? '正在执行工具',
-            role: MessageRole.assistant,
-            status: MessageStatus.completed,
-            contentType: MessageContentType.toolInvocation,
-            payloadJson: {
-              ...?event.payloadJson,
-              'agentTurnId': turnId,
-              traceTurnIdPayloadKey: traceTurnId,
-            },
-          );
-          final runningMessageId =
-              await dbHelper.insertMessage(runningMessage, currentGroupId);
-          runningMessage.id = runningMessageId;
-          _ref.read(messagesProvider.notifier).addMessage(runningMessage);
-          break;
-        case ChatEventType.toolResult:
-          await _appendToolResultMessage(
-            dbHelper: dbHelper,
-            groupId: currentGroupId,
-            event: event,
-            fallbackText: '',
-            payloadJson: event.payloadJson,
-          );
-          break;
-        case ChatEventType.assistantTextDelta:
-          if (assistantMessageId == null) {
-            final placeholder = ChatMessage(
-              text: '',
-              role: MessageRole.assistant,
-              status: MessageStatus.generating,
-            );
-            assistantMessageId =
-                await dbHelper.insertMessage(placeholder, currentGroupId);
-            placeholder.id = assistantMessageId;
-            assistantMessage = placeholder;
-            _ref.read(messagesProvider.notifier).addMessage(placeholder);
-          }
-          _ref.read(chatSendStateProvider.notifier).update(
-                isGenerating: true,
-                phase: ChatSendPhase.streamingResponse,
-              );
-          final activeAssistantMessageId =
-              assistantMessageId ?? (throw StateError('missing assistant message id'));
-          final activeAssistantMessage =
-              assistantMessage ?? (throw StateError('missing assistant message'));
-          assistantStreamBuffer ??= _createAssistantStreamBuffer(
-            messageId: activeAssistantMessageId,
-            message: activeAssistantMessage,
-            dbHelper: dbHelper,
-          );
-          assistantStreamBuffer!.onDelta(event.content ?? '');
-          break;
-        case ChatEventType.finalAnswer:
-          if (assistantMessageId == null) {
-            final finalMessage = ChatMessage(
-              text: event.content ?? '',
-              role: MessageRole.assistant,
-              status: MessageStatus.completed,
-            );
-            assistantMessageId =
-                await dbHelper.insertMessage(finalMessage, currentGroupId);
-            finalMessage.id = assistantMessageId;
-            assistantMessage = finalMessage;
-            _ref.read(messagesProvider.notifier).addMessage(finalMessage);
-          } else {
-            final completedAssistantMessageId =
-                assistantMessageId ?? (throw StateError('missing assistant message id'));
-            await _finalizeAssistantText(
-              buffer: assistantStreamBuffer,
-              messageId: completedAssistantMessageId,
-              message: assistantMessage,
-              dbHelper: dbHelper,
-              fallbackText: event.content ?? assistantMessage?.text ?? '',
-              explicitText: event.content,
-            );
-            _ref.read(messagesProvider.notifier).updateMessageStatus(
-                  completedAssistantMessageId,
-                  MessageStatus.completed,
-                );
-            await dbHelper.updateMessageStatus(
-              completedAssistantMessageId,
-              MessageStatus.completed,
-            );
-          }
-          assistantStreamBuffer?.dispose();
-          assistantStreamBuffer = null;
-          _ref.read(chatSendStateProvider.notifier).update(
-                isGenerating: false,
-                phase: ChatSendPhase.idle,
-              );
-          break;
-        case ChatEventType.toolError:
-          await _appendToolResultMessage(
-            dbHelper: dbHelper,
-            groupId: currentGroupId,
-            event: event,
-            fallbackText: '工具执行失败',
-            payloadJson: _buildToolFailurePayload(event),
-          );
-          break;
-        case ChatEventType.assistantTextFinal:
-        case ChatEventType.userMessage:
-        case ChatEventType.assistantReasoningDelta:
-        case ChatEventType.turnStatus:
-        case ChatEventType.error:
-          break;
-      }
+          return true;
+        },
+      ),
+    );
+    final completion = Completer<void>();
+    final subscription = harness
+        .resumeAfterQuestionAnswered(
+          turnId: turnId,
+          request: request,
+          response: response,
+          config: ChatConfig(
+            useReasoning: false,
+            systemPrompt: _ref.read(systemPromptProvider) ?? '',
+            userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
+          ),
+        )
+        .asyncMap((event) async {
+      await processor.handle(event);
     }).listen(
       (_) {},
       onError: (error, stackTrace) {
-        unawaited(assistantStreamBuffer?.cancel());
-        assistantStreamBuffer?.dispose();
-        assistantStreamBuffer = null;
+        unawaited(processor.dispose());
         _ref.read(chatSendStateProvider.notifier).update(
               isGenerating: false,
               phase: ChatSendPhase.idle,
@@ -908,8 +550,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     try {
       await completion.future;
     } finally {
-      await assistantStreamBuffer?.cancel();
-      assistantStreamBuffer?.dispose();
+      await processor.dispose();
       if (identical(_ref.read(streamSubscriptionProvider), subscription)) {
         _ref.read(streamSubscriptionProvider.notifier).state = null;
       }
@@ -937,23 +578,19 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     }
 
     final dbHelper = _ref.read(databaseProvider);
-    int? assistantMessageId;
-    ChatMessage? assistantMessage;
-    AssistantStreamOutputBuffer? assistantStreamBuffer;
-    var hasPendingConfirmation = false;
+    var firstToolExecutionConsumed = false;
 
-    await for (final event in harness.resumeAfterConfirmation(
-      turnId: turnId,
-      invocation: invocation,
-      config: ChatConfig(
-        useReasoning: false,
-        systemPrompt: _ref.read(systemPromptProvider) ?? '',
-        userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
-      ),
-      trustTool: trustTool,
-    )) {
-      switch (event.eventType) {
-        case ChatEventType.toolExecutionStarted:
+    final processor = AgentEventProcessor(
+      ref: _ref,
+      groupId: currentGroupId,
+      traceTurnId: traceTurnId,
+      agentTurnId: turnId,
+      hooks: AgentEventHooks(
+        transformFirstToolExecution: (event) async {
+          if (firstToolExecutionConsumed) {
+            return false;
+          }
+          firstToolExecutionConsumed = true;
           final runningPayload = {
             ...?event.payloadJson,
             'agentTurnId': turnId,
@@ -972,195 +609,55 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
             contentType: runningMessage.contentType,
             payloadJson: jsonEncode(runningPayload),
           );
-          break;
-        case ChatEventType.assistantToolCall:
-          final toolCallMessage = ChatMessage(
-            text: event.content ?? '准备执行工具',
-            role: MessageRole.assistant,
-            status: MessageStatus.completed,
-            contentType: MessageContentType.toolInvocation,
-            payloadJson: {
-              ...?event.payloadJson,
-              'agentTurnId': turnId,
-              traceTurnIdPayloadKey: traceTurnId,
-            },
-          );
-          final toolCallMessageId =
-              await dbHelper.insertMessage(toolCallMessage, currentGroupId);
-          toolCallMessage.id = toolCallMessageId;
-          _ref.read(messagesProvider.notifier).addMessage(toolCallMessage);
-          break;
-        case ChatEventType.assistantPlannerMessage:
-          final plannerMessage = ChatMessage(
-            text: event.content ?? '',
-            role: MessageRole.assistant,
-            status: MessageStatus.completed,
-            payloadJson: {
-              ...?event.payloadJson,
-              'agentTurnId': turnId,
-              traceTurnIdPayloadKey: traceTurnId,
-            },
-          );
-          final plannerMessageId =
-              await dbHelper.insertMessage(plannerMessage, currentGroupId);
-          plannerMessage.id = plannerMessageId;
-          _ref.read(messagesProvider.notifier).addMessage(plannerMessage);
-          break;
-        case ChatEventType.assistantToolConfirmation:
-          hasPendingConfirmation = true;
-          _ref.read(chatSendStateProvider.notifier).update(
-                isGenerating: false,
-                phase: ChatSendPhase.awaitingConfirmation,
-              );
-          final confirmationPayload = {
-            ...?event.payloadJson,
-            'status': ToolInvocationStatus.awaitingConfirmation.name,
-            'summary': event.content ?? '准备执行工具',
-            'requiresConfirmation': true,
-            'agentTurnId': turnId,
-            traceTurnIdPayloadKey: traceTurnId,
-          };
-          final confirmationMessage = ChatMessage(
-            text: event.content ?? '准备执行工具',
-            role: MessageRole.assistant,
-            status: MessageStatus.completed,
-            contentType: MessageContentType.actionConfirmation,
-            payloadJson: confirmationPayload,
-          );
-          final confirmationMessageId =
-              await dbHelper.insertMessage(confirmationMessage, currentGroupId);
-          confirmationMessage.id = confirmationMessageId;
-          _ref.read(messagesProvider.notifier).addMessage(confirmationMessage);
-          break;
-        case ChatEventType.assistantQuestionPrompt:
-          _ref.read(chatSendStateProvider.notifier).update(
-                isGenerating: false,
-                phase: ChatSendPhase.idle,
-              );
-          final promptMessage = ChatMessage(
-            text: event.content ?? '请先回答几个问题',
-            role: MessageRole.assistant,
-            status: MessageStatus.completed,
-            contentType: MessageContentType.askUserQuestionPrompt,
-            payloadJson: {
-              ...?event.payloadJson,
-              'agentTurnId': turnId,
-              traceTurnIdPayloadKey: traceTurnId,
-            },
-          );
-          final promptMessageId =
-              await dbHelper.insertMessage(promptMessage, currentGroupId);
-          promptMessage.id = promptMessageId;
-          _ref.read(messagesProvider.notifier).addMessage(promptMessage);
-          break;
-        case ChatEventType.toolResult:
-          await _appendToolResultMessage(
-            dbHelper: dbHelper,
-            groupId: currentGroupId,
-            event: event,
-            fallbackText: '',
-            payloadJson: event.payloadJson,
-          );
-          break;
-        case ChatEventType.userInteractionResult:
-          final resultMessage = ChatMessage(
-            text: event.content ?? '',
-            role: MessageRole.assistant,
-            status: MessageStatus.completed,
-            contentType: MessageContentType.askUserQuestionResult,
-            payloadJson: {
-              ...?event.payloadJson,
-              'agentTurnId': turnId,
-              traceTurnIdPayloadKey: traceTurnId,
-            },
-          );
-          final resultMessageId =
-              await dbHelper.insertMessage(resultMessage, currentGroupId);
-          resultMessage.id = resultMessageId;
-          _ref.read(messagesProvider.notifier).addMessage(resultMessage);
-          break;
-        case ChatEventType.assistantTextDelta:
-          if (assistantMessageId == null) {
-            final placeholder = ChatMessage(
-              text: '',
-              role: MessageRole.assistant,
-              status: MessageStatus.generating,
-            );
-            assistantMessageId =
-                await dbHelper.insertMessage(placeholder, currentGroupId);
-            placeholder.id = assistantMessageId;
-            assistantMessage = placeholder;
-            _ref.read(messagesProvider.notifier).addMessage(placeholder);
-          }
-          final activeAssistantMessageId = assistantMessageId;
-          final activeAssistantMessage =
-              assistantMessage ?? (throw StateError('missing assistant message'));
-          assistantStreamBuffer ??= _createAssistantStreamBuffer(
-            messageId: activeAssistantMessageId,
-            message: activeAssistantMessage,
-            dbHelper: dbHelper,
-          );
-          assistantStreamBuffer.onDelta(event.content ?? '');
-          break;
-        case ChatEventType.finalAnswer:
-          if (assistantMessageId == null) {
-            final finalMessage = ChatMessage(
-              text: event.content ?? '',
-              role: MessageRole.assistant,
-              status: MessageStatus.completed,
-            );
-            assistantMessageId =
-                await dbHelper.insertMessage(finalMessage, currentGroupId);
-            finalMessage.id = assistantMessageId;
-            assistantMessage = finalMessage;
-            _ref.read(messagesProvider.notifier).addMessage(finalMessage);
-          } else {
-            final completedAssistantMessageId = assistantMessageId;
-            await _finalizeAssistantText(
-              buffer: assistantStreamBuffer,
-              messageId: completedAssistantMessageId,
-              message: assistantMessage,
-              dbHelper: dbHelper,
-              fallbackText: event.content ?? assistantMessage?.text ?? '',
-              explicitText: event.content,
-            );
-            _ref
-                .read(messagesProvider.notifier)
-                .updateMessageStatus(completedAssistantMessageId, MessageStatus.completed);
-            await dbHelper.updateMessageStatus(
-              completedAssistantMessageId,
-              MessageStatus.completed,
-            );
-          }
-          assistantStreamBuffer?.dispose();
-          assistantStreamBuffer = null;
-          break;
-        case ChatEventType.toolError:
-          await _appendToolResultMessage(
-            dbHelper: dbHelper,
-            groupId: currentGroupId,
-            event: event,
-            fallbackText: '工具执行失败',
-            payloadJson: _buildToolFailurePayload(event),
-          );
-          break;
-        case ChatEventType.assistantTextFinal:
-        case ChatEventType.userMessage:
-        case ChatEventType.assistantReasoningDelta:
-        case ChatEventType.turnStatus:
-        case ChatEventType.error:
-          break;
-      }
-    }
-
-    await assistantStreamBuffer?.cancel();
-    assistantStreamBuffer?.dispose();
-
-    _ref.read(chatSendStateProvider.notifier).setPhase(
-      hasPendingConfirmation
-          ? ChatSendPhase.awaitingConfirmation
-          : ChatSendPhase.idle,
+          return true;
+        },
+      ),
     );
+
+    final completion = Completer<void>();
+    final subscription = harness
+        .resumeAfterConfirmation(
+          turnId: turnId,
+          invocation: invocation,
+          config: ChatConfig(
+            useReasoning: false,
+            systemPrompt: _ref.read(systemPromptProvider) ?? '',
+            userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
+          ),
+          trustTool: trustTool,
+        )
+        .asyncMap((event) async {
+      await processor.handle(event);
+    }).listen(
+      (_) {},
+      onError: (error, stackTrace) {
+        unawaited(processor.dispose());
+        if (!completion.isCompleted) {
+          completion.completeError(error, stackTrace);
+        }
+      },
+      onDone: () {
+        if (!completion.isCompleted) {
+          completion.complete();
+        }
+      },
+      cancelOnError: true,
+    );
+
+    _ref.read(streamSubscriptionProvider.notifier).state = subscription;
+    try {
+      await completion.future;
+    } finally {
+      await processor.dispose();
+      if (identical(_ref.read(streamSubscriptionProvider), subscription)) {
+        _ref.read(streamSubscriptionProvider.notifier).state = null;
+      }
+      _ref.read(chatSendStateProvider.notifier).setPhase(
+            processor.hasPendingConfirmation
+                ? ChatSendPhase.awaitingConfirmation
+                : ChatSendPhase.idle,
+          );
+    }
   }
 
   String _resolveTraceTurnId(
@@ -1186,70 +683,6 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       }
     }
     return null;
-  }
-
-  Future<void> _appendToolResultMessage({
-    required ChatStorage dbHelper,
-    required int groupId,
-    required ChatEvent event,
-    required String fallbackText,
-    required Map<String, dynamic>? payloadJson,
-  }) async {
-    final message = ChatMessage(
-      text: event.content ?? fallbackText,
-      role: MessageRole.assistant,
-      status: MessageStatus.completed,
-      contentType: MessageContentType.toolResult,
-      payloadJson: payloadJson,
-    );
-    final messageId = await dbHelper.insertMessage(message, groupId);
-    message.id = messageId;
-    _ref.read(messagesProvider.notifier).addMessage(message);
-  }
-
-  AssistantStreamOutputBuffer _createAssistantStreamBuffer({
-    required int messageId,
-    required ChatMessage message,
-    required ChatStorage dbHelper,
-  }) {
-    return AssistantStreamOutputBuffer(
-      onUiFlush: (text) {
-        message.text = text;
-        _ref.read(messagesProvider.notifier).updateMessage(messageId, text);
-      },
-      onPersistFlush: (text) async {
-        message.text = text;
-        await dbHelper.updateMessage(messageId, text);
-      },
-      uiFlushInterval: const Duration(milliseconds: 16),
-    );
-  }
-
-  Future<String> _finalizeAssistantText({
-    required AssistantStreamOutputBuffer? buffer,
-    required int messageId,
-    required ChatMessage? message,
-    required ChatStorage dbHelper,
-    required String fallbackText,
-    String? explicitText,
-  }) async {
-    await buffer?.finish();
-    final finalText = explicitText ?? buffer?.fullText ?? fallbackText;
-    if (message != null && message.text != finalText) {
-      message.text = finalText;
-      _ref.read(messagesProvider.notifier).updateMessage(messageId, finalText);
-      await dbHelper.updateMessage(messageId, finalText);
-    }
-    return finalText;
-  }
-
-  Map<String, dynamic> _buildToolFailurePayload(ChatEvent event) {
-    return {
-      ...?event.payloadJson,
-      'status': event.payloadJson?['status'] ?? 'failure',
-      'errorMessage':
-          event.payloadJson?['errorMessage'] ?? event.status ?? 'unknown_error',
-    };
   }
 
   Future<void> _loadGroups() async {
