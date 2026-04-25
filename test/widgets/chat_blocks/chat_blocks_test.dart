@@ -9,8 +9,10 @@ import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
+import 'package:ai_chat/widgets/markdown/code_widget.dart';
 import 'package:ai_chat/widgets/markdown/markdown_widget_impl.dart';
 import 'package:ai_chat/widgets/markdown/table_edge_fade_scroll_shell.dart';
+import 'package:ai_chat/widgets/technical_content_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -89,9 +91,10 @@ void main() {
       expect(styleSheet.h3!.fontSize, 14);
       expect(styleSheet.listBullet!.fontSize, 13);
       expect(styleSheet.listBullet!.height, 1.34);
-      expect(styleSheet.blockSpacing, lessThanOrEqualTo(6));
+      expect(styleSheet.blockSpacing, greaterThanOrEqualTo(7));
       expect(
           styleSheet.h2Padding!.top, greaterThan(styleSheet.h2Padding!.bottom));
+      expect(styleSheet.listIndent, greaterThanOrEqualTo(16));
     });
 
     testWidgets('markdown content is isolated by repaint boundary', (
@@ -157,6 +160,24 @@ void main() {
 
       expect(find.byType(MarkdownBody), findsOneWidget);
       expect(find.byType(MarkdownWidgetImpl), findsNothing);
+    });
+
+    testWidgets('code blocks use shared technical content surface', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: CodeBlockWidget(
+              code: 'const value = 42;',
+              language: 'dart',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(TechnicalContentSurface), findsOneWidget);
     });
 
     testWidgets('table edge fades react to horizontal scroll extent', (
