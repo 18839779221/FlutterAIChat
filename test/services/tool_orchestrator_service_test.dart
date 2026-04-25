@@ -273,6 +273,36 @@ void main() {
       expect(result.additionalContextMessages, isEmpty);
     });
 
+    test('fires execution-started callback before runtime handler executes',
+        () async {
+      final handler = _ExecutionStartedProbeToolHandler();
+      final service = await _createService(
+        runtimeRegistry: ToolRuntimeRegistry(
+          handlers: [handler],
+        ),
+      );
+      var callbackCalled = false;
+
+      final result = await service.executeToolInvocation(
+        groupId: 1,
+        invocation: const ToolInvocation(
+          toolName: 'web_search',
+          arguments: {'query': 'tool state timing'},
+          status: ToolInvocationStatus.running,
+          summary: '准备执行工具：联网搜索',
+          requiresConfirmation: false,
+        ),
+        onExecutionStarted: ({required invocation, required toolAccess}) {
+          callbackCalled = true;
+          handler.executionStarted = true;
+        },
+      );
+
+      expect(callbackCalled, isTrue);
+      expect(handler.sawExecutionStartedBeforeExecute, isTrue);
+      expect(result.executionStarted, isTrue);
+    });
+
     test('passes host adapters through execution context for file tools',
         () async {
       final tempDirectory = await Directory.systemTemp.createTemp(
@@ -602,5 +632,47 @@ class _InvalidNormalizeToolHandler implements ToolHandler {
       errorCode: 'invalid_query',
       errorSummary: '联网搜索失败：缺少有效查询词',
     );
+  }
+}
+
+class _ExecutionStartedProbeToolHandler implements ToolHandler {
+  bool executionStarted = false;
+  bool sawExecutionStartedBeforeExecute = false;
+
+  @override
+  ToolDefinition get definition => const ToolDefinition(
+        name: 'web_search',
+        title: '联网搜索',
+        parameters: {
+          'query': 'string',
+        },
+      );
+
+  @override
+  List<ChatMessage> buildContextMessages({
+    required ToolResult result,
+    required ToolExecutionContext context,
+  }) {
+    return const [];
+  }
+
+  @override
+  Future<ToolResult> execute(ToolExecutionContext context) async {
+    sawExecutionStartedBeforeExecute = executionStarted;
+    return const ToolResult(
+      toolName: 'web_search',
+      status: ToolExecutionStatus.success,
+      summary: '联网搜索成功',
+    );
+  }
+
+  @override
+  Future<ToolArgumentResolution> normalizeArguments({
+    required Map<String, dynamic> rawArguments,
+    required String userMessage,
+    required List<ChatMessage> history,
+    required DateTime now,
+  }) async {
+    return ToolArgumentResolution.valid(rawArguments);
   }
 }

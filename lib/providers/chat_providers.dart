@@ -114,6 +114,7 @@ CompactToolRowModel _buildReadWorkflowRow(List<ToolWorkflowStep> steps) {
     primaryText: filePath.isEmpty ? '已读取文件' : filePath,
     statusLabel: latestStep == null ? '已提议' : _statusLabelForStep(latestStep),
     statusColor: _statusColorForStep(latestStep),
+    isRunning: latestStep?.status == ToolWorkflowStepStatus.running,
   );
 }
 
@@ -124,6 +125,7 @@ CompactToolRowModel _buildReadResultRow(ToolResult result) {
     primaryText: filePath.isEmpty ? '已读取文件' : filePath,
     statusLabel: result.statusLabel,
     statusColor: _statusColorForResult(result),
+    isRunning: false,
   );
 }
 
@@ -136,6 +138,7 @@ CompactToolRowModel _buildLsWorkflowRow(List<ToolWorkflowStep> steps) {
     primaryText: _compactDirectoryPath(pathValue),
     statusLabel: latestStep == null ? '已提议' : _statusLabelForStep(latestStep),
     statusColor: _statusColorForStep(latestStep),
+    isRunning: latestStep?.status == ToolWorkflowStepStatus.running,
   );
 }
 
@@ -146,6 +149,7 @@ CompactToolRowModel _buildLsResultRow(ToolResult result) {
     primaryText: _compactDirectoryPath(pathValue),
     statusLabel: result.statusLabel,
     statusColor: _statusColorForResult(result),
+    isRunning: false,
   );
 }
 
@@ -161,6 +165,7 @@ CompactToolRowModel _buildGrepWorkflowRow(List<ToolWorkflowStep> steps) {
     primaryText: _grepPrimaryText(pattern: pattern, pathValue: pathValue),
     statusLabel: latestStep == null ? '已提议' : _statusLabelForStep(latestStep),
     statusColor: _statusColorForStep(latestStep),
+    isRunning: latestStep?.status == ToolWorkflowStepStatus.running,
   );
 }
 
@@ -173,6 +178,7 @@ CompactToolRowModel _buildGrepResultRow(ToolResult result) {
     ),
     statusLabel: result.statusLabel,
     statusColor: _statusColorForResult(result),
+    isRunning: false,
   );
 }
 
@@ -188,6 +194,7 @@ CompactToolRowModel _buildGlobWorkflowRow(List<ToolWorkflowStep> steps) {
     primaryText: _globPrimaryText(pattern: pattern, pathValue: pathValue),
     statusLabel: latestStep == null ? '已提议' : _statusLabelForStep(latestStep),
     statusColor: _statusColorForStep(latestStep),
+    isRunning: latestStep?.status == ToolWorkflowStepStatus.running,
   );
 }
 
@@ -200,6 +207,7 @@ CompactToolRowModel _buildGlobResultRow(ToolResult result) {
     ),
     statusLabel: result.statusLabel,
     statusColor: _statusColorForResult(result),
+    isRunning: false,
   );
 }
 

@@ -448,22 +448,50 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
       requiresConfirmation: false,
       stepId: stepId,
     );
-    final execution = await _toolCallService.executeToolInvocation(
-      groupId: turn.groupId,
-      invocation: invocation,
-    );
+    final controller = StreamController<ChatEvent>();
+    unawaited(() async {
+      try {
+        final execution = await _toolCallService.executeToolInvocation(
+          groupId: turn.groupId,
+          invocation: invocation,
+          onExecutionStarted: ({required invocation, required toolAccess}) async {
+            final toolPayload = _buildToolInvocationPayload(
+              invocation: invocation,
+              toolAccess: toolAccess,
+            );
+            controller.add(
+              await _eventRepository.appendToolExecutionStarted(
+                turnId: turn.id!,
+                groupId: turn.groupId,
+                content: invocation.summary,
+                payloadJson: toolPayload,
+              ),
+            );
+            if (stepId != null) {
+              await _stepRepository?.markRunning(stepId);
+            }
+          },
+        );
 
-    await for (final event in _handleToolExecution(
-      turn: turn,
-      invocation: invocation,
-      execution: execution,
-      consecutiveFailures: consecutiveFailures,
-      config: config,
-      resumeLoopAfterSuccess: false,
-      stepId: stepId,
-    )) {
-      yield event;
-    }
+        await for (final event in _handleToolExecution(
+          turn: turn,
+          invocation: invocation,
+          execution: execution,
+          consecutiveFailures: consecutiveFailures,
+          config: config,
+          resumeLoopAfterSuccess: false,
+          stepId: stepId,
+        )) {
+          controller.add(event);
+        }
+      } catch (error, stackTrace) {
+        controller.addError(error, stackTrace);
+      } finally {
+        await controller.close();
+      }
+    }());
+
+    yield* controller.stream;
   }
 
   Stream<ChatEvent> _handleToolExecution({
@@ -505,14 +533,16 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
       return;
     }
 
-    yield await _eventRepository.appendToolExecutionStarted(
-      turnId: turnId,
-      groupId: groupId,
-      content: toolInvocation?.summary ?? invocation.summary,
-      payloadJson: toolPayload,
-    );
-    if (stepId != null) {
-      await _stepRepository?.markRunning(stepId);
+    if (!execution.executionStarted) {
+      yield await _eventRepository.appendToolExecutionStarted(
+        turnId: turnId,
+        groupId: groupId,
+        content: toolInvocation?.summary ?? invocation.summary,
+        payloadJson: toolPayload,
+      );
+      if (stepId != null) {
+        await _stepRepository?.markRunning(stepId);
+      }
     }
 
     final toolResult = execution.toolResult;

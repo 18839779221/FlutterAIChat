@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../models/chat_message.dart';
 import '../models/tool/tool_access_snapshot.dart';
 import '../models/tool/tool_definition.dart';
@@ -37,6 +39,7 @@ class ToolOrchestratorService {
     required ToolInvocation invocation,
     bool trustTool = false,
     String? turnId,
+    ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
     if (trustTool) {
       await _toolPolicyService?.trustTool(invocation.toolName);
@@ -79,6 +82,7 @@ class ToolOrchestratorService {
         toolAccess: toolAccess,
         toolResult: null,
         additionalContextMessages: const [],
+        executionStarted: false,
       );
     }
     if (toolAccess.executionDecision == ToolPolicyDecision.blocked) {
@@ -107,6 +111,7 @@ class ToolOrchestratorService {
         toolAccess: toolAccess,
         toolResult: failureResult,
         additionalContextMessages: const [],
+        executionStarted: false,
       );
     }
     final normalizedArguments = await runtimeHandler.normalizeArguments(
@@ -145,16 +150,22 @@ class ToolOrchestratorService {
       );
       return ToolPreparationResult(
         toolInvocation: invocation.copyWith(
-          status: ToolInvocationStatus.running,
-          summary: '正在执行工具：${toolDefinition.title}',
+          status: ToolInvocationStatus.cancelled,
+          summary: normalizedArguments.errorSummary ?? '工具执行失败：参数无效',
           requiresConfirmation: false,
         ),
         toolAccess: toolAccess,
         toolResult: failureResult,
         additionalContextMessages: const [],
+        executionStarted: false,
       );
     }
 
+    final runningInvocation = invocation.copyWith(
+      status: ToolInvocationStatus.running,
+      summary: '正在执行工具：${toolDefinition.title}',
+      requiresConfirmation: false,
+    );
     final executionContext = ToolExecutionContext(
       groupId: groupId,
       toolName: invocation.toolName,
@@ -167,6 +178,12 @@ class ToolOrchestratorService {
       _tag,
       'tool normalized arguments tool=${invocation.toolName} args=${normalizedArguments.normalizedArguments}',
     );
+    if (onExecutionStarted != null) {
+      await onExecutionStarted(
+        invocation: runningInvocation,
+        toolAccess: toolAccess,
+      );
+    }
     final toolResult = _attachToolAccess(
       await runtimeHandler.execute(executionContext),
       toolAccess,
@@ -207,14 +224,11 @@ class ToolOrchestratorService {
     );
 
     return ToolPreparationResult(
-      toolInvocation: invocation.copyWith(
-        status: ToolInvocationStatus.running,
-        summary: '正在执行工具：${toolDefinition.title}',
-        requiresConfirmation: false,
-      ),
+      toolInvocation: runningInvocation,
       toolAccess: toolAccess,
       toolResult: toolResult,
       additionalContextMessages: contextMessages,
+      executionStarted: onExecutionStarted != null,
     );
   }
 

@@ -83,6 +83,7 @@ class ChatService {
     required ToolInvocation invocation,
     bool trustTool = false,
     String? turnId,
+    ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
     final toolCallService = _toolCallService;
     if (toolCallService == null) {
@@ -95,6 +96,7 @@ class ChatService {
         invocation: invocation,
         trustTool: trustTool,
         turnId: turnId,
+        onExecutionStarted: onExecutionStarted,
       );
     } catch (e, stackTrace) {
       Logger.e(_tag, '工具执行失败', e);

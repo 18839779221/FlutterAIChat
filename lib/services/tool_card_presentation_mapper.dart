@@ -21,6 +21,7 @@ class ToolCardPresentationMapper {
       summary: step.summary,
       primaryFields: _stringFields(step.details),
       statusLabel: _stepStatusLabel(step.status),
+      isRunning: step.status == ToolWorkflowStepStatus.running,
     );
   }
 
@@ -38,6 +39,7 @@ class ToolCardPresentationMapper {
       summary: result.summary,
       primaryFields: _stringFields(result.data),
       statusLabel: result.statusLabel,
+      isRunning: false,
     );
   }
 

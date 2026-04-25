@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../models/agent/chat_turn_step.dart';
 import '../models/agent/model_turn_decision.dart';
 import '../models/agent/agent_loop_limits.dart';
@@ -113,20 +115,50 @@ class TurnHarness {
       },
     );
     await _turnRepository.markRunning(turnId);
-    final execution = await _toolCallService.executeToolInvocation(
-      groupId: currentTurn.groupId,
-      invocation: invocation,
-      trustTool: trustTool,
-    );
+    final controller = StreamController<ChatEvent>();
+    unawaited(() async {
+      try {
+        final execution = await _toolCallService.executeToolInvocation(
+          groupId: currentTurn.groupId,
+          invocation: invocation,
+          trustTool: trustTool,
+          onExecutionStarted: ({required invocation, required toolAccess}) async {
+            final toolPayload = _buildToolInvocationPayload(
+              invocation: invocation,
+              toolAccess: toolAccess,
+            );
+            controller.add(
+              await _eventRepository.appendToolExecutionStarted(
+                turnId: turnId,
+                groupId: currentTurn.groupId,
+                content: invocation.summary,
+                payloadJson: toolPayload,
+              ),
+            );
+            if (invocation.stepId != null) {
+              await _stepRepository?.markRunning(invocation.stepId!);
+            }
+          },
+        );
 
-    yield* _handleToolExecution(
-      turn: currentTurn,
-      invocation: invocation,
-      execution: execution,
-      consecutiveFailures: 0,
-      config: config,
-      stepId: invocation.stepId,
-    );
+        await for (final event in _handleToolExecution(
+          turn: currentTurn,
+          invocation: invocation,
+          execution: execution,
+          consecutiveFailures: 0,
+          config: config,
+          stepId: invocation.stepId,
+        )) {
+          controller.add(event);
+        }
+      } catch (error, stackTrace) {
+        controller.addError(error, stackTrace);
+      } finally {
+        await controller.close();
+      }
+    }());
+
+    yield* controller.stream;
   }
 
   Stream<ChatEvent> resumeAfterQuestionAnswered({
@@ -549,14 +581,16 @@ class TurnHarness {
       return;
     }
 
-    yield await _eventRepository.appendToolExecutionStarted(
-      turnId: turnId,
-      groupId: groupId,
-      content: toolInvocation?.summary ?? invocation.summary,
-      payloadJson: toolPayload,
-    );
-    if (stepId != null) {
-      await _stepRepository?.markRunning(stepId);
+    if (!execution.executionStarted) {
+      yield await _eventRepository.appendToolExecutionStarted(
+        turnId: turnId,
+        groupId: groupId,
+        content: toolInvocation?.summary ?? invocation.summary,
+        payloadJson: toolPayload,
+      );
+      if (stepId != null) {
+        await _stepRepository?.markRunning(stepId);
+      }
     }
 
     final toolResult = execution.toolResult;

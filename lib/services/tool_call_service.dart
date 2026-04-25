@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../models/chat_message.dart';
 import '../models/tool/tool_access_snapshot.dart';
 import '../models/tool/tool_definition.dart';
@@ -9,6 +11,11 @@ import 'tool_policy_service.dart';
 import '../tools/adapters/tool_host_adapters.dart';
 import '../tools/core/tool_runtime_registry.dart';
 import '../tools/default_tool_runtime_registry.dart';
+
+typedef ToolExecutionStartedCallback = FutureOr<void> Function({
+  required ToolInvocation invocation,
+  required ToolAccessSnapshot toolAccess,
+});
 
 class ToolPreparationResult {
   /// Tool invocation payload for pending confirmation or running-state display.
@@ -25,18 +32,24 @@ class ToolPreparationResult {
   /// final-answer prompts.
   final List<ChatMessage> additionalContextMessages;
 
+  /// Whether the runtime execution has already been surfaced to the transcript
+  /// and step ledger before this result returns.
+  final bool executionStarted;
+
   const ToolPreparationResult({
     this.toolInvocation,
     this.toolAccess,
     required this.toolResult,
     required this.additionalContextMessages,
+    this.executionStarted = false,
   });
 
   const ToolPreparationResult.noTool()
       : toolInvocation = null,
         toolAccess = null,
         toolResult = null,
-        additionalContextMessages = const [];
+        additionalContextMessages = const [],
+        executionStarted = false;
 }
 
 /// Runtime facade for executing tool invocations that have already been
@@ -71,12 +84,14 @@ class ToolCallService {
     required ToolInvocation invocation,
     bool trustTool = false,
     String? turnId,
+    ToolExecutionStartedCallback? onExecutionStarted,
   }) {
     return _orchestrator.executeToolInvocation(
       groupId: groupId,
       invocation: invocation,
       trustTool: trustTool,
       turnId: turnId,
+      onExecutionStarted: onExecutionStarted,
     );
   }
 }
