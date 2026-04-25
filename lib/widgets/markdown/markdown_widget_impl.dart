@@ -1,11 +1,10 @@
 import 'package:ai_chat/theme/app_colors.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_highlight/themes/a11y-dark.dart';
-import 'package:flutter_highlight/themes/a11y-light.dart';
 import 'package:markdown_widget/markdown_widget.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:ai_chat/theme/app_typography.dart';
 
+import 'code_widget.dart';
 import 'table_edge_fade_scroll_shell.dart';
 
 class MarkdownWidgetImpl extends StatefulWidget {
@@ -48,18 +47,10 @@ class _MarkdownWidgetImplState extends State<MarkdownWidgetImpl> {
     return MarkdownConfig(
       configs: [
         PreConfig(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface
-                .withValues(alpha: isDark ? 0.82 : 0.76),
-            borderRadius: BorderRadius.circular(10),
-          ),
           margin: const EdgeInsets.symmetric(vertical: 4),
-          theme: isDark ? a11yDarkTheme : a11yLightTheme,
-          padding: const EdgeInsets.all(16),
-          textStyle: AppTypography.codeStyle(
-            color: bodyColor,
-            fontSize: 13,
-            height: 1.5,
+          builder: (code, language) => CodeBlockWidget(
+            code: code,
+            language: language,
           ),
         ),
         CodeConfig(

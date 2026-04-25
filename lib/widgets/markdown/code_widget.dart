@@ -3,127 +3,98 @@ import 'package:ai_chat/theme/app_typography.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
-import 'package:flutter_highlight/themes/vs2015.dart';
+import 'package:flutter_highlight/themes/a11y-dark.dart';
+import 'package:flutter_highlight/themes/a11y-light.dart';
 
-class CodeConfig {
-  static Map<String, TextStyle> theme = vs2015Theme;
-  static TextStyle codeTextStyle = AppTypography.codeStyle(
-    color: const Color(0xFFE6E6E6),
-    fontSize: 13,
-    height: 1.22,
-  );
-
-  bool autoLineBreak = true;
-}
+import '../technical_content_surface.dart';
 
 class CodeBlockWidget extends StatefulWidget {
   final String code;
   final String language;
-  final CodeConfig codeConfig = CodeConfig();
 
-  CodeBlockWidget({super.key, required this.code, required this.language});
+  const CodeBlockWidget({
+    super.key,
+    required this.code,
+    required this.language,
+  });
 
   @override
   State<CodeBlockWidget> createState() => _CodeBlockWidgetState();
 }
 
 class _CodeBlockWidgetState extends State<CodeBlockWidget> {
+  bool _autoLineBreak = true;
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<AppColors>()!;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final content = Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      child: _autoLineBreak
+          ? _highlightWidget(context)
+          : SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: _highlightWidget(context),
+            ),
+    );
 
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1D20),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return TechnicalContentSurface(
+      header: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(11, 0, 8, 0),
-            height: 24,
-            decoration: const BoxDecoration(
-              color: Color(0xFF23272B),
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(10),
-                topRight: Radius.circular(10),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  widget.language.toUpperCase(),
-                  style: const TextStyle(
-                    color: Color(0xFF8D959E),
-                    fontSize: 8.2,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0.32,
-                  ),
-                ),
-                Row(
-                  children: [
-                    SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: IconButton(
-                          iconSize: 11,
-                          icon: Icon(
-                            widget.codeConfig.autoLineBreak
-                                ? Icons.wrap_text
-                                : Icons.wrap_text_outlined,
-                            color: widget.codeConfig.autoLineBreak
-                                ? colors.workflowRunning.withValues(alpha: 0.72)
-                                : const Color(0xFF78818A),
-                          ),
-                          tooltip: widget.codeConfig.autoLineBreak
-                              ? '关闭自动换行'
-                              : '开启自动换行',
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(
-                            minWidth: 16,
-                            minHeight: 16,
-                          ),
-                          splashRadius: 5,
-                          onPressed: () {
-                            setState(() {
-                              widget.codeConfig.autoLineBreak =
-                                  !widget.codeConfig.autoLineBreak;
-                            });
-                          },
-                        )),
-                    const SizedBox(width: 1),
-                    _CopyButton(code: widget.code),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          TechnicalContentLabel(text: widget.language.toUpperCase()),
           Row(
             children: [
-              Expanded(
-                child: widget.codeConfig.autoLineBreak
-                    ? highLightWidget(widget.code, widget.language)
-                    : SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: highLightWidget(widget.code, widget.language),
-                      ),
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: IconButton(
+                  iconSize: 11,
+                  icon: Icon(
+                    _autoLineBreak ? Icons.wrap_text : Icons.wrap_text_outlined,
+                    color: _autoLineBreak
+                        ? colors.workflowRunning.withValues(alpha: 0.7)
+                        : colors.secondaryText.withValues(alpha: 0.76),
+                  ),
+                  tooltip: _autoLineBreak ? '关闭自动换行' : '开启自动换行',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 16,
+                    minHeight: 16,
+                  ),
+                  splashRadius: 5,
+                  onPressed: () {
+                    setState(() {
+                      _autoLineBreak = !_autoLineBreak;
+                    });
+                  },
+                ),
               ),
+              const SizedBox(width: 1),
+              _CopyButton(code: widget.code),
             ],
           ),
         ],
       ),
+      contentPadding: EdgeInsets.zero,
+      child: content,
     );
   }
 
-  Widget highLightWidget(String code, String language) {
+  Widget _highlightWidget(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return HighlightView(
-      code,
-      language: language,
-      theme: CodeConfig.theme,
-      padding: const EdgeInsets.fromLTRB(12, 9, 12, 0),
-      textStyle: CodeConfig.codeTextStyle,
+      widget.code,
+      language: widget.language,
+      theme: isDark ? a11yDarkTheme : a11yLightTheme,
+      padding: EdgeInsets.zero,
+      textStyle: AppTypography.codeStyle(
+        color: isDark ? const Color(0xFFE6E6E6) : const Color(0xFF31414A),
+        fontSize: 12.5,
+        height: 1.45,
+      ),
     );
   }
 }
@@ -164,7 +135,10 @@ class _CopyButtonState extends State<_CopyButton> {
               key: ValueKey(_isCopied),
               color: _isCopied
                   ? const Color(0xFF7FBE95)
-                  : const Color(0xFF78818A),
+                  : Theme.of(context)
+                      .extension<AppColors>()!
+                      .secondaryText
+                      .withValues(alpha: 0.76),
             ),
           ),
           tooltip: _isCopied ? '已复制' : '复制代码',
@@ -189,13 +163,19 @@ class CodeSegmentWidget extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
       decoration: BoxDecoration(
-        color: const Color(0xFFDCE4EA),
+        color: Theme.of(context)
+            .extension<AppColors>()!
+            .toolWorkflowSurface
+            .withValues(alpha: 0.42),
         borderRadius: BorderRadius.circular(5),
       ),
       child: Text(
         code,
         style: AppTypography.codeStyle(
-          color: const Color(0xFF31414A),
+          color: Theme.of(context)
+              .extension<AppColors>()!
+              .primaryText
+              .withValues(alpha: 0.9),
           fontSize: 12.5,
           height: 1.18,
         ),
