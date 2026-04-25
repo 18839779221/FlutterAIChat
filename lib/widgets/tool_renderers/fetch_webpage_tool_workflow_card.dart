@@ -24,7 +24,7 @@ class FetchWebpageToolWorkflowCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final summary = _summarizeSteps(steps);
     final bodyText = _buildCollapsedBodyText(summary);
-    final canExpand = summary.totalCount > 1;
+    final canExpand = summary.totalCount > 1 || summary.hasDetailContent;
 
     return ResearchToolCardShell(
       actionLabel: '读取网页',
@@ -32,7 +32,11 @@ class FetchWebpageToolWorkflowCard extends StatelessWidget {
       statusLabel: aggregateWorkflowStatusLabel(steps),
       statusColor: aggregateWorkflowStatusColor(context, steps),
       expanded: expanded,
-      footerHint: canExpand ? '点击查看本批网页状态' : null,
+      footerHint: canExpand
+          ? summary.totalCount > 1
+              ? '点击查看本批网页状态'
+              : '查看详情'
+          : null,
       body: bodyText == null
           ? null
           : Text(
@@ -57,7 +61,9 @@ class FetchWebpageToolWorkflowCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '本批共 ${summary.totalCount} 个网页',
+              summary.totalCount > 1
+                  ? '本批共 ${summary.totalCount} 个网页'
+                  : '网页详情',
               style: theme.textTheme.labelMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -124,6 +130,7 @@ class FetchWebpageToolWorkflowCard extends StatelessWidget {
       totalCount: steps.length,
       runningCount: runningCount,
       completedCount: completedCount,
+      hasDetailContent: items.any((item) => item.subtitle.isNotEmpty),
     );
   }
 
@@ -199,12 +206,14 @@ class _FetchWorkflowSummary {
     required this.totalCount,
     required this.runningCount,
     required this.completedCount,
+    required this.hasDetailContent,
   });
 
   final List<_FetchWorkflowItem> items;
   final int totalCount;
   final int runningCount;
   final int completedCount;
+  final bool hasDetailContent;
 }
 
 class _FetchWorkflowItem {
