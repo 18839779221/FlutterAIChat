@@ -1,6 +1,7 @@
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/theme/app_theme.dart';
+import 'package:ai_chat/widgets/technical_content_surface.dart';
 import 'package:ai_chat/widgets/tool_renderers/edit_tool_result_card.dart';
 import 'package:ai_chat/widgets/tool_renderers/edit_tool_workflow_card.dart';
 import 'package:flutter/material.dart';
@@ -105,6 +106,7 @@ void main() {
       expect(find.textContaining('+ 我的爱好是打篮球。'), findsOneWidget);
       expect(find.text('hobby.txt'), findsOneWidget);
       expect(find.text('步骤 1'), findsNothing);
+      expect(find.byType(TechnicalContentSurface), findsOneWidget);
     });
 
     testWidgets(

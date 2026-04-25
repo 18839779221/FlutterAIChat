@@ -4,6 +4,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
+import '../technical_content_surface.dart';
 
 enum _FileChangeLineKind {
   context,
@@ -54,31 +55,29 @@ class FileChangePreview extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    return Container(
-      width: double.infinity,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: colors.assistantSurface.withValues(alpha: 0.76),
+    return TechnicalContentSurface(
+      contentPadding: EdgeInsets.zero,
+      child: ClipRRect(
         borderRadius: BorderRadius.circular(radius.md),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ...lines.map((line) => _PreviewLineRow(line: line)),
-          if (truncated)
-            Padding(
-              padding: EdgeInsets.all(spacing.sm),
-              child: Text(
-                '预览已截断，仅展示前部内容',
-                style: AppTypography.uiStyle(
-                  color: colors.secondaryText,
-                  fontSize: 11,
-                  height: 1.35,
-                  fontWeight: FontWeight.w600,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ...lines.map((line) => _PreviewLineRow(line: line)),
+            if (truncated)
+              Padding(
+                padding: EdgeInsets.all(spacing.sm),
+                child: Text(
+                  '预览已截断，仅展示前部内容',
+                  style: AppTypography.uiStyle(
+                    color: colors.secondaryText,
+                    fontSize: 11,
+                    height: 1.35,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -206,7 +205,7 @@ class _PreviewLineRow extends StatelessWidget {
       color: background,
       padding: EdgeInsets.symmetric(
         horizontal: spacing.xs,
-        vertical: 2,
+        vertical: 3,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -219,7 +218,7 @@ class _PreviewLineRow extends StatelessWidget {
               style: AppTypography.codeStyle(
                 color: colors.secondaryText.withValues(alpha: 0.72),
                 fontSize: 11,
-                height: 1.45,
+                height: 1.5,
               ),
             ),
           ),
@@ -229,8 +228,8 @@ class _PreviewLineRow extends StatelessWidget {
               '$sign ${line.text}',
               style: AppTypography.codeStyle(
                 color: textColor,
-                fontSize: 11.5,
-                height: 1.45,
+                fontSize: 12,
+                height: 1.5,
               ),
             ),
           ),
@@ -257,7 +256,7 @@ class _PreviewLineRow extends StatelessWidget {
       case _FileChangeLineKind.removed:
         return colors.workflowWarning.withValues(alpha: 0.11);
       case _FileChangeLineKind.context:
-        return colors.assistantSurface.withValues(alpha: 0.16);
+        return colors.assistantSurface.withValues(alpha: 0.08);
     }
   }
 
