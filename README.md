@@ -18,6 +18,7 @@
 ### Tool Call 与结构化输出
 - 支持工具决策、确认执行、执行结果展示、失败回退
 - tool use UI 支持“工具专属 renderer + 通用兜底卡片”双轨渲染；`Write`、`Edit`、`web_search`、`fetch_webpage` 已接入专属卡片
+- `fetch_webpage` 会读取指定公共网页，并按 `url + prompt` 生成网页处理结果；卡片默认展示站点、prompt 与结果预览，原始摘录退居详情区
 - 工具确认交互已从时间线卡片内移出，改为聊天页底部统一确认区；时间线卡片只负责展示“准备做什么 / 做了什么”
 - 工具流程支持语义分型展示：上下文采集类工具默认折叠为低占用 inline step，外部动作类工具保留显式 outcome card，用户可处理失败升级为 exception card
 - 支持 `AskUserQuestion` interaction tool，可在同一个 turn 内挂起提问并在用户提交结构化答案后恢复

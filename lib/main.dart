@@ -90,7 +90,7 @@ void main() async {
               config.additionalConfig['web_search.tavily_base_url'] as String?,
         );
       },
-      webpageFetcher: buildDefaultWebpageFetcher(),
+      webpageFetcher: buildDefaultWebpageFetcher(sideModelLlm: llm),
       reminderCreator: buildDefaultReminderCreator(),
       calendarEventCreator: buildDefaultCalendarEventCreator(),
       resultSharer: buildDefaultResultSharer(),

@@ -25,38 +25,53 @@ class FetchWebpageToolHandler implements ToolHandler {
           chinese: '读取网页',
         ),
         descriptionForModel:
-            'Use this when the user already provided a URL or a previous search result includes a clear webpage link and you need to read the page directly. Do not use it for the generic step of first looking something up on the web; in that case use web_search first.',
+            'Read a public webpage at a specific URL and process its content according to a prompt.\n\n'
+            'IMPORTANT: This tool is for public, unauthenticated webpages. It may fail for private or authenticated URLs such as Google Docs, Confluence, Jira, GitHub pages that require login, or other workspace-only content. Before using this tool, check whether a specialized MCP tool or another authenticated integration is available, and prefer that when possible.\n\n'
+            'Use this tool when you already have a concrete URL and need to read or process that page for a specific purpose.\n\n'
+            'This tool fetches the webpage, extracts readable content, and uses an internal side model to process that content according to the prompt. It returns the processed result rather than simply returning the raw page text. If the page is very long, the result may be condensed. If the URL redirects to a different host, the tool may require a new request using the redirected URL.\n\n'
+            'Do not use this tool just to discover relevant pages; use web_search first when you need to find candidate sources. Do not use this tool for GitHub resources that are better handled by Bash or dedicated tools.\n\n'
+            'This tool is read-only and does not modify files.',
         localizedDescriptionForModel: LocalizedToolText(
           english:
-              'Use this when the user already provided a URL or a previous search result includes a clear webpage link and you need to read the page directly. Do not use it for the generic step of first looking something up on the web; in that case use web_search first.',
+              'Read a public webpage at a specific URL and process its content according to a prompt.\n\n'
+              'IMPORTANT: This tool is for public, unauthenticated webpages. It may fail for private or authenticated URLs such as Google Docs, Confluence, Jira, GitHub pages that require login, or other workspace-only content. Before using this tool, check whether a specialized MCP tool or another authenticated integration is available, and prefer that when possible.\n\n'
+              'Use this tool when you already have a concrete URL and need to read or process that page for a specific purpose.\n\n'
+              'This tool fetches the webpage, extracts readable content, and uses an internal side model to process that content according to the prompt. It returns the processed result rather than simply returning the raw page text. If the page is very long, the result may be condensed. If the URL redirects to a different host, the tool may require a new request using the redirected URL.\n\n'
+              'Do not use this tool just to discover relevant pages; use web_search first when you need to find candidate sources. Do not use this tool for GitHub resources that are better handled by Bash or dedicated tools.\n\n'
+              'This tool is read-only and does not modify files.',
           chinese:
-              '当用户已经提供 URL，或者搜索结果里已经有明确网页链接，需要直接读取网页正文时使用。不要把它用于“先去网上找资料”的场景；那种情况应先用 web_search。',
+              '读取指定公共网页，并按 prompt 处理网页内容。\n\n'
+              '重要：该工具只适用于公开、无需认证的网页。对于 Google Docs、Confluence、Jira、需要登录的 GitHub 页面或其他仅限工作区访问的内容，工具可能失败。调用前应先判断是否有更合适的专用 MCP 工具或其他带认证能力的集成，并在可用时优先使用。\n\n'
+              '当你已经有明确 URL，并且需要出于某个具体目的读取或处理该页面时使用此工具。\n\n'
+              '该工具会抓取网页、提取可读内容，并使用内部 side model 按 prompt 处理这些内容。返回结果是处理后的网页结果，而不是简单返回原始网页文本。如果页面过长，结果可能会被压缩。如果 URL 跳转到其他 host，工具可能要求使用跳转后的 URL 重新发起请求。\n\n'
+              '不要把它用于单纯发现候选网页；如果还需要先找来源，应先使用 web_search。对于更适合由 Bash 或专用工具处理的 GitHub 资源，也不要使用此工具。\n\n'
+              '该工具为只读工具，不会修改文件。',
         ),
         parameters: {
           'url': 'string',
-          'extractMode': 'string?',
+          'prompt': 'string',
         },
         argumentSchema: ToolArgumentSchema(
           properties: {
             'url': ToolArgumentProperty.string(
-              description: 'Webpage URL to fetch and read.',
+              description: 'Fully qualified public URL to read.',
               localizedDescription: LocalizedToolText(
-                english: 'Webpage URL to fetch and read.',
-                chinese: '要读取的网页链接。',
+                english: 'Fully qualified public URL to read.',
+                chinese: '要读取的完整公共网页链接。',
               ),
               format: 'uri',
             ),
-            'extractMode': ToolArgumentProperty.string(
+            'prompt': ToolArgumentProperty.string(
               description:
-                  'Optional extraction mode for page content; leave empty if unsure.',
+                  'Instructions describing what to extract, summarize, inspect, compare, or transform from the page content.',
               localizedDescription: LocalizedToolText(
                 english:
-                    'Optional extraction mode for page content; leave empty if unsure.',
-                chinese: '可选的正文提取模式；不确定时留空。',
+                    'Instructions describing what to extract, summarize, inspect, compare, or transform from the page content.',
+                chinese: '描述要从网页内容中提取、总结、检查、比较或转换什么信息的指令。',
               ),
             ),
           },
-          required: ['url'],
+          required: ['url', 'prompt'],
         ),
       );
 
@@ -75,11 +90,17 @@ class FetchWebpageToolHandler implements ToolHandler {
       );
     }
 
-    final extractMode = rawArguments['extractMode'];
+    final prompt = rawArguments['prompt'];
+    if (prompt is! String || prompt.trim().isEmpty) {
+      return ToolArgumentResolution.invalid(
+        errorCode: 'invalid_prompt',
+        errorSummary: '读取网页失败：缺少处理网页内容的 prompt',
+      );
+    }
+
     return ToolArgumentResolution.valid({
       'url': url.trim(),
-      if (extractMode is String && extractMode.trim().isNotEmpty)
-        'extractMode': extractMode.trim(),
+      'prompt': prompt.trim(),
     });
   }
 
@@ -87,7 +108,7 @@ class FetchWebpageToolHandler implements ToolHandler {
   Future<ToolResult> execute(ToolExecutionContext context) {
     return _webpageFetcher(
       url: context.arguments['url'] as String,
-      extractMode: context.arguments['extractMode'] as String?,
+      prompt: context.arguments['prompt'] as String,
     );
   }
 
@@ -120,9 +141,17 @@ class FetchWebpageToolHandler implements ToolHandler {
       buffer.writeln('网页链接：${payload['url']}');
     }
 
-    final content = (payload['content'] ?? '').toString().trim();
-    if (content.isNotEmpty) {
-      buffer.writeln('网页正文：${_truncateContextText(content, maxLength: 1200)}');
+    final prompt = (payload['prompt'] ?? '').toString().trim();
+    if (prompt.isNotEmpty) {
+      buffer.writeln('处理目标：$prompt');
+    }
+
+    final processedContent =
+        (payload['processedContent'] ?? '').toString().trim();
+    if (processedContent.isNotEmpty) {
+      buffer.writeln(
+        '处理结果：${_truncateContextText(processedContent, maxLength: 1200)}',
+      );
     } else if (toolResult.summary.isNotEmpty) {
       buffer.writeln('结果摘要：${toolResult.summary}');
     }

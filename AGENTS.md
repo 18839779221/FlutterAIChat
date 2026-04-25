@@ -156,8 +156,6 @@ The app uses **flutter_riverpod** with a split provider/controller architecture:
 - `ToolDefinition` is not only runtime metadata; it is also planner-facing schema metadata
 - New tools must provide:
   - `descriptionForModel`
-  - `whenToUse`
-  - `whenNotToUse`
   - structured `argumentSchema`
 - `descriptionForModel` is the only planner-facing tool description source
 - Do not reintroduce `PlannerPromptBuilder` or any duplicate external tool-description prompt layer
