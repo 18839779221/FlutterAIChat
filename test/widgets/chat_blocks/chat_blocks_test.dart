@@ -9,6 +9,8 @@ import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
+import 'package:ai_chat/widgets/markdown/markdown_widget_impl.dart';
+import 'package:ai_chat/widgets/markdown/table_edge_fade_scroll_shell.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -113,6 +115,87 @@ void main() {
         ),
         findsAtLeastNWidgets(1),
       );
+    });
+
+    testWidgets('markdown tables use the table-focused renderer',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: FlutterMarkdownImpl(
+              data: '''
+| Plan | Owner | Status |
+| --- | --- | --- |
+| Table polish | UI | In progress |
+| Width behavior | UX | Planned |
+''',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(MarkdownWidgetImpl), findsOneWidget);
+      expect(find.byType(MarkdownBody), findsNothing);
+      expect(find.byType(Table), findsOneWidget);
+      expect(find.byType(TableEdgeFadeScrollShell), findsOneWidget);
+    });
+
+    testWidgets('plain markdown keeps the default document renderer', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: FlutterMarkdownImpl(
+              data: '# Heading\n\nA paragraph without table syntax.',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(MarkdownBody), findsOneWidget);
+      expect(find.byType(MarkdownWidgetImpl), findsNothing);
+    });
+
+    testWidgets('table edge fades react to horizontal scroll extent', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(260, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: SizedBox(
+              width: 240,
+              child: TableEdgeFadeScrollShell(
+                child: SizedBox(
+                  width: 720,
+                  height: 80,
+                  child: Placeholder(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('table-edge-fade-left')), findsNothing);
+      expect(
+          find.byKey(const ValueKey('table-edge-fade-right')), findsOneWidget);
+
+      await tester.drag(
+        find.byType(SingleChildScrollView),
+        const Offset(-220, 0),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+          find.byKey(const ValueKey('table-edge-fade-left')), findsOneWidget);
     });
 
     testWidgets(
