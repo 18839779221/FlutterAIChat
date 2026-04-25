@@ -177,7 +177,37 @@ class TurnHarness {
 
     while (true) {
       final currentTurn = await _turnRepository.getTurn(turnId) ?? turn;
-      if (currentTurn.iterationCount >= _limits.maxIterations) {
+      final maxToolCallsPerTurn = _limits.maxToolCallsPerTurn;
+      if (maxToolCallsPerTurn != null &&
+          currentTurn.toolCallCount >= maxToolCallsPerTurn) {
+        await _turnRepository.markFailed(
+          turnId,
+          errorMessage: 'max_tool_calls_reached',
+        );
+        yield await _eventRepository.appendTurnStatus(
+            turnId: turnId,
+            groupId: currentTurn.groupId,
+            content: 'max_tool_calls_reached',
+          );
+        break;
+      }
+      final maxDuration = _limits.maxDuration;
+      final elapsed = DateTime.now().difference(currentTurn.createdAt);
+      if (maxDuration != null && elapsed >= maxDuration) {
+        await _turnRepository.markFailed(
+          turnId,
+          errorMessage: 'max_duration_reached',
+        );
+        yield await _eventRepository.appendTurnStatus(
+            turnId: turnId,
+            groupId: currentTurn.groupId,
+            content: 'max_duration_reached',
+          );
+        break;
+      }
+      final maxIterations = _limits.maxIterations;
+      if (maxIterations != null &&
+          currentTurn.iterationCount >= maxIterations) {
         await _turnRepository.markFailed(
           turnId,
           errorMessage: 'max_iterations_reached',
@@ -685,7 +715,9 @@ class TurnHarness {
         );
       }
 
-      if (consecutiveFailures + 1 >= _limits.maxConsecutiveFailures) {
+      final maxConsecutiveFailures = _limits.maxConsecutiveFailures;
+      if (maxConsecutiveFailures != null &&
+          consecutiveFailures + 1 >= maxConsecutiveFailures) {
         await _turnRepository.markFailed(
           turnId,
           errorMessage: toolResult?.errorMessage ?? 'tool_execution_failed',

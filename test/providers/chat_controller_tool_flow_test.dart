@@ -1265,6 +1265,53 @@ void main() {
       await databaseHelper.deleteGroup(groupId);
     });
 
+    test('agent loop 达到迭代上限时会显示明确收口提示并复位发送状态', () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final orchestrator = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.turnStatus,
+            role: MessageRole.system,
+            content: 'max_iterations_reached',
+          ),
+        ],
+        runTurnFailureCode: 'max_iterations_reached',
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        chatService: _FakeChatService(),
+        harness: orchestrator,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      await container.read(chatControllerProvider).sendMessage('帮我继续检索');
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(container.read(sendPhaseProvider), ChatSendPhase.idle);
+      expect(container.read(chatSendStateProvider).phase, ChatSendPhase.idle);
+      expect(container.read(chatSendStateProvider).isGenerating, isFalse);
+
+      final failureMessage = container
+          .read(messagesProvider)
+          .lastWhere((message) => message.role == MessageRole.assistant);
+      expect(failureMessage.status, MessageStatus.failed);
+      expect(
+        failureMessage.text,
+        '本轮已达到工具探索上限，已停止继续执行。当前收集到了一些中间结果，但模型还没来得及整理出最终答复。你可以让我基于现有结果继续总结，或缩小问题范围后再试一次。',
+      );
+
+      await databaseHelper.deleteGroup(groupId);
+    });
+
     test(
         'submitQuestionAnswers replaces ask-prompt message with askUserQuestionResult',
         () async {
@@ -1918,6 +1965,7 @@ class _FakeChatService extends ChatService {
 }
 
 class _FakeTurnHarness extends TurnHarness {
+  final DatabaseHelper databaseHelper;
   final List<ChatEvent> events;
   final List<ChatEvent> resumedEvents;
   final List<ChatEvent> resumedQuestionEvents;
@@ -1928,15 +1976,17 @@ class _FakeTurnHarness extends TurnHarness {
   final Completer<void>? runTurnGate;
   final Completer<void>? resumeQuestionGate;
   final Object? runTurnError;
+  final String? runTurnFailureCode;
 
   _FakeTurnHarness({
-    required DatabaseHelper databaseHelper,
+    required this.databaseHelper,
     required this.events,
     this.resumedEvents = const [],
     this.resumedQuestionEvents = const [],
     this.runTurnGate,
     this.resumeQuestionGate,
     this.runTurnError,
+    this.runTurnFailureCode,
   }) : super(
           plannerService: AgentPlannerService(llm: _NoopBaseLLM()),
           turnRepository: ChatTurnRepository(databaseHelper),
@@ -1976,6 +2026,13 @@ class _FakeTurnHarness extends TurnHarness {
         content: event.content,
         payloadJson: event.payloadJson,
         createdAt: event.createdAt,
+      );
+    }
+    final failureCode = runTurnFailureCode;
+    if (failureCode != null && turn.id != null) {
+      await ChatTurnRepository(databaseHelper).markFailed(
+        turn.id!,
+        errorMessage: failureCode,
       );
     }
   }
@@ -2111,6 +2168,13 @@ class _NoopBaseLLM implements BaseLLM {
 
   @override
   String getModelName(ChatConfig config) => 'noop';
+
+  @override
+  Future<String> processWebpageContent({
+    required String webpageContent,
+    required String prompt,
+  }) async =>
+      '';
 
   @override
   Future<String> structureSummaryCard(String sourceText) {

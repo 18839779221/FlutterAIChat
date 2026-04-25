@@ -69,12 +69,16 @@ class AgentEventProcessor {
   ChatMessage? _assistantMessage;
   AssistantStreamOutputBuffer? _assistantStreamBuffer;
   bool _hasPendingConfirmation = false;
+  bool _receivedFinalAnswer = false;
   bool _disposed = false;
 
   /// Whether the most recent [ChatEventType.assistantToolConfirmation] has
   /// not yet been resolved. Callers use this to decide the phase to fall back
   /// to on stream completion.
   bool get hasPendingConfirmation => _hasPendingConfirmation;
+
+  /// Whether a final answer event has already been projected into the UI.
+  bool get receivedFinalAnswer => _receivedFinalAnswer;
 
   /// The DB row id of the current assistant message placeholder, if any. Used
   /// by the `sendMessage` path to attach failure text on stream error.
@@ -90,9 +94,16 @@ class AgentEventProcessor {
     switch (event.eventType) {
       case ChatEventType.userMessage:
       case ChatEventType.assistantTextFinal:
-      case ChatEventType.turnStatus:
       case ChatEventType.error:
       case ChatEventType.assistantReasoningDelta:
+        return;
+      case ChatEventType.turnStatus:
+        if (_isTerminalFailureStatus(event.content)) {
+          _ref.read(chatSendStateProvider.notifier).update(
+                isGenerating: false,
+                phase: ChatSendPhase.idle,
+              );
+        }
         return;
       case ChatEventType.assistantPlannerMessage:
         await _insertPlainAssistant(
@@ -333,6 +344,7 @@ class AgentEventProcessor {
     required ChatStorage dbHelper,
     required ChatEvent event,
   }) async {
+    _receivedFinalAnswer = true;
     if (_assistantMessageId == null) {
       final message = ChatMessage(
         text: event.content ?? '',
@@ -364,6 +376,18 @@ class AgentEventProcessor {
           isGenerating: false,
           phase: ChatSendPhase.idle,
         );
+  }
+
+  bool _isTerminalFailureStatus(String? status) {
+    switch (status) {
+      case 'max_iterations_reached':
+      case 'max_tool_calls_reached':
+      case 'max_duration_reached':
+      case 'planner_no_terminal_decision':
+        return true;
+      default:
+        return false;
+    }
   }
 
   AssistantStreamOutputBuffer _createAssistantStreamBuffer({
