@@ -112,7 +112,7 @@ class FetchWebpageToolWorkflowCard extends StatelessWidget {
     if (previewItems.isEmpty) {
       return null;
     }
-    final lines = previewItems.map((item) => item.title).toList(growable: false);
+    final lines = previewItems.map((item) => item.title).toList();
     final remaining = summary.totalCount - previewItems.length;
     if (remaining > 0) {
       lines.add('以及另外 $remaining 个网页');

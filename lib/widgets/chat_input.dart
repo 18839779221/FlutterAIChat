@@ -38,8 +38,6 @@ class ChatInput extends ConsumerWidget {
             : '发送消息';
     final isSendButtonEnabled =
         isStreamingResponse || (!isBlockingPhase && !isAwaitingConfirmation);
-    final helperText = _buildHelperText(sendPhase: sendPhase);
-
     void submitCurrentInput() {
       if (isComposerLocked) {
         return;
@@ -96,22 +94,6 @@ class ChatInput extends ConsumerWidget {
                 key: const ValueKey('chat-input-panel'),
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (helperText != null) ...[
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        helperText,
-                        key: ValueKey(helperText),
-                        style: AppTypography.uiStyle(
-                          color: colors.secondaryText,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          height: 1.15,
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: spacing.xxs + 2),
-                  ],
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
@@ -242,27 +224,5 @@ class ChatInput extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  String? _buildHelperText({
-    required ChatSendPhase sendPhase,
-  }) {
-    if (sendPhase == ChatSendPhase.preparing) {
-      return '正在规划下一步';
-    }
-
-    if (sendPhase == ChatSendPhase.awaitingConfirmation) {
-      return '等待工具确认';
-    }
-
-    if (sendPhase == ChatSendPhase.executingTool) {
-      return '工具执行中';
-    }
-
-    if (sendPhase == ChatSendPhase.streamingResponse) {
-      return '正在生成回复';
-    }
-
-    return null;
   }
 }

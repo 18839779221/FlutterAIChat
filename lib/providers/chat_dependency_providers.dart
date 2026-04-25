@@ -1,6 +1,7 @@
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
+import 'package:ai_chat/services/latest_message_running_status_resolver.dart';
 import 'package:ai_chat/services/model_budget_registry.dart';
 import 'package:ai_chat/repositories/session_runtime_marker_repository.dart';
 import 'package:ai_chat/services/prompt/runtime_user_context_service.dart';
@@ -27,6 +28,11 @@ final appSettingsRepositoryProvider = Provider<AppSettingsRepository>((ref) {
 
 final traceRecorderProvider = Provider<ChatTraceRecorder>((ref) {
   return ChatTraceRecorder();
+});
+
+final latestMessageRunningStatusResolverProvider =
+    Provider<LatestMessageRunningStatusResolver>((ref) {
+  return const LatestMessageRunningStatusResolver();
 });
 
 // 聊天服务提供者
