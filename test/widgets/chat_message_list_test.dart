@@ -258,6 +258,34 @@ void main() {
       expect(find.text('已执行：搜索历史记录'), findsOneWidget);
     });
 
+    testWidgets('completed assistant markdown block exposes a stable timeline key',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          ChatMessage(
+            id: 1,
+            text: '问题',
+            role: MessageRole.user,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.plainText,
+          ),
+          ChatMessage(
+            id: 2,
+            text: '# Title\n\nParagraph',
+            role: MessageRole.assistant,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+      );
+
+      expect(
+        find.byKey(const ValueKey('timeline-block-0_2-analysis-1')),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('latest tool workflow shows running tail on the tool block',
         (tester) async {
       await _pumpMessageList(
