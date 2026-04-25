@@ -55,6 +55,7 @@
 - `lib/widgets/`
 
 UI 只消费 Riverpod providers 和 controller 门面，不直接编排复杂业务。
+- 聊天时间线按稳定 timeline item / row 渲染，完成态 Markdown block 优先复用既有 row 身份，降低长列表滚动和流式更新中的轻微站位变化
 
 ### Provider 装配层
 - [lib/providers/chat_providers.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/providers/chat_providers.dart)

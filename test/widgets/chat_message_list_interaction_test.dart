@@ -128,10 +128,12 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
 
     await tester.drag(find.byType(CustomScrollView), const Offset(0, 600));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.byIcon(Icons.keyboard_arrow_down), findsNothing);
   });
@@ -187,7 +189,8 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
 
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -40));
     await tester.pump();
@@ -463,13 +466,15 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.byType(AskUserQuestionCard), findsOneWidget);
     expect(find.byType(AskUserQuestionTimelineCard), findsNothing);
     final outerOffsetBefore = scrollController.offset;
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -400));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
 
     expect(scrollController.offset, greaterThanOrEqualTo(outerOffsetBefore));
   });

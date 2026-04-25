@@ -1,0 +1,594 @@
+import 'dart:async';
+
+import 'package:ai_chat/models/chat/assistant_turn_block.dart';
+import 'package:ai_chat/models/chat/tool_card_presentation_variant.dart';
+import 'package:ai_chat/models/chat/tool_workflow_step.dart';
+import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/response/message_content_type.dart';
+import 'package:ai_chat/models/response/structured_summary_card.dart';
+import 'package:ai_chat/models/tool/tool_result.dart';
+import 'package:ai_chat/providers/chat_providers.dart';
+import 'package:ai_chat/services/chat_block_builder.dart';
+import 'package:ai_chat/services/tool_card_presentation_mapper.dart';
+import 'package:ai_chat/utils/logger.dart';
+import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/latest_message_running_status_tail.dart';
+import 'package:ai_chat/widgets/chat_blocks/streaming_response_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/structured_output_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/tool_exception_card.dart';
+import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
+import 'package:ai_chat/widgets/chat_blocks/tool_outcome_card.dart';
+import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
+import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
+import 'package:ai_chat/widgets/interaction/ask_user_question_card.dart';
+import 'package:ai_chat/widgets/interaction/ask_user_question_result_card.dart';
+import 'package:ai_chat/widgets/interaction/ask_user_question_timeline_card.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'chat_timeline_item.dart';
+
+/// Renders a single stable timeline row.
+class ChatTimelineRow extends ConsumerWidget {
+  static const String _animationDebugTag = 'ToolAnimationDebug';
+  static const Duration _minRunningVisibleDuration = Duration(seconds: 5);
+  static final Set<String> _emittedAnimationDebugKeys = <String>{};
+
+  final ChatTimelineItem item;
+  final ChatBlockBuilder blockBuilder;
+  final int? currentGroupId;
+  final ValueChanged<ChatMessage> onLongPressMessage;
+
+  const ChatTimelineRow({
+    super.key,
+    required this.item,
+    required this.blockBuilder,
+    required this.currentGroupId,
+    required this.onLongPressMessage,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final row = switch (item.type) {
+      ChatTimelineItemType.userBubble => _buildUserBubble(),
+      ChatTimelineItemType.assistantBlock => _buildAssistantBlock(
+          context,
+          ref,
+        ),
+    };
+
+    if (item.runningTailText == null) {
+      return row;
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        row,
+        LatestMessageRunningStatusTail(statusText: item.runningTailText!),
+      ],
+    );
+  }
+
+  Widget _buildUserBubble() {
+    final message = item.userMessage!;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: GestureDetector(
+        onLongPress: () => onLongPressMessage(message),
+        child: UserAnchorBubble(text: message.text),
+      ),
+    );
+  }
+
+  Widget _buildAssistantBlock(BuildContext context, WidgetRef ref) {
+    final block = item.block!;
+    final sourceMessage = item.sourceMessage;
+    final activeAskUserQuestion =
+        ref.watch(activeAskUserQuestionMessageProvider);
+    final toolUiRegistry = ref.watch(toolUiRendererRegistryProvider);
+
+    late final Widget blockWidget;
+    switch (block.type) {
+      case AssistantTurnBlockType.analysis:
+        blockWidget = GestureDetector(
+          onLongPress: sourceMessage == null
+              ? null
+              : () => onLongPressMessage(sourceMessage),
+          child: AssistantDocBlock(
+            label: 'Analysis',
+            text: block.text ?? '',
+            markdownCacheKey: item.stableKey,
+          ),
+        );
+        break;
+      case AssistantTurnBlockType.finalResponse:
+        blockWidget = GestureDetector(
+          onLongPress: sourceMessage == null
+              ? null
+              : () => onLongPressMessage(sourceMessage),
+          child: sourceMessage?.status == MessageStatus.generating
+              ? StreamingResponseBlock(
+                  text: block.text ?? '',
+                )
+              : FinalResponseBlock(
+                  title: block.title ?? '最终回答',
+                  text: block.text ?? '',
+                  markdownCacheKey: item.stableKey,
+                ),
+        );
+        break;
+      case AssistantTurnBlockType.structuredOutput:
+        if (sourceMessage?.contentType ==
+            MessageContentType.askUserQuestionPrompt) {
+          final isActivePrompt = activeAskUserQuestion?.id != null &&
+              activeAskUserQuestion!.id == sourceMessage?.id;
+          blockWidget = isActivePrompt
+              ? AskUserQuestionCard(message: sourceMessage!)
+              : AskUserQuestionTimelineCard(message: sourceMessage!);
+          break;
+        }
+        if (sourceMessage?.contentType ==
+            MessageContentType.askUserQuestionResult) {
+          blockWidget = AskUserQuestionResultCard(message: sourceMessage!);
+          break;
+        }
+        blockWidget = GestureDetector(
+          onLongPress: sourceMessage == null
+              ? null
+              : () => onLongPressMessage(sourceMessage),
+          child: StructuredOutputBlock(
+            title: block.title ?? 'Structured Output',
+            fields: _extractStructuredFields(block),
+          ),
+        );
+        break;
+      case AssistantTurnBlockType.toolResultSummary:
+        final payload = block.payload;
+        if (payload == null) {
+          blockWidget = AssistantDocBlock(
+            text: block.text ?? '',
+            markdownCacheKey: item.stableKey,
+          );
+          break;
+        }
+        final result = ToolResult.fromJson(payload);
+        final resultWidget = _buildToolResultBlockWidget(
+          context: context,
+          result: result,
+          sourceMessage: sourceMessage,
+          toolUiRegistry: toolUiRegistry,
+        );
+        final delayedWorkflow = _resolveDelayedWorkflowPreview(
+          ref: ref,
+          context: context,
+          resultBlock: block,
+          result: result,
+          toolUiRegistry: toolUiRegistry,
+        );
+        if (delayedWorkflow == null) {
+          blockWidget = resultWidget;
+          break;
+        }
+        blockWidget = _MinimumVisibleToolStateSwitcher(
+          key: ValueKey(
+            '${block.id}_${delayedWorkflow.visibleUntil.millisecondsSinceEpoch}',
+          ),
+          visibleUntil: delayedWorkflow.visibleUntil,
+          runningChild: delayedWorkflow.workflowWidget,
+          resultChild: resultWidget,
+        );
+        break;
+      case AssistantTurnBlockType.toolWorkflow:
+        blockWidget = _buildToolWorkflowBlockWidget(
+          context: context,
+          ref: ref,
+          block: block,
+          sourceMessage: sourceMessage,
+          toolUiRegistry: toolUiRegistry,
+        );
+        break;
+    }
+    return blockWidget;
+  }
+
+  Widget _buildToolResultBlockWidget({
+    required BuildContext context,
+    required ToolResult result,
+    required ChatMessage? sourceMessage,
+    required ToolUiRendererRegistry toolUiRegistry,
+  }) {
+    final customResultWidget =
+        toolUiRegistry.findResultRenderer(result.toolName)?.buildResult(
+              context,
+              result: result,
+              sourceMessage: sourceMessage,
+            );
+    if (customResultWidget != null) {
+      return customResultWidget;
+    }
+    final presentation = ToolCardPresentationMapper.mapResult(result);
+    return switch (presentation.variant) {
+      ToolCardPresentationVariant.outcomeCard =>
+        ToolOutcomeCard(model: presentation),
+      ToolCardPresentationVariant.exceptionCard =>
+        ToolExceptionCard(model: presentation),
+      ToolCardPresentationVariant.inlineStep ||
+      ToolCardPresentationVariant.focusedActiveStep ||
+      ToolCardPresentationVariant.confirmationStep ||
+      ToolCardPresentationVariant.interactionCard =>
+        ToolInlineStepRow(model: presentation),
+    };
+  }
+
+  Widget _buildToolWorkflowBlockWidget({
+    required BuildContext context,
+    required WidgetRef ref,
+    required AssistantTurnBlock block,
+    required ChatMessage? sourceMessage,
+    required ToolUiRendererRegistry toolUiRegistry,
+  }) {
+    final steps = _extractWorkflowSteps(block);
+    final manualExpandedStepId =
+        ref.watch(toolWorkflowExpansionProvider)[block.turnId];
+    final expandedStepId = resolveWorkflowExpandedStepId(
+      turnId: block.turnId,
+      steps: steps,
+      manualExpandedStepId: manualExpandedStepId,
+    );
+    final latestStep = steps.isEmpty ? null : steps.last;
+    final workflowDebugKey = 'workflow:${sourceMessage?.id ?? block.id}';
+    if (latestStep != null &&
+        _emittedAnimationDebugKeys.add(workflowDebugKey)) {
+      Logger.temp(
+        _animationDebugTag,
+        'workflow_widget_built',
+        data: {
+          'toolName': latestStep.toolName,
+          'stepStatus': latestStep.status.name,
+          'stepId': latestStep.stepId,
+          'sourceMessageId': sourceMessage?.id,
+          'expandedStepId': expandedStepId,
+          'usesCustomRenderer':
+              toolUiRegistry.findWorkflowRenderer(latestStep.toolName) != null,
+        },
+      );
+    }
+    final customWorkflowWidget = latestStep == null
+        ? null
+        : toolUiRegistry
+            .findWorkflowRenderer(latestStep.toolName)
+            ?.buildWorkflowStep(
+              context,
+              steps: steps,
+              sourceMessage: sourceMessage,
+              isExpanded: latestStep.stepId == expandedStepId,
+              onTap: () {
+                ref.read(toolWorkflowExpansionProvider.notifier).toggleExpandedStep(
+                      turnId: block.turnId,
+                      stepId: latestStep.stepId,
+                    );
+              },
+            );
+    if (customWorkflowWidget != null) {
+      return customWorkflowWidget;
+    }
+    return ToolWorkflowCard(
+      title: block.title ?? 'Tool Workflow',
+      steps: steps,
+      expandedStepId: expandedStepId,
+      onStepTapped: (stepId) {
+        ref.read(toolWorkflowExpansionProvider.notifier).toggleExpandedStep(
+              turnId: block.turnId,
+              stepId: stepId,
+            );
+      },
+    );
+  }
+
+  _DelayedWorkflowPreview? _resolveDelayedWorkflowPreview({
+    required WidgetRef ref,
+    required BuildContext context,
+    required AssistantTurnBlock resultBlock,
+    required ToolResult result,
+    required ToolUiRendererRegistry toolUiRegistry,
+  }) {
+    final resultMessage = item.sourceMessage;
+    if (resultMessage == null) {
+      Logger.temp(
+        _animationDebugTag,
+        'delayed_preview_skipped',
+        data: {
+          'toolName': result.toolName,
+          'reason': 'missing_result_message',
+          'blockId': resultBlock.id,
+        },
+      );
+      return null;
+    }
+
+    final runningMessage = _findLatestRunningInvocationMessage(
+      sourceMessages: item.sourceMessages,
+      resultMessage: resultMessage,
+      toolName: result.toolName,
+    );
+    if (runningMessage == null) {
+      Logger.temp(
+        _animationDebugTag,
+        'delayed_preview_skipped',
+        data: {
+          'toolName': result.toolName,
+          'reason': 'missing_running_message',
+          'resultMessageId': resultMessage.id,
+        },
+      );
+      return null;
+    }
+
+    final visibleUntil =
+        runningMessage.timestamp.add(_minRunningVisibleDuration);
+    if (!visibleUntil.isAfter(resultMessage.timestamp)) {
+      Logger.temp(
+        _animationDebugTag,
+        'delayed_preview_skipped',
+        data: {
+          'toolName': result.toolName,
+          'reason': 'duration_already_elapsed',
+          'runningMessageId': runningMessage.id,
+          'resultMessageId': resultMessage.id,
+          'visibleUntil': visibleUntil.toIso8601String(),
+          'resultAt': resultMessage.timestamp.toIso8601String(),
+        },
+      );
+      return null;
+    }
+
+    final runningWorkflowBlock = _buildRunningWorkflowPreviewBlock(
+      ref: ref,
+      sourceMessages: item.sourceMessages,
+      runningMessage: runningMessage,
+      turnId: resultBlock.turnId,
+    );
+    if (runningWorkflowBlock == null) {
+      Logger.temp(
+        _animationDebugTag,
+        'delayed_preview_skipped',
+        data: {
+          'toolName': result.toolName,
+          'reason': 'missing_running_workflow_block',
+          'runningMessageId': runningMessage.id,
+          'resultMessageId': resultMessage.id,
+        },
+      );
+      return null;
+    }
+
+    Logger.temp(
+      _animationDebugTag,
+      'delayed_preview_active',
+      data: {
+        'toolName': result.toolName,
+        'runningMessageId': runningMessage.id,
+        'resultMessageId': resultMessage.id,
+        'runningAt': runningMessage.timestamp.toIso8601String(),
+        'resultAt': resultMessage.timestamp.toIso8601String(),
+        'visibleUntil': visibleUntil.toIso8601String(),
+      },
+    );
+
+    return _DelayedWorkflowPreview(
+      visibleUntil: visibleUntil,
+      workflowWidget: _buildToolWorkflowBlockWidget(
+        context: context,
+        ref: ref,
+        block: runningWorkflowBlock,
+        sourceMessage: runningMessage,
+        toolUiRegistry: toolUiRegistry,
+      ),
+    );
+  }
+
+  ChatMessage? _findLatestRunningInvocationMessage({
+    required List<ChatMessage> sourceMessages,
+    required ChatMessage resultMessage,
+    required String toolName,
+  }) {
+    final normalizedToolName = toolName.trim();
+    for (var index = sourceMessages.length - 1; index >= 0; index -= 1) {
+      final message = sourceMessages[index];
+      if (message.timestamp.isAfter(resultMessage.timestamp)) {
+        continue;
+      }
+      if (message.contentType != MessageContentType.toolInvocation) {
+        continue;
+      }
+      final payload = message.payloadJson;
+      if ((payload?['toolName'] ?? '').toString().trim() != normalizedToolName) {
+        continue;
+      }
+      if ((payload?['status'] ?? '').toString().trim() !=
+          ToolWorkflowStepStatus.running.name) {
+        continue;
+      }
+      return message;
+    }
+    return null;
+  }
+
+  AssistantTurnBlock? _buildRunningWorkflowPreviewBlock({
+    required WidgetRef ref,
+    required List<ChatMessage> sourceMessages,
+    required ChatMessage runningMessage,
+    required String turnId,
+  }) {
+    final prefixMessages = sourceMessages
+        .where((message) => !message.timestamp.isAfter(runningMessage.timestamp))
+        .toList(growable: false);
+    if (prefixMessages.isEmpty) {
+      return null;
+    }
+
+    final previewBlocks = blockBuilder.buildAssistantBlocks(
+      messages: prefixMessages,
+      groupId: currentGroupId ?? ref.read(currentGroupProvider)?.id,
+    );
+    for (var index = previewBlocks.length - 1; index >= 0; index -= 1) {
+      final block = previewBlocks[index];
+      if (block.turnId == turnId &&
+          block.type == AssistantTurnBlockType.toolWorkflow) {
+        return block;
+      }
+    }
+    return null;
+  }
+
+  Map<String, String> _extractStructuredFields(AssistantTurnBlock block) {
+    final payload = block.payload;
+    if (payload == null) {
+      return {
+        '内容': block.text ?? '',
+      };
+    }
+
+    try {
+      final card = StructuredSummaryCard.fromJson(payload);
+      return {
+        '摘要': card.summary,
+        if (card.keyPoints.isNotEmpty) '关键点': card.keyPoints.join(' / '),
+        if (card.actionItems.isNotEmpty) '行动项': card.actionItems.join(' / '),
+        if (card.risks.isNotEmpty) '风险': card.risks.join(' / '),
+      };
+    } catch (_) {
+      return payload.map((key, value) => MapEntry(key, '$value'));
+    }
+  }
+
+  List<ToolWorkflowStep> _extractWorkflowSteps(AssistantTurnBlock block) {
+    final rawSteps = block.payload?['steps'];
+    if (rawSteps is! List) {
+      return const [];
+    }
+
+    return rawSteps.whereType<Map>().map((rawStep) {
+      final json = Map<String, dynamic>.from(rawStep.cast<dynamic, dynamic>());
+      final statusName = json['status'] as String? ?? 'proposed';
+      final status = ToolWorkflowStepStatus.values.firstWhere(
+        (value) => value.name == statusName,
+        orElse: () => ToolWorkflowStepStatus.proposed,
+      );
+
+      return ToolWorkflowStep(
+        stepId: json['stepId'] as String? ?? 'unknown-step',
+        turnId: json['turnId'] as String? ?? block.turnId,
+        toolName: json['toolName'] as String? ?? 'unknown_tool',
+        title: json['title'] as String? ?? '',
+        summary: json['summary'] as String? ?? '',
+        status: status,
+        requiresConfirmation: json['requiresConfirmation'] as bool? ?? false,
+        executionPolicy: json['executionPolicy'] as String?,
+        toolAccess: json['toolAccess'] is Map
+            ? Map<String, dynamic>.from(json['toolAccess'] as Map)
+            : null,
+        details: json['details'] is Map
+            ? Map<String, dynamic>.from(json['details'] as Map)
+            : const {},
+      );
+    }).toList();
+  }
+}
+
+class _DelayedWorkflowPreview {
+  const _DelayedWorkflowPreview({
+    required this.visibleUntil,
+    required this.workflowWidget,
+  });
+
+  final DateTime visibleUntil;
+  final Widget workflowWidget;
+}
+
+class _MinimumVisibleToolStateSwitcher extends StatefulWidget {
+  const _MinimumVisibleToolStateSwitcher({
+    super.key,
+    required this.visibleUntil,
+    required this.runningChild,
+    required this.resultChild,
+  });
+
+  final DateTime visibleUntil;
+  final Widget runningChild;
+  final Widget resultChild;
+
+  @override
+  State<_MinimumVisibleToolStateSwitcher> createState() =>
+      _MinimumVisibleToolStateSwitcherState();
+}
+
+class _MinimumVisibleToolStateSwitcherState
+    extends State<_MinimumVisibleToolStateSwitcher> {
+  static const String _animationDebugTag = 'ToolAnimationDebug';
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleReveal();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MinimumVisibleToolStateSwitcher oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.visibleUntil != widget.visibleUntil) {
+      _scheduleReveal();
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _scheduleReveal() {
+    _timer?.cancel();
+    final remaining = widget.visibleUntil.difference(DateTime.now());
+    if (remaining <= Duration.zero) {
+      Logger.temp(
+        _animationDebugTag,
+        'switcher_reveal_immediate',
+        data: {
+          'visibleUntil': widget.visibleUntil.toIso8601String(),
+        },
+      );
+      return;
+    }
+    Logger.temp(
+      _animationDebugTag,
+      'switcher_schedule_reveal',
+      data: {
+        'remainingMs': remaining.inMilliseconds,
+        'visibleUntil': widget.visibleUntil.toIso8601String(),
+      },
+    );
+    _timer = Timer(remaining, () {
+      if (mounted) {
+        Logger.temp(
+          _animationDebugTag,
+          'switcher_reveal_result',
+          data: {
+            'visibleUntil': widget.visibleUntil.toIso8601String(),
+          },
+        );
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.visibleUntil.isAfter(DateTime.now())) {
+      return widget.runningChild;
+    }
+    return widget.resultChild;
+  }
+}

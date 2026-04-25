@@ -359,6 +359,7 @@ Database version: 10
   - Avoid one-off UI patterns or isolated architectural shortcuts that bypass the current controller/provider boundaries
   - Tool-use UI should prefer semantic presentation variants over raw message-type mirroring
   - Context-gathering tool steps should stay compact and collapse by default; external-action results should remain explicit in the timeline
+  - Completed Markdown timeline rows should preserve stable row identity; avoid rebuilding the full assistant widget list in `ChatMessageList` when only one message changes
 - Session context changes should preserve the current layered boundary:
   - UI `messages` for timeline
   - `chat_turns/chat_turn_steps/chat_events` for turn ledger and transcript

@@ -1,6 +1,7 @@
 import 'package:ai_chat/theme/app_colors.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/theme/app_typography.dart';
+import 'package:ai_chat/widgets/chat_timeline/stable_markdown_block.dart';
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
 import 'package:flutter/material.dart';
 
@@ -8,11 +9,13 @@ import 'package:flutter/material.dart';
 class AssistantDocBlock extends StatelessWidget {
   final String text;
   final String? label;
+  final String? markdownCacheKey;
 
   const AssistantDocBlock({
     super.key,
     required this.text,
     this.label,
+    this.markdownCacheKey,
   });
 
   @override
@@ -51,7 +54,11 @@ class AssistantDocBlock extends StatelessWidget {
               ),
               SizedBox(height: spacing.xs),
             ],
-            FlutterMarkdownImpl(data: text),
+            StableMarkdownBlock(
+              cacheKey:
+                  markdownCacheKey ?? 'doc:${label ?? 'analysis'}:${text.hashCode}',
+              child: FlutterMarkdownImpl(data: text),
+            ),
           ],
         ),
       ),
