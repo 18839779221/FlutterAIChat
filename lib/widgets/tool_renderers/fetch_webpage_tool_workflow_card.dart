@@ -31,6 +31,7 @@ class FetchWebpageToolWorkflowCard extends StatelessWidget {
       primaryText: _buildPrimaryText(summary),
       statusLabel: aggregateWorkflowStatusLabel(steps),
       statusColor: aggregateWorkflowStatusColor(context, steps),
+      isRunning: steps.any((step) => step.status == ToolWorkflowStepStatus.running),
       expanded: expanded,
       footerHint: canExpand
           ? summary.totalCount > 1
@@ -76,6 +77,8 @@ class FetchWebpageToolWorkflowCard extends StatelessWidget {
                 statusLabel: workflowStatusLabel(summary.items[index].step),
                 statusColor:
                     workflowStatusColor(context, summary.items[index].step),
+                isRunning: summary.items[index].step.status ==
+                    ToolWorkflowStepStatus.running,
               ),
               if (index != summary.items.length - 1) SizedBox(height: spacing.xs),
             ],

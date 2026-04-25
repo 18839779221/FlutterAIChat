@@ -7,6 +7,7 @@ import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:flutter/material.dart';
 
 import 'tool_inline_step_row.dart';
+import '../tool_renderers/tool_running_effects.dart';
 
 /// Foldable workflow card that only expands the active step by default.
 class ToolWorkflowCard extends StatelessWidget {
@@ -69,83 +70,85 @@ class ToolWorkflowCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(radius.md),
                 child: usesInlineHistory
                     ? ToolInlineStepRow(model: presentation)
-                    : AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        curve: Curves.easeOut,
-                        padding: EdgeInsets.all(spacing.sm),
-                        decoration: BoxDecoration(
-                          color: expanded
-                              ? colors.assistantSurface.withValues(alpha: 0.96)
-                              : colors.chatBackground.withValues(alpha: 0.56),
-                          borderRadius: BorderRadius.circular(radius.md),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
+                    : RunningSweepSurface(
+                        isRunning: step.status == ToolWorkflowStepStatus.running,
+                        borderRadius: BorderRadius.circular(radius.md),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          curve: Curves.easeOut,
+                          padding: EdgeInsets.all(spacing.sm),
+                          decoration: BoxDecoration(
+                            color: expanded
+                                ? colors.assistantSurface.withValues(alpha: 0.96)
+                                : colors.chatBackground.withValues(alpha: 0.56),
+                            borderRadius: BorderRadius.circular(radius.md),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  RunningStatusDot(
                                     color: _statusColor(colors, step.status),
-                                    shape: BoxShape.circle,
+                                    isRunning:
+                                        step.status == ToolWorkflowStepStatus.running,
+                                    size: 8,
                                   ),
-                                ),
-                                SizedBox(width: spacing.sm),
-                                Expanded(
-                                  child: Text(
-                                    step.title.isEmpty
-                                        ? step.toolName
-                                        : step.title,
-                                    style: TextStyle(
-                                      color: colors.primaryText,
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w700,
-                                      height: 1.3,
+                                  SizedBox(width: spacing.sm),
+                                  Expanded(
+                                    child: Text(
+                                      step.title.isEmpty
+                                          ? step.toolName
+                                          : step.title,
+                                      style: TextStyle(
+                                        color: colors.primaryText,
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w700,
+                                        height: 1.3,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                Container(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: spacing.xs,
-                                    vertical: spacing.xxs,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: _statusColor(
-                                      colors,
-                                      step.status,
-                                    ).withValues(alpha: 0.12),
-                                    borderRadius:
-                                        BorderRadius.circular(radius.pill),
-                                  ),
-                                  child: Text(
-                                    _statusLabel(step.status),
-                                    style: TextStyle(
-                                      color: _statusColor(colors, step.status),
-                                      fontSize: 9.5,
-                                      fontWeight: FontWeight.w800,
+                                  Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: spacing.xs,
+                                      vertical: spacing.xxs,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: _statusColor(
+                                        colors,
+                                        step.status,
+                                      ).withValues(alpha: 0.12),
+                                      borderRadius:
+                                          BorderRadius.circular(radius.pill),
+                                    ),
+                                    child: Text(
+                                      _statusLabel(step.status),
+                                      style: TextStyle(
+                                        color: _statusColor(colors, step.status),
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w800,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: spacing.xs),
-                            Text(
-                              step.summary,
-                              maxLines: expanded ? null : 1,
-                              overflow: expanded
-                                  ? TextOverflow.visible
-                                  : TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: colors.secondaryText,
-                                fontSize: 11.5,
-                                height: 1.42,
+                                ],
                               ),
-                            ),
-                            if (expanded && _showsConfirmationActions(step))
-                              SizedBox(height: spacing.xxs),
-                          ],
+                              SizedBox(height: spacing.xs),
+                              Text(
+                                step.summary,
+                                maxLines: expanded ? null : 1,
+                                overflow: expanded
+                                    ? TextOverflow.visible
+                                    : TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: colors.secondaryText,
+                                  fontSize: 11.5,
+                                  height: 1.42,
+                                ),
+                              ),
+                              if (expanded && _showsConfirmationActions(step))
+                                SizedBox(height: spacing.xxs),
+                            ],
+                          ),
                         ),
                       ),
               ),

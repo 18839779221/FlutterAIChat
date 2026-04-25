@@ -7,6 +7,7 @@ import '../../services/tool_ui_renderer_registry.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
+import 'tool_running_effects.dart';
 
 typedef CompactToolRowWorkflowMapper = CompactToolRowModel Function(
     List<ToolWorkflowStep> steps);
@@ -20,6 +21,7 @@ class CompactToolRowModel {
     required this.primaryText,
     required this.statusLabel,
     required this.statusColor,
+    this.isRunning = false,
   });
 
   /// Low-noise verb that tells the user what kind of tool action happened.
@@ -33,6 +35,9 @@ class CompactToolRowModel {
 
   /// Shared semantic color derived from the tool execution state.
   final Color statusColor;
+
+  /// Whether the row represents a running workflow item.
+  final bool isRunning;
 }
 
 class CompactToolRow extends StatelessWidget {
@@ -49,76 +54,74 @@ class CompactToolRow extends StatelessWidget {
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
 
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.symmetric(
-        horizontal: spacing.sm + spacing.xxs,
-        vertical: spacing.xs,
-      ),
-      decoration: BoxDecoration(
-        color: colors.structuredSurface.withValues(alpha: 0.34),
-        borderRadius: BorderRadius.circular(radius.sm + 1),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 7,
-            height: 7,
-            decoration: BoxDecoration(
-              color: model.statusColor.withValues(alpha: 0.88),
-              shape: BoxShape.circle,
+    return SubtleRunningBreathingSurface(
+      isRunning: model.isRunning,
+      baseColor: colors.structuredSurface.withValues(alpha: 0.34),
+      borderRadius: BorderRadius.circular(radius.sm + 1),
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.symmetric(
+          horizontal: spacing.sm + spacing.xxs,
+          vertical: spacing.xs,
+        ),
+        child: Row(
+          children: [
+            RunningStatusDot(
+              color: model.statusColor,
+              isRunning: model.isRunning,
+              size: 7,
             ),
-          ),
-          SizedBox(width: spacing.sm),
-          Expanded(
-            child: Row(
-              children: [
-                Text(
-                  model.actionLabel,
-                  style: TextStyle(
-                    color: colors.secondaryText,
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w600,
-                    height: 1.25,
-                  ),
-                ),
-                SizedBox(width: spacing.xs),
-                Expanded(
-                  child: Text(
-                    model.primaryText,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+            SizedBox(width: spacing.sm),
+            Expanded(
+              child: Row(
+                children: [
+                  Text(
+                    model.actionLabel,
                     style: TextStyle(
-                      color: colors.primaryText,
-                      fontSize: 11.5,
+                      color: colors.secondaryText,
+                      fontSize: 10.5,
                       fontWeight: FontWeight.w600,
                       height: 1.25,
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(width: spacing.sm),
-          Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: spacing.xs,
-              vertical: spacing.xxs,
-            ),
-            decoration: BoxDecoration(
-              color: model.statusColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(radius.pill),
-            ),
-            child: Text(
-              model.statusLabel,
-              style: TextStyle(
-                color: model.statusColor,
-                fontSize: 8.5,
-                fontWeight: FontWeight.w700,
+                  SizedBox(width: spacing.xs),
+                  Expanded(
+                    child: Text(
+                      model.primaryText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colors.primaryText,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.25,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
+            SizedBox(width: spacing.sm),
+            Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: spacing.xs,
+                vertical: spacing.xxs,
+              ),
+              decoration: BoxDecoration(
+                color: model.statusColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(radius.pill),
+              ),
+              child: Text(
+                model.statusLabel,
+                style: TextStyle(
+                  color: model.statusColor,
+                  fontSize: 8.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

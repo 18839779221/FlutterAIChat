@@ -9,8 +9,10 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
+import 'package:ai_chat/models/tool/tool_access_snapshot.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
+import 'package:ai_chat/models/tool/tool_policy.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_step_repository.dart';
@@ -168,6 +170,63 @@ void main() {
           2);
       expect(eventTypes.where((type) => type == ChatEventType.toolError).length,
           1);
+    });
+
+    test('emits tool execution started once even when service reports pre-start',
+        () async {
+      final turnRepository = _InMemoryChatTurnRepository();
+      final stepRepository = _InMemoryChatTurnStepRepository();
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          id: 20,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '检查工具状态',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+      final toolCallService = _TrackingToolCallService(
+        definitionsByName: {
+          'Read': const ToolDefinition(
+            name: 'Read',
+            title: '读取文件',
+            isConcurrencySafe: true,
+          ),
+        },
+        handlersByKey: {
+          'probe.txt': () => _delayedSuccess('Read', 'probe.txt'),
+        },
+      );
+      final executor = DefaultDecisionToolCallExecutor(
+        turnRepository: turnRepository,
+        stepRepository: stepRepository,
+        eventRepository: eventRepository,
+        toolCallService: toolCallService,
+        limits: const AgentLoopLimits(),
+        maxConcurrentExecutions: 1,
+      );
+
+      final updates = await executor
+          .executeDecisionToolCalls(
+            turn: turn,
+            decision: ModelTurnDecision(
+              toolCalls: _readCalls(['probe.txt']),
+              assistantMessage: null,
+              providerState: const {'response_id': 'resp_started_once'},
+              isTerminal: false,
+            ),
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            consecutiveFailures: 0,
+            startingStepIndex: 0,
+          )
+          .toList();
+
+      final startedEvents = updates
+          .where((update) =>
+              update.event?.eventType == ChatEventType.assistantToolCall)
+          .toList();
+      expect(startedEvents, hasLength(1));
     });
 
     test('keeps write tools isolated between concurrent read batches', () async {
@@ -465,6 +524,7 @@ class _TrackingToolCallService extends ToolCallService {
     required ToolInvocation invocation,
     bool trustTool = false,
     String? turnId,
+    ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
     final key =
         (invocation.arguments['file_path'] ?? invocation.arguments['url'])
@@ -480,7 +540,29 @@ class _TrackingToolCallService extends ToolCallService {
       if (handler == null) {
         throw StateError('Missing test handler for $key');
       }
-      return await handler();
+      if (onExecutionStarted != null) {
+        await onExecutionStarted(
+          invocation: invocation,
+          toolAccess: ToolAccessSnapshot(
+            definition: definitionsByName[invocation.toolName] ??
+                ToolDefinition(
+                  name: invocation.toolName,
+                  title: invocation.toolName,
+                ),
+            executionDecision: ToolPolicyDecision.autoRun,
+            executionPolicyLabel: 'auto_run',
+            isVisibleToPlanner: true,
+          ),
+        );
+      }
+      final result = await handler();
+      return ToolPreparationResult(
+        toolInvocation: result.toolInvocation,
+        toolAccess: result.toolAccess,
+        toolResult: result.toolResult,
+        additionalContextMessages: result.additionalContextMessages,
+        executionStarted: onExecutionStarted != null,
+      );
     } finally {
       activeInvocations -= 1;
     }

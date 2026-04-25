@@ -17,11 +17,15 @@ class ToolCardPresentationModel {
   /// Optional status label shown in compact rows or headers.
   final String? statusLabel;
 
+  /// Whether the current card should present an active running treatment.
+  final bool isRunning;
+
   const ToolCardPresentationModel({
     required this.variant,
     required this.title,
     required this.summary,
     this.primaryFields = const {},
     this.statusLabel,
+    this.isRunning = false,
   });
 }

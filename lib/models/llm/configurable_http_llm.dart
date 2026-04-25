@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/prompt/prompt_builder_service.dart';
@@ -31,6 +32,7 @@ class ConfigurableHttpLLM implements BaseLLM {
   static const String _tag = 'ConfigurableHttpLLM';
   static const Duration _defaultRequestTimeout = Duration(seconds: 60);
   static const Duration _defaultPlannerRequestTimeout = Duration(seconds: 60);
+  static const int _mainFlowNetworkRetryAttempts = 5;
 
   static const Map<ApiStyle, ApiStyleAdapter> _defaultAdapters = {
     ApiStyle.chatCompletions: ChatCompletionsAdapter(),
@@ -129,7 +131,10 @@ class ConfigurableHttpLLM implements BaseLLM {
 
       Logger.i(_tag, '请求体: ${request.body}');
 
-      final response = await _httpClient.send(request).timeout(_requestTimeout);
+      final response = await _performRetriableMainFlowRequest(
+        label: 'chat_stream',
+        operation: () => _httpClient.send(request).timeout(_requestTimeout),
+      );
       if (response.statusCode != 200) {
         final errorBody = await response.stream.bytesToString();
         throw Exception(
@@ -315,6 +320,7 @@ class ConfigurableHttpLLM implements BaseLLM {
         config: config,
         messages: messages,
         timeout: _plannerRequestTimeout,
+        allowMainFlowRetry: true,
       ))
           .trim();
     } catch (e, stackTrace) {
@@ -344,13 +350,16 @@ class ConfigurableHttpLLM implements BaseLLM {
         parallelToolCalls: false,
       );
       Logger.i(_tag, 'structured planner 请求体: ${jsonEncode(payload)}');
-      final response = await _httpClient
-          .post(
-            _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
-            headers: adapter.buildHeaders(runtimeConfig),
-            body: jsonEncode(payload),
-          )
-          .timeout(_plannerRequestTimeout);
+      final response = await _performRetriableMainFlowRequest(
+        label: 'structured_planner',
+        operation: () => _httpClient
+            .post(
+              _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
+              headers: adapter.buildHeaders(runtimeConfig),
+              body: jsonEncode(payload),
+            )
+            .timeout(_plannerRequestTimeout),
+      );
 
       if (response.statusCode != 200) {
         Logger.w(
@@ -427,13 +436,16 @@ class ConfigurableHttpLLM implements BaseLLM {
         providerState: providerState,
       );
       Logger.i(_tag, 'native planner 请求体: ${jsonEncode(payload)}');
-      final response = await _httpClient
-          .post(
-            _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
-            headers: adapter.buildHeaders(runtimeConfig),
-            body: jsonEncode(payload),
-          )
-          .timeout(_plannerRequestTimeout);
+      final response = await _performRetriableMainFlowRequest(
+        label: 'native_planner',
+        operation: () => _httpClient
+            .post(
+              _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
+              headers: adapter.buildHeaders(runtimeConfig),
+              body: jsonEncode(payload),
+            )
+            .timeout(_plannerRequestTimeout),
+      );
 
       if (response.statusCode != 200) {
         final detail =
@@ -574,6 +586,7 @@ class ConfigurableHttpLLM implements BaseLLM {
     required ChatConfig config,
     required List<ChatMessage> messages,
     Duration? timeout,
+    bool allowMainFlowRetry = false,
   }) async {
     final apiStyle = _protocolResolver.resolveStyle(runtimeConfig.apiUrl);
     final adapter = _adapterFor(apiStyle);
@@ -596,8 +609,12 @@ class ConfigurableHttpLLM implements BaseLLM {
         ),
       );
 
-      final response =
-          await _httpClient.send(request).timeout(effectiveTimeout);
+      final response = allowMainFlowRetry
+          ? await _performRetriableMainFlowRequest(
+              label: 'text_request_stream',
+              operation: () => _httpClient.send(request).timeout(effectiveTimeout),
+            )
+          : await _httpClient.send(request).timeout(effectiveTimeout);
       if (response.statusCode != 200) {
         throw Exception(
             '请求失败: ${response.statusCode} ${response.reasonPhrase}');
@@ -615,20 +632,38 @@ class ConfigurableHttpLLM implements BaseLLM {
       return buffer.toString();
     }
 
-    final response = await _httpClient
-        .post(
-          _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
-          headers: adapter.buildHeaders(runtimeConfig),
-          body: jsonEncode(
-            adapter.buildChatPayload(
-              messages: messages,
-              config: config,
-              modelName: modelName,
-              stream: false,
-            ),
-          ),
-        )
-        .timeout(effectiveTimeout);
+    final response = allowMainFlowRetry
+        ? await _performRetriableMainFlowRequest(
+            label: 'text_request',
+            operation: () => _httpClient
+                .post(
+                  _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
+                  headers: adapter.buildHeaders(runtimeConfig),
+                  body: jsonEncode(
+                    adapter.buildChatPayload(
+                      messages: messages,
+                      config: config,
+                      modelName: modelName,
+                      stream: false,
+                    ),
+                  ),
+                )
+                .timeout(effectiveTimeout),
+          )
+        : await _httpClient
+            .post(
+              _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
+              headers: adapter.buildHeaders(runtimeConfig),
+              body: jsonEncode(
+                adapter.buildChatPayload(
+                  messages: messages,
+                  config: config,
+                  modelName: modelName,
+                  stream: false,
+                ),
+              ),
+            )
+            .timeout(effectiveTimeout);
 
     if (response.statusCode != 200) {
       throw Exception('请求失败: ${response.statusCode}');
@@ -676,5 +711,81 @@ class ConfigurableHttpLLM implements BaseLLM {
     }
 
     return 'keys=${payload.keys.join(',')}';
+  }
+
+  Future<T> _performRetriableMainFlowRequest<T>({
+    required String label,
+    required Future<T> Function() operation,
+  }) async {
+    Object? lastError;
+    StackTrace? lastStackTrace;
+
+    for (var attempt = 1; attempt <= _mainFlowNetworkRetryAttempts; attempt += 1) {
+      try {
+        if (attempt > 1) {
+          Logger.i(
+            _tag,
+            'main flow request retry start label=$label attempt=$attempt/$_mainFlowNetworkRetryAttempts',
+          );
+        }
+        return await operation();
+      } catch (error, stackTrace) {
+        lastError = error;
+        lastStackTrace = stackTrace;
+        final shouldRetry = attempt < _mainFlowNetworkRetryAttempts &&
+            _isRetriableMainFlowNetworkError(error);
+        if (!shouldRetry) {
+          Error.throwWithStackTrace(error, stackTrace);
+        }
+
+        final delay = _retryDelayForAttempt(attempt);
+        Logger.w(
+          _tag,
+          'main flow request retry scheduled label=$label attempt=$attempt/$_mainFlowNetworkRetryAttempts delayMs=${delay.inMilliseconds} reason=${_previewBody(error.toString())}',
+        );
+        await Future<void>.delayed(delay);
+      }
+    }
+
+    if (lastError != null && lastStackTrace != null) {
+      Error.throwWithStackTrace(lastError, lastStackTrace);
+    }
+    throw StateError('unexpected retry state for $label');
+  }
+
+  bool _isRetriableMainFlowNetworkError(Object error) {
+    if (error is TimeoutException || error is SocketException) {
+      return true;
+    }
+
+    if (error is http.ClientException) {
+      final normalized = error.message.toLowerCase();
+      return normalized.contains('socketexception') ||
+          normalized.contains('connection reset') ||
+          normalized.contains('timed out') ||
+          normalized.contains('broken pipe') ||
+          normalized.contains('failed host lookup') ||
+          normalized.contains('network is unreachable');
+    }
+
+    final normalized = error.toString().toLowerCase();
+    return normalized.contains('socketexception') ||
+        normalized.contains('connection reset by peer') ||
+        normalized.contains('connection closed before full header was received') ||
+        normalized.contains('broken pipe') ||
+        normalized.contains('failed host lookup') ||
+        normalized.contains('network is unreachable') ||
+        normalized.contains('timed out');
+  }
+
+  Duration _retryDelayForAttempt(int attempt) {
+    final backoffSeconds = switch (attempt) {
+      1 => 1,
+      2 => 2,
+      3 => 4,
+      4 => 8,
+      _ => 12,
+    };
+    return Duration(seconds: backoffSeconds);
   }
 }

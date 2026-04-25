@@ -626,6 +626,79 @@ void main() {
       expect((await turnRepository.getTurn(3))!.status, ChatTurnStatus.failed);
     });
 
+    test('resume after confirmation does not append duplicate started event',
+        () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      final turn = ChatTurn(
+        id: 33,
+        groupId: 1,
+        status: ChatTurnStatus.awaitingToolConfirmation,
+        userInput: '确认后执行',
+      );
+      await turnRepository.createTurn(turn);
+
+      final harness = TurnHarness(
+        plannerService: _NativeDecisionPlannerService([
+          const ModelTurnDecision(
+            toolCalls: [],
+            assistantMessage: '提醒已经创建',
+            providerState: {'response_id': 'resp_after_confirm'},
+            isTerminal: true,
+          ),
+        ]),
+        turnRepository: turnRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        turnVerifier: _AlwaysStopVerifier(),
+        chatService: _FakeChatService(chunks: const []),
+        toolCallService: _FakeToolCallService(
+          executeResult: const ToolPreparationResult(
+            toolInvocation: ToolInvocation(
+              toolName: 'create_reminder',
+              arguments: {'title': '交周报'},
+              status: ToolInvocationStatus.running,
+              summary: '正在执行工具：创建提醒',
+              requiresConfirmation: false,
+            ),
+            toolResult: ToolResult(
+              toolName: 'create_reminder',
+              status: ToolExecutionStatus.success,
+              summary: '已创建提醒',
+            ),
+            additionalContextMessages: [],
+            executionStarted: true,
+          ),
+        ),
+        limits: const AgentLoopLimits(maxIterations: 4),
+      );
+
+      final emitted = await harness
+          .resumeAfterConfirmation(
+            turnId: 33,
+            invocation: const ToolInvocation(
+              toolName: 'create_reminder',
+              arguments: {'title': '交周报'},
+              status: ToolInvocationStatus.awaitingConfirmation,
+              summary: '请确认执行工具：创建提醒',
+              requiresConfirmation: true,
+            ),
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          )
+          .toList();
+
+      expect(
+        emitted.where((event) => event.eventType == ChatEventType.assistantToolCall),
+        isEmpty,
+      );
+      expect(
+        emitted.where((event) => event.eventType == ChatEventType.toolResult),
+        hasLength(1),
+      );
+    });
+
     test(
         'continues loop after file tool failure and returns failure result to planner',
         () async {
@@ -2527,7 +2600,23 @@ class _FakeToolCallService extends ToolCallService {
     required ToolInvocation invocation,
     bool trustTool = false,
     String? turnId,
+    ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
+    if (onExecutionStarted != null && executeResult.executionStarted) {
+      await onExecutionStarted(
+        invocation: executeResult.toolInvocation ?? invocation,
+        toolAccess: executeResult.toolAccess ??
+            const ToolAccessSnapshot(
+              definition: ToolDefinition(
+                name: 'fake_tool',
+                title: 'fake_tool',
+              ),
+              executionDecision: ToolPolicyDecision.autoRun,
+              executionPolicyLabel: 'auto_run',
+              isVisibleToPlanner: true,
+            ),
+      );
+    }
     executeInvocationCount += 1;
     return executeResult;
   }
@@ -2548,8 +2637,25 @@ class _SequencedToolCallService extends ToolCallService {
     required ToolInvocation invocation,
     bool trustTool = false,
     String? turnId,
+    ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
-    return executeResults.removeFirst();
+    final result = executeResults.removeFirst();
+    if (onExecutionStarted != null && result.executionStarted) {
+      await onExecutionStarted(
+        invocation: result.toolInvocation ?? invocation,
+        toolAccess: result.toolAccess ??
+            const ToolAccessSnapshot(
+              definition: ToolDefinition(
+                name: 'fake_tool',
+                title: 'fake_tool',
+              ),
+              executionDecision: ToolPolicyDecision.autoRun,
+              executionPolicyLabel: 'auto_run',
+              isVisibleToPlanner: true,
+            ),
+      );
+    }
+    return result;
   }
 }
 
