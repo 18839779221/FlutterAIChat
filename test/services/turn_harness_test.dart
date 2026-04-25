@@ -1279,6 +1279,164 @@ void main() {
           'max_iterations_reached');
     });
 
+    test('default AgentLoopLimits does not block high-count turns', () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      await turnRepository.createTurn(
+        ChatTurn(
+          id: 50,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '继续总结当前结果',
+          iterationCount: 999,
+          toolCallCount: 999,
+          createdAt: DateTime.now().subtract(const Duration(days: 3)),
+          updatedAt: DateTime.now().subtract(const Duration(days: 3)),
+        ),
+      );
+      final turn = (await turnRepository.getTurn(50))!;
+
+      final harness = TurnHarness(
+        plannerService: _NativeDecisionPlannerService([
+          const ModelTurnDecision(
+            toolCalls: [],
+            assistantMessage: '继续基于当前上下文给出结果',
+            diagnosticCode: 'planner_action_respond',
+            providerState: {},
+            isTerminal: true,
+          ),
+        ]),
+        turnRepository: turnRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        turnVerifier: _AlwaysStopVerifier(),
+        chatService: _FakeChatService(chunks: const []),
+        toolCallService: _FakeToolCallService(
+          executeResult: const ToolPreparationResult.noTool(),
+        ),
+        limits: const AgentLoopLimits(),
+      );
+
+      final emitted = await harness
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          )
+          .toList();
+
+      expect(
+        emitted.map((event) => event.eventType),
+        containsAllInOrder([
+          ChatEventType.userMessage,
+          ChatEventType.turnStatus,
+          ChatEventType.finalAnswer,
+        ]),
+      );
+      expect(emitted.last.content, '继续基于当前上下文给出结果');
+      expect((await turnRepository.getTurn(50))!.status, ChatTurnStatus.completed);
+    });
+
+    test('stops turn with max_tool_calls_reached before planner continues',
+        () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      await turnRepository.createTurn(
+        ChatTurn(
+          id: 51,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '继续搜',
+          toolCallCount: 3,
+        ),
+      );
+      final turn = (await turnRepository.getTurn(51))!;
+
+      final harness = TurnHarness(
+        plannerService: _NativeDecisionPlannerService(const []),
+        turnRepository: turnRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        turnVerifier: _AlwaysStopVerifier(),
+        chatService: _FakeChatService(chunks: const []),
+        toolCallService: _FakeToolCallService(
+          executeResult: const ToolPreparationResult.noTool(),
+        ),
+        limits: const AgentLoopLimits(maxToolCallsPerTurn: 3),
+      );
+
+      final emitted = await harness
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          )
+          .toList();
+
+      expect(
+        emitted.map((event) => event.eventType),
+        [ChatEventType.userMessage, ChatEventType.turnStatus],
+      );
+      expect(emitted.last.content, 'max_tool_calls_reached');
+      expect((await turnRepository.getTurn(51))!.status, ChatTurnStatus.failed);
+      expect(
+        (await turnRepository.getTurn(51))!.errorMessage,
+        'max_tool_calls_reached',
+      );
+    });
+
+    test('stops turn with max_duration_reached before planner continues',
+        () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      await turnRepository.createTurn(
+        ChatTurn(
+          id: 52,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '继续搜',
+          createdAt: DateTime.now().subtract(const Duration(minutes: 10)),
+          updatedAt: DateTime.now().subtract(const Duration(minutes: 10)),
+        ),
+      );
+      final turn = (await turnRepository.getTurn(52))!;
+
+      final harness = TurnHarness(
+        plannerService: _NativeDecisionPlannerService(const []),
+        turnRepository: turnRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        turnVerifier: _AlwaysStopVerifier(),
+        chatService: _FakeChatService(chunks: const []),
+        toolCallService: _FakeToolCallService(
+          executeResult: const ToolPreparationResult.noTool(),
+        ),
+        limits: const AgentLoopLimits(maxDuration: Duration(minutes: 1)),
+      );
+
+      final emitted = await harness
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          )
+          .toList();
+
+      expect(
+        emitted.map((event) => event.eventType),
+        [ChatEventType.userMessage, ChatEventType.turnStatus],
+      );
+      expect(emitted.last.content, 'max_duration_reached');
+      expect((await turnRepository.getTurn(52))!.status, ChatTurnStatus.failed);
+      expect(
+        (await turnRepository.getTurn(52))!.errorMessage,
+        'max_duration_reached',
+      );
+    });
+
     test('pauses on a later tool after an earlier tool already succeeded',
         () async {
       final eventRepository = _InMemoryChatEventRepository();
@@ -2028,6 +2186,13 @@ class _QueuedNativeDecisionLLM implements BaseLLM {
       'summary';
 
   @override
+  Future<String> processWebpageContent({
+    required String webpageContent,
+    required String prompt,
+  }) async =>
+      '';
+
+  @override
   Future<bool> validateApiKey(ChatConfig config) async => true;
 }
 
@@ -2633,6 +2798,13 @@ class _NoopBaseLLM implements BaseLLM {
     List<Map<String, dynamic>> providerContinuationItems = const [],
   }) async =>
       null;
+
+  @override
+  Future<String> processWebpageContent({
+    required String webpageContent,
+    required String prompt,
+  }) async =>
+      '';
 
   @override
   Future<String> structureSummaryCard(String sourceText) async => '{}';

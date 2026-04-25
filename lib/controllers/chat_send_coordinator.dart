@@ -282,6 +282,11 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     _ref.read(streamSubscriptionProvider.notifier).state = subscription;
     try {
       await completion.future;
+      await _finalizeTurnOutcome(
+        groupId: currentGroupId,
+        turnId: turnRecordId,
+        processor: processor,
+      );
     } finally {
       await processor.dispose();
     }
@@ -304,6 +309,73 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     final messageId = await dbHelper.insertMessage(failureMessage, groupId);
     failureMessage.id = messageId;
     _ref.read(messagesProvider.notifier).addMessage(failureMessage);
+  }
+
+  Future<void> _finalizeTurnOutcome({
+    required int groupId,
+    required int turnId,
+    required AgentEventProcessor processor,
+  }) async {
+    if (processor.hasPendingConfirmation) {
+      _ref.read(chatSendStateProvider.notifier).update(
+            isGenerating: false,
+            phase: ChatSendPhase.awaitingConfirmation,
+          );
+      return;
+    }
+
+    final turnRepository = ChatTurnRepository(_ref.read(databaseProvider));
+    final turn = await turnRepository.getTurn(turnId);
+    if (turn == null) {
+      _ref.read(chatSendStateProvider.notifier).update(
+            isGenerating: false,
+            phase: ChatSendPhase.idle,
+          );
+      return;
+    }
+
+    if (turn.status == ChatTurnStatus.failed && !processor.receivedFinalAnswer) {
+      await _upsertAssistantFailureMessage(
+        groupId: groupId,
+        assistantMessageId: processor.assistantMessageId,
+        text: _formatTurnFailureText(turn),
+      );
+    }
+
+    _ref.read(chatSendStateProvider.notifier).update(
+          isGenerating: false,
+          phase: ChatSendPhase.idle,
+        );
+  }
+
+  Future<void> _upsertAssistantFailureMessage({
+    required int groupId,
+    required int? assistantMessageId,
+    required String text,
+  }) async {
+    final dbHelper = _ref.read(databaseProvider);
+    if (assistantMessageId == null) {
+      final failureMessage = ChatMessage(
+        text: text,
+        role: MessageRole.assistant,
+        status: MessageStatus.failed,
+      );
+      final messageId = await dbHelper.insertMessage(failureMessage, groupId);
+      failureMessage.id = messageId;
+      _ref.read(messagesProvider.notifier).addMessage(failureMessage);
+      return;
+    }
+
+    _ref.read(messagesProvider.notifier).updateMessage(
+          assistantMessageId,
+          text,
+        );
+    _ref.read(messagesProvider.notifier).updateMessageStatus(
+          assistantMessageId,
+          MessageStatus.failed,
+        );
+    await dbHelper.updateMessage(assistantMessageId, text);
+    await dbHelper.updateMessageStatus(assistantMessageId, MessageStatus.failed);
   }
 
   void _syncAssistantFailureState({
@@ -350,6 +422,25 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       return '发送失败，请稍后重试。';
     }
     return '发送失败：$compactMessage';
+  }
+
+  String _formatTurnFailureText(ChatTurn turn) {
+    switch (turn.errorMessage) {
+      case 'max_iterations_reached':
+        return '本轮已达到工具探索上限，已停止继续执行。当前收集到了一些中间结果，但模型还没来得及整理出最终答复。你可以让我基于现有结果继续总结，或缩小问题范围后再试一次。';
+      case 'max_tool_calls_reached':
+        return '本轮已达到工具调用上限，已停止继续执行。当前保留了部分中间结果，但还没有整理成最终答复。你可以让我基于现有结果继续总结，或把问题范围收窄一些再试。';
+      case 'max_duration_reached':
+        return '本轮工具执行耗时过长，已自动停止。当前保留了部分中间结果，但还没有形成最终答复。你可以稍后重试，或缩小任务范围后继续。';
+      case 'planner_no_terminal_decision':
+        return '这轮工具执行已经结束，但模型没有产出最终答复，所以我先停在这里。你可以让我基于当前结果继续总结，或换一种更聚焦的问法再试一次。';
+      default:
+        final code = turn.errorMessage?.trim();
+        if (code == null || code.isEmpty) {
+          return '这轮工具执行未能正常完成，已停止继续执行。你可以稍后重试，或把问题说得更具体一些。';
+        }
+        return '这轮工具执行未能正常完成，已停止继续执行。失败原因：$code。你可以稍后重试，或调整问题后继续。';
+    }
   }
 
   @override
@@ -549,6 +640,11 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     _ref.read(streamSubscriptionProvider.notifier).state = subscription;
     try {
       await completion.future;
+      await _finalizeTurnOutcome(
+        groupId: currentGroupId,
+        turnId: turnId,
+        processor: processor,
+      );
     } finally {
       await processor.dispose();
       if (identical(_ref.read(streamSubscriptionProvider), subscription)) {
@@ -647,6 +743,11 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     _ref.read(streamSubscriptionProvider.notifier).state = subscription;
     try {
       await completion.future;
+      await _finalizeTurnOutcome(
+        groupId: currentGroupId,
+        turnId: turnId,
+        processor: processor,
+      );
     } finally {
       await processor.dispose();
       if (identical(_ref.read(streamSubscriptionProvider), subscription)) {
