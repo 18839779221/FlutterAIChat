@@ -14,6 +14,7 @@ import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/utils/logger.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/latest_message_running_status_tail.dart';
 import 'package:ai_chat/widgets/chat_blocks/streaming_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/structured_output_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_exception_card.dart';
@@ -115,12 +116,13 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   @override
   Widget build(BuildContext context) {
     final messages = ref.watch(messagesProvider);
+    final sendPhase = ref.watch(sendPhaseProvider);
     final hasMoreMessages = ref.watch(hasMoreMessagesProvider);
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final textController = ref.read(textControllerProvider);
     final focusNode = ref.read(focusNodeProvider);
 
-    final timelineItems = _buildTimelineItems(messages);
+    final timelineItems = _buildTimelineItems(messages, sendPhase);
     final itemCount = timelineItems.length + (hasMoreMessages ? 1 : 0);
 
     if (messages.isEmpty) {
@@ -181,13 +183,19 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     );
   }
 
-  List<Widget> _buildTimelineItems(List<ChatMessage> messages) {
+  List<Widget> _buildTimelineItems(
+    List<ChatMessage> messages,
+    ChatSendPhase sendPhase,
+  ) {
     if (messages.isEmpty) {
       return const [];
     }
 
     final currentGroup = ref.read(currentGroupProvider);
     final sortedMessages = [...messages]..sort(compareChatMessagesForTimeline);
+    final runningTail = ref
+        .read(latestMessageRunningStatusResolverProvider)
+        .resolve(messages: sortedMessages, sendPhase: sendPhase);
 
     final widgets = <Widget>[];
     var cursor = 0;
@@ -196,16 +204,6 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       final current = sortedMessages[cursor];
 
       if (current.isUser) {
-        widgets.add(
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: GestureDetector(
-              onLongPress: () => _showMessageOptionMenu(current),
-              child: UserAnchorBubble(text: current.text),
-            ),
-          ),
-        );
-
         final segment = <ChatMessage>[current];
         var nextCursor = cursor + 1;
         while (nextCursor < sortedMessages.length &&
@@ -213,6 +211,23 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           segment.add(sortedMessages[nextCursor]);
           nextCursor += 1;
         }
+
+        final isLatestTurn = nextCursor >= sortedMessages.length;
+        final hasAssistantOutput = segment.length > 1;
+        Widget userBubble = Padding(
+          padding: const EdgeInsets.only(bottom: 2),
+          child: GestureDetector(
+            onLongPress: () => _showMessageOptionMenu(current),
+            child: UserAnchorBubble(text: current.text),
+          ),
+        );
+        if (isLatestTurn && !hasAssistantOutput && runningTail != null) {
+          userBubble = _wrapWithLatestRunningTail(
+            child: userBubble,
+            statusText: runningTail.text,
+          );
+        }
+        widgets.add(userBubble);
 
         final blocks = _blockBuilder.buildAssistantBlocks(
           messages: segment,
@@ -222,6 +237,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           _buildAssistantBlocks(
             segment,
             blocks,
+            runningTailText:
+                isLatestTurn && hasAssistantOutput ? runningTail?.text : null,
           ),
         );
         cursor = nextCursor;
@@ -232,7 +249,15 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
         messages: [current],
         groupId: currentGroup?.id,
       );
-      widgets.addAll(_buildAssistantBlocks([current], orphanBlocks));
+      widgets.addAll(
+        _buildAssistantBlocks(
+          [current],
+          orphanBlocks,
+          runningTailText: cursor == sortedMessages.length - 1
+              ? runningTail?.text
+              : null,
+        ),
+      );
       cursor += 1;
     }
 
@@ -242,6 +267,9 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   List<Widget> _buildAssistantBlocks(
     List<ChatMessage> sourceMessages,
     List<AssistantTurnBlock> blocks,
+    {
+    required String? runningTailText,
+  }
   ) {
     final widgets = <Widget>[];
     final activeAskUserQuestion =
@@ -343,10 +371,29 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           );
           break;
       }
+      if (runningTailText != null && index == blocks.length - 1) {
+        blockWidget = _wrapWithLatestRunningTail(
+          child: blockWidget,
+          statusText: runningTailText,
+        );
+      }
       widgets.add(blockWidget);
     }
 
     return widgets;
+  }
+
+  Widget _wrapWithLatestRunningTail({
+    required Widget child,
+    required String statusText,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        child,
+        LatestMessageRunningStatusTail(statusText: statusText),
+      ],
+    );
   }
 
   Widget _buildToolResultBlockWidget({

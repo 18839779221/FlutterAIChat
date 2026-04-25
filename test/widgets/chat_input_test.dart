@@ -36,7 +36,7 @@ void main() {
     expect(textField.maxLines, 4);
   });
 
-  testWidgets('chat input shows pending label while awaiting confirmation', (
+  testWidgets('chat input does not show pending label while awaiting confirmation', (
     tester,
   ) async {
     final container = ProviderContainer(
@@ -62,10 +62,10 @@ void main() {
       ),
     );
 
-    expect(find.text('等待工具确认'), findsOneWidget);
+    expect(find.text('等待工具确认'), findsNothing);
   });
 
-  testWidgets('chat input shows planner hint while preparing', (tester) async {
+  testWidgets('chat input does not show planner hint while preparing', (tester) async {
     final container = ProviderContainer(
       overrides: [
         chatSendStateProvider.overrideWith(
@@ -89,7 +89,34 @@ void main() {
       ),
     );
 
-    expect(find.text('正在规划下一步'), findsOneWidget);
+    expect(find.text('正在规划下一步'), findsNothing);
+  });
+
+  testWidgets('chat input does not show tool running helper text', (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSendStateProvider.overrideWith(
+          (ref) => ChatSendStateNotifier()
+            ..update(
+              phase: ChatSendPhase.executingTool,
+              isGenerating: false,
+            ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+
+    expect(find.text('工具执行中'), findsNothing);
   });
 
   testWidgets('chat input shows stop icon instead of spinner while streaming', (

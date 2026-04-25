@@ -9,7 +9,6 @@ import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/streaming_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/structured_output_block.dart';
-import 'package:ai_chat/widgets/chat_blocks/tool_exception_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_outcome_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
@@ -18,6 +17,7 @@ import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
 import 'package:ai_chat/widgets/chat_message_list.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_result_card.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_timeline_card.dart';
+import 'package:ai_chat/widgets/tool_renderers/web_search_tool_result_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -106,6 +106,23 @@ void main() {
       expect(find.text('assistant reply'), findsOneWidget);
     });
 
+    testWidgets('idle assistant message does not show running tail', (
+      tester,
+    ) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: 'assistant reply',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+      );
+
+      expect(find.byKey(const ValueKey('latest-message-running-tail')), findsNothing);
+    });
+
     testWidgets('generating assistant text uses lightweight streaming block', (
       tester,
     ) async {
@@ -124,6 +141,73 @@ void main() {
       expect(find.byType(StreamingResponseBlock), findsOneWidget);
       expect(find.byType(FinalResponseBlock), findsNothing);
       expect(find.text('streaming reply'), findsOneWidget);
+    });
+
+    testWidgets('streaming assistant message shows running tail on latest block',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: 'streaming reply',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+            status: MessageStatus.generating,
+          ),
+        ],
+        sendPhase: ChatSendPhase.streamingResponse,
+      );
+
+      expect(find.byKey(const ValueKey('latest-message-running-tail')), findsOneWidget);
+      expect(find.text('正在生成回复'), findsOneWidget);
+    });
+
+    testWidgets('preparing phase shows running tail under latest user message',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '帮我总结一下',
+            role: MessageRole.user,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+        sendPhase: ChatSendPhase.preparing,
+      );
+
+      expect(find.byKey(const ValueKey('latest-message-running-tail')), findsOneWidget);
+      expect(find.text('正在请求模型'), findsOneWidget);
+    });
+
+    testWidgets('preparing phase after assistant output shows planning text',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: 'OpenAI 最近有什么新闻？',
+            role: MessageRole.user,
+            contentType: MessageContentType.plainText,
+          ),
+          _buildMessage(
+            text: '准备执行工具',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const ToolInvocation(
+              toolName: 'web_search',
+              arguments: {'query': 'OpenAI latest news'},
+              status: ToolInvocationStatus.proposed,
+              summary: '准备执行工具：联网搜索',
+              requiresConfirmation: false,
+            ).toJson(),
+          ),
+        ],
+        sendPhase: ChatSendPhase.preparing,
+      );
+
+      expect(find.byKey(const ValueKey('latest-message-running-tail')), findsOneWidget);
+      expect(find.text('正在规划下一步'), findsOneWidget);
     });
 
     testWidgets(
@@ -172,6 +256,179 @@ void main() {
 
       expect(find.byType(ToolInlineStepRow), findsOneWidget);
       expect(find.text('已执行：搜索历史记录'), findsOneWidget);
+    });
+
+    testWidgets('latest tool workflow shows running tail on the tool block',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: 'Custom invocation',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const ToolInvocation(
+              toolName: 'web_search',
+              arguments: {'query': 'OpenAI latest news'},
+              status: ToolInvocationStatus.running,
+              summary: '正在执行工具：联网搜索',
+              requiresConfirmation: false,
+            ).toJson(),
+          ),
+        ],
+        sendPhase: ChatSendPhase.executingTool,
+      );
+
+      expect(find.byKey(const ValueKey('latest-message-running-tail')), findsOneWidget);
+      expect(find.text('正在联网搜索'), findsOneWidget);
+    });
+
+    testWidgets('parallel active tools degrade to generic running text',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '帮我查一下并读取网页',
+            role: MessageRole.user,
+            contentType: MessageContentType.plainText,
+          ),
+          _buildMessage(
+            text: '正在执行工具：联网搜索',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const ToolInvocation(
+              toolName: 'web_search',
+              arguments: {'query': 'OpenAI latest news'},
+              status: ToolInvocationStatus.running,
+              summary: '正在执行工具：联网搜索',
+              requiresConfirmation: false,
+            ).toJson(),
+          ),
+          _buildMessage(
+            text: '正在执行工具：读取网页',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const ToolInvocation(
+              toolName: 'fetch_webpage',
+              arguments: {'url': 'https://openai.com'},
+              status: ToolInvocationStatus.running,
+              summary: '正在执行工具：读取网页',
+              requiresConfirmation: false,
+            ).toJson(),
+          ),
+        ],
+        sendPhase: ChatSendPhase.executingTool,
+      );
+
+      expect(find.byKey(const ValueKey('latest-message-running-tail')), findsOneWidget);
+      expect(find.text('正在执行工具'), findsOneWidget);
+    });
+
+    testWidgets('single remaining tool keeps specific text after other result',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '帮我查一下并读取网页',
+            role: MessageRole.user,
+            contentType: MessageContentType.plainText,
+          ),
+          _buildMessage(
+            text: '正在执行工具：联网搜索',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const ToolInvocation(
+              toolName: 'web_search',
+              arguments: {'query': 'OpenAI latest news'},
+              status: ToolInvocationStatus.running,
+              summary: '正在执行工具：联网搜索',
+              requiresConfirmation: false,
+            ).toJson(),
+          ),
+          _buildMessage(
+            text: '正在执行工具：读取网页',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const ToolInvocation(
+              toolName: 'fetch_webpage',
+              arguments: {'url': 'https://openai.com'},
+              status: ToolInvocationStatus.running,
+              summary: '正在执行工具：读取网页',
+              requiresConfirmation: false,
+            ).toJson(),
+          ),
+          _buildMessage(
+            text: '已找到 5 条结果',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolResult,
+            payloadJson: const ToolResult(
+              toolName: 'web_search',
+              status: ToolExecutionStatus.success,
+              displayText: '已找到 5 条结果',
+            ).toJson(),
+          ),
+        ],
+        sendPhase: ChatSendPhase.executingTool,
+      );
+
+      expect(find.byKey(const ValueKey('latest-message-running-tail')), findsOneWidget);
+      expect(find.text('正在读取网页'), findsOneWidget);
+    });
+
+    testWidgets(
+        'completed tool falls back to planning text instead of stale tool text',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '帮我搜一下',
+            role: MessageRole.user,
+            contentType: MessageContentType.plainText,
+          ),
+          _buildMessage(
+            text: '准备执行工具：联网搜索',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const ToolInvocation(
+              toolName: 'web_search',
+              arguments: {'query': 'OpenAI latest news'},
+              status: ToolInvocationStatus.proposed,
+              summary: '准备执行工具：联网搜索',
+              requiresConfirmation: false,
+            ).toJson(),
+          ),
+          _buildMessage(
+            text: '正在执行工具：联网搜索',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const ToolInvocation(
+              toolName: 'web_search',
+              arguments: {'query': 'OpenAI latest news'},
+              status: ToolInvocationStatus.running,
+              summary: '正在执行工具：联网搜索',
+              requiresConfirmation: false,
+            ).toJson(),
+          ),
+          _buildMessage(
+            text: '已找到 5 条结果',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolResult,
+            payloadJson: const ToolResult(
+              toolName: 'web_search',
+              status: ToolExecutionStatus.success,
+              displayText: '已找到 5 条结果',
+            ).toJson(),
+          ),
+        ],
+        sendPhase: ChatSendPhase.executingTool,
+      );
+
+      expect(find.byKey(const ValueKey('latest-message-running-tail')), findsOneWidget);
+      expect(find.text('正在规划下一步'), findsOneWidget);
+      expect(find.text('正在联网搜索'), findsNothing);
     });
 
     testWidgets('external action tool result renders as outcome card',
@@ -223,8 +480,8 @@ void main() {
         ],
       );
 
-      expect(find.byType(ToolExceptionCard), findsOneWidget);
-      expect(find.text('联网搜索失败'), findsOneWidget);
+      expect(find.byType(WebSearchToolResultCard), findsOneWidget);
+      expect(find.textContaining('latest openai'), findsOneWidget);
     });
 
     testWidgets(
@@ -246,6 +503,7 @@ void main() {
             ).toJson(),
           ),
         ],
+        registry: const ToolUiRendererRegistry(renderers: []),
       );
 
       expect(find.byType(ToolWorkflowCard), findsOneWidget);
@@ -614,6 +872,7 @@ Future<void> _pumpMessageList(
   TextEditingController? textController,
   FocusNode? focusNode,
   ToolUiRendererRegistry? registry,
+  ChatSendPhase sendPhase = ChatSendPhase.idle,
 }) async {
   final container = ProviderContainer(
     overrides: [
@@ -671,8 +930,8 @@ Future<void> _pumpMessageList(
       chatSendStateProvider.overrideWith(
         (ref) => ChatSendStateNotifier()
           ..update(
-            phase: ChatSendPhase.idle,
-            isGenerating: false,
+            phase: sendPhase,
+            isGenerating: sendPhase == ChatSendPhase.streamingResponse,
           ),
       ),
       if (registry != null)
