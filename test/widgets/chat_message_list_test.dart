@@ -281,9 +281,95 @@ void main() {
       );
 
       expect(
-        find.byKey(const ValueKey('timeline-block-0_2-analysis-1')),
+        find.byKey(const ValueKey('timeline-block-0_1-analysis-1')),
         findsOneWidget,
       );
+    });
+
+    testWidgets(
+        'adding a later streaming message does not downgrade previous completed markdown block',
+        (tester) async {
+      final container = ProviderContainer(
+        overrides: [
+          hasMoreMessagesProvider.overrideWith((ref) => false),
+          chatSendStateProvider.overrideWith(
+            (ref) => ChatSendStateNotifier()
+              ..update(
+                phase: ChatSendPhase.idle,
+                isGenerating: false,
+              ),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        container.dispose();
+      });
+
+      container.read(messagesProvider.notifier).setMessages([
+        ChatMessage(
+          id: 1,
+          text: '问题一',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+        ),
+        ChatMessage(
+          id: 2,
+          text: '# Title\n\nParagraph',
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+        ),
+      ]);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const Scaffold(
+              body: ChatMessageList(),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(FinalResponseBlock), findsOneWidget);
+      expect(find.byType(StreamingResponseBlock), findsNothing);
+      expect(find.text('Title'), findsOneWidget);
+
+      container.read(messagesProvider.notifier).addMessage(
+            ChatMessage(
+              id: 3,
+              text: '问题二',
+              role: MessageRole.user,
+              status: MessageStatus.completed,
+              contentType: MessageContentType.plainText,
+            ),
+          );
+      container.read(messagesProvider.notifier).addMessage(
+            ChatMessage(
+              id: 4,
+              text: '还在生成',
+              role: MessageRole.assistant,
+              status: MessageStatus.generating,
+              contentType: MessageContentType.plainText,
+            ),
+          );
+      container.read(chatSendStateProvider.notifier).update(
+            phase: ChatSendPhase.streamingResponse,
+            isGenerating: true,
+          );
+      await tester.pump();
+
+      expect(find.byType(FinalResponseBlock), findsOneWidget);
+      expect(find.byType(StreamingResponseBlock), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('timeline-block-0_1-analysis-1')),
+        findsOneWidget,
+      );
+      expect(find.text('Title'), findsOneWidget);
     });
 
     testWidgets('latest tool workflow shows running tail on the tool block',

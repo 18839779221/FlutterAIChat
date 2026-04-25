@@ -3,6 +3,7 @@ import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/tools/core/tool_display_names.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
+import 'package:ai_chat/widgets/chat_timeline/stable_markdown_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
@@ -51,6 +52,7 @@ void main() {
 
       expect(find.text('Analysis'), findsOneWidget);
       expect(find.text('这是一段分析内容'), findsOneWidget);
+      expect(find.byType(StableMarkdownBlock), findsOneWidget);
     });
 
     testWidgets('markdown typography favors tighter document rhythm', (

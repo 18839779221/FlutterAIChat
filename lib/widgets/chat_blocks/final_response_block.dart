@@ -1,5 +1,6 @@
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/theme/app_typography.dart';
+import 'package:ai_chat/widgets/chat_timeline/stable_markdown_block.dart';
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
 import 'package:flutter/material.dart';
 
@@ -7,11 +8,13 @@ import 'package:flutter/material.dart';
 class FinalResponseBlock extends StatelessWidget {
   final String title;
   final String text;
+  final String? markdownCacheKey;
 
   const FinalResponseBlock({
     super.key,
     required this.title,
     required this.text,
+    this.markdownCacheKey,
   });
 
   @override
@@ -42,7 +45,11 @@ class FinalResponseBlock extends StatelessWidget {
               ),
               SizedBox(height: spacing.xxs + 1),
             ],
-            FlutterMarkdownImpl(data: text),
+            StableMarkdownBlock(
+              cacheKey:
+                  markdownCacheKey ?? 'final:${title.trim()}:${text.hashCode}',
+              child: FlutterMarkdownImpl(data: text),
+            ),
           ],
         ),
       ),
