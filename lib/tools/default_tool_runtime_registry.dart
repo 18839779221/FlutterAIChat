@@ -49,11 +49,11 @@ ToolRuntimeRegistry buildDefaultToolRuntimeRegistry({
       FetchWebpageToolHandler(
         webpageFetcher: ({
           required url,
-          extractMode,
+          required prompt,
         }) {
           return toolExecutor.executeFetchWebpage(
             url: url,
-            extractMode: extractMode,
+            prompt: prompt,
           );
         },
       ),
