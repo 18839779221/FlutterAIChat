@@ -16,7 +16,6 @@ void main() {
           theme: AppTheme.light(),
           home: const Scaffold(
             body: FetchWebpageToolWorkflowCard(
-              expanded: false,
               steps: [
                 ToolWorkflowStep(
                   stepId: 'fetch-1',
@@ -43,39 +42,30 @@ void main() {
       expect(find.text('https://flutter.dev/docs'), findsNothing);
     });
 
-    testWidgets('workflow card supports inline expand for single completed step', (
+    testWidgets('completed workflow card stays compact before result card', (
       tester,
     ) async {
-      final expanded = ValueNotifier<bool>(false);
-
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.light(),
-          home: Scaffold(
-            body: ValueListenableBuilder<bool>(
-              valueListenable: expanded,
-              builder: (context, isExpanded, child) {
-                return FetchWebpageToolWorkflowCard(
-                  expanded: isExpanded,
-                  onTap: () => expanded.value = !expanded.value,
-                  steps: const [
-                    ToolWorkflowStep(
-                      stepId: 'fetch-1',
-                      turnId: 'turn-1',
-                      toolName: 'fetch_webpage',
-                      title: '读取网页',
-                      summary: '已返回网页处理结果',
-                      status: ToolWorkflowStepStatus.completed,
-                      requiresConfirmation: false,
-                      details: {
-                        'url': 'https://flutter.dev/docs',
-                        'prompt': '提取和焦点丢失相关的信息',
-                        'resultPreview': '页面提到频繁 rebuild 可能导致焦点丢失。',
-                      },
-                    ),
-                  ],
-                );
-              },
+          home: const Scaffold(
+            body: FetchWebpageToolWorkflowCard(
+              steps: [
+                ToolWorkflowStep(
+                  stepId: 'fetch-1',
+                  turnId: 'turn-1',
+                  toolName: 'fetch_webpage',
+                  title: '读取网页',
+                  summary: '已返回网页处理结果',
+                  status: ToolWorkflowStepStatus.completed,
+                  requiresConfirmation: false,
+                  details: {
+                    'url': 'https://flutter.dev/docs',
+                    'prompt': '提取和焦点丢失相关的信息',
+                    'resultPreview': '页面提到频繁 rebuild 可能导致焦点丢失。',
+                  },
+                ),
+              ],
             ),
           ),
         ),
@@ -84,70 +74,9 @@ void main() {
       await tester.tap(find.text('阅读网页 · flutter.dev'));
       await tester.pumpAndSettle();
 
-      expect(find.text('网页详情'), findsOneWidget);
-      expect(find.text('flutter.dev'), findsWidgets);
-      expect(find.textContaining('焦点丢失'), findsWidgets);
-    });
-
-    testWidgets('workflow card supports batch expand for multiple steps', (
-      tester,
-    ) async {
-      final expanded = ValueNotifier<bool>(false);
-
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.light(),
-          home: Scaffold(
-            body: ValueListenableBuilder<bool>(
-              valueListenable: expanded,
-              builder: (context, isExpanded, child) {
-                return FetchWebpageToolWorkflowCard(
-                  expanded: isExpanded,
-                  onTap: () => expanded.value = !expanded.value,
-                  steps: const [
-                    ToolWorkflowStep(
-                      stepId: 'fetch-1',
-                      turnId: 'turn-1',
-                      toolName: 'fetch_webpage',
-                      title: '读取网页',
-                      summary: '已返回网页处理结果',
-                      status: ToolWorkflowStepStatus.completed,
-                      requiresConfirmation: false,
-                      details: {
-                        'url': 'https://flutter.dev/docs',
-                        'prompt': '总结 Flutter 页面',
-                        'resultPreview': 'Flutter 摘要',
-                      },
-                    ),
-                    ToolWorkflowStep(
-                      stepId: 'fetch-2',
-                      turnId: 'turn-1',
-                      toolName: 'fetch_webpage',
-                      title: '读取网页',
-                      summary: '读取失败：http_403',
-                      status: ToolWorkflowStepStatus.failed,
-                      requiresConfirmation: false,
-                      details: {
-                        'url': 'https://example.com/post',
-                        'prompt': '总结 Example 页面',
-                        'failureReason': 'http_403',
-                      },
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ),
-      );
-
-      await tester.tap(find.text('读取网页 · 2 个目标'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('本批共 2 个网页'), findsOneWidget);
-      expect(find.text('flutter.dev'), findsOneWidget);
-      expect(find.text('example.com'), findsOneWidget);
-      expect(find.textContaining('http_403'), findsOneWidget);
+      expect(find.text('阅读网页 · flutter.dev'), findsOneWidget);
+      expect(find.textContaining('焦点丢失'), findsOneWidget);
+      expect(find.text('网页详情'), findsNothing);
     });
 
     testWidgets(
@@ -184,8 +113,7 @@ void main() {
     });
 
     testWidgets(
-        'result card opens bottom sheet and shows markdown content sections',
-        (
+        'result card opens bottom sheet and shows markdown content sections', (
       tester,
     ) async {
       await tester.pumpWidget(

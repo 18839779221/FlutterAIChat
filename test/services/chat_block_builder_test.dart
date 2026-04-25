@@ -110,7 +110,9 @@ void main() {
       );
     });
 
-    test('prefers execution policy from toolAccess snapshot when root field is absent', () {
+    test(
+        'prefers execution policy from toolAccess snapshot when root field is absent',
+        () {
       final blocks = builder.buildAssistantBlocks(
         messages: [
           ChatMessage(
@@ -194,7 +196,8 @@ void main() {
       );
     });
 
-    test('maps ask user question prompt message to structured output block', () {
+    test('maps ask user question prompt message to structured output block',
+        () {
       final blocks = builder.buildAssistantBlocks(
         messages: [
           ChatMessage(
@@ -231,7 +234,8 @@ void main() {
       expect(blocks.single.payload?['type'], 'prompt');
     });
 
-    test('maps ask user question result message to structured output block', () {
+    test('maps ask user question result message to structured output block',
+        () {
       final blocks = builder.buildAssistantBlocks(
         messages: [
           ChatMessage(
@@ -259,7 +263,9 @@ void main() {
       expect(blocks.single.payload?['type'], 'result');
     });
 
-    test('maps blocked workflow payload without re-deriving policy from message type', () {
+    test(
+        'maps blocked workflow payload without re-deriving policy from message type',
+        () {
       final blocks = builder.buildAssistantBlocks(
         messages: [
           ChatMessage(
@@ -308,7 +314,8 @@ void main() {
       );
     });
 
-    test('replaces adjacent workflow messages for the same step in one card', () {
+    test('replaces adjacent workflow messages for the same step in one card',
+        () {
       final blocks = builder.buildAssistantBlocks(
         messages: [
           ChatMessage(
@@ -365,7 +372,8 @@ void main() {
       );
     });
 
-    test('does not merge sequential write invocations into one workflow block', () {
+    test('does not merge sequential write invocations into one workflow block',
+        () {
       final blocks = builder.buildAssistantBlocks(
         messages: [
           ChatMessage(
@@ -428,7 +436,8 @@ void main() {
       );
     });
 
-    test('merges tool result into the existing workflow card instead of appending',
+    test(
+        'merges tool result into the existing workflow card instead of appending',
         () {
       final blocks = builder.buildAssistantBlocks(
         messages: [
@@ -485,7 +494,8 @@ void main() {
       expect(blocks.single.payload?['steps'][0]['details']['title'], '开会');
     });
 
-    test('fetch_webpage result replaces workflow block in place and keeps prompt preview',
+    test(
+        'fetch_webpage result replaces workflow block in place and keeps prompt preview',
         () {
       final blocks = builder.buildAssistantBlocks(
         messages: [
@@ -556,7 +566,7 @@ void main() {
     });
 
     test(
-        'multi-step fetch_webpage batch stays as one workflow block while results merge back into steps',
+        'parallel fetch_webpage steps stay as separate cards and result updates the matching one',
         () {
       final blocks = builder.buildAssistantBlocks(
         messages: [
@@ -623,12 +633,15 @@ void main() {
         ],
       );
 
-      expect(blocks, hasLength(1));
-      expect(blocks.single.type, AssistantTurnBlockType.toolWorkflow);
-      expect(blocks.single.payload?['steps'], hasLength(2));
-      expect(blocks.single.payload?['steps'][0]['status'], 'completed');
-      expect(blocks.single.payload?['steps'][0]['details']['resultPreview'], 'A 摘要');
-      expect(blocks.single.payload?['steps'][1]['status'], 'running');
+      expect(blocks, hasLength(2));
+      expect(blocks[0].type, AssistantTurnBlockType.toolResultSummary);
+      expect(blocks[0].payload?['data']['url'], 'https://a.example.com/post');
+      expect(blocks[0].payload?['data']['resultPreview'], 'A 摘要');
+      expect(blocks[1].type, AssistantTurnBlockType.toolWorkflow);
+      expect(blocks[1].payload?['steps'], hasLength(1));
+      expect(blocks[1].payload?['steps'][0]['details']['url'],
+          'https://b.example.com/post');
+      expect(blocks[1].payload?['steps'][0]['status'], 'running');
     });
   });
 }

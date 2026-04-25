@@ -16,7 +16,6 @@ void main() {
           theme: AppTheme.light(),
           home: const Scaffold(
             body: WebSearchToolWorkflowCard(
-              expanded: false,
               steps: [
                 ToolWorkflowStep(
                   stepId: 'web-1',
