@@ -363,7 +363,8 @@ class ChatBlockBuilder {
     final nextToolName = (nextSteps.first['toolName'] ?? '').toString();
     if (previousToolName.isEmpty ||
         nextToolName.isEmpty ||
-        previousToolName != nextToolName) {
+        previousToolName != nextToolName ||
+        !_shouldAggregateWorkflowTool(previousToolName)) {
       blocks.add(block);
       return;
     }
@@ -508,6 +509,21 @@ class ChatBlockBuilder {
     switch (toolName.trim()) {
       case 'web_search':
       case 'fetch_webpage':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  bool _shouldAggregateWorkflowTool(String toolName) {
+    switch (toolName.trim()) {
+      case 'search_chat_history':
+      case 'web_search':
+      case 'fetch_webpage':
+      case 'Read':
+      case 'LS':
+      case 'Grep':
+      case 'Glob':
         return true;
       default:
         return false;
