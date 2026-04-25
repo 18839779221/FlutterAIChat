@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../models/tool/tool_result.dart';
+import '../../theme/app_colors.dart';
+import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
+import '../markdown/flutter_markdown_impl.dart';
 import 'research_tool_card_shell.dart';
 
-class FetchWebpageToolResultCard extends StatefulWidget {
+class FetchWebpageToolResultCard extends StatelessWidget {
   const FetchWebpageToolResultCard({
     super.key,
     required this.result,
@@ -13,33 +16,24 @@ class FetchWebpageToolResultCard extends StatefulWidget {
   final ToolResult result;
 
   @override
-  State<FetchWebpageToolResultCard> createState() =>
-      _FetchWebpageToolResultCardState();
-}
-
-class _FetchWebpageToolResultCardState
-    extends State<FetchWebpageToolResultCard> {
-  bool _expanded = false;
-
-  @override
   Widget build(BuildContext context) {
-    final data = widget.result.data;
+    final data = result.data;
     final url = (data['url'] ?? '').toString().trim();
     final host = _hostFromData(data, url);
     final prompt = (data['prompt'] ?? '').toString().trim();
     final preview = (data['resultPreview'] ??
             data['processedContent'] ??
-            widget.result.summary)
+            result.summary)
         .toString()
         .trim();
 
     return ResearchToolCardShell(
       actionLabel: '读取网页',
       primaryText: '阅读网页 · ${host.isEmpty ? '网页内容' : host}',
-      statusLabel: widget.result.statusLabel,
-      statusColor: resultStatusColor(context, widget.result),
-      expanded: _expanded,
-      onTap: () => setState(() => _expanded = !_expanded),
+      statusLabel: result.statusLabel,
+      statusColor: resultStatusColor(context, result),
+      footerHint: '查看详情',
+      onTap: () => _showDetailsSheet(context, data: data, url: url),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -55,8 +49,8 @@ class _FetchWebpageToolResultCardState
               SizedBox(height: Theme.of(context).extension<AppSpacing>()!.xs),
             Text(
               preview,
-              maxLines: _expanded ? null : 2,
-              overflow: _expanded ? null : TextOverflow.ellipsis,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     height: 1.4,
                   ),
@@ -64,7 +58,74 @@ class _FetchWebpageToolResultCardState
           ],
         ],
       ),
-      expandedChild: _buildExpandedContent(context, data: data, url: url),
+    );
+  }
+
+  Future<void> _showDetailsSheet(
+    BuildContext context, {
+    required Map<String, dynamic> data,
+    required String url,
+  }) async {
+    final colors = Theme.of(context).extension<AppColors>()!;
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final radius = Theme.of(context).extension<AppRadius>()!;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: colors.chatBackground,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(radius.lg)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: FractionallySizedBox(
+            heightFactor: 0.82,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                spacing.md,
+                spacing.sm,
+                spacing.md,
+                spacing.lg,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: colors.secondaryText.withValues(alpha: 0.24),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: spacing.md),
+                  Text(
+                    _sheetTitle(data, url),
+                    style:
+                        Theme.of(sheetContext).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                  ),
+                  SizedBox(height: spacing.md),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: _buildExpandedContent(
+                        sheetContext,
+                        data: data,
+                        url: url,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -99,11 +160,8 @@ class _FetchWebpageToolResultCardState
         SizedBox(height: spacing.sm),
         _SectionTitle(
           title: '处理结果',
-          child: Text(
-            processedContent.isEmpty ? widget.result.summary : processedContent,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  height: 1.45,
-                ),
+          child: FlutterMarkdownImpl(
+            data: processedContent.isEmpty ? result.summary : processedContent,
           ),
         ),
         SizedBox(height: spacing.sm),
@@ -136,6 +194,15 @@ class _FetchWebpageToolResultCardState
       return url;
     }
     return parsed.host.trim();
+  }
+
+  String _sheetTitle(Map<String, dynamic> data, String url) {
+    final title = (data['title'] ?? '').toString().trim();
+    if (title.isNotEmpty) {
+      return title;
+    }
+    final host = _hostFromData(data, url);
+    return host.isEmpty ? '网页详情' : host;
   }
 }
 
