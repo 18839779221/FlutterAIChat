@@ -1,6 +1,7 @@
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/theme/app_theme.dart';
+import 'package:ai_chat/widgets/technical_content_surface.dart';
 import 'package:ai_chat/widgets/tool_renderers/write_tool_result_card.dart';
 import 'package:ai_chat/widgets/tool_renderers/write_tool_workflow_card.dart';
 import 'package:flutter/material.dart';
@@ -96,6 +97,7 @@ void main() {
       expect(find.text('步骤 1'), findsNothing);
       expect(find.textContaining('写入内容预览'), findsNothing);
       expect(find.text('1'), findsOneWidget);
+      expect(find.byType(TechnicalContentSurface), findsOneWidget);
     });
 
     testWidgets('result card shows summary first and evidence after expand', (
