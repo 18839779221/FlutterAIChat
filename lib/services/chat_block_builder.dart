@@ -363,8 +363,7 @@ class ChatBlockBuilder {
     final nextToolName = (nextSteps.first['toolName'] ?? '').toString();
     if (previousToolName.isEmpty ||
         nextToolName.isEmpty ||
-        previousToolName != nextToolName ||
-        !_shouldAggregateWorkflowTool(previousToolName)) {
+        previousToolName != nextToolName) {
       blocks.add(block);
       return;
     }
@@ -376,13 +375,16 @@ class ChatBlockBuilder {
       return;
     }
 
-    final replacedSteps = previousSteps
-        .map((step) => step['stepId'] == nextStepId ? nextStep : step)
-        .toList();
     final alreadyTracked =
         previousSteps.any((step) => step['stepId'] == nextStepId);
-    final mergedSteps =
-        alreadyTracked ? replacedSteps : [...previousSteps, nextStep];
+    if (!alreadyTracked) {
+      blocks.add(block);
+      return;
+    }
+
+    final mergedSteps = previousSteps
+        .map((step) => step['stepId'] == nextStepId ? nextStep : step)
+        .toList();
     final latestStep = mergedSteps.last;
 
     blocks[blocks.length - 1] = previous.copyWith(
@@ -515,21 +517,6 @@ class ChatBlockBuilder {
     }
   }
 
-  bool _shouldAggregateWorkflowTool(String toolName) {
-    switch (toolName.trim()) {
-      case 'search_chat_history':
-      case 'web_search':
-      case 'fetch_webpage':
-      case 'Read':
-      case 'LS':
-      case 'Grep':
-      case 'Glob':
-        return true;
-      default:
-        return false;
-    }
-  }
-
   int _resolveToolResultStepIndex({
     required List<Map<String, dynamic>> candidateSteps,
     required String toolName,
@@ -546,10 +533,6 @@ class ChatBlockBuilder {
     if (matchingIndexes.isEmpty) {
       return -1;
     }
-    if (matchingIndexes.length == 1) {
-      return matchingIndexes.single;
-    }
-
     final data = payload?['data'];
     if (data is Map) {
       final typedData = Map<String, dynamic>.from(data);
@@ -562,12 +545,11 @@ class ChatBlockBuilder {
           ]);
           if (resolvedUrl != null) {
             final exactIndex = matchingIndexes.lastWhere(
-              (index) => _fetchStepUrls(candidateSteps[index]).contains(resolvedUrl),
+              (index) =>
+                  _fetchStepUrls(candidateSteps[index]).contains(resolvedUrl),
               orElse: () => -1,
             );
-            if (exactIndex != -1) {
-              return exactIndex;
-            }
+            return exactIndex;
           }
           break;
         case 'web_search':
@@ -579,12 +561,14 @@ class ChatBlockBuilder {
                   query.toLowerCase(),
               orElse: () => -1,
             );
-            if (exactIndex != -1) {
-              return exactIndex;
-            }
+            return exactIndex;
           }
           break;
       }
+    }
+
+    if (matchingIndexes.length == 1) {
+      return matchingIndexes.single;
     }
 
     return matchingIndexes.last;
@@ -600,7 +584,10 @@ class ChatBlockBuilder {
       typedDetails['url'],
       typedDetails['finalUrl'],
       typedDetails['redirectUrl'],
-    ].map((value) => (value ?? '').toString().trim()).where((value) => value.isNotEmpty).toList();
+    ]
+        .map((value) => (value ?? '').toString().trim())
+        .where((value) => value.isNotEmpty)
+        .toList();
   }
 
   String _stepQuery(Map<String, dynamic> step) {
@@ -608,7 +595,9 @@ class ChatBlockBuilder {
     if (details is! Map) {
       return '';
     }
-    return (Map<String, dynamic>.from(details)['query'] ?? '').toString().trim();
+    return (Map<String, dynamic>.from(details)['query'] ?? '')
+        .toString()
+        .trim();
   }
 
   String? _firstNonEmptyString(List<Object?> values) {
