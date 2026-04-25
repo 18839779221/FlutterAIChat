@@ -491,5 +491,81 @@ void main() {
         contains('频繁 rebuild'),
       );
     });
+
+    test(
+        'multi-step fetch_webpage batch stays as one workflow block while results merge back into steps',
+        () {
+      final blocks = builder.buildAssistantBlocks(
+        messages: [
+          ChatMessage(
+            id: 70,
+            text: '帮我并行读取两个网页',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 25, 10, 1, 0),
+          ),
+          ChatMessage(
+            id: 71,
+            text: '正在执行工具：读取网页',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const {
+              'toolName': 'fetch_webpage',
+              'arguments': {
+                'url': 'https://a.example.com/post',
+                'prompt': '总结 A',
+              },
+              'status': 'running',
+              'summary': '正在执行工具：读取网页',
+              'requiresConfirmation': false,
+              'stepId': 11,
+            },
+            timestamp: DateTime(2026, 4, 25, 10, 1, 1),
+          ),
+          ChatMessage(
+            id: 72,
+            text: '正在执行工具：读取网页',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const {
+              'toolName': 'fetch_webpage',
+              'arguments': {
+                'url': 'https://b.example.com/post',
+                'prompt': '总结 B',
+              },
+              'status': 'running',
+              'summary': '正在执行工具：读取网页',
+              'requiresConfirmation': false,
+              'stepId': 12,
+            },
+            timestamp: DateTime(2026, 4, 25, 10, 1, 2),
+          ),
+          ChatMessage(
+            id: 73,
+            text: 'A 已返回网页处理结果',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolResult,
+            payloadJson: const {
+              'toolName': 'fetch_webpage',
+              'status': 'success',
+              'summary': 'A 已返回网页处理结果',
+              'data': {
+                'url': 'https://a.example.com/post',
+                'host': 'a.example.com',
+                'prompt': '总结 A',
+                'resultPreview': 'A 摘要',
+              },
+            },
+            timestamp: DateTime(2026, 4, 25, 10, 1, 3),
+          ),
+        ],
+      );
+
+      expect(blocks, hasLength(1));
+      expect(blocks.single.type, AssistantTurnBlockType.toolWorkflow);
+      expect(blocks.single.payload?['steps'], hasLength(2));
+      expect(blocks.single.payload?['steps'][0]['status'], 'completed');
+      expect(blocks.single.payload?['steps'][0]['details']['resultPreview'], 'A 摘要');
+      expect(blocks.single.payload?['steps'][1]['status'], 'running');
+    });
   });
 }

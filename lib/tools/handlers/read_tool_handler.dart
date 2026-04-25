@@ -24,6 +24,7 @@ class ReadToolHandler implements ToolHandler {
           chinese:
               '当你已经知道目标文件路径，并且需要查看文件内容时使用。支持 offset 和 limit 分页。通常应先用 LS、Glob 或 Grep 定位文件，再用 Read 查看内容。对已有文件执行 Edit 或 Write 前，通常应先 Read。',
         ),
+        isConcurrencySafe: true,
         supportedPlatforms: ['android', 'ios', 'macos', 'windows', 'linux'],
         argumentSchema: ToolArgumentSchema(
           properties: {

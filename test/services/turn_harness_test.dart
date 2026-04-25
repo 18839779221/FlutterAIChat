@@ -31,6 +31,7 @@ import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_step_repository.dart';
 import 'package:ai_chat/services/agent_planner_service.dart';
 import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/services/decision_tool_call_executor.dart';
 import 'package:ai_chat/services/tool_policy_service.dart';
 import 'package:ai_chat/services/turn_harness.dart';
 import 'package:ai_chat/services/turn_verifier.dart';
@@ -40,9 +41,86 @@ import 'package:ai_chat/services/transcript_builder_service.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:ai_chat/tools/handlers/fetch_webpage_tool_handler.dart';
+import 'package:ai_chat/tools/handlers/glob_tool_handler.dart';
+import 'package:ai_chat/tools/handlers/grep_tool_handler.dart';
+import 'package:ai_chat/tools/handlers/ls_tool_handler.dart';
+import 'package:ai_chat/tools/handlers/read_tool_handler.dart';
+import 'package:ai_chat/tools/handlers/search_chat_history_tool_handler.dart';
+import 'package:ai_chat/tools/handlers/web_search_tool_handler.dart';
+import 'package:ai_chat/tools/handlers/write_tool_handler.dart';
 
 void main() {
   group('TurnHarness', () {
+    test('tool definition defaults to non-concurrency-safe', () {
+      const definition = ToolDefinition(
+        name: 'demo_tool',
+        title: 'Demo Tool',
+      );
+
+      expect(definition.isConcurrencySafe, isFalse);
+    });
+
+    test('read-oriented tools are marked concurrency-safe', () {
+      Future<ToolResult> fakeWebSearcher({
+        required String query,
+        int? maxResults,
+      }) async {
+        return const ToolResult(
+          toolName: 'web_search',
+          status: ToolExecutionStatus.success,
+          summary: 'ok',
+        );
+      }
+
+      Future<ToolResult> fakeWebpageFetcher({
+        required String url,
+        required String prompt,
+      }) async {
+        return const ToolResult(
+          toolName: 'fetch_webpage',
+          status: ToolExecutionStatus.success,
+          summary: 'ok',
+        );
+      }
+
+      Future<ToolResult> fakeChatHistorySearcher({
+        required int groupId,
+        required String query,
+        required int maxResults,
+      }) async {
+        return const ToolResult(
+          toolName: 'search_chat_history',
+          status: ToolExecutionStatus.success,
+          summary: 'ok',
+        );
+      }
+
+      expect(ReadToolHandler().definition.isConcurrencySafe, isTrue);
+      expect(LsToolHandler().definition.isConcurrencySafe, isTrue);
+      expect(GrepToolHandler().definition.isConcurrencySafe, isTrue);
+      expect(GlobToolHandler().definition.isConcurrencySafe, isTrue);
+      expect(
+        WebSearchToolHandler(webSearcher: fakeWebSearcher)
+            .definition
+            .isConcurrencySafe,
+        isTrue,
+      );
+      expect(
+        FetchWebpageToolHandler(webpageFetcher: fakeWebpageFetcher)
+            .definition
+            .isConcurrencySafe,
+        isTrue,
+      );
+      expect(
+        SearchChatHistoryToolHandler(searcher: fakeChatHistorySearcher)
+            .definition
+            .isConcurrencySafe,
+        isTrue,
+      );
+      expect(WriteToolHandler().definition.isConcurrencySafe, isFalse);
+    });
+
     test('direct terminal planner answer does not stream an extra final answer',
         () async {
       final eventRepository = _InMemoryChatEventRepository();
@@ -252,6 +330,159 @@ void main() {
       expect(
         toolResultEvent.payloadJson?['toolAccess']?['executionPolicy'],
         'auto_run',
+      );
+    });
+
+    test('turn harness delegates tool decisions to decision executor',
+        () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          id: 11,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '帮我读取文件',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+      final fakeExecutor = _FakeDecisionToolCallExecutor(
+        updates: [
+          DecisionToolExecutionUpdate.event(
+            ChatEvent(
+              turnId: turnId,
+              groupId: 1,
+              sequence: 3,
+              eventType: ChatEventType.toolResult,
+              role: MessageRole.system,
+              content: '已执行工具批次',
+            ),
+          ),
+          const DecisionToolExecutionUpdate.summary(
+            DecisionToolExecutionSummary(
+              executedToolCount: 1,
+              enteredAwaitingConfirmation: true,
+              shouldStopFurtherExecution: true,
+            ),
+          ),
+        ],
+      );
+
+      final harness = TurnHarness(
+        plannerService: _NativeDecisionPlannerService([
+          const ModelTurnDecision(
+            toolCalls: [
+              ModelToolCall(
+                toolName: 'Read',
+                arguments: {'file_path': 'foo.txt'},
+                sequence: 1,
+              ),
+            ],
+            assistantMessage: null,
+            diagnosticCode: 'planner_action_call_tool',
+            providerState: {},
+            isTerminal: false,
+          ),
+        ]),
+        turnRepository: turnRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        turnVerifier: _AlwaysStopVerifier(),
+        chatService: _FakeChatService(chunks: const []),
+        toolCallService: _FakeToolCallService(
+          executeResult: const ToolPreparationResult.noTool(),
+        ),
+        decisionToolCallExecutor: fakeExecutor,
+      );
+
+      final emitted = await harness
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          )
+          .toList();
+
+      expect(fakeExecutor.executeCalls, hasLength(1));
+      expect(fakeExecutor.executeCalls.single.startingStepIndex, 0);
+      expect(
+        emitted.map((event) => event.eventType),
+        contains(ChatEventType.toolResult),
+      );
+    });
+
+    test('groups consecutive concurrency-safe tools into batches', () {
+      final executor = DefaultDecisionToolCallExecutor(
+        turnRepository: _InMemoryChatTurnRepository(),
+        eventRepository: _InMemoryChatEventRepository(),
+        toolCallService: _FakeToolCallService(
+          executeResult: const ToolPreparationResult.noTool(),
+          definitionsByName: const {
+            'Read': ToolDefinition(
+              name: 'Read',
+              title: 'Read',
+              isConcurrencySafe: true,
+            ),
+            'Grep': ToolDefinition(
+              name: 'Grep',
+              title: 'Grep',
+              isConcurrencySafe: true,
+            ),
+            'Write': ToolDefinition(
+              name: 'Write',
+              title: 'Write',
+              isConcurrencySafe: false,
+            ),
+            'Glob': ToolDefinition(
+              name: 'Glob',
+              title: 'Glob',
+              isConcurrencySafe: true,
+            ),
+          },
+        ),
+        limits: const AgentLoopLimits(),
+      );
+
+      final batches = executor.debugBuildExecutionBatches([
+        const ModelToolCall(
+          toolName: 'Read',
+          arguments: {'file_path': 'a.txt'},
+          sequence: 1,
+        ),
+        const ModelToolCall(
+          toolName: 'Grep',
+          arguments: {'pattern': 'foo'},
+          sequence: 2,
+        ),
+        const ModelToolCall(
+          toolName: 'Write',
+          arguments: {'file_path': 'b.txt', 'content': 'x'},
+          sequence: 3,
+        ),
+        const ModelToolCall(
+          toolName: 'Read',
+          arguments: {'file_path': 'c.txt'},
+          sequence: 4,
+        ),
+        const ModelToolCall(
+          toolName: 'Glob',
+          arguments: {'pattern': '*.md'},
+          sequence: 5,
+        ),
+      ]);
+
+      expect(
+        batches.map((batch) => batch.toolCalls.map((call) => call.toolName).toList()).toList(),
+        [
+          ['Read', 'Grep'],
+          ['Write'],
+          ['Read', 'Glob'],
+        ],
+      );
+      expect(
+        batches.map((batch) => batch.isConcurrent).toList(),
+        [true, false, true],
       );
     });
 
@@ -2760,6 +2991,50 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
     events.add(event);
     return event;
   }
+}
+
+class _FakeDecisionToolCallExecutor implements DecisionToolCallExecutor {
+  final List<_DecisionExecutorCall> executeCalls = [];
+  final List<DecisionToolExecutionUpdate> updates;
+
+  _FakeDecisionToolCallExecutor({
+    this.updates = const [],
+  });
+
+  @override
+  Stream<DecisionToolExecutionUpdate> executeDecisionToolCalls({
+    required ChatTurn turn,
+    required ModelTurnDecision decision,
+    required ChatConfig config,
+    required int consecutiveFailures,
+    required int startingStepIndex,
+  }) async* {
+    executeCalls.add(
+      _DecisionExecutorCall(
+        turn: turn,
+        decision: decision,
+        consecutiveFailures: consecutiveFailures,
+        startingStepIndex: startingStepIndex,
+      ),
+    );
+    for (final update in updates) {
+      yield update;
+    }
+  }
+}
+
+class _DecisionExecutorCall {
+  final ChatTurn turn;
+  final ModelTurnDecision decision;
+  final int consecutiveFailures;
+  final int startingStepIndex;
+
+  _DecisionExecutorCall({
+    required this.turn,
+    required this.decision,
+    required this.consecutiveFailures,
+    required this.startingStepIndex,
+  });
 }
 
 class _NoopBaseLLM implements BaseLLM {

@@ -22,6 +22,7 @@ class LsToolHandler implements ToolHandler {
           chinese:
               '当你想确认目录结构、验证路径是否存在、或查看某个目录下有哪些直接文件和子目录时使用。不会递归读取文件内容。',
         ),
+        isConcurrencySafe: true,
         supportedPlatforms: ['android', 'ios', 'macos', 'windows', 'linux'],
         argumentSchema: ToolArgumentSchema(
           properties: {

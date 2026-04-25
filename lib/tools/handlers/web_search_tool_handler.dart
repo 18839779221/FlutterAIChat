@@ -32,6 +32,7 @@ class WebSearchToolHandler implements ToolHandler {
           english: _buildEnglishDescription(),
           chinese: _buildChineseDescription(),
         ),
+        isConcurrencySafe: true,
         parameters: const {
           'query': 'string',
           'maxResults': 'int?',
