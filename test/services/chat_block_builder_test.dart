@@ -421,5 +421,75 @@ void main() {
       expect(blocks.single.payload?['steps'][0]['summary'], '已创建提醒：开会');
       expect(blocks.single.payload?['steps'][0]['details']['title'], '开会');
     });
+
+    test('fetch_webpage result replaces workflow block in place and keeps prompt preview',
+        () {
+      final blocks = builder.buildAssistantBlocks(
+        messages: [
+          ChatMessage(
+            id: 60,
+            text: '读取这个网页',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 25, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 61,
+            text: '正在执行工具：读取网页',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const {
+              'toolName': 'fetch_webpage',
+              'arguments': {
+                'url': 'https://flutter.dev',
+                'prompt': '提取和焦点丢失相关的信息',
+              },
+              'status': 'running',
+              'summary': '正在执行工具：读取网页',
+              'requiresConfirmation': false,
+              'executionPolicy': 'auto_run',
+              'toolAccess': {
+                'toolName': 'fetch_webpage',
+                'executionDecision': 'autoRun',
+                'executionPolicy': 'auto_run',
+                'isVisibleToPlanner': true,
+              },
+            },
+            timestamp: DateTime(2026, 4, 25, 10, 0, 1),
+          ),
+          ChatMessage(
+            id: 62,
+            text: '已返回网页处理结果',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolResult,
+            payloadJson: const {
+              'toolName': 'fetch_webpage',
+              'status': 'success',
+              'summary': '已返回网页处理结果',
+              'data': {
+                'url': 'https://flutter.dev',
+                'host': 'flutter.dev',
+                'prompt': '提取和焦点丢失相关的信息',
+                'resultPreview': '页面提到频繁 rebuild 可能导致焦点丢失。',
+              },
+              'toolAccess': {
+                'toolName': 'fetch_webpage',
+                'executionDecision': 'autoRun',
+                'executionPolicy': 'auto_run',
+                'isVisibleToPlanner': true,
+              },
+            },
+            timestamp: DateTime(2026, 4, 25, 10, 0, 2),
+          ),
+        ],
+      );
+
+      expect(blocks, hasLength(1));
+      expect(blocks.single.type, AssistantTurnBlockType.toolResultSummary);
+      expect(blocks.single.payload?['data']['prompt'], contains('焦点丢失'));
+      expect(
+        blocks.single.payload?['data']['resultPreview'],
+        contains('频繁 rebuild'),
+      );
+    });
   });
 }

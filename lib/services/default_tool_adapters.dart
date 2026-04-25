@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../models/llm/base_llm.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
@@ -217,72 +218,165 @@ ProviderWebSearcher buildTavilyWebSearcher({
 ///
 /// Returned payload fields:
 /// - `url`: requested webpage address
-/// - `title`: extracted HTML title when available
-/// - `content`: normalized readable text
-/// - `extractMode`: adapter mode used for this fetch
+/// - `host`: host extracted from the requested url
+/// - `prompt`: prompt used to process the page
+/// - `processedContent`: side-model output derived from readable text
+/// - `resultPreview`: compact preview derived from processed output
+/// - `rawExcerpt`: truncated readable text kept as evidence
+/// - `finalUrl`: final address used for this fetch
 WebpageFetcher buildDefaultWebpageFetcher({
   http.Client? client,
+  BaseLLM? sideModelLlm,
 }) {
   final resolvedClient = client ?? http.Client();
 
   return ({
     required String url,
-    String? extractMode,
+    required String prompt,
   }) async {
     try {
-      final response = await resolvedClient.get(Uri.parse(url));
+      final requestUri = Uri.parse(url);
+      final response = await resolvedClient.get(requestUri);
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        final reason = 'http_${response.statusCode}';
         return ToolResult(
           toolName: 'fetch_webpage',
           status: ToolExecutionStatus.failure,
-          summary: '读取网页失败',
+          summary: '读取失败：$reason',
           data: {
             'url': url,
-            'reason': 'http_${response.statusCode}',
+            'host': requestUri.host,
+            'prompt': prompt,
+            'failureReason': reason,
+            'finalUrl': url,
           },
-          errorMessage: 'http_${response.statusCode}',
+          errorMessage: reason,
         );
       }
 
-      final title = _extractHtmlTitle(response.body) ?? url;
       final content = _extractReadableText(response.body);
       if (content.isEmpty) {
         return ToolResult(
           toolName: 'fetch_webpage',
           status: ToolExecutionStatus.failure,
-          summary: '读取网页失败',
+          summary: '读取失败：empty_content',
           data: {
             'url': url,
-            'reason': 'empty_content',
+            'host': requestUri.host,
+            'prompt': prompt,
+            'failureReason': 'empty_content',
+            'finalUrl': url,
           },
           errorMessage: 'empty_content',
         );
       }
 
+      final processedContent =
+          await _processFetchedWebpageContentWithSideModel(
+        sideModelLlm: sideModelLlm,
+        prompt: prompt,
+        content: content,
+      );
+      final normalizedProcessedContent = processedContent.trim().isEmpty
+          ? content.trim()
+          : processedContent.trim();
+      final extractedTitle = _extractHtmlTitle(response.body);
+
       return ToolResult(
         toolName: 'fetch_webpage',
         status: ToolExecutionStatus.success,
-        summary: '已读取网页：$title',
+        summary: '已返回网页处理结果',
         data: {
           'url': url,
-          'title': title,
-          'content': content,
-          'extractMode': extractMode ?? 'readable_text',
+          'host': requestUri.host,
+          'prompt': prompt,
+          'processedContent': normalizedProcessedContent,
+          'resultPreview': _buildResultPreview(normalizedProcessedContent),
+          'rawExcerpt': _buildRawExcerpt(content),
+          'finalUrl': url,
+          if (extractedTitle != null && extractedTitle.trim().isNotEmpty)
+            'title': extractedTitle.trim(),
         },
+        toolResultText: normalizedProcessedContent,
+        contextText: _buildFetchWebpageContextText(
+          url: url,
+          prompt: prompt,
+          processedContent: normalizedProcessedContent,
+        ),
       );
     } catch (error) {
       return ToolResult(
         toolName: 'fetch_webpage',
         status: ToolExecutionStatus.failure,
-        summary: '读取网页失败',
+        summary: '读取失败：network_error',
         data: {
           'url': url,
-          'reason': 'network_error',
+          'host': Uri.tryParse(url)?.host ?? '',
+          'prompt': prompt,
+          'failureReason': 'network_error',
+          'finalUrl': url,
         },
         errorMessage: 'network_error',
       );
     }
   };
+}
+
+Future<String> _processFetchedWebpageContentWithSideModel({
+  required BaseLLM? sideModelLlm,
+  required String prompt,
+  required String content,
+}) async {
+  final llm = sideModelLlm;
+  if (llm == null) {
+    return content;
+  }
+  try {
+    return await llm.processWebpageContent(
+      webpageContent: _truncateForSideModel(content),
+      prompt: prompt,
+    );
+  } catch (error) {
+    Logger.w(_hostToolsTag, '网页 side model 处理失败，回退原始正文: $error');
+    return content;
+  }
+}
+
+String _truncateForSideModel(String content, {int maxLength = 12000}) {
+  final normalized = content.trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return normalized.substring(0, maxLength);
+}
+
+String _buildResultPreview(String content, {int maxLength = 160}) {
+  final normalized = content.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return '${normalized.substring(0, maxLength)}...';
+}
+
+String _buildRawExcerpt(String content, {int maxLength = 320}) {
+  final normalized = content.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return '${normalized.substring(0, maxLength)}...';
+}
+
+String _buildFetchWebpageContextText({
+  required String url,
+  required String prompt,
+  required String processedContent,
+}) {
+  return [
+    '以下是工具 `fetch_webpage` 的执行结果，请结合这些信息回答用户。',
+    '网页链接：$url',
+    '处理目标：$prompt',
+    '处理结果：${_buildRawExcerpt(processedContent, maxLength: 1200)}',
+  ].join('\n');
 }
 
 /// Builds the default share adapter backed by `share_plus`.

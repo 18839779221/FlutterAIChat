@@ -266,6 +266,43 @@ class ConfigurableHttpLLM implements BaseLLM {
   }
 
   @override
+  Future<String> processWebpageContent({
+    required String webpageContent,
+    required String prompt,
+  }) async {
+    try {
+      final runtimeConfig = await _settingsRepository.getLlmConfig();
+      _validateRuntimeConfig(runtimeConfig);
+      final promptMessages = [
+        ChatMessage(
+          text:
+              'Web page content:\n---\n$webpageContent\n---\n\nPrompt:\n$prompt\n\n'
+              'Use only the webpage content above to answer the prompt.\n\n'
+              'Requirements:\n'
+              '- Follow the prompt closely and produce the result in the format it asks for when possible.\n'
+              '- Do not rely on outside knowledge.\n'
+              '- If the page does not contain enough relevant information, say so clearly.\n'
+              '- Prefer concise paraphrase over copying long passages from the page.\n'
+              '- Keep quotes minimal and only use them when exact wording matters.\n'
+              '- Ignore unrelated navigation, boilerplate, repeated page chrome, and marketing copy.\n'
+              '- Return processed page content, not meta commentary about the tool.',
+          role: MessageRole.user,
+        ),
+      ];
+      return (await _sendTextRequest(
+        runtimeConfig,
+        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        messages: promptMessages,
+      ))
+          .trim();
+    } catch (e, stackTrace) {
+      Logger.e(_tag, '网页内容处理失败', e);
+      Logger.e(_tag, '堆栈跟踪', stackTrace);
+      throw Exception('网页内容处理失败: $e');
+    }
+  }
+
+  @override
   Future<String> planNextAction({
     required List<ChatMessage> messages,
     required ChatConfig config,

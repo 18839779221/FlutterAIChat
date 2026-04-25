@@ -7,7 +7,7 @@ export '../models/tool/tool_result.dart';
 /// Fetches webpage content and returns a normalized tool result payload.
 typedef WebpageFetcher = Future<ToolResult> Function({
   required String url,
-  String? extractMode,
+  required String prompt,
 });
 
 /// Searches the web and returns a normalized result list payload.
@@ -114,13 +114,13 @@ class ToolExecutor {
   /// of the executor itself.
   Future<ToolResult> executeFetchWebpage({
     required String url,
-    String? extractMode,
+    required String prompt,
   }) async {
     final fetcher = _webpageFetcher;
     if (fetcher == null) {
       return _unsupportedToolResult('fetch_webpage');
     }
-    return fetcher(url: url, extractMode: extractMode);
+    return fetcher(url: url, prompt: prompt);
   }
 
   /// Creates a reminder through an injected platform adapter.

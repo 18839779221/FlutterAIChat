@@ -25,6 +25,14 @@ abstract class BaseLLM {
   /// 非流式结构化整理调试入口
   Future<String> structureSummaryCard(String sourceText);
 
+  /// Tool-internal webpage processing entry used by `fetch_webpage`.
+  Future<String> processWebpageContent({
+    required String webpageContent,
+    required String prompt,
+  }) {
+    throw UnimplementedError('processWebpageContent is not implemented');
+  }
+
   /// 非流式 agent planner 入口
   Future<String> planNextAction({
     required List<ChatMessage> messages,

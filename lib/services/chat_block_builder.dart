@@ -392,8 +392,8 @@ class ChatBlockBuilder {
       payload: {
         ...?previous.payload,
         ...?block.payload,
-        'sourceMessageId':
-            block.payload?['sourceMessageId'] ?? previous.payload?['sourceMessageId'],
+        'sourceMessageId': block.payload?['sourceMessageId'] ??
+            previous.payload?['sourceMessageId'],
         'steps': mergedSteps,
       },
     );
@@ -412,6 +412,7 @@ class ChatBlockBuilder {
     if (toolName.isEmpty) {
       return false;
     }
+    final shouldReplaceWorkflow = _shouldReplaceWorkflowWithResult(toolName);
 
     for (var index = blocks.length - 1; index >= 0; index -= 1) {
       final candidate = blocks[index];
@@ -443,7 +444,8 @@ class ChatBlockBuilder {
       final workflowStatus = switch (resultStatus) {
         'success' => ToolWorkflowStepStatus.completed.name,
         'failure' => ToolWorkflowStepStatus.failed.name,
-        _ => currentStep['status']?.toString() ?? ToolWorkflowStepStatus.completed.name,
+        _ => currentStep['status']?.toString() ??
+            ToolWorkflowStepStatus.completed.name,
       };
       final mergedStep = {
         ...currentStep,
@@ -452,7 +454,8 @@ class ChatBlockBuilder {
         'status': workflowStatus,
         if (payload?['executionPolicy'] != null)
           'executionPolicy': payload?['executionPolicy'],
-        if (payload?['toolAccess'] != null) 'toolAccess': payload?['toolAccess'],
+        if (payload?['toolAccess'] != null)
+          'toolAccess': payload?['toolAccess'],
         'details': {
           ...?(currentStep['details'] is Map
               ? Map<String, dynamic>.from(currentStep['details'] as Map)
@@ -461,21 +464,45 @@ class ChatBlockBuilder {
             ...Map<String, dynamic>.from(payload?['data'] as Map),
         },
       };
-      final nextSteps = [...candidateSteps];
-      nextSteps[stepIndex] = mergedStep;
-      blocks[index] = candidate.copyWith(
-        updatedAt: block.updatedAt,
-        status: workflowStatus,
-        title: mergedStep['title']?.toString(),
-        text: mergedStep['summary']?.toString(),
-        payload: {
-          ...?candidate.payload,
-          'steps': nextSteps,
-        },
-      );
+      if (shouldReplaceWorkflow) {
+        blocks[index] = block.copyWith(
+          turnId: candidate.turnId,
+          sequence: candidate.sequence,
+          createdAt: candidate.createdAt,
+          updatedAt: block.updatedAt,
+          payload: {
+            ...?block.payload,
+            'sourceMessageId': block.payload?['sourceMessageId'] ??
+                candidate.payload?['sourceMessageId'],
+          },
+        );
+      } else {
+        final nextSteps = [...candidateSteps];
+        nextSteps[stepIndex] = mergedStep;
+        blocks[index] = candidate.copyWith(
+          updatedAt: block.updatedAt,
+          status: workflowStatus,
+          title: mergedStep['title']?.toString(),
+          text: mergedStep['summary']?.toString(),
+          payload: {
+            ...?candidate.payload,
+            'steps': nextSteps,
+          },
+        );
+      }
       return true;
     }
 
     return false;
+  }
+
+  bool _shouldReplaceWorkflowWithResult(String toolName) {
+    switch (toolName.trim()) {
+      case 'web_search':
+      case 'fetch_webpage':
+        return true;
+      default:
+        return false;
+    }
   }
 }
