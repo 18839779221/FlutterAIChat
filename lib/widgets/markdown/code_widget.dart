@@ -28,16 +28,23 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<AppColors>()!;
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final content = Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      child: _autoLineBreak
-          ? _highlightWidget(context)
-          : SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: _highlightWidget(context),
-            ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: _codeCanvasColor(context),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
+          child: _autoLineBreak
+              ? _highlightWidget(context)
+              : SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: _highlightWidget(context),
+                ),
+        ),
+      ),
     );
 
     return TechnicalContentSurface(
@@ -48,15 +55,15 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
           Row(
             children: [
               SizedBox(
-                width: 20,
-                height: 20,
+                width: 18,
+                height: 18,
                 child: IconButton(
-                  iconSize: 11,
+                  iconSize: 10.5,
                   icon: Icon(
                     _autoLineBreak ? Icons.wrap_text : Icons.wrap_text_outlined,
                     color: _autoLineBreak
-                        ? colors.workflowRunning.withValues(alpha: 0.7)
-                        : colors.secondaryText.withValues(alpha: 0.76),
+                        ? colors.workflowRunning.withValues(alpha: 0.58)
+                        : colors.secondaryText.withValues(alpha: 0.68),
                   ),
                   tooltip: _autoLineBreak ? '关闭自动换行' : '开启自动换行',
                   padding: EdgeInsets.zero,
@@ -64,6 +71,7 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
                     minWidth: 16,
                     minHeight: 16,
                   ),
+                  visualDensity: VisualDensity.compact,
                   splashRadius: 5,
                   onPressed: () {
                     setState(() {
@@ -85,10 +93,17 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
 
   Widget _highlightWidget(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final baseTheme = isDark ? a11yDarkTheme : a11yLightTheme;
+    final highlightTheme = Map<String, TextStyle>.from(baseTheme);
+    final rootStyle = highlightTheme['root'] ?? const TextStyle();
+    highlightTheme['root'] = rootStyle.copyWith(
+      backgroundColor: Colors.transparent,
+    );
+
     return HighlightView(
       widget.code,
       language: widget.language,
-      theme: isDark ? a11yDarkTheme : a11yLightTheme,
+      theme: highlightTheme,
       padding: EdgeInsets.zero,
       textStyle: AppTypography.codeStyle(
         color: isDark ? const Color(0xFFE6E6E6) : const Color(0xFF31414A),
@@ -96,6 +111,15 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
         height: 1.45,
       ),
     );
+  }
+
+  Color _codeCanvasColor(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.extension<AppColors>()!;
+    final isDark = theme.brightness == Brightness.dark;
+    return isDark
+        ? colors.toolWorkflowSurface.withValues(alpha: 0.62)
+        : colors.toolWorkflowSurface.withValues(alpha: 0.2);
   }
 }
 
@@ -124,10 +148,10 @@ class _CopyButtonState extends State<_CopyButton> {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-        width: 20,
-        height: 20,
+        width: 18,
+        height: 18,
         child: IconButton(
-          iconSize: 11,
+          iconSize: 10.5,
           icon: AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
             child: Icon(
@@ -138,7 +162,7 @@ class _CopyButtonState extends State<_CopyButton> {
                   : Theme.of(context)
                       .extension<AppColors>()!
                       .secondaryText
-                      .withValues(alpha: 0.76),
+                      .withValues(alpha: 0.68),
             ),
           ),
           tooltip: _isCopied ? '已复制' : '复制代码',
@@ -147,6 +171,7 @@ class _CopyButtonState extends State<_CopyButton> {
             minWidth: 16,
             minHeight: 16,
           ),
+          visualDensity: VisualDensity.compact,
           splashRadius: 5,
           onPressed: _copyCode,
         ));

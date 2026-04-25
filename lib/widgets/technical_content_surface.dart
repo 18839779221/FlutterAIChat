@@ -27,7 +27,7 @@ class TechnicalContentSurface extends StatelessWidget {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: colors.assistantSurface.withValues(alpha: 0.58),
+        color: colors.assistantSurface.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(radius.md),
       ),
       clipBehavior: Clip.antiAlias,
@@ -44,10 +44,10 @@ class TechnicalContentSurface extends StatelessWidget {
                 spacing.xxs + 1,
               ),
               decoration: BoxDecoration(
-                color: colors.toolWorkflowSurface.withValues(alpha: 0.48),
+                color: colors.toolWorkflowSurface.withValues(alpha: 0.32),
                 border: Border(
                   bottom: BorderSide(
-                    color: colors.divider.withValues(alpha: 0.12),
+                    color: colors.divider.withValues(alpha: 0.08),
                     width: 0.8,
                   ),
                 ),
