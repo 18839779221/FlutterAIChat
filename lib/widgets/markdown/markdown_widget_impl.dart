@@ -68,7 +68,7 @@ class _MarkdownWidgetImplState extends State<MarkdownWidgetImpl> {
             fontWeight: FontWeight.w500,
           ),
         ),
-        H2Config(
+        _MarkdownH2Config(
           style: AppTypography.documentStyle(
             color: bodyColor,
             fontSize: 15,
@@ -76,7 +76,7 @@ class _MarkdownWidgetImplState extends State<MarkdownWidgetImpl> {
             fontWeight: FontWeight.w500,
           ),
         ),
-        H3Config(
+        _MarkdownH3Config(
           style: AppTypography.documentStyle(
             color: bodyColor,
             fontSize: 14,
@@ -88,14 +88,18 @@ class _MarkdownWidgetImplState extends State<MarkdownWidgetImpl> {
           textStyle: AppTypography.documentStyle(
             color: bodyColor,
             fontSize: 13,
-            height: 1.4,
+            height: 1.46,
           ),
+        ),
+        HrConfig(
+          height: 1,
+          color: colors.divider.withValues(alpha: isDark ? 0.18 : 0.1),
         ),
         BlockquoteConfig(
           textColor: secondaryColor,
-          sideColor: colors.workflowRunning.withValues(alpha: 0.3),
-          padding: const EdgeInsets.fromLTRB(12, 5, 4, 5),
-          margin: const EdgeInsets.symmetric(vertical: 4),
+          sideColor: colors.workflowRunning.withValues(alpha: 0.18),
+          padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+          margin: const EdgeInsets.symmetric(vertical: 6),
         ),
         LinkConfig(
           style: AppTypography.documentStyle(
@@ -110,8 +114,8 @@ class _MarkdownWidgetImplState extends State<MarkdownWidgetImpl> {
           },
         ),
         const ListConfig(
-          marginLeft: 22,
-          marginBottom: 4,
+          marginLeft: 24,
+          marginBottom: 6,
         ),
         TableConfig(
           defaultColumnWidth: const IntrinsicColumnWidth(),
@@ -142,7 +146,7 @@ class _MarkdownWidgetImplState extends State<MarkdownWidgetImpl> {
           headPadding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
           bodyPadding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
           wrapper: (child) => Container(
-            margin: const EdgeInsets.symmetric(vertical: 6),
+            margin: const EdgeInsets.symmetric(vertical: 8),
             decoration: BoxDecoration(
               color: tableShellFill,
               borderRadius: BorderRadius.circular(12),
@@ -166,4 +170,24 @@ class _MarkdownWidgetImplState extends State<MarkdownWidgetImpl> {
       throw Exception('无法打开链接: $url');
     }
   }
+}
+
+class _MarkdownH2Config extends H2Config {
+  const _MarkdownH2Config({required super.style});
+
+  @override
+  HeadingDivider? get divider => null;
+
+  @override
+  EdgeInsets get padding => const EdgeInsets.only(top: 14, bottom: 7);
+}
+
+class _MarkdownH3Config extends H3Config {
+  const _MarkdownH3Config({required super.style});
+
+  @override
+  HeadingDivider? get divider => null;
+
+  @override
+  EdgeInsets get padding => const EdgeInsets.only(top: 11, bottom: 6);
 }

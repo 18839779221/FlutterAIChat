@@ -26,7 +26,7 @@ class FlutterMarkdownImpl extends StatelessWidget {
     final colors = theme.extension<AppColors>()!;
     final bodyColor = theme.colorScheme.onSurface;
     final secondaryColor = theme.colorScheme.onSurface.withValues(alpha: 0.84);
-    final quoteBorderColor = colors.workflowRunning.withValues(alpha: 0.34);
+    final quoteBorderColor = colors.workflowRunning.withValues(alpha: 0.22);
     const quoteBackgroundColor = Color(0xFFDDE4E8);
 
     return RepaintBoundary(
@@ -68,16 +68,16 @@ class FlutterMarkdownImpl extends StatelessWidget {
             fontSize: 13,
             height: 1.4,
           ),
-          blockquotePadding: const EdgeInsets.fromLTRB(12, 5, 4, 5),
+          blockquotePadding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
           blockquoteDecoration: BoxDecoration(
-            color: quoteBackgroundColor.withValues(alpha: 0.42),
+            color: quoteBackgroundColor.withValues(alpha: 0.24),
             border: Border(
               left: BorderSide(
-                color: quoteBorderColor.withValues(alpha: 0.88),
-                width: 2,
+                color: quoteBorderColor.withValues(alpha: 0.82),
+                width: 1.5,
               ),
             ),
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(8),
           ),
           strong: AppTypography.documentStyle(
             color: bodyColor,
@@ -92,13 +92,13 @@ class FlutterMarkdownImpl extends StatelessWidget {
             height: 1.4,
           ),
           textAlign: WrapAlignment.start,
-          blockSpacing: 4.0,
-          listIndent: 14,
-          h1Padding: const EdgeInsets.only(bottom: 2),
-          h2Padding: const EdgeInsets.only(top: 7, bottom: 2),
-          h3Padding: const EdgeInsets.only(top: 5, bottom: 1),
+          blockSpacing: 9.0,
+          listIndent: 18,
+          h1Padding: const EdgeInsets.only(top: 4, bottom: 6),
+          h2Padding: const EdgeInsets.only(top: 14, bottom: 6),
+          h3Padding: const EdgeInsets.only(top: 11, bottom: 5),
           horizontalRuleDecoration: BoxDecoration(
-            color: theme.dividerColor.withValues(alpha: 0.42),
+            color: theme.dividerColor.withValues(alpha: 0.16),
             borderRadius: BorderRadius.circular(999),
           ),
           codeblockDecoration: BoxDecoration(
