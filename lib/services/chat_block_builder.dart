@@ -432,8 +432,10 @@ class ChatBlockBuilder {
         continue;
       }
 
-      final stepIndex = candidateSteps.lastIndexWhere(
-        (step) => (step['toolName'] ?? '').toString() == toolName,
+      final stepIndex = _resolveToolResultStepIndex(
+        candidateSteps: candidateSteps,
+        toolName: toolName,
+        payload: payload,
       );
       if (stepIndex == -1) {
         continue;
@@ -464,7 +466,13 @@ class ChatBlockBuilder {
             ...Map<String, dynamic>.from(payload?['data'] as Map),
         },
       };
-      if (shouldReplaceWorkflow) {
+      final sameToolStepCount = candidateSteps
+          .where((step) => (step['toolName'] ?? '').toString() == toolName)
+          .length;
+      final shouldReplaceCurrentWorkflow =
+          shouldReplaceWorkflow && sameToolStepCount <= 1;
+
+      if (shouldReplaceCurrentWorkflow) {
         blocks[index] = block.copyWith(
           turnId: candidate.turnId,
           sequence: candidate.sequence,
@@ -504,5 +512,96 @@ class ChatBlockBuilder {
       default:
         return false;
     }
+  }
+
+  int _resolveToolResultStepIndex({
+    required List<Map<String, dynamic>> candidateSteps,
+    required String toolName,
+    required Map<String, dynamic>? payload,
+  }) {
+    final normalizedToolName = toolName.trim();
+    final matchingIndexes = <int>[];
+    for (var index = 0; index < candidateSteps.length; index += 1) {
+      if ((candidateSteps[index]['toolName'] ?? '').toString() ==
+          normalizedToolName) {
+        matchingIndexes.add(index);
+      }
+    }
+    if (matchingIndexes.isEmpty) {
+      return -1;
+    }
+    if (matchingIndexes.length == 1) {
+      return matchingIndexes.single;
+    }
+
+    final data = payload?['data'];
+    if (data is Map) {
+      final typedData = Map<String, dynamic>.from(data);
+      switch (normalizedToolName) {
+        case 'fetch_webpage':
+          final resolvedUrl = _firstNonEmptyString([
+            typedData['finalUrl'],
+            typedData['url'],
+            typedData['redirectUrl'],
+          ]);
+          if (resolvedUrl != null) {
+            final exactIndex = matchingIndexes.lastWhere(
+              (index) => _fetchStepUrls(candidateSteps[index]).contains(resolvedUrl),
+              orElse: () => -1,
+            );
+            if (exactIndex != -1) {
+              return exactIndex;
+            }
+          }
+          break;
+        case 'web_search':
+          final query = _firstNonEmptyString([typedData['query']]);
+          if (query != null) {
+            final exactIndex = matchingIndexes.lastWhere(
+              (index) =>
+                  _stepQuery(candidateSteps[index]).toLowerCase() ==
+                  query.toLowerCase(),
+              orElse: () => -1,
+            );
+            if (exactIndex != -1) {
+              return exactIndex;
+            }
+          }
+          break;
+      }
+    }
+
+    return matchingIndexes.last;
+  }
+
+  List<String> _fetchStepUrls(Map<String, dynamic> step) {
+    final details = step['details'];
+    if (details is! Map) {
+      return const [];
+    }
+    final typedDetails = Map<String, dynamic>.from(details);
+    return [
+      typedDetails['url'],
+      typedDetails['finalUrl'],
+      typedDetails['redirectUrl'],
+    ].map((value) => (value ?? '').toString().trim()).where((value) => value.isNotEmpty).toList();
+  }
+
+  String _stepQuery(Map<String, dynamic> step) {
+    final details = step['details'];
+    if (details is! Map) {
+      return '';
+    }
+    return (Map<String, dynamic>.from(details)['query'] ?? '').toString().trim();
+  }
+
+  String? _firstNonEmptyString(List<Object?> values) {
+    for (final value in values) {
+      final trimmed = (value ?? '').toString().trim();
+      if (trimmed.isNotEmpty) {
+        return trimmed;
+      }
+    }
+    return null;
   }
 }

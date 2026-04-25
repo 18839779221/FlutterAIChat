@@ -23,6 +23,7 @@ class WriteToolHandler implements ToolHandler {
           chinese:
               '当用户明确要求创建新文件，或需要整文件重写时使用。对于已有文件的小范围修改，优先使用 Edit。Write 属于高风险写操作，需要确认。',
         ),
+        isConcurrencySafe: false,
         supportedPlatforms: ['android', 'ios', 'macos', 'windows', 'linux'],
         requiresConfirmation: true,
         argumentSchema: ToolArgumentSchema(

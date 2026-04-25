@@ -19,6 +19,10 @@ class ToolDefinition {
   final LocalizedToolText? localizedDescriptionForModel;
   final ToolArgumentSchema? argumentSchema;
   final bool requiresConfirmation;
+
+  /// Whether this tool can safely run in parallel with other tool calls from
+  /// the same planner decision without depending on shared mutable ordering.
+  final bool isConcurrencySafe;
   final ToolRuntimeKind runtimeKind;
   final List<String> supportedPlatforms;
 
@@ -31,6 +35,7 @@ class ToolDefinition {
     this.localizedDescriptionForModel,
     this.argumentSchema,
     this.requiresConfirmation = false,
+    this.isConcurrencySafe = false,
     this.runtimeKind = ToolRuntimeKind.immediate,
     this.supportedPlatforms = const ['android', 'ios', 'web'],
   })  : title = title ?? name,

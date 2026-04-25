@@ -22,6 +22,7 @@ class GlobToolHandler implements ToolHandler {
           chinese:
               '当你知道目标文件的大致文件名、扩展名或路径模式时使用，例如查找所有 .md、.json 或某个目录下的特定文件。它只做路径发现，不读取文件内容。',
         ),
+        isConcurrencySafe: true,
         supportedPlatforms: ['android', 'ios', 'macos', 'windows', 'linux'],
         argumentSchema: ToolArgumentSchema(
           properties: {

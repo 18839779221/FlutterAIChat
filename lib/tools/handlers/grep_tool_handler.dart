@@ -22,6 +22,7 @@ class GrepToolHandler implements ToolHandler {
           chinese:
               '当你知道某个符号、关键字、短语或正则模式，但还不知道它出现在哪个文件中时使用。优先用于内容搜索，而不是读取完整文件。',
         ),
+        isConcurrencySafe: true,
         supportedPlatforms: ['android', 'ios', 'macos', 'windows', 'linux'],
         argumentSchema: ToolArgumentSchema(
           properties: {

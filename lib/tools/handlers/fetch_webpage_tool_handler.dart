@@ -47,6 +47,7 @@ class FetchWebpageToolHandler implements ToolHandler {
               '不要把它用于单纯发现候选网页；如果还需要先找来源，应先使用 web_search。对于更适合由 Bash 或专用工具处理的 GitHub 资源，也不要使用此工具。\n\n'
               '该工具为只读工具，不会修改文件。',
         ),
+        isConcurrencySafe: true,
         parameters: {
           'url': 'string',
           'prompt': 'string',

@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('web_search tool cards', () {
-    testWidgets('workflow card summarizes query and max results', (
+    testWidgets('workflow card summarizes query without exposing max results', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -16,6 +16,7 @@ void main() {
           theme: AppTheme.light(),
           home: const Scaffold(
             body: WebSearchToolWorkflowCard(
+              expanded: false,
               steps: [
                 ToolWorkflowStep(
                   stepId: 'web-1',
@@ -38,7 +39,7 @@ void main() {
 
       expect(find.text('联网搜索'), findsOneWidget);
       expect(find.text('OpenAI latest'), findsOneWidget);
-      expect(find.text('最多返回 5 条结果'), findsOneWidget);
+      expect(find.textContaining('最多'), findsNothing);
     });
 
     testWidgets('result card shows overview first and sources after expand', (
@@ -70,9 +71,10 @@ void main() {
         ),
       );
 
-      expect(find.text('OpenAI latest'), findsOneWidget);
-      expect(find.text('1 条结果'), findsOneWidget);
-      expect(find.text('openai.com'), findsOneWidget);
+      expect(find.textContaining('OpenAI latest'), findsOneWidget);
+      expect(find.textContaining('1 个来源'), findsOneWidget);
+      expect(find.text('查看来源'), findsOneWidget);
+      expect(find.text('openai.com'), findsNothing);
       expect(find.text('OpenAI News'), findsNothing);
 
       await tester.tap(find.text('查看来源'));

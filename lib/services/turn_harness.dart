@@ -1,5 +1,4 @@
 import '../models/agent/chat_turn_step.dart';
-import '../models/agent/model_tool_call.dart';
 import '../models/agent/model_turn_decision.dart';
 import '../models/agent/agent_loop_limits.dart';
 import '../models/chat_event.dart';
@@ -7,16 +6,15 @@ import '../models/chat_turn.dart';
 import '../models/interaction/ask_user_question_request.dart';
 import '../models/interaction/ask_user_question_response.dart';
 import '../models/tool/tool_access_snapshot.dart';
-import '../models/tool/tool_definition.dart';
 import '../models/tool/tool_invocation.dart';
 import '../models/tool/tool_result.dart';
 import '../repositories/chat_event_repository.dart';
 import '../repositories/chat_turn_repository.dart';
 import '../repositories/chat_turn_step_repository.dart';
-import '../tools/core/tool_display_names.dart';
 import '../utils/logger.dart';
 import 'agent_planner_service.dart';
 import 'chat_service.dart';
+import 'decision_tool_call_executor.dart';
 import 'turn_verifier.dart';
 import 'tool_call_service.dart';
 import 'transcript_builder_service.dart';
@@ -31,6 +29,7 @@ class TurnHarness {
   final TranscriptBuilderService _transcriptBuilderService;
   final TurnVerifier _turnVerifier;
   final ToolCallService _toolCallService;
+  final DecisionToolCallExecutor _decisionToolCallExecutor;
   final AgentLoopLimits _limits;
   final SessionContextService? _sessionContextService;
 
@@ -44,6 +43,7 @@ class TurnHarness {
     required ChatService chatService,
     required ToolCallService toolCallService,
     SessionContextService? sessionContextService,
+    DecisionToolCallExecutor? decisionToolCallExecutor,
     AgentLoopLimits limits = const AgentLoopLimits(),
   })  : _plannerService = plannerService,
         _turnRepository = turnRepository,
@@ -52,6 +52,14 @@ class TurnHarness {
         _transcriptBuilderService = transcriptBuilderService,
         _turnVerifier = turnVerifier,
         _toolCallService = toolCallService,
+        _decisionToolCallExecutor = decisionToolCallExecutor ??
+            DefaultDecisionToolCallExecutor(
+              turnRepository: turnRepository,
+              stepRepository: turnStepRepository,
+              eventRepository: eventRepository,
+              toolCallService: toolCallService,
+              limits: limits,
+            ),
         _sessionContextService = sessionContextService,
         _limits = limits;
 
@@ -309,74 +317,37 @@ class TurnHarness {
             content: _decisionStatusContent(decision),
           );
 
-        var shouldBreakBatch = false;
-        for (final toolCall in decision.toolCalls) {
-          final stepId = _stepRepository == null
-              ? null
-              : await _stepRepository!.createStep(
-                  ChatTurnStep(
-                    turnId: turnId,
-                    stepIndex: steps.length + 1,
-                    providerResponseId: decisionResponseId,
-                    providerCallId: toolCall.providerCallId,
-                    toolName: toolCall.toolName,
-                    toolArgsJson: toolCall.arguments,
-                    status: ChatTurnStepStatus.planned,
-                  ),
-                );
-          if (stepId != null) {
-            steps.add(
-              ChatTurnStep(
-                id: stepId,
-                turnId: turnId,
-                stepIndex: steps.length + 1,
-                providerResponseId: decisionResponseId,
-                providerCallId: toolCall.providerCallId,
-                toolName: toolCall.toolName,
-                toolArgsJson: toolCall.arguments,
-                status: ChatTurnStepStatus.planned,
-              ),
-            );
+        DecisionToolExecutionSummary? executionSummary;
+        await for (final update
+            in _decisionToolCallExecutor.executeDecisionToolCalls(
+          turn: runtimeTurn,
+          decision: decision.copyWith(
+            providerState: {
+              ...decision.providerState,
+              if (decisionResponseId != null) 'response_id': decisionResponseId,
+            },
+          ),
+          config: config,
+          consecutiveFailures: failures,
+          startingStepIndex: steps.length,
+        )) {
+          if (update.event != null) {
+            yield update.event!;
           }
-
-          await for (final event in _executePlannedToolCall(
-            turn: runtimeTurn,
-            toolCall: toolCall,
-            stepId: stepId,
-            consecutiveFailures: failures,
-            config: config,
-          )) {
-            yield event;
-          }
-
-          final refreshedTurn =
-              await _turnRepository.getTurn(turnId) ?? currentTurn;
-          if (refreshedTurn.status == ChatTurnStatus.awaitingToolConfirmation ||
-              refreshedTurn.status == ChatTurnStatus.awaitingUserInteraction ||
-              refreshedTurn.status == ChatTurnStatus.failed ||
-              refreshedTurn.status == ChatTurnStatus.completed ||
-              refreshedTurn.status == ChatTurnStatus.cancelled) {
-            shouldBreakBatch = true;
-            break;
-          }
-
-          if (stepId != null) {
-            final persistedStep = await _stepRepository!.getStep(stepId);
-            if (persistedStep == null ||
-                persistedStep.status == ChatTurnStepStatus.planned ||
-                persistedStep.status == ChatTurnStepStatus.running) {
-              shouldBreakBatch = true;
-              break;
-            }
-            if (persistedStep.status == ChatTurnStepStatus.failed) {
-              shouldBreakBatch = true;
-              failures += 1;
-              break;
-            }
+          if (update.summary != null) {
+            executionSummary = update.summary!;
           }
         }
 
-        if (shouldBreakBatch) {
+        if (executionSummary?.hasFailedStep == true) {
+          failures += 1;
+        }
+
+        if (executionSummary?.shouldStopFurtherExecution == true) {
+          if (executionSummary?.enteredAwaitingConfirmation == true ||
+              executionSummary?.enteredAwaitingUserInteraction == true) {
+            break;
+          }
           final refreshedTurn = await _turnRepository.getTurn(turnId) ?? turn;
           if (refreshedTurn.status == ChatTurnStatus.running) {
             continue;
@@ -539,98 +510,6 @@ class TurnHarness {
     return trimmed;
   }
 
-  Stream<ChatEvent> _executePlannedToolCall({
-    required ChatTurn turn,
-    required ModelToolCall toolCall,
-    required int? stepId,
-    required int consecutiveFailures,
-    required ChatConfig config,
-  }) async* {
-    final toolDisplayName = resolveToolDisplayName(toolCall.toolName);
-    Logger.trace(
-      _tag,
-      'tool.start',
-      data: {
-        'turnId': turn.id,
-        'stepId': stepId,
-        'toolName': toolCall.toolName,
-      },
-    );
-    Logger.d(
-      _tag,
-      'planner chose tool ${toolCall.toolName} with args=${toolCall.arguments}',
-    );
-    yield await _eventRepository.appendToolCall(
-      turnId: turn.id!,
-      groupId: turn.groupId,
-      toolName: toolCall.toolName,
-      arguments: toolCall.arguments,
-      summary: '准备执行工具：$toolDisplayName',
-      payloadJson: {
-        'toolName': toolCall.toolName,
-        'arguments': toolCall.arguments,
-        'providerCallId': toolCall.providerCallId,
-        'status': ToolInvocationStatus.proposed.name,
-        'summary': '准备执行工具：$toolDisplayName',
-        'requiresConfirmation': false,
-        'stepId': stepId,
-      },
-    );
-
-    final definition = _toolCallService.findDefinition(toolCall.toolName);
-    if (definition?.resolvedRuntimeKind == ToolRuntimeKind.userInteraction) {
-      final request = AskUserQuestionRequest.fromJson({
-        ...toolCall.arguments,
-        'agentTurnId': turn.id!,
-        if (stepId != null) 'stepId': stepId,
-        if ((toolCall.providerCallId ?? '').trim().isNotEmpty)
-          'providerCallId': toolCall.providerCallId,
-      });
-      await _turnRepository.markAwaitingUserInteraction(turn.id!);
-      Logger.trace(
-        _tag,
-        'interaction.awaiting_user',
-        data: {
-          'turnId': turn.id,
-          'stepId': stepId,
-          'questionCount': request.questions.length,
-        },
-      );
-      yield await _eventRepository.appendAssistantQuestionPrompt(
-        turnId: turn.id!,
-        groupId: turn.groupId,
-        request: request,
-        content: _buildQuestionPromptSummary(request),
-      );
-      return;
-    }
-
-    final invocation = ToolInvocation(
-      toolName: toolCall.toolName,
-      arguments: toolCall.arguments,
-      status: ToolInvocationStatus.running,
-      summary: '正在执行工具：$toolDisplayName',
-      requiresConfirmation: false,
-      stepId: stepId,
-    );
-    final execution = await _toolCallService.executeToolInvocation(
-      groupId: turn.groupId,
-      invocation: invocation,
-    );
-
-    await for (final event in _handleToolExecution(
-      turn: turn,
-      invocation: invocation,
-      execution: execution,
-      consecutiveFailures: consecutiveFailures,
-      config: config,
-      resumeLoopAfterSuccess: false,
-      stepId: stepId,
-    )) {
-      yield event;
-    }
-  }
-
   Stream<ChatEvent> _handleToolExecution({
     required ChatTurn turn,
     required ToolInvocation invocation,
@@ -660,22 +539,22 @@ class TurnHarness {
         },
       );
       yield await _eventRepository.appendToolConfirmation(
-          turnId: turnId,
-          groupId: groupId,
-          toolName: toolInvocation.toolName,
-          arguments: toolInvocation.arguments,
-          summary: toolInvocation.summary,
-          payloadJson: toolPayload,
-        );
+        turnId: turnId,
+        groupId: groupId,
+        toolName: toolInvocation.toolName,
+        arguments: toolInvocation.arguments,
+        summary: toolInvocation.summary,
+        payloadJson: toolPayload,
+      );
       return;
     }
 
     yield await _eventRepository.appendToolExecutionStarted(
-        turnId: turnId,
-        groupId: groupId,
-        content: toolInvocation?.summary ?? invocation.summary,
-        payloadJson: toolPayload,
-      );
+      turnId: turnId,
+      groupId: groupId,
+      content: toolInvocation?.summary ?? invocation.summary,
+      payloadJson: toolPayload,
+    );
     if (stepId != null) {
       await _stepRepository?.markRunning(stepId);
     }
@@ -699,12 +578,12 @@ class TurnHarness {
         'tool execution failed for ${invocation.toolName}: ${toolResult?.errorMessage ?? 'tool_execution_failed'}',
       );
       yield await _eventRepository.appendToolError(
-          turnId: turnId,
-          groupId: groupId,
-          content: toolResult?.summary ?? 'tool_execution_failed',
-          errorCode: toolResult?.errorMessage,
-          payloadJson: toolResult?.toJson(),
-        );
+        turnId: turnId,
+        groupId: groupId,
+        content: toolResult?.summary ?? 'tool_execution_failed',
+        errorCode: toolResult?.errorMessage,
+        payloadJson: toolResult?.toJson(),
+      );
       await _turnRepository.incrementToolCallCount(turnId);
       if (stepId != null) {
         await _stepRepository?.markFailed(
@@ -741,11 +620,11 @@ class TurnHarness {
       },
     );
     yield await _eventRepository.appendToolResult(
-        turnId: turnId,
-        groupId: groupId,
-        content: toolResult.summary,
-        payloadJson: toolResult.toJson(),
-      );
+      turnId: turnId,
+      groupId: groupId,
+      content: toolResult.summary,
+      payloadJson: toolResult.toJson(),
+    );
     await _turnRepository.incrementToolCallCount(turnId);
     if (stepId != null) {
       await _stepRepository?.markCompleted(
@@ -830,13 +709,6 @@ class TurnHarness {
       ...invocation.toJson(),
       if (toolAccess != null) 'toolAccess': toolAccess.toJson(),
     };
-  }
-
-  String _buildQuestionPromptSummary(AskUserQuestionRequest request) {
-    if (request.questions.length == 1) {
-      return request.questions.single.question;
-    }
-    return '请先回答这 ${request.questions.length} 个问题';
   }
 
   String _formatUserInteractionTranscript(

@@ -40,6 +40,7 @@ class SearchChatHistoryToolHandler implements ToolHandler {
           chinese:
               '当问题依赖当前聊天记录、用户此前说过的话或本会话上下文时使用。不要把它用于联网搜索，也不要用于读取用户已经提供的 URL。',
         ),
+        isConcurrencySafe: true,
         parameters: {
           'query': 'string',
           'maxResults': 'int?',
