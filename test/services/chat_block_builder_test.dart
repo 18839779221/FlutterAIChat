@@ -365,6 +365,69 @@ void main() {
       );
     });
 
+    test('does not merge sequential write invocations into one workflow block', () {
+      final blocks = builder.buildAssistantBlocks(
+        messages: [
+          ChatMessage(
+            id: 90,
+            text: '连续写入两个文件',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 25, 11, 0, 0),
+          ),
+          ChatMessage(
+            id: 91,
+            text: '正在执行工具：写入文件',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const {
+              'toolName': 'Write',
+              'arguments': {
+                'file_path': 'docs/a.md',
+                'content': 'first file',
+              },
+              'status': 'running',
+              'summary': '正在执行工具：写入文件',
+              'requiresConfirmation': false,
+              'stepId': 21,
+            },
+            timestamp: DateTime(2026, 4, 25, 11, 0, 1),
+          ),
+          ChatMessage(
+            id: 92,
+            text: '正在执行工具：写入文件',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const {
+              'toolName': 'Write',
+              'arguments': {
+                'file_path': 'docs/b.md',
+                'content': 'second file',
+              },
+              'status': 'running',
+              'summary': '正在执行工具：写入文件',
+              'requiresConfirmation': false,
+              'stepId': 22,
+            },
+            timestamp: DateTime(2026, 4, 25, 11, 0, 2),
+          ),
+        ],
+      );
+
+      expect(blocks, hasLength(2));
+      expect(blocks[0].type, AssistantTurnBlockType.toolWorkflow);
+      expect(blocks[1].type, AssistantTurnBlockType.toolWorkflow);
+      expect(blocks[0].payload?['steps'], hasLength(1));
+      expect(blocks[1].payload?['steps'], hasLength(1));
+      expect(
+        blocks[0].payload?['steps'][0]['details']['file_path'],
+        'docs/a.md',
+      );
+      expect(
+        blocks[1].payload?['steps'][0]['details']['file_path'],
+        'docs/b.md',
+      );
+    });
+
     test('merges tool result into the existing workflow card instead of appending',
         () {
       final blocks = builder.buildAssistantBlocks(
