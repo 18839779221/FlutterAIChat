@@ -221,7 +221,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.light(),
-          home: Scaffold(
+          home: const Scaffold(
             body: CodeBlockWidget(
               code: 'const value = 42;',
               language: 'dart',
