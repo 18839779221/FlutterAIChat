@@ -140,7 +140,6 @@ The app uses **flutter_riverpod** with a split provider/controller architecture:
 - `ChatInteractionCoordinator` owns ask-user-question draft state handoff and structured answer submission
 - `ChatSessionCoordinator` owns group load/select/delete and message pagination
 - `ChatSummaryController` owns auto-summary scheduling and summary title updates
-- `ChatDebugController` owns `structureMessageForDebug` lifecycle
 - `ChatPreferencesController` owns system prompt persistence
 - Prompt management lives under `lib/services/prompt/`
   - `PromptCatalog` owns bilingual prompt text blocks

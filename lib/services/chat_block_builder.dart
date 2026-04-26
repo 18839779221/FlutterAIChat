@@ -67,19 +67,6 @@ class ChatBlockBuilder {
     required int sequence,
   }) {
     switch (message.contentType) {
-      case MessageContentType.structuredCard:
-        return AssistantTurnBlock(
-          id: '$turnId-structured-$sequence',
-          turnId: turnId,
-          type: AssistantTurnBlockType.structuredOutput,
-          sequence: sequence,
-          createdAt: message.timestamp,
-          updatedAt: message.timestamp,
-          title: message.payloadJson?['title'] as String?,
-          text: message.text,
-          reasoningText: message.reasoningContent,
-          payload: message.payloadJson,
-        );
       case MessageContentType.askUserQuestionPrompt:
         return AssistantTurnBlock(
           id: '$turnId-question-prompt-$sequence',

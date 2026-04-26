@@ -18,7 +18,8 @@ void main() {
   });
 
   group('ResponsesAdapter.buildChatPayload', () {
-    test('serialises input items with input_text/output_text types and store=false',
+    test(
+        'serialises input items with input_text/output_text types and requests reasoning summary',
         () {
       final payload = adapter.buildChatPayload(
         messages: [
@@ -32,7 +33,10 @@ void main() {
 
       expect(payload['store'], false);
       expect(payload['stream'], true);
-      expect(payload.containsKey('reasoning'), isFalse);
+      expect(payload['reasoning'], {
+        'effort': 'medium',
+        'summary': 'auto',
+      });
       final input = payload['input'] as List<dynamic>;
       expect(input[0]['content'][0]['type'], 'input_text');
       expect(input[1]['content'][0]['type'], 'output_text');

@@ -15,6 +15,10 @@ class ResponsesAdapter extends ApiStyleAdapter {
   const ResponsesAdapter();
 
   static const String _transcriptIdPrefix = 'fc_ctx_';
+  static const Map<String, dynamic> _reasoningConfig = {
+    'effort': 'medium',
+    'summary': 'auto',
+  };
 
   @override
   ApiStyle get style => ApiStyle.responses;
@@ -34,10 +38,9 @@ class ResponsesAdapter extends ApiStyleAdapter {
     required String modelName,
     required bool stream,
   }) {
-    final normalizedMessages =
-        normalizeMessagesWithConfiguredSystemPrompt(messages, config.systemPrompt);
-    final transcriptState =
-        HistoricalToolTranscriptState(_transcriptIdPrefix);
+    final normalizedMessages = normalizeMessagesWithConfiguredSystemPrompt(
+        messages, config.systemPrompt);
+    final transcriptState = HistoricalToolTranscriptState(_transcriptIdPrefix);
     return {
       'model': modelName,
       'input': normalizedMessages
@@ -48,6 +51,7 @@ class ResponsesAdapter extends ApiStyleAdapter {
             ),
           )
           .toList(),
+      'reasoning': _reasoningConfig,
       'stream': stream,
       'store': false,
     };

@@ -47,7 +47,12 @@ resolve_device_id() {
     return
   fi
 
-  mapfile -t devices < <(adb devices | awk 'NR>1 && $2=="device" {print $1}')
+  local devices=()
+  while IFS= read -r device; do
+    if [[ -n "$device" ]]; then
+      devices+=("$device")
+    fi
+  done < <(adb devices | awk 'NR>1 && $2=="device" {print $1}')
 
   if [[ "${#devices[@]}" -eq 1 ]]; then
     echo "${devices[0]}"

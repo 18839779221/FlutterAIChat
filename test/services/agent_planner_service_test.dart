@@ -2,7 +2,6 @@ import 'package:ai_chat/models/agent/agent_loop_limits.dart';
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/agent/model_tool_call.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
-import 'package:ai_chat/models/agent/planner_tool_choice.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -421,7 +420,8 @@ void main() {
       );
     });
 
-    test('planNextDecision uses tool-provided model context text for transcript',
+    test(
+        'planNextDecision uses tool-provided model context text for transcript',
         () async {
       final llm = _NativeDecisionLLM(
         decision: const ModelTurnDecision(
@@ -1253,12 +1253,20 @@ void main() {
           toolCalls: [
             ModelToolCall(
               toolName: 'Read',
-              arguments: {'file_path': 'docs/spec.md', 'offset': 0, 'limit': 200},
+              arguments: {
+                'file_path': 'docs/spec.md',
+                'offset': 0,
+                'limit': 200
+              },
               sequence: 0,
             ),
             ModelToolCall(
               toolName: 'Read',
-              arguments: {'limit': 200, 'offset': 0, 'file_path': 'docs/spec.md'},
+              arguments: {
+                'limit': 200,
+                'offset': 0,
+                'file_path': 'docs/spec.md'
+              },
               sequence: 1,
             ),
           ],
@@ -1562,31 +1570,12 @@ class _NativeDecisionLLM implements BaseLLM {
   @override
   Stream<String> chatStream(
       List<ChatMessage> messages, ChatConfig config) async* {}
-
-  @override
-  Future<String> planNextAction({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-  }) async =>
-      throw UnimplementedError();
-
-  @override
-  Future<PlannerToolChoice?> planNextToolChoice({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required List<PlannerToolOption> availableTools,
-  }) async =>
-      null;
-
   @override
   Future<String> processWebpageContent({
     required String webpageContent,
     required String prompt,
   }) async =>
       '';
-
-  @override
-  Future<String> structureSummaryCard(String sourceText) async => '{}';
 
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async =>
@@ -1621,31 +1610,12 @@ class _NativeNullPlannerLLM implements BaseLLM {
   @override
   Stream<String> chatStream(
       List<ChatMessage> messages, ChatConfig config) async* {}
-
-  @override
-  Future<String> planNextAction({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-  }) async =>
-      throw UnimplementedError();
-
-  @override
-  Future<PlannerToolChoice?> planNextToolChoice({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required List<PlannerToolOption> availableTools,
-  }) async =>
-      null;
-
   @override
   Future<String> processWebpageContent({
     required String webpageContent,
     required String prompt,
   }) async =>
       '';
-
-  @override
-  Future<String> structureSummaryCard(String sourceText) async => '{}';
 
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async =>
@@ -1680,31 +1650,12 @@ class _ThrowingNativePlannerLLM implements BaseLLM {
   @override
   Stream<String> chatStream(
       List<ChatMessage> messages, ChatConfig config) async* {}
-
-  @override
-  Future<String> planNextAction({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-  }) async =>
-      throw UnimplementedError();
-
-  @override
-  Future<PlannerToolChoice?> planNextToolChoice({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required List<PlannerToolOption> availableTools,
-  }) async =>
-      null;
-
   @override
   Future<String> processWebpageContent({
     required String webpageContent,
     required String prompt,
   }) async =>
       '';
-
-  @override
-  Future<String> structureSummaryCard(String sourceText) async => '{}';
 
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async =>

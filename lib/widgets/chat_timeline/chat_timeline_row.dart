@@ -5,7 +5,6 @@ import 'package:ai_chat/models/chat/tool_card_presentation_variant.dart';
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
-import 'package:ai_chat/models/response/structured_summary_card.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/chat_block_builder.dart';
@@ -263,17 +262,19 @@ class ChatTimelineRow extends ConsumerWidget {
         : toolUiRegistry
             .findWorkflowRenderer(latestStep.toolName)
             ?.buildWorkflowStep(
-              context,
-              steps: steps,
-              sourceMessage: sourceMessage,
-              isExpanded: latestStep.stepId == expandedStepId,
-              onTap: () {
-                ref.read(toolWorkflowExpansionProvider.notifier).toggleExpandedStep(
-                      turnId: block.turnId,
-                      stepId: latestStep.stepId,
-                    );
-              },
-            );
+            context,
+            steps: steps,
+            sourceMessage: sourceMessage,
+            isExpanded: latestStep.stepId == expandedStepId,
+            onTap: () {
+              ref
+                  .read(toolWorkflowExpansionProvider.notifier)
+                  .toggleExpandedStep(
+                    turnId: block.turnId,
+                    stepId: latestStep.stepId,
+                  );
+            },
+          );
     if (customWorkflowWidget != null) {
       return customWorkflowWidget;
     }
@@ -407,7 +408,8 @@ class ChatTimelineRow extends ConsumerWidget {
         continue;
       }
       final payload = message.payloadJson;
-      if ((payload?['toolName'] ?? '').toString().trim() != normalizedToolName) {
+      if ((payload?['toolName'] ?? '').toString().trim() !=
+          normalizedToolName) {
         continue;
       }
       if ((payload?['status'] ?? '').toString().trim() !=
@@ -426,7 +428,8 @@ class ChatTimelineRow extends ConsumerWidget {
     required String turnId,
   }) {
     final prefixMessages = sourceMessages
-        .where((message) => !message.timestamp.isAfter(runningMessage.timestamp))
+        .where(
+            (message) => !message.timestamp.isAfter(runningMessage.timestamp))
         .toList(growable: false);
     if (prefixMessages.isEmpty) {
       return null;
@@ -454,17 +457,7 @@ class ChatTimelineRow extends ConsumerWidget {
       };
     }
 
-    try {
-      final card = StructuredSummaryCard.fromJson(payload);
-      return {
-        '摘要': card.summary,
-        if (card.keyPoints.isNotEmpty) '关键点': card.keyPoints.join(' / '),
-        if (card.actionItems.isNotEmpty) '行动项': card.actionItems.join(' / '),
-        if (card.risks.isNotEmpty) '风险': card.risks.join(' / '),
-      };
-    } catch (_) {
-      return payload.map((key, value) => MapEntry(key, '$value'));
-    }
+    return payload.map((key, value) => MapEntry(key, '$value'));
   }
 
   List<ToolWorkflowStep> _extractWorkflowSteps(AssistantTurnBlock block) {

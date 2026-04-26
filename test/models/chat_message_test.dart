@@ -14,11 +14,11 @@ void main() {
 
     test('contentType can be explicitly set via constructor', () {
       final message = _buildMessage(
-        contentType: MessageContentType.structuredCard,
+        contentType: MessageContentType.toolResult,
         role: MessageRole.assistant,
       );
 
-      expect(message.contentType, MessageContentType.structuredCard);
+      expect(message.contentType, MessageContentType.toolResult);
     });
   });
 
@@ -41,7 +41,8 @@ void main() {
       expect(jsonDecode(serialized['reference_json'] as String), reference);
     });
 
-    test('fromMap restores typed fields and falls back on unknown content type', () {
+    test('fromMap restores typed fields and falls back on unknown content type',
+        () {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final payload = {'card': 'value'};
       final reference = {'source': 'tool'};
@@ -50,22 +51,24 @@ void main() {
         'role': 'assistant',
         'timestamp': timestamp,
         'status': 'completed',
-        'content_type': 'structuredCard',
+        'content_type': 'toolResult',
         'payload_json': jsonEncode(payload),
         'reference_json': jsonEncode(reference),
       };
 
       final message = ChatMessage.fromMap(map);
 
-      expect(message.contentType, MessageContentType.structuredCard);
+      expect(message.contentType, MessageContentType.toolResult);
       expect(message.payloadJson, payload);
       expect(message.referenceJson, reference);
 
-      final unknown = ChatMessage.fromMap({...map, 'content_type': 'unexpected'});
+      final unknown =
+          ChatMessage.fromMap({...map, 'content_type': 'unexpected'});
       expect(unknown.contentType, MessageContentType.plainText);
     });
 
-    test('fromMap tolerates empty payload and reference json without crashing', () {
+    test('fromMap tolerates empty payload and reference json without crashing',
+        () {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final map = {
         'text': 'hi again',
@@ -87,7 +90,7 @@ void main() {
       final payload = {'card': 'data'};
       final reference = {'source': 'tool'};
       final original = _buildMessage(
-        contentType: MessageContentType.structuredCard,
+        contentType: MessageContentType.toolResult,
         payloadJson: payload,
         referenceJson: reference,
       );

@@ -1,5 +1,4 @@
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
-import 'package:ai_chat/models/agent/planner_tool_choice.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/agent/agent_loop_limits.dart';
 import 'package:ai_chat/models/chat_event.dart';
@@ -228,25 +227,6 @@ class _CapturingStructuredPlannerLLM implements BaseLLM {
   @override
   Stream<String> chatStream(
       List<ChatMessage> messages, ChatConfig config) async* {}
-
-  @override
-  Future<String> planNextAction({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-  }) async =>
-      throw UnimplementedError();
-
-  @override
-  Future<PlannerToolChoice?> planNextToolChoice({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required List<PlannerToolOption> availableTools,
-  }) async =>
-      null;
-
-  @override
-  Future<String> structureSummaryCard(String sourceText) async => '{}';
-
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async =>
       'summary';

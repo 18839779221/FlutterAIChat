@@ -1,4 +1,3 @@
-import 'package:ai_chat/controllers/chat_debug_controller.dart';
 import 'package:ai_chat/controllers/chat_preferences_controller.dart';
 import 'package:ai_chat/controllers/chat_send_coordinator.dart';
 import 'package:ai_chat/controllers/chat_session_coordinator.dart';
@@ -16,7 +15,6 @@ class ChatController {
   final ChatSendCoordinator _sendCoordinator;
   final ChatSessionCoordinator _sessionCoordinator;
   final ChatSummaryController _summaryController;
-  final ChatDebugController _debugController;
   final ChatPreferencesController _preferencesController;
 
   ChatController(
@@ -24,12 +22,10 @@ class ChatController {
     required ChatSendCoordinator sendCoordinator,
     required ChatSessionCoordinator sessionCoordinator,
     required ChatSummaryController summaryController,
-    required ChatDebugController debugController,
     required ChatPreferencesController preferencesController,
   })  : _sendCoordinator = sendCoordinator,
         _sessionCoordinator = sessionCoordinator,
         _summaryController = summaryController,
-        _debugController = debugController,
         _preferencesController = preferencesController;
 
   Future<void> loadGroups() async {
@@ -61,10 +57,10 @@ class ChatController {
 
   Future<void> sendMessage(String text) async {
     await _sendCoordinator.sendMessage(
-          text,
-          scheduleAutoSummary: _summaryController.scheduleAutoSummary,
-          cancelActiveStream: cancelStreamSubscription,
-        );
+      text,
+      scheduleAutoSummary: _summaryController.scheduleAutoSummary,
+      cancelActiveStream: cancelStreamSubscription,
+    );
   }
 
   Future<void> cancelToolInvocation(ChatMessage message) async {
@@ -76,13 +72,9 @@ class ChatController {
     bool trustTool = false,
   }) async {
     await _sendCoordinator.confirmToolInvocation(
-          message,
-          trustTool: trustTool,
-        );
-  }
-
-  Future<void> structureMessageForDebug(ChatMessage message) async {
-    await _debugController.structureMessageForDebug(message);
+      message,
+      trustTool: trustTool,
+    );
   }
 
   void cancelStreamSubscription() {
@@ -101,8 +93,8 @@ class ChatController {
     final messages = _ref.read(messagesProvider);
     if (messages.isEmpty) return;
 
-    final lastIndex =
-        messages.lastIndexWhere((message) => message.role == MessageRole.assistant);
+    final lastIndex = messages
+        .lastIndexWhere((message) => message.role == MessageRole.assistant);
     if (lastIndex == -1) return;
 
     final aiMessage = messages[lastIndex];

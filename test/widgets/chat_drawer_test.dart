@@ -14,12 +14,13 @@ void main() {
   ) async {
     final container = ProviderContainer(
       overrides: [
-        chatSessionCoordinatorProvider.overrideWith((ref) => _StubSessionCoordinator()),
-        chatSendCoordinatorProvider.overrideWith((ref) => _StubSendCoordinator()),
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
         chatSummaryControllerProvider.overrideWith(
           (ref) => _StubSummaryController(),
         ),
-        chatDebugControllerProvider.overrideWith((ref) => _StubDebugController()),
         chatPreferencesControllerProvider.overrideWith(
           (ref) => _StubPreferencesController(),
         ),
@@ -107,11 +108,6 @@ class _StubSummaryController implements ChatSummaryController {
 
   @override
   Future<String?> summarizeAndUpdateTitle() async => null;
-}
-
-class _StubDebugController implements ChatDebugController {
-  @override
-  Future<void> structureMessageForDebug(ChatMessage message) async {}
 }
 
 class _StubPreferencesController implements ChatPreferencesController {

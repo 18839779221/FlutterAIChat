@@ -73,7 +73,6 @@ UI 只消费 Riverpod providers 和 controller 门面，不直接编排复杂业
 - [lib/controllers/chat_send_coordinator.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_send_coordinator.dart)
 - [lib/controllers/chat_session_coordinator.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_session_coordinator.dart)
 - [lib/controllers/chat_summary_controller.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_summary_controller.dart)
-- [lib/controllers/chat_debug_controller.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_debug_controller.dart)
 - [lib/controllers/chat_preferences_controller.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_preferences_controller.dart)
 - [lib/controllers/chat_interaction_coordinator.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_interaction_coordinator.dart)
 
@@ -83,7 +82,6 @@ UI 只消费 Riverpod providers 和 controller 门面，不直接编排复杂业
 - `ChatInteractionCoordinator`：问题卡片草稿、结构化答案提交、interaction 恢复入口
 - `ChatSessionCoordinator`：会话加载、切换、删除、分页
 - `ChatSummaryController`：会话总结与自动总结定时逻辑
-- `ChatDebugController`：结构化调试入口
 - `ChatPreferencesController`：系统提示词
 
 ### Prompt 管理
@@ -100,7 +98,7 @@ UI 只消费 Riverpod providers 和 controller 门面，不直接编排复杂业
 
 ### Service 层
 - [lib/services/chat_service.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/services/chat_service.dart)
-- `tool/runtime`、`trace`、`response parser` 等服务
+- `tool/runtime`、`trace` 等服务
 
 Service 层负责 LLM 通信、Session 上下文编排、工具编排与 trace 记录。
 

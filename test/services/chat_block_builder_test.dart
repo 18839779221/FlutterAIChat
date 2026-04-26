@@ -102,34 +102,6 @@ void main() {
       expect(blocks.last.type, AssistantTurnBlockType.toolWorkflow);
     });
 
-    test('maps structured payload to structured output block', () {
-      final blocks = builder.buildAssistantBlocks(
-        messages: [
-          ChatMessage(
-            id: 1,
-            text: '问题',
-            role: MessageRole.user,
-            timestamp: DateTime(2026, 3, 29, 10, 0, 0),
-          ),
-          ChatMessage(
-            id: 2,
-            text: '结构化摘要',
-            role: MessageRole.assistant,
-            contentType: MessageContentType.structuredCard,
-            payloadJson: const {
-              'title': '研究摘要',
-              'summary': '摘要',
-            },
-            timestamp: DateTime(2026, 3, 29, 10, 0, 1),
-          ),
-        ],
-      );
-
-      expect(blocks.single.type, AssistantTurnBlockType.structuredOutput);
-      expect(blocks.single.title, '研究摘要');
-      expect(blocks.single.payload?['summary'], '摘要');
-    });
-
     test('maps confirmation message to workflow block', () {
       final blocks = builder.buildAssistantBlocks(
         messages: [

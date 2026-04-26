@@ -1,5 +1,4 @@
 import 'package:ai_chat/controllers/chat_controller.dart';
-import 'package:ai_chat/controllers/chat_debug_controller.dart';
 import 'package:ai_chat/controllers/chat_interaction_coordinator.dart';
 import 'package:ai_chat/controllers/chat_preferences_controller.dart';
 import 'package:ai_chat/controllers/chat_send_coordinator.dart';
@@ -17,7 +16,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 export '../controllers/chat_controller.dart';
-export '../controllers/chat_debug_controller.dart';
 export '../controllers/chat_interaction_coordinator.dart';
 export '../controllers/chat_preferences_controller.dart';
 export '../controllers/chat_send_coordinator.dart';
@@ -45,10 +43,6 @@ final chatSummaryControllerProvider = Provider<ChatSummaryController>((ref) {
   );
 });
 
-final chatDebugControllerProvider = Provider<ChatDebugController>((ref) {
-  return DefaultChatDebugController(ref);
-});
-
 final chatInteractionCoordinatorProvider =
     Provider<ChatInteractionCoordinator>((ref) {
   return DefaultChatInteractionCoordinator(
@@ -68,7 +62,6 @@ final chatControllerProvider = Provider<ChatController>((ref) {
     sendCoordinator: ref.read(chatSendCoordinatorProvider),
     sessionCoordinator: ref.read(chatSessionCoordinatorProvider),
     summaryController: ref.read(chatSummaryControllerProvider),
-    debugController: ref.read(chatDebugControllerProvider),
     preferencesController: ref.read(chatPreferencesControllerProvider),
   );
 });

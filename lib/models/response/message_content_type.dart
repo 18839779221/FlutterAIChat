@@ -1,7 +1,6 @@
 /// Defines the known content types for a chat message payload.
 enum MessageContentType {
   plainText,
-  structuredCard,
   toolInvocation,
   toolResult,
   actionConfirmation,
@@ -20,8 +19,6 @@ extension MessageContentTypeParsing on MessageContentType {
     }
 
     switch (value) {
-      case 'structuredCard':
-        return MessageContentType.structuredCard;
       case 'toolInvocation':
         return MessageContentType.toolInvocation;
       case 'toolResult':
@@ -43,8 +40,6 @@ extension MessageContentTypeParsing on MessageContentType {
     switch (this) {
       case MessageContentType.plainText:
         return 'plainText';
-      case MessageContentType.structuredCard:
-        return 'structuredCard';
       case MessageContentType.toolInvocation:
         return 'toolInvocation';
       case MessageContentType.toolResult:

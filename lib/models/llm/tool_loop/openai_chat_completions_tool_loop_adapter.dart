@@ -24,12 +24,14 @@ class OpenAIChatCompletionsToolLoopAdapter {
 
     final normalizedMessage = message.cast<String, dynamic>();
     final toolCalls = _parseToolCalls(normalizedMessage);
-    final content = _extractMessageText(normalizedMessage);
-    final visibleReasoning = _normalizeText(
-      normalizedMessage['reasoning_content'] ??
-          normalizedMessage['reasoning'] ??
-          normalizedMessage['thinking'],
-    );
+    final contentParts = _extractContentParts(normalizedMessage['content']);
+    final content = contentParts.content;
+    final visibleReasoning = _joinReasoningParts([
+      normalizedMessage['reasoning_content'],
+      normalizedMessage['reasoning'],
+      normalizedMessage['thinking'],
+      contentParts.reasoning,
+    ]);
     if (toolCalls.isEmpty && content == null && visibleReasoning == null) {
       return null;
     }
@@ -76,14 +78,24 @@ class OpenAIChatCompletionsToolLoopAdapter {
     return parsed;
   }
 
-  String? _extractMessageText(Map<String, dynamic> message) {
-    final content = message['content'];
+  _ContentParts _extractContentParts(dynamic content) {
+    final textBuffer = StringBuffer();
+    final reasoningBuffer = StringBuffer();
     final inlineText = _normalizeText(content);
     if (inlineText != null) {
-      return inlineText;
+      final extracted = _extractThinkEnvelope(inlineText);
+      if (extracted.reasoning != null) {
+        reasoningBuffer.write(extracted.reasoning);
+      }
+      if (extracted.content != null) {
+        textBuffer.write(extracted.content);
+      }
+      return _ContentParts(
+        content: _normalizeText(textBuffer.toString()),
+        reasoning: _normalizeText(reasoningBuffer.toString()),
+      );
     }
     if (content is List) {
-      final buffer = StringBuffer();
       for (final item in content) {
         if (item is! Map) {
           continue;
@@ -92,15 +104,20 @@ class OpenAIChatCompletionsToolLoopAdapter {
         final text =
             _normalizeText(normalizedItem['text'] ?? normalizedItem['content']);
         if (text != null) {
-          buffer.write(text);
+          final extracted = _extractThinkEnvelope(text);
+          if (extracted.reasoning != null) {
+            reasoningBuffer.write(extracted.reasoning);
+          }
+          if (extracted.content != null) {
+            textBuffer.write(extracted.content);
+          }
         }
       }
-      final aggregated = buffer.toString().trim();
-      if (aggregated.isNotEmpty) {
-        return aggregated;
-      }
     }
-    return null;
+    return _ContentParts(
+      content: _normalizeText(textBuffer.toString()),
+      reasoning: _normalizeText(reasoningBuffer.toString()),
+    );
   }
 
   Map<String, dynamic>? _decodeArguments(dynamic rawArguments) {
@@ -128,4 +145,47 @@ class OpenAIChatCompletionsToolLoopAdapter {
     }
     return trimmed;
   }
+
+  String? _joinReasoningParts(List<dynamic> values) {
+    final buffer = StringBuffer();
+    for (final value in values) {
+      final text = _normalizeText(value);
+      if (text != null) {
+        buffer.write(text);
+      }
+    }
+    return _normalizeText(buffer.toString());
+  }
+
+  _ContentParts _extractThinkEnvelope(String value) {
+    final matches = _thinkTagPattern.allMatches(value).toList(growable: false);
+    if (matches.isEmpty) {
+      return _ContentParts(content: value);
+    }
+
+    final reasoningBuffer = StringBuffer();
+    for (final match in matches) {
+      final inner = _normalizeText(match.group(1));
+      if (inner != null) {
+        reasoningBuffer.write(inner);
+      }
+    }
+    final stripped = value.replaceAll(_thinkTagPattern, '').trim();
+    return _ContentParts(
+      content: _normalizeText(stripped),
+      reasoning: _normalizeText(reasoningBuffer.toString()),
+    );
+  }
+
+  static final RegExp _thinkTagPattern = RegExp(
+    r'<think>([\s\S]*?)</think>',
+    caseSensitive: false,
+  );
+}
+
+class _ContentParts {
+  const _ContentParts({this.content, this.reasoning});
+
+  final String? content;
+  final String? reasoning;
 }
