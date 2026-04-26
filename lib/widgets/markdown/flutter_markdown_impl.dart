@@ -1,10 +1,9 @@
-import 'package:ai_chat/theme/app_colors.dart';
-import 'package:ai_chat/theme/app_typography.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'code_block_builder.dart';
+import 'flutter_markdown_reader_tokens.dart';
 import 'markdown_widget_impl.dart';
 
 class FlutterMarkdownImpl extends StatelessWidget {
@@ -23,11 +22,7 @@ class FlutterMarkdownImpl extends StatelessWidget {
     }
 
     final theme = Theme.of(context);
-    final colors = theme.extension<AppColors>()!;
-    final bodyColor = theme.colorScheme.onSurface;
-    final secondaryColor = theme.colorScheme.onSurface.withValues(alpha: 0.84);
-    final quoteBorderColor = colors.workflowRunning.withValues(alpha: 0.22);
-    const quoteBackgroundColor = Color(0xFFDDE4E8);
+    final reader = FlutterMarkdownReaderTokens.build(context);
 
     return RepaintBoundary(
       child: MarkdownBody(
@@ -36,67 +31,31 @@ class FlutterMarkdownImpl extends StatelessWidget {
         fitContent: false,
         onTapLink: (text, href, title) => _launchUrl(text, href),
         styleSheet: MarkdownStyleSheet(
-          // Prefer integer font metrics here to reduce visible glyph shimmer
-          // while list items slide across fractional scroll offsets.
-          p: AppTypography.documentStyle(
-            color: bodyColor,
-            fontSize: 13,
-            height: 1.4,
-          ),
-          h1: AppTypography.documentStyle(
-            color: bodyColor,
-            fontSize: 18,
-            height: 1.12,
-          ),
-          h2: AppTypography.documentStyle(
-            color: bodyColor,
-            fontSize: 15,
-            height: 1.14,
-          ),
-          h3: AppTypography.documentStyle(
-            color: bodyColor,
-            fontSize: 14,
-            height: 1.16,
-          ),
-          listBullet: AppTypography.documentStyle(
-            color: secondaryColor,
-            fontSize: 13,
-            height: 1.34,
-          ),
-          blockquote: AppTypography.documentStyle(
-            color: secondaryColor,
-            fontSize: 13,
-            height: 1.4,
-          ),
-          blockquotePadding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+          p: reader.body,
+          h1: reader.h1,
+          h2: reader.h2,
+          h3: reader.h3,
+          listBullet: reader.secondaryBody.copyWith(height: 1.46),
+          blockquote: reader.secondaryBody,
+          blockquotePadding: const EdgeInsets.fromLTRB(13, 8, 9, 8),
           blockquoteDecoration: BoxDecoration(
-            color: quoteBackgroundColor.withValues(alpha: 0.24),
+            color: reader.quoteBackgroundColor,
             border: Border(
               left: BorderSide(
-                color: quoteBorderColor.withValues(alpha: 0.82),
-                width: 1.5,
+                color: reader.quoteBorderColor,
+                width: 1.4,
               ),
             ),
             borderRadius: BorderRadius.circular(8),
           ),
-          strong: AppTypography.documentStyle(
-            color: bodyColor,
-            fontWeight: FontWeight.w500,
-            fontSize: 13,
-            height: 1.4,
-          ),
-          em: AppTypography.documentStyle(
-            color: bodyColor,
-            fontStyle: FontStyle.italic,
-            fontSize: 13,
-            height: 1.4,
-          ),
+          strong: reader.body.copyWith(fontWeight: FontWeight.w500),
+          em: reader.body.copyWith(fontStyle: FontStyle.italic),
           textAlign: WrapAlignment.start,
-          blockSpacing: 9.0,
-          listIndent: 18,
-          h1Padding: const EdgeInsets.only(top: 4, bottom: 6),
-          h2Padding: const EdgeInsets.only(top: 14, bottom: 6),
-          h3Padding: const EdgeInsets.only(top: 11, bottom: 5),
+          blockSpacing: 10,
+          listIndent: 17,
+          h1Padding: const EdgeInsets.only(top: 5, bottom: 6),
+          h2Padding: const EdgeInsets.only(top: 15, bottom: 6),
+          h3Padding: const EdgeInsets.only(top: 12, bottom: 5),
           horizontalRuleDecoration: BoxDecoration(
             color: theme.dividerColor.withValues(alpha: 0.16),
             borderRadius: BorderRadius.circular(999),
