@@ -6,7 +6,7 @@
 
 **Architecture:** 使用 `flutter_math_fork` 负责公式渲染，项目内新增 Markdown inline/block syntax 和 builder 作为薄适配层。行内公式作为 inline widget 融入正文，块级公式作为满宽可横向滚动的文档块展示，解析失败时降级显示原文。
 
-**Tech Stack:** Flutter 3.29.2, `flutter_markdown`, `markdown`, `flutter_math_fork`, `flutter_test`.
+**Tech Stack:** Flutter 3.29.2, `flutter_markdown`, `markdown`, `flutter_math_fork 0.7.3`, `flutter_test`.
 
 ---
 
@@ -40,10 +40,10 @@
 
 - [ ] **Step 1: 添加依赖**
 
-在 `dependencies` 中加入：
+在 `dependencies` 中加入。注意：项目固定 Flutter 3.29.2，`flutter_math_fork 0.7.4` 面向 Flutter 3.32.0，当前工具链不可用，因此第一版固定到 `0.7.3`。
 
 ```yaml
-flutter_math_fork: ^0.7.4
+flutter_math_fork: 0.7.3
 ```
 
 - [ ] **Step 2: 更新 lockfile**
@@ -354,4 +354,3 @@ Expected: No issues found.
 - [ ] **Step 3: 记录未覆盖风险**
 
 若未进行真机视觉验收，在最终说明中明确写出。
-
