@@ -9,7 +9,6 @@ import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/chat_block_builder.dart';
 import 'package:ai_chat/services/tool_card_presentation_mapper.dart';
-import 'package:ai_chat/utils/logger.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/latest_message_running_status_tail.dart';
@@ -30,9 +29,7 @@ import 'chat_timeline_item.dart';
 
 /// Renders a single stable timeline row.
 class ChatTimelineRow extends ConsumerWidget {
-  static const String _animationDebugTag = 'ToolAnimationDebug';
   static const Duration _minRunningVisibleDuration = Duration(seconds: 5);
-  static final Set<String> _emittedAnimationDebugKeys = <String>{};
 
   final ChatTimelineItem item;
   final ChatBlockBuilder blockBuilder;
@@ -240,23 +237,6 @@ class ChatTimelineRow extends ConsumerWidget {
       manualExpandedStepId: manualExpandedStepId,
     );
     final latestStep = steps.isEmpty ? null : steps.last;
-    final workflowDebugKey = 'workflow:${sourceMessage?.id ?? block.id}';
-    if (latestStep != null &&
-        _emittedAnimationDebugKeys.add(workflowDebugKey)) {
-      Logger.temp(
-        _animationDebugTag,
-        'workflow_widget_built',
-        data: {
-          'toolName': latestStep.toolName,
-          'stepStatus': latestStep.status.name,
-          'stepId': latestStep.stepId,
-          'sourceMessageId': sourceMessage?.id,
-          'expandedStepId': expandedStepId,
-          'usesCustomRenderer':
-              toolUiRegistry.findWorkflowRenderer(latestStep.toolName) != null,
-        },
-      );
-    }
     final customWorkflowWidget = latestStep == null
         ? null
         : toolUiRegistry
@@ -300,15 +280,6 @@ class ChatTimelineRow extends ConsumerWidget {
   }) {
     final resultMessage = item.sourceMessage;
     if (resultMessage == null) {
-      Logger.temp(
-        _animationDebugTag,
-        'delayed_preview_skipped',
-        data: {
-          'toolName': result.toolName,
-          'reason': 'missing_result_message',
-          'blockId': resultBlock.id,
-        },
-      );
       return null;
     }
 
@@ -318,33 +289,12 @@ class ChatTimelineRow extends ConsumerWidget {
       toolName: result.toolName,
     );
     if (runningMessage == null) {
-      Logger.temp(
-        _animationDebugTag,
-        'delayed_preview_skipped',
-        data: {
-          'toolName': result.toolName,
-          'reason': 'missing_running_message',
-          'resultMessageId': resultMessage.id,
-        },
-      );
       return null;
     }
 
     final visibleUntil =
         runningMessage.timestamp.add(_minRunningVisibleDuration);
     if (!visibleUntil.isAfter(resultMessage.timestamp)) {
-      Logger.temp(
-        _animationDebugTag,
-        'delayed_preview_skipped',
-        data: {
-          'toolName': result.toolName,
-          'reason': 'duration_already_elapsed',
-          'runningMessageId': runningMessage.id,
-          'resultMessageId': resultMessage.id,
-          'visibleUntil': visibleUntil.toIso8601String(),
-          'resultAt': resultMessage.timestamp.toIso8601String(),
-        },
-      );
       return null;
     }
 
@@ -355,31 +305,8 @@ class ChatTimelineRow extends ConsumerWidget {
       turnId: resultBlock.turnId,
     );
     if (runningWorkflowBlock == null) {
-      Logger.temp(
-        _animationDebugTag,
-        'delayed_preview_skipped',
-        data: {
-          'toolName': result.toolName,
-          'reason': 'missing_running_workflow_block',
-          'runningMessageId': runningMessage.id,
-          'resultMessageId': resultMessage.id,
-        },
-      );
       return null;
     }
-
-    Logger.temp(
-      _animationDebugTag,
-      'delayed_preview_active',
-      data: {
-        'toolName': result.toolName,
-        'runningMessageId': runningMessage.id,
-        'resultMessageId': resultMessage.id,
-        'runningAt': runningMessage.timestamp.toIso8601String(),
-        'resultAt': resultMessage.timestamp.toIso8601String(),
-        'visibleUntil': visibleUntil.toIso8601String(),
-      },
-    );
 
     return _DelayedWorkflowPreview(
       visibleUntil: visibleUntil,
@@ -523,7 +450,6 @@ class _MinimumVisibleToolStateSwitcher extends StatefulWidget {
 
 class _MinimumVisibleToolStateSwitcherState
     extends State<_MinimumVisibleToolStateSwitcher> {
-  static const String _animationDebugTag = 'ToolAnimationDebug';
   Timer? _timer;
 
   @override
@@ -550,32 +476,10 @@ class _MinimumVisibleToolStateSwitcherState
     _timer?.cancel();
     final remaining = widget.visibleUntil.difference(DateTime.now());
     if (remaining <= Duration.zero) {
-      Logger.temp(
-        _animationDebugTag,
-        'switcher_reveal_immediate',
-        data: {
-          'visibleUntil': widget.visibleUntil.toIso8601String(),
-        },
-      );
       return;
     }
-    Logger.temp(
-      _animationDebugTag,
-      'switcher_schedule_reveal',
-      data: {
-        'remainingMs': remaining.inMilliseconds,
-        'visibleUntil': widget.visibleUntil.toIso8601String(),
-      },
-    );
     _timer = Timer(remaining, () {
       if (mounted) {
-        Logger.temp(
-          _animationDebugTag,
-          'switcher_reveal_result',
-          data: {
-            'visibleUntil': widget.visibleUntil.toIso8601String(),
-          },
-        );
         setState(() {});
       }
     });
