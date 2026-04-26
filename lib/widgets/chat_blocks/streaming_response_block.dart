@@ -29,7 +29,7 @@ class StreamingResponseBlock extends StatelessWidget {
           style: AppTypography.documentStyle(
             color: Theme.of(context).colorScheme.onSurface,
             fontSize: 13.2,
-            height: 1.38,
+            height: 1.48,
           ),
         ),
       ),

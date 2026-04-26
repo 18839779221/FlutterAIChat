@@ -3,6 +3,7 @@ import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/tools/core/tool_display_names.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/streaming_response_block.dart';
 import 'package:ai_chat/widgets/chat_timeline/stable_markdown_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
@@ -126,6 +127,27 @@ void main() {
           styleSheet.blockquotePadding, const EdgeInsets.fromLTRB(13, 8, 9, 8));
       expect(decoration.borderRadius, BorderRadius.circular(8));
       expect(border.left.width, 1.4);
+    });
+
+    testWidgets('streaming response stays close to completed markdown rhythm', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: StreamingResponseBlock(
+              text: '这是一段正在生成的长回答，用来验证流式态和完成态之间不会出现明显视觉断层。',
+            ),
+          ),
+        ),
+      );
+
+      final text = tester.widget<SelectableText>(find.byType(SelectableText));
+
+      expect(text.style!.fontSize, 13.2);
+      expect(text.style!.height, 1.48);
+      expect(text.style!.fontFamily, 'AnthropicSans');
     });
 
     testWidgets('markdown content is isolated by repaint boundary', (
