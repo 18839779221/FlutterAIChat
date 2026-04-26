@@ -20,6 +20,38 @@ String? normalizeText(dynamic value) {
   return trimmed;
 }
 
+ThinkTagExtraction extractThinkTaggedText(String value) {
+  final matches = _thinkTagPattern.allMatches(value).toList(growable: false);
+  if (matches.isEmpty) {
+    return ThinkTagExtraction(content: normalizeText(value));
+  }
+
+  final reasoningBuffer = StringBuffer();
+  for (final match in matches) {
+    final reasoning = normalizeText(match.group(1));
+    if (reasoning != null) {
+      reasoningBuffer.write(reasoning);
+    }
+  }
+
+  return ThinkTagExtraction(
+    content: normalizeText(value.replaceAll(_thinkTagPattern, '')),
+    reasoning: normalizeText(reasoningBuffer.toString()),
+  );
+}
+
+class ThinkTagExtraction {
+  const ThinkTagExtraction({this.content, this.reasoning});
+
+  final String? content;
+  final String? reasoning;
+}
+
+final RegExp _thinkTagPattern = RegExp(
+  r'<think>([\s\S]*?)</think>',
+  caseSensitive: false,
+);
+
 Map<String, dynamic>? decodeToolArguments(dynamic rawArguments) {
   if (rawArguments is Map) {
     return rawArguments.cast<String, dynamic>();
@@ -76,8 +108,7 @@ List<ChatMessage> normalizeMessagesWithConfiguredSystemPrompt(
 
   final alreadyPresent = normalizedMessages.any(
     (message) =>
-        message.role == MessageRole.system &&
-        message.text.trim() == trimmed,
+        message.role == MessageRole.system && message.text.trim() == trimmed,
   );
   if (alreadyPresent) {
     return normalizedMessages;

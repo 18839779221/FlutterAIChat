@@ -29,7 +29,6 @@ void main() {
             sendCoordinator: _NoopChatSendCoordinator(),
             sessionCoordinator: _NoopChatSessionCoordinator(),
             summaryController: _NoopChatSummaryController(),
-            debugController: _NoopChatDebugController(),
             preferencesController: _NoopChatPreferencesController(),
           ),
         ),
@@ -58,7 +57,6 @@ void main() {
             sendCoordinator: _NoopChatSendCoordinator(),
             sessionCoordinator: _NoopChatSessionCoordinator(),
             summaryController: _NoopChatSummaryController(),
-            debugController: _NoopChatDebugController(),
             preferencesController: _NoopChatPreferencesController(),
           ),
         ),
@@ -105,7 +103,6 @@ void main() {
               sendCoordinator: _NoopChatSendCoordinator(),
               sessionCoordinator: _NoopChatSessionCoordinator(),
               summaryController: summarySpy,
-              debugController: _NoopChatDebugController(),
               preferencesController: _NoopChatPreferencesController(),
             ),
           ),
@@ -252,11 +249,6 @@ class _NoopChatSummaryController implements ChatSummaryController {
   Future<String?> summarizeAndUpdateTitle() async => null;
 }
 
-class _NoopChatDebugController implements ChatDebugController {
-  @override
-  Future<void> structureMessageForDebug(ChatMessage message) async {}
-}
-
 class _NoopChatPreferencesController implements ChatPreferencesController {
   @override
   Future<void> setSystemPrompt(String? prompt) async {}
@@ -334,7 +326,8 @@ class _FakeChatStorage implements ChatStorage {
       1;
 
   @override
-  Future<int> insertSessionRuntimeMarker(SessionRuntimeMarker marker) async => 1;
+  Future<int> insertSessionRuntimeMarker(SessionRuntimeMarker marker) async =>
+      1;
 
   @override
   Future<int> insertTurn(ChatTurn turn) async => 1;

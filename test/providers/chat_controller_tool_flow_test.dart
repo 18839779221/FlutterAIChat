@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
-import 'package:ai_chat/models/agent/planner_tool_choice.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
@@ -1387,9 +1386,7 @@ void main() {
       );
       container.read(messagesProvider.notifier).addMessage(promptMessage);
 
-      await container
-          .read(chatSendCoordinatorProvider)
-          .submitQuestionAnswers(
+      await container.read(chatSendCoordinatorProvider).submitQuestionAnswers(
             promptMessage,
             response: const AskUserQuestionResponse(
               answersByQuestionId: {
@@ -1763,30 +1760,6 @@ void main() {
       expect(summaryController.cancelTimerCalls, 1);
     });
 
-    test('chat controller delegates debug structuring to debug controller',
-        () async {
-      final databaseHelper = _createTestDatabaseHelper();
-      final debugController = _FakeChatDebugController();
-      final container = _createContainer(
-        databaseHelper: databaseHelper,
-        chatService: _FakeChatService(),
-        debugController: debugController,
-      );
-      addTearDown(container.dispose);
-
-      final message = ChatMessage(
-        text: 'debug me',
-        role: MessageRole.assistant,
-        status: MessageStatus.completed,
-      );
-
-      await container
-          .read(chatControllerProvider)
-          .structureMessageForDebug(message);
-
-      expect(debugController.messages, [message]);
-    });
-
     test(
         'chat controller delegates preferences lifecycle to preferences controller',
         () async {
@@ -1913,7 +1886,6 @@ ProviderContainer _createContainer({
   TurnHarness? harness,
   ChatSessionCoordinator? sessionCoordinator,
   ChatSummaryController? summaryController,
-  ChatDebugController? debugController,
   ChatPreferencesController? preferencesController,
 }) {
   return ProviderContainer(
@@ -1928,8 +1900,6 @@ ProviderContainer _createContainer({
             .overrideWith((ref) => sessionCoordinator),
       if (summaryController != null)
         chatSummaryControllerProvider.overrideWith((ref) => summaryController),
-      if (debugController != null)
-        chatDebugControllerProvider.overrideWith((ref) => debugController),
       if (preferencesController != null)
         chatPreferencesControllerProvider
             .overrideWith((ref) => preferencesController),
@@ -2140,22 +2110,6 @@ class _NoopBaseLLM implements BaseLLM {
   @override
   Stream<String> chatStream(List<ChatMessage> messages, ChatConfig config) =>
       const Stream.empty();
-
-  @override
-  Future<String> planNextAction({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-  }) async =>
-      throw UnimplementedError();
-
-  @override
-  Future<PlannerToolChoice?> planNextToolChoice({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required List<PlannerToolOption> availableTools,
-  }) async =>
-      null;
-
   @override
   Future<ModelTurnDecision?> planTurnDecision({
     required List<ChatMessage> messages,
@@ -2176,11 +2130,6 @@ class _NoopBaseLLM implements BaseLLM {
     required String prompt,
   }) async =>
       '';
-
-  @override
-  Future<String> structureSummaryCard(String sourceText) {
-    throw UnimplementedError();
-  }
 
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async => '';
@@ -2289,15 +2238,6 @@ class _FakeChatSummaryController implements ChatSummaryController {
   Future<String?> summarizeAndUpdateTitle() async {
     summarizeCalls += 1;
     return 'fake-summary';
-  }
-}
-
-class _FakeChatDebugController implements ChatDebugController {
-  final List<ChatMessage> messages = [];
-
-  @override
-  Future<void> structureMessageForDebug(ChatMessage message) async {
-    messages.add(message);
   }
 }
 

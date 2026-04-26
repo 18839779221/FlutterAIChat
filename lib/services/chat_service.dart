@@ -1,11 +1,7 @@
-import 'package:flutter/foundation.dart';
-
 import '../models/llm/base_llm.dart';
-import '../models/response/structured_summary_card.dart';
 import '../models/tool/tool_invocation.dart';
 import 'prompt/prompt_locale.dart';
 import 'tool_call_service.dart';
-import 'response_parser_service.dart';
 import '../utils/logger.dart';
 
 class ChatConfig {
@@ -22,19 +18,13 @@ class ChatConfig {
 
 class ChatService {
   static const String _tag = 'ChatService';
-  static const String debugStructuredSuccessMarker =
-      '#debug-structured-success';
   final BaseLLM _llm;
-  final ResponseParserService _responseParserService;
   final ToolCallService? _toolCallService;
 
   ChatService({
     required BaseLLM llm,
-    ResponseParserService? responseParserService,
     ToolCallService? toolCallService,
   })  : _llm = llm,
-        _responseParserService =
-            responseParserService ?? ResponseParserService(),
         _toolCallService = toolCallService;
 
   // 暴露LLM实例供外部使用
@@ -69,31 +59,6 @@ class ChatService {
       Logger.e(_tag, '工具执行失败', e);
       Logger.e(_tag, '堆栈跟踪', stackTrace);
       return const ToolPreparationResult.noTool();
-    }
-  }
-
-  Future<StructuredSummaryParseResult> structureMessageForDebug(
-      String sourceText) async {
-    try {
-      if (kDebugMode && sourceText.contains(debugStructuredSuccessMarker)) {
-        return const StructuredSummaryParseResult.structured(
-          StructuredSummaryCard(
-            title: 'Debug Structured Summary',
-            summary:
-                'Generated from the local debug structured-output shortcut.',
-            keyPoints: ['Local shortcut is active'],
-            actionItems: ['Verify structured card rendering'],
-            risks: ['Do not rely on this marker outside debug validation'],
-          ),
-        );
-      }
-
-      final rawOutput = await _llm.structureSummaryCard(sourceText);
-      return _responseParserService.parseStructuredSummaryCard(rawOutput);
-    } catch (e, stackTrace) {
-      Logger.e(_tag, '结构化整理请求失败', e);
-      Logger.e(_tag, '堆栈跟踪', stackTrace);
-      return const StructuredSummaryParseResult.fallback();
     }
   }
 }

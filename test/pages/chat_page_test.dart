@@ -16,17 +16,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('chat page uses floating controls instead of a traditional AppBar', (
+  testWidgets(
+      'chat page uses floating controls instead of a traditional AppBar', (
     tester,
   ) async {
     final container = ProviderContainer(
       overrides: [
-        chatSessionCoordinatorProvider.overrideWith((ref) => _StubSessionCoordinator()),
-        chatSendCoordinatorProvider.overrideWith((ref) => _StubSendCoordinator()),
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
         chatSummaryControllerProvider.overrideWith(
           (ref) => _StubSummaryController(),
         ),
-        chatDebugControllerProvider.overrideWith((ref) => _StubDebugController()),
         chatPreferencesControllerProvider.overrideWith(
           (ref) => _StubPreferencesController(),
         ),
@@ -51,7 +53,8 @@ void main() {
     expect(find.byIcon(Icons.add), findsOneWidget);
     expect(find.text('AI Chat'), findsNothing);
 
-    final headerSize = tester.getSize(find.byKey(const ValueKey('ghost-header')));
+    final headerSize =
+        tester.getSize(find.byKey(const ValueKey('ghost-header')));
     expect(headerSize.height, lessThanOrEqualTo(56));
   });
 
@@ -59,12 +62,13 @@ void main() {
       (tester) async {
     final container = ProviderContainer(
       overrides: [
-        chatSessionCoordinatorProvider.overrideWith((ref) => _StubSessionCoordinator()),
-        chatSendCoordinatorProvider.overrideWith((ref) => _StubSendCoordinator()),
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
         chatSummaryControllerProvider.overrideWith(
           (ref) => _StubSummaryController(),
         ),
-        chatDebugControllerProvider.overrideWith((ref) => _StubDebugController()),
         chatPreferencesControllerProvider.overrideWith(
           (ref) => _StubPreferencesController(),
         ),
@@ -96,12 +100,13 @@ void main() {
       (tester) async {
     final container = ProviderContainer(
       overrides: [
-        chatSessionCoordinatorProvider.overrideWith((ref) => _StubSessionCoordinator()),
-        chatSendCoordinatorProvider.overrideWith((ref) => _StubSendCoordinator()),
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
         chatSummaryControllerProvider.overrideWith(
           (ref) => _StubSummaryController(),
         ),
-        chatDebugControllerProvider.overrideWith((ref) => _StubDebugController()),
         chatPreferencesControllerProvider.overrideWith(
           (ref) => _StubPreferencesController(),
         ),
@@ -158,12 +163,13 @@ void main() {
       (tester) async {
     final container = ProviderContainer(
       overrides: [
-        chatSessionCoordinatorProvider.overrideWith((ref) => _StubSessionCoordinator()),
-        chatSendCoordinatorProvider.overrideWith((ref) => _StubSendCoordinator()),
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
         chatSummaryControllerProvider.overrideWith(
           (ref) => _StubSummaryController(),
         ),
-        chatDebugControllerProvider.overrideWith((ref) => _StubDebugController()),
         chatPreferencesControllerProvider.overrideWith(
           (ref) => _StubPreferencesController(),
         ),
@@ -216,16 +222,18 @@ void main() {
     expect(find.text('Which storage layer should we use?'), findsOneWidget);
   });
 
-  testWidgets('resolved ask-user-question prompt does not stay active in timeline',
+  testWidgets(
+      'resolved ask-user-question prompt does not stay active in timeline',
       (tester) async {
     final container = ProviderContainer(
       overrides: [
-        chatSessionCoordinatorProvider.overrideWith((ref) => _StubSessionCoordinator()),
-        chatSendCoordinatorProvider.overrideWith((ref) => _StubSendCoordinator()),
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
         chatSummaryControllerProvider.overrideWith(
           (ref) => _StubSummaryController(),
         ),
-        chatDebugControllerProvider.overrideWith((ref) => _StubDebugController()),
         chatPreferencesControllerProvider.overrideWith(
           (ref) => _StubPreferencesController(),
         ),
@@ -289,16 +297,18 @@ void main() {
     expect(find.byType(AskUserQuestionCard), findsNothing);
   });
 
-  testWidgets('chat page renders bottom confirmation bar for active tool confirmation',
+  testWidgets(
+      'chat page renders bottom confirmation bar for active tool confirmation',
       (tester) async {
     final container = ProviderContainer(
       overrides: [
-        chatSessionCoordinatorProvider.overrideWith((ref) => _StubSessionCoordinator()),
-        chatSendCoordinatorProvider.overrideWith((ref) => _StubSendCoordinator()),
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
         chatSummaryControllerProvider.overrideWith(
           (ref) => _StubSummaryController(),
         ),
-        chatDebugControllerProvider.overrideWith((ref) => _StubDebugController()),
         chatPreferencesControllerProvider.overrideWith(
           (ref) => _StubPreferencesController(),
         ),
@@ -336,14 +346,18 @@ void main() {
     await tester.pump();
 
     expect(find.byType(ToolConfirmationBottomBar), findsOneWidget);
-    expect(find.descendant(
-      of: find.byType(ToolConfirmationBottomBar),
-      matching: find.text('写入文件'),
-    ), findsOneWidget);
-    expect(find.descendant(
-      of: find.byType(ToolConfirmationBottomBar),
-      matching: find.text('准备写入 docs/plan.md'),
-    ), findsOneWidget);
+    expect(
+        find.descendant(
+          of: find.byType(ToolConfirmationBottomBar),
+          matching: find.text('写入文件'),
+        ),
+        findsOneWidget);
+    expect(
+        find.descendant(
+          of: find.byType(ToolConfirmationBottomBar),
+          matching: find.text('准备写入 docs/plan.md'),
+        ),
+        findsOneWidget);
   });
 
   testWidgets('debug cases picker populates input', (tester) async {
@@ -352,11 +366,11 @@ void main() {
         chatSessionCoordinatorProvider.overrideWith(
           (ref) => _StubSessionCoordinator(),
         ),
-        chatSendCoordinatorProvider.overrideWith((ref) => _StubSendCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
         chatSummaryControllerProvider.overrideWith(
           (ref) => _StubSummaryController(),
         ),
-        chatDebugControllerProvider.overrideWith((ref) => _StubDebugController()),
         chatPreferencesControllerProvider.overrideWith(
           (ref) => _StubPreferencesController(),
         ),
@@ -418,7 +432,8 @@ void main() {
     expect(find.text('工具调用'), findsOneWidget);
     expect(find.text('澄清提问'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('debug-test-case-plain-answer')));
+    await tester
+        .tap(find.byKey(const ValueKey('debug-test-case-plain-answer')));
     await tester.pumpAndSettle();
 
     final input = tester.widget<TextField>(
@@ -520,11 +535,6 @@ class _StubSummaryController implements ChatSummaryController {
 
   @override
   Future<String?> summarizeAndUpdateTitle() async => null;
-}
-
-class _StubDebugController implements ChatDebugController {
-  @override
-  Future<void> structureMessageForDebug(ChatMessage message) async {}
 }
 
 class _StubPreferencesController implements ChatPreferencesController {

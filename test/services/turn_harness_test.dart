@@ -6,7 +6,6 @@ import 'package:ai_chat/models/agent/agent_loop_limits.dart';
 import 'package:ai_chat/models/agent/model_tool_call.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
-import 'package:ai_chat/models/agent/planner_tool_choice.dart';
 import 'package:ai_chat/models/tool/tool_access_snapshot.dart';
 import 'package:ai_chat/models/tool/tool_argument_property.dart';
 import 'package:ai_chat/models/tool/tool_argument_schema.dart';
@@ -245,11 +244,13 @@ void main() {
           .toList();
 
       final reasoningEvents = emitted
-          .where((event) => event.eventType == ChatEventType.assistantReasoningDelta)
+          .where((event) =>
+              event.eventType == ChatEventType.assistantReasoningDelta)
           .toList();
       expect(reasoningEvents, hasLength(2));
       expect(reasoningEvents.first.content, '需要先联网确认最新信息。');
-      expect(reasoningEvents.first.payloadJson, containsPair('scope', 'tool_use'));
+      expect(
+          reasoningEvents.first.payloadJson, containsPair('scope', 'tool_use'));
       expect(reasoningEvents.last.content, '已经拿到资料，可以整理答案。');
       expect(
         reasoningEvents.last.payloadJson,
@@ -556,7 +557,10 @@ void main() {
       ]);
 
       expect(
-        batches.map((batch) => batch.toolCalls.map((call) => call.toolName).toList()).toList(),
+        batches
+            .map((batch) =>
+                batch.toolCalls.map((call) => call.toolName).toList())
+            .toList(),
         [
           ['Read', 'Grep'],
           ['Write'],
@@ -773,7 +777,8 @@ void main() {
           .toList();
 
       expect(
-        emitted.where((event) => event.eventType == ChatEventType.assistantToolCall),
+        emitted.where(
+            (event) => event.eventType == ChatEventType.assistantToolCall),
         isEmpty,
       );
       expect(
@@ -853,7 +858,8 @@ void main() {
             additionalContextMessages: [],
           ),
         ),
-        limits: const AgentLoopLimits(maxIterations: 4, maxConsecutiveFailures: 2),
+        limits:
+            const AgentLoopLimits(maxIterations: 4, maxConsecutiveFailures: 2),
       );
 
       final emitted = await harness
@@ -1722,7 +1728,8 @@ void main() {
         ]),
       );
       expect(emitted.last.content, '继续基于当前上下文给出结果');
-      expect((await turnRepository.getTurn(50))!.status, ChatTurnStatus.completed);
+      expect(
+          (await turnRepository.getTurn(50))!.status, ChatTurnStatus.completed);
     });
 
     test('stops turn with max_tool_calls_reached before planner continues',
@@ -2079,7 +2086,8 @@ void main() {
       );
     });
 
-    test('keeps tool-result transcript summary compact even when payload has model context',
+    test(
+        'keeps tool-result transcript summary compact even when payload has model context',
         () async {
       final eventRepository = _InMemoryChatEventRepository();
       final turnRepository = _InMemoryChatTurnRepository();
@@ -2260,7 +2268,6 @@ void main() {
         (event) => event.eventType == ChatEventType.assistantPlannerMessage,
       );
       expect(plannerMessageIndex, lessThan(toolCallIndex));
-
     });
 
     test(
@@ -2547,24 +2554,6 @@ class _QueuedNativeDecisionLLM implements BaseLLM {
     List<ChatMessage> messages,
     ChatConfig config,
   ) async* {}
-
-  @override
-  Future<String> planNextAction({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-  }) async =>
-      throw UnimplementedError();
-
-  @override
-  Future<PlannerToolChoice?> planNextToolChoice({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required List<PlannerToolOption> availableTools,
-  }) async =>
-      null;
-
-  @override
-  Future<String> structureSummaryCard(String sourceText) async => '{}';
 
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async =>
@@ -3236,22 +3225,6 @@ class _NoopBaseLLM implements BaseLLM {
   @override
   Stream<String> chatStream(
       List<ChatMessage> messages, ChatConfig config) async* {}
-
-  @override
-  Future<String> planNextAction({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-  }) async =>
-      throw UnimplementedError();
-
-  @override
-  Future<PlannerToolChoice?> planNextToolChoice({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required List<PlannerToolOption> availableTools,
-  }) async =>
-      null;
-
   @override
   String getModelName(ChatConfig config) => 'noop';
 
@@ -3272,9 +3245,6 @@ class _NoopBaseLLM implements BaseLLM {
     required String prompt,
   }) async =>
       '';
-
-  @override
-  Future<String> structureSummaryCard(String sourceText) async => '{}';
 
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async => '';

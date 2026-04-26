@@ -16,8 +16,7 @@ abstract class ApiStyleAdapter {
   /// Request headers for both chat and planner calls.
   Map<String, String> buildHeaders(LLMConfig runtimeConfig);
 
-  /// Build the primary chat payload for `chatStream` / `validateApiKey` /
-  /// `_sendTextRequest`.
+  /// Build the primary chat payload for `chatStream` / `validateApiKey`.
   Map<String, dynamic> buildChatPayload({
     required List<ChatMessage> messages,
     required ChatConfig config,
@@ -25,8 +24,7 @@ abstract class ApiStyleAdapter {
     required bool stream,
   });
 
-  /// Build the structured-planner payload used by `planNextToolChoice` /
-  /// `planTurnDecision`.
+  /// Build the structured-planner payload used by `planTurnDecision`.
   Map<String, dynamic> buildPlannerPayload({
     required List<ChatMessage> messages,
     required ChatConfig config,

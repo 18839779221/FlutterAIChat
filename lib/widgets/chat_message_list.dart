@@ -2,15 +2,14 @@ import 'dart:async';
 
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat_message.dart';
-import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/chat_block_builder.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/widgets/chat_empty_state.dart';
 import 'package:ai_chat/widgets/chat_timeline/chat_timeline_item.dart';
 import 'package:ai_chat/widgets/chat_timeline/chat_timeline_row.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -207,9 +206,10 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
             type: ChatTimelineItemType.userBubble,
             userMessage: current,
             sourceMessages: segment,
-            runningTailText: isLatestTurn && !hasAssistantOutput && runningTail != null
-                ? runningTail.text
-                : null,
+            runningTailText:
+                isLatestTurn && !hasAssistantOutput && runningTail != null
+                    ? runningTail.text
+                    : null,
           ),
         );
 
@@ -237,9 +237,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
         _buildAssistantItems(
           sourceMessages: [current],
           blocks: orphanBlocks,
-          runningTailText: cursor == sortedMessages.length - 1
-              ? runningTail?.text
-              : null,
+          runningTailText:
+              cursor == sortedMessages.length - 1 ? runningTail?.text : null,
         ),
       );
       cursor += 1;
@@ -264,10 +263,9 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           sourceMessage: sourceMessage,
           sourceMessages: sourceMessages,
           block: block,
-          runningTailText:
-              runningTailText != null && index == blocks.length - 1
-                  ? runningTailText
-                  : null,
+          runningTailText: runningTailText != null && index == blocks.length - 1
+              ? runningTailText
+              : null,
         ),
       );
     }
@@ -293,7 +291,9 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final payload = block.payload;
     final sourceMessageId = payload?['sourceMessageId'];
     if (sourceMessageId is int) {
-      return messages.where((message) => message.id == sourceMessageId).firstOrNull;
+      return messages
+          .where((message) => message.id == sourceMessageId)
+          .firstOrNull;
     }
 
     return messages
@@ -303,25 +303,11 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
 
   void _showMessageOptionMenu(ChatMessage message) {
     final messagesNotifier = ref.read(messagesProvider.notifier);
-    final shouldShowStructuredDebugAction = kDebugMode &&
-        message.isAssistant &&
-        message.status == MessageStatus.completed &&
-        message.contentType == MessageContentType.plainText;
 
     showCupertinoModalPopup(
       context: context,
       builder: (context) => CupertinoActionSheet(
         actions: [
-          if (shouldShowStructuredDebugAction)
-            CupertinoActionSheetAction(
-              child: const Text('结构化整理（调试）'),
-              onPressed: () async {
-                Navigator.pop(context);
-                await ref
-                    .read(chatControllerProvider)
-                    .structureMessageForDebug(message);
-              },
-            ),
           CupertinoActionSheetAction(
             child: const Text('复制'),
             onPressed: () {

@@ -11,7 +11,6 @@ import 'package:http/http.dart' as http;
 import '../../repositories/app_settings_repository.dart';
 import '../../utils/logger.dart';
 import '../agent/model_turn_decision.dart';
-import '../agent/planner_tool_choice.dart';
 import '../agent/planner_tool_option.dart';
 import '../chat_message.dart';
 import '../chat_turn.dart';
@@ -60,8 +59,7 @@ class ConfigurableHttpLLM implements BaseLLM {
     http.Client? httpClient,
     Duration? requestTimeout,
     Duration? plannerRequestTimeout,
-    int mainFlowNetworkRetryAttempts =
-        _defaultMainFlowNetworkRetryAttempts,
+    int mainFlowNetworkRetryAttempts = _defaultMainFlowNetworkRetryAttempts,
     Map<ApiStyle, ApiStyleAdapter>? adapters,
     OpenAIChatCompletionsToolLoopAdapter? chatCompletionsToolLoopAdapter,
     OpenAIResponsesToolLoopAdapter? responsesToolLoopAdapter,
@@ -192,10 +190,11 @@ class ConfigurableHttpLLM implements BaseLLM {
       _validateRuntimeConfig(runtimeConfig);
       final summaryPrompt = _normalizeSummaryMessages(messages);
 
-      final summary = await _sendTextRequest(
+      final summary = await _runSideModelTextTask(
         runtimeConfig,
         config: ChatConfig(systemPrompt: ''),
         messages: summaryPrompt,
+        requestLabel: 'side_summary',
       );
       final trimmedSummary = summary.trim();
       if (trimmedSummary.isEmpty) {
@@ -251,32 +250,6 @@ class ConfigurableHttpLLM implements BaseLLM {
   }
 
   @override
-  Future<String> structureSummaryCard(String sourceText) async {
-    try {
-      final runtimeConfig = await _settingsRepository.getLlmConfig();
-      _validateRuntimeConfig(runtimeConfig);
-      final promptMessages = [
-        ChatMessage(
-          text:
-              '请将用户提供的文本整理为固定 JSON，对象中必须只包含 title、summary、keyPoints、actionItems、risks 这 5 个字段；其中 title 和 summary 是字符串，其余 3 个字段是字符串数组。不要输出 Markdown，不要输出解释，不要输出代码块。',
-          role: MessageRole.system,
-        ),
-        ChatMessage(text: sourceText, role: MessageRole.user),
-      ];
-      return (await _sendTextRequest(
-        runtimeConfig,
-        config: ChatConfig(systemPrompt: ''),
-        messages: promptMessages,
-      ))
-          .trim();
-    } catch (e, stackTrace) {
-      Logger.e(_tag, '结构化整理失败', e);
-      Logger.e(_tag, '堆栈跟踪', stackTrace);
-      throw Exception('结构化整理失败: $e');
-    }
-  }
-
-  @override
   Future<String> processWebpageContent({
     required String webpageContent,
     required String prompt,
@@ -300,114 +273,17 @@ class ConfigurableHttpLLM implements BaseLLM {
           role: MessageRole.user,
         ),
       ];
-      return (await _sendTextRequest(
+      return (await _runSideModelTextTask(
         runtimeConfig,
         config: ChatConfig(systemPrompt: ''),
         messages: promptMessages,
+        requestLabel: 'side_webpage',
       ))
           .trim();
     } catch (e, stackTrace) {
       Logger.e(_tag, '网页内容处理失败', e);
       Logger.e(_tag, '堆栈跟踪', stackTrace);
       throw Exception('网页内容处理失败: $e');
-    }
-  }
-
-  @override
-  Future<String> planNextAction({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-  }) async {
-    try {
-      final runtimeConfig = await _settingsRepository.getLlmConfig();
-      _validateRuntimeConfig(runtimeConfig);
-      return (await _sendTextRequest(
-        runtimeConfig,
-        config: config,
-        messages: messages,
-        timeout: _plannerRequestTimeout,
-        allowMainFlowRetry: true,
-      ))
-          .trim();
-    } catch (e, stackTrace) {
-      Logger.e(_tag, 'agent planner 请求失败', e);
-      Logger.e(_tag, '堆栈跟踪', stackTrace);
-      throw Exception('agent planner 请求失败: $e');
-    }
-  }
-
-  @override
-  Future<PlannerToolChoice?> planNextToolChoice({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required List<PlannerToolOption> availableTools,
-  }) async {
-    try {
-      final runtimeConfig = await _settingsRepository.getLlmConfig();
-      _validateRuntimeConfig(runtimeConfig);
-      final apiStyle = _protocolResolver.resolveStyle(runtimeConfig.apiUrl);
-      final adapter = _adapterFor(apiStyle);
-      final modelName = _resolveModelName(runtimeConfig, config);
-      final payload = adapter.buildPlannerPayload(
-        messages: messages,
-        config: config,
-        modelName: modelName,
-        availableTools: availableTools,
-        parallelToolCalls: false,
-      );
-      Logger.i(_tag, 'structured planner 请求体: ${jsonEncode(payload)}');
-      final response = await _performRetriableMainFlowRequest(
-        label: 'structured_planner',
-        operation: () => _httpClient
-            .post(
-              _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
-              headers: adapter.buildHeaders(runtimeConfig),
-              body: jsonEncode(payload),
-            )
-            .timeout(_plannerRequestTimeout),
-      );
-
-      if (response.statusCode != 200) {
-        Logger.w(
-          _tag,
-          'structured planner unsupported status=${response.statusCode} reason=${response.reasonPhrase ?? '-'} body=${_previewBody(response.body)}',
-        );
-        return null;
-      }
-
-      final responseText = utf8.decode(response.bodyBytes);
-      if (responseText.trim().isEmpty) {
-        Logger.w(
-          _tag,
-          'structured planner returned empty body, fallback to legacy planner',
-        );
-        return null;
-      }
-
-      final decoded = jsonDecode(responseText);
-      if (decoded is! Map<String, dynamic>) {
-        Logger.w(
-          _tag,
-          'structured planner returned non-object payload: ${_previewBody(responseText)}',
-        );
-        return null;
-      }
-
-      final choice = adapter.parsePlannerChoice(decoded);
-      if (choice == null) {
-        Logger.w(
-          _tag,
-          'structured planner parsed null choice. response=${_previewBody(responseText)} summary=${_summarizePlannerPayload(decoded)}',
-        );
-      }
-      return choice;
-    } catch (e, stackTrace) {
-      Logger.w(
-        _tag,
-        'structured planner 请求失败，回退到 legacy planner: ${_previewBody(e.toString())}',
-      );
-      Logger.e(_tag, 'structured planner stack trace', stackTrace);
-      return null;
     }
   }
 
@@ -583,99 +459,52 @@ class ConfigurableHttpLLM implements BaseLLM {
     }
   }
 
-  Future<String> _sendTextRequest(
+  Future<String> _runSideModelTextTask(
     LLMConfig runtimeConfig, {
     required ChatConfig config,
     required List<ChatMessage> messages,
+    required String requestLabel,
     Duration? timeout,
-    bool allowMainFlowRetry = false,
   }) async {
+    final effectiveTimeout = timeout ?? _requestTimeout;
     final apiStyle = _protocolResolver.resolveStyle(runtimeConfig.apiUrl);
     final adapter = _adapterFor(apiStyle);
     final modelName = _resolveModelName(runtimeConfig, config);
-    final effectiveTimeout = timeout ?? _requestTimeout;
-
-    if (apiStyle == ApiStyle.responses ||
-        apiStyle == ApiStyle.anthropicMessages) {
-      final request = http.Request(
-        'POST',
-        _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
-      );
-      request.headers.addAll(adapter.buildHeaders(runtimeConfig));
-      request.body = jsonEncode(
-        adapter.buildChatPayload(
-          messages: messages,
-          config: config,
-          modelName: modelName,
-          stream: true,
-        ),
-      );
-
-      final response = allowMainFlowRetry
-          ? await _performRetriableMainFlowRequest(
-              label: 'text_request_stream',
-              operation: () => _httpClient.send(request).timeout(effectiveTimeout),
-            )
-          : await _httpClient.send(request).timeout(effectiveTimeout);
-      if (response.statusCode != 200) {
-        throw Exception(
-            '请求失败: ${response.statusCode} ${response.reasonPhrase}');
-      }
-
-      final buffer = StringBuffer();
-      await for (final chunk in _streamParser
-          .parse(response, apiStyle)
-          .timeout(effectiveTimeout)) {
-        final data = jsonDecode(chunk);
-        if (data['type'] == 'content') {
-          buffer.write(data['content']);
-        }
-      }
-      return buffer.toString();
-    }
-
-    final response = allowMainFlowRetry
-        ? await _performRetriableMainFlowRequest(
-            label: 'text_request',
-            operation: () => _httpClient
-                .post(
-                  _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
-                  headers: adapter.buildHeaders(runtimeConfig),
-                  body: jsonEncode(
-                    adapter.buildChatPayload(
-                      messages: messages,
-                      config: config,
-                      modelName: modelName,
-                      stream: false,
-                    ),
-                  ),
-                )
-                .timeout(effectiveTimeout),
+    final payload = adapter.buildPlannerPayload(
+      messages: messages,
+      config: config,
+      modelName: modelName,
+      availableTools: const [],
+      parallelToolCalls: false,
+    );
+    Logger.i(_tag, '$requestLabel 请求体: ${jsonEncode(payload)}');
+    final response = await _performRetriableMainFlowRequest(
+      label: requestLabel,
+      operation: () => _httpClient
+          .post(
+            _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
+            headers: adapter.buildHeaders(runtimeConfig),
+            body: jsonEncode(payload),
           )
-        : await _httpClient
-            .post(
-              _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
-              headers: adapter.buildHeaders(runtimeConfig),
-              body: jsonEncode(
-                adapter.buildChatPayload(
-                  messages: messages,
-                  config: config,
-                  modelName: modelName,
-                  stream: false,
-                ),
-              ),
-            )
-            .timeout(effectiveTimeout);
-
+          .timeout(effectiveTimeout),
+    );
     if (response.statusCode != 200) {
       throw Exception('请求失败: ${response.statusCode}');
     }
 
-    final data = jsonDecode(utf8.decode(response.bodyBytes));
-    if (data is! Map<String, dynamic>) {
+    final responseText = utf8.decode(response.bodyBytes);
+    final decoded = jsonDecode(responseText);
+    if (decoded is! Map<String, dynamic>) {
       return '';
     }
-    return adapter.extractNonStreamText(data);
+    final decision = _parseTurnDecisionForStyle(apiStyle, decoded);
+    if (decision != null) {
+      if (decision.toolCalls.isNotEmpty) {
+        Logger.w(_tag, '$requestLabel 意外返回 tool calls，已忽略');
+      }
+      return (decision.assistantMessage ?? '').trim();
+    }
+    return adapter.extractNonStreamText(decoded).trim();
   }
 
   String _previewBody(String value) {
@@ -722,7 +551,9 @@ class ConfigurableHttpLLM implements BaseLLM {
     Object? lastError;
     StackTrace? lastStackTrace;
 
-    for (var attempt = 1; attempt <= _mainFlowNetworkRetryAttempts; attempt += 1) {
+    for (var attempt = 1;
+        attempt <= _mainFlowNetworkRetryAttempts;
+        attempt += 1) {
       try {
         if (attempt > 1) {
           Logger.i(
@@ -773,7 +604,8 @@ class ConfigurableHttpLLM implements BaseLLM {
     final normalized = error.toString().toLowerCase();
     return normalized.contains('socketexception') ||
         normalized.contains('connection reset by peer') ||
-        normalized.contains('connection closed before full header was received') ||
+        normalized
+            .contains('connection closed before full header was received') ||
         normalized.contains('broken pipe') ||
         normalized.contains('failed host lookup') ||
         normalized.contains('network is unreachable') ||

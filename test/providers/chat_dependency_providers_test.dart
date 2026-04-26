@@ -1,6 +1,5 @@
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
-import 'package:ai_chat/models/agent/planner_tool_choice.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/chat_event.dart';
@@ -62,25 +61,6 @@ class _NoopBaseLLM extends BaseLLM {
 
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async => '';
-
-  @override
-  Future<String> structureSummaryCard(String sourceText) async => '';
-
-  @override
-  Future<String> planNextAction({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-  }) async =>
-      '';
-
-  @override
-  Future<PlannerToolChoice?> planNextToolChoice({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required List<PlannerToolOption> availableTools,
-  }) async =>
-      null;
-
   @override
   Future<ModelTurnDecision?> planTurnDecision({
     required List<ChatMessage> messages,
@@ -171,7 +151,8 @@ class _NoopChatStorage implements ChatStorage {
       1;
 
   @override
-  Future<int> insertSessionRuntimeMarker(SessionRuntimeMarker marker) async => 1;
+  Future<int> insertSessionRuntimeMarker(SessionRuntimeMarker marker) async =>
+      1;
 
   @override
   Future<int> insertTurn(ChatTurn turn) async => 1;

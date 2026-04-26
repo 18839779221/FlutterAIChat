@@ -34,10 +34,9 @@ class ChatCompletionsAdapter extends ApiStyleAdapter {
     required String modelName,
     required bool stream,
   }) {
-    final normalizedMessages =
-        normalizeMessagesWithConfiguredSystemPrompt(messages, config.systemPrompt);
-    final transcriptState =
-        HistoricalToolTranscriptState(_transcriptIdPrefix);
+    final normalizedMessages = normalizeMessagesWithConfiguredSystemPrompt(
+        messages, config.systemPrompt);
+    final transcriptState = HistoricalToolTranscriptState(_transcriptIdPrefix);
     return {
       'model': modelName,
       'messages': normalizedMessages
@@ -133,7 +132,19 @@ class ChatCompletionsAdapter extends ApiStyleAdapter {
 
   @override
   String extractNonStreamText(Map<String, dynamic> payload) {
-    return payload['choices'][0]['message']['content'].toString();
+    final choices = payload['choices'];
+    if (choices is! List || choices.isEmpty) {
+      return '';
+    }
+    final firstChoice = choices.first;
+    if (firstChoice is! Map) {
+      return '';
+    }
+    final message = firstChoice['message'];
+    if (message is! Map) {
+      return '';
+    }
+    return _extractMessageText(message.cast<String, dynamic>()) ?? '';
   }
 
   Map<String, dynamic> _buildMessage(
@@ -268,7 +279,7 @@ class ChatCompletionsAdapter extends ApiStyleAdapter {
     final content = message['content'];
     final inlineText = normalizeText(content);
     if (inlineText != null) {
-      return inlineText;
+      return extractThinkTaggedText(inlineText).content;
     }
 
     if (content is List) {
@@ -282,7 +293,10 @@ class ChatCompletionsAdapter extends ApiStyleAdapter {
           normalizedItem['text'] ?? normalizedItem['content'],
         );
         if (text != null) {
-          buffer.write(text);
+          final extracted = extractThinkTaggedText(text);
+          if (extracted.content != null) {
+            buffer.write(extracted.content);
+          }
         }
       }
       final aggregated = buffer.toString().trim();

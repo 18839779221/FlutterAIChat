@@ -7,7 +7,6 @@ import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
-import 'package:ai_chat/models/agent/planner_tool_choice.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/session/context_compaction_config.dart';
 import 'package:ai_chat/models/session/model_budget_profile.dart';
@@ -536,7 +535,8 @@ void main() {
         'recent completed turns keep tool transcript structure instead of assistant write summaries',
         () async {
       final storage = DatabaseHelper(
-        databaseName: 'session_context_service_tool_transcript_fidelity_test.db',
+        databaseName:
+            'session_context_service_tool_transcript_fidelity_test.db',
       );
       final groupId = await storage.insertGroup(
         ChatGroup(title: 'Session Context Tool Transcript Fidelity'),
@@ -630,10 +630,12 @@ void main() {
         config: ChatConfig(systemPrompt: '你是一个助手'),
       );
 
-      final combined = plannerMessages.map((message) => message.text).join('\n');
+      final combined =
+          plannerMessages.map((message) => message.text).join('\n');
       expect(combined, contains('[assistant tool_use]'));
       expect(combined, contains('Edit'));
-      expect(combined, contains('[user tool_result] Successfully edited my_hobbies.md'));
+      expect(combined,
+          contains('[user tool_result] Successfully edited my_hobbies.md'));
       expect(combined, isNot(contains('\n已编辑文件：my_hobbies.md\n已经帮你更新好爱好笔记。')));
 
       await storage.deleteGroup(groupId);
@@ -839,7 +841,8 @@ void main() {
 
     test('keeps conversation running when summary generation fails', () async {
       final storage = DatabaseHelper(
-        databaseName: 'session_context_service_summary_failure_fallback_test.db',
+        databaseName:
+            'session_context_service_summary_failure_fallback_test.db',
       );
       final groupId = await storage.insertGroup(
         ChatGroup(title: 'Session Context Summary Failure Fallback'),
@@ -892,7 +895,8 @@ void main() {
           ),
         ),
         summaryService: SessionSummaryService(
-          summaryGenerator: (_) async => throw StateError('session_summary_empty'),
+          summaryGenerator: (_) async =>
+              throw StateError('session_summary_empty'),
         ),
         chatService: ChatService(llm: _FakeBaseLlm()),
       );
@@ -955,23 +959,6 @@ class _FakeBaseLlm implements BaseLLM {
       const Stream.empty();
 
   @override
-  Future<String> planNextAction({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-  }) async {
-    return '';
-  }
-
-  @override
-  Future<PlannerToolChoice?> planNextToolChoice({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required List<PlannerToolOption> availableTools,
-  }) async {
-    return null;
-  }
-
-  @override
   Future<ModelTurnDecision?> planTurnDecision({
     required List<ChatMessage> messages,
     required ChatConfig config,
@@ -982,9 +969,6 @@ class _FakeBaseLlm implements BaseLLM {
   }) async {
     return null;
   }
-
-  @override
-  Future<String> structureSummaryCard(String sourceText) async => '';
 
   @override
   Future<String> processWebpageContent({

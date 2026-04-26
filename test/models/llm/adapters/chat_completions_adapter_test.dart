@@ -176,7 +176,7 @@ void main() {
       final choice = adapter.parsePlannerChoice({
         'choices': [
           {
-            'message': {'content': 'hello'},
+            'message': {'content': '<think>先判断是否需要工具</think>\n\nhello'},
           },
         ],
       });
@@ -211,7 +211,7 @@ void main() {
       final text = adapter.extractNonStreamText({
         'choices': [
           {
-            'message': {'content': '结果'},
+            'message': {'content': '<think>先分析</think>\n\n结果'},
           },
         ],
       });

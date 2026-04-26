@@ -12,7 +12,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('active ask user question prompt renders full card in message list',
+  testWidgets(
+      'active ask user question prompt renders full card in message list',
       (tester) async {
     final container = ProviderContainer(
       overrides: [
@@ -265,7 +266,8 @@ void main() {
     expect(scrollController.offset, closeTo(browsedOffset, 0.1));
   });
 
-  testWidgets('idle timeline does not snap back to latest anchor after manual browse',
+  testWidgets(
+      'idle timeline does not snap back to latest anchor after manual browse',
       (tester) async {
     final scrollController = ScrollController();
     final container = ProviderContainer(
@@ -498,7 +500,6 @@ class _LoadMoreChatController extends ChatController {
           sendCoordinator: _NoopChatSendCoordinator(),
           sessionCoordinator: _NoopChatSessionCoordinator(),
           summaryController: _NoopChatSummaryController(),
-          debugController: _NoopChatDebugController(),
           preferencesController: _NoopChatPreferencesController(),
         );
 
@@ -583,11 +584,6 @@ class _NoopChatSummaryController implements ChatSummaryController {
 
   @override
   Future<String?> summarizeAndUpdateTitle() async => null;
-}
-
-class _NoopChatDebugController implements ChatDebugController {
-  @override
-  Future<void> structureMessageForDebug(ChatMessage message) async {}
 }
 
 class _NoopChatPreferencesController implements ChatPreferencesController {

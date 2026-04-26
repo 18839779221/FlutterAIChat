@@ -23,6 +23,7 @@ class ApiStreamParser {
 
   Stream<String> _parseChatCompletionsStream(
       http.StreamedResponse response) async* {
+    final splitter = _InlineThinkStreamSplitter();
     await for (final line in response.stream
         .transform(utf8.decoder)
         .transform(const LineSplitter())) {
@@ -31,6 +32,9 @@ class ApiStreamParser {
       }
 
       if (line.contains('[DONE]')) {
+        for (final chunk in splitter.close()) {
+          yield jsonEncode(chunk.toJson());
+        }
         Logger.i(_tag, '流式响应完成');
         continue;
       }
@@ -45,7 +49,9 @@ class ApiStreamParser {
         }
 
         if (content is String && content.isNotEmpty) {
-          yield jsonEncode({'type': 'content', 'content': content});
+          for (final chunk in splitter.consume(content)) {
+            yield jsonEncode(chunk.toJson());
+          }
         }
       } catch (e) {
         Logger.e(_tag, 'JSON解析错误: $e');
@@ -105,8 +111,9 @@ class ApiStreamParser {
   Stream<String> _parseAnthropicMessagesStream(
     http.StreamedResponse response,
   ) async* {
-    await for (final line
-        in response.stream.transform(utf8.decoder).transform(const LineSplitter())) {
+    await for (final line in response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
       if (!line.startsWith('data: ')) {
         continue;
       }
@@ -193,4 +200,87 @@ class ApiStreamParser {
     }
     return chunks;
   }
+}
+
+class _InlineThinkStreamSplitter {
+  static const String _openTag = '<think>';
+  static const String _closeTag = '</think>';
+
+  String _pending = '';
+  bool _insideThink = false;
+
+  List<_ParsedStreamChunk> consume(String input) {
+    final emitted = <_ParsedStreamChunk>[];
+    var remaining = '$_pending$input';
+    _pending = '';
+
+    while (remaining.isNotEmpty) {
+      final tag = _insideThink ? _closeTag : _openTag;
+      final normalized = remaining.toLowerCase();
+      final index = normalized.indexOf(tag);
+      if (index >= 0) {
+        final segment = remaining.substring(0, index);
+        _append(emitted, _insideThink, segment);
+        remaining = remaining.substring(index + tag.length);
+        _insideThink = !_insideThink;
+        continue;
+      }
+
+      final keep = _longestTrailingTagPrefixLength(normalized, tag);
+      final consumableEnd = remaining.length - keep;
+      final consumable = remaining.substring(0, consumableEnd);
+      _append(emitted, _insideThink, consumable);
+      _pending = remaining.substring(consumableEnd);
+      break;
+    }
+
+    return emitted;
+  }
+
+  List<_ParsedStreamChunk> close() {
+    if (_pending.isEmpty) {
+      return const [];
+    }
+    final emitted = <_ParsedStreamChunk>[];
+    _append(emitted, _insideThink, _pending);
+    _pending = '';
+    return emitted;
+  }
+
+  void _append(List<_ParsedStreamChunk> chunks, bool reasoning, String value) {
+    if (value.isEmpty) {
+      return;
+    }
+    chunks.add(
+      _ParsedStreamChunk(
+        type: reasoning ? 'reasoning' : 'content',
+        content: value,
+      ),
+    );
+  }
+
+  int _longestTrailingTagPrefixLength(String value, String tag) {
+    final limit = value.length < tag.length ? value.length : tag.length;
+    for (var length = limit; length > 0; length--) {
+      if (value.endsWith(tag.substring(0, length))) {
+        return length;
+      }
+    }
+    return 0;
+  }
+}
+
+class _ParsedStreamChunk {
+  const _ParsedStreamChunk({
+    required this.type,
+    required this.content,
+  });
+
+  final String type;
+  final String content;
+
+  Map<String, String> toJson() => {
+        'type': type,
+        'content': content,
+      };
 }

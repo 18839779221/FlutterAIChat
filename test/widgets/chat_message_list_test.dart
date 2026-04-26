@@ -8,7 +8,6 @@ import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/streaming_response_block.dart';
-import 'package:ai_chat/widgets/chat_blocks/structured_output_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_outcome_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
@@ -106,8 +105,8 @@ void main() {
       expect(find.text('assistant reply'), findsOneWidget);
     });
 
-    testWidgets(
-        'completed final-answer reasoning stays collapsed until tapped', (
+    testWidgets('completed final-answer reasoning stays collapsed until tapped',
+        (
       tester,
     ) async {
       await _pumpMessageList(
@@ -186,7 +185,8 @@ void main() {
         ],
       );
 
-      expect(find.byKey(const ValueKey('latest-message-running-tail')), findsNothing);
+      expect(find.byKey(const ValueKey('latest-message-running-tail')),
+          findsNothing);
     });
 
     testWidgets('generating assistant text uses lightweight streaming block', (
@@ -209,7 +209,8 @@ void main() {
       expect(find.text('streaming reply'), findsOneWidget);
     });
 
-    testWidgets('streaming assistant message shows running tail on latest block',
+    testWidgets(
+        'streaming assistant message shows running tail on latest block',
         (tester) async {
       await _pumpMessageList(
         tester,
@@ -224,7 +225,8 @@ void main() {
         sendPhase: ChatSendPhase.streamingResponse,
       );
 
-      expect(find.byKey(const ValueKey('latest-message-running-tail')), findsOneWidget);
+      expect(find.byKey(const ValueKey('latest-message-running-tail')),
+          findsOneWidget);
       expect(find.text('正在生成回复'), findsOneWidget);
     });
 
@@ -242,7 +244,8 @@ void main() {
         sendPhase: ChatSendPhase.preparing,
       );
 
-      expect(find.byKey(const ValueKey('latest-message-running-tail')), findsOneWidget);
+      expect(find.byKey(const ValueKey('latest-message-running-tail')),
+          findsOneWidget);
       expect(find.text('正在请求模型'), findsOneWidget);
     });
 
@@ -272,34 +275,9 @@ void main() {
         sendPhase: ChatSendPhase.preparing,
       );
 
-      expect(find.byKey(const ValueKey('latest-message-running-tail')), findsOneWidget);
+      expect(find.byKey(const ValueKey('latest-message-running-tail')),
+          findsOneWidget);
       expect(find.text('正在规划下一步'), findsOneWidget);
-    });
-
-    testWidgets(
-        'structured assistant content renders as structured output block', (
-      tester,
-    ) async {
-      await _pumpMessageList(
-        tester,
-        messages: [
-          _buildMessage(
-            text: 'Structured fallback text',
-            role: MessageRole.assistant,
-            contentType: MessageContentType.structuredCard,
-            payloadJson: {
-              'title': 'Weekly Summary',
-              'summary': 'A short summary',
-              'keyPoints': ['Point A'],
-              'actionItems': ['Action B'],
-              'risks': ['Risk C'],
-            },
-          ),
-        ],
-      );
-
-      expect(find.byType(StructuredOutputBlock), findsOneWidget);
-      expect(find.text('Weekly Summary'), findsOneWidget);
     });
 
     testWidgets('tool result renders as collapsed summary row', (tester) async {
@@ -324,7 +302,8 @@ void main() {
       expect(find.text('已执行：搜索历史记录'), findsOneWidget);
     });
 
-    testWidgets('completed assistant markdown block exposes a stable timeline key',
+    testWidgets(
+        'completed assistant markdown block exposes a stable timeline key',
         (tester) async {
       await _pumpMessageList(
         tester,
@@ -459,7 +438,8 @@ void main() {
         sendPhase: ChatSendPhase.executingTool,
       );
 
-      expect(find.byKey(const ValueKey('latest-message-running-tail')), findsOneWidget);
+      expect(find.byKey(const ValueKey('latest-message-running-tail')),
+          findsOneWidget);
       expect(find.text('正在联网搜索'), findsOneWidget);
     });
 
@@ -501,7 +481,8 @@ void main() {
         sendPhase: ChatSendPhase.executingTool,
       );
 
-      expect(find.byKey(const ValueKey('latest-message-running-tail')), findsOneWidget);
+      expect(find.byKey(const ValueKey('latest-message-running-tail')),
+          findsOneWidget);
       expect(find.text('正在执行工具'), findsOneWidget);
     });
 
@@ -553,7 +534,8 @@ void main() {
         sendPhase: ChatSendPhase.executingTool,
       );
 
-      expect(find.byKey(const ValueKey('latest-message-running-tail')), findsOneWidget);
+      expect(find.byKey(const ValueKey('latest-message-running-tail')),
+          findsOneWidget);
       expect(find.text('正在读取网页'), findsOneWidget);
     });
 
@@ -606,7 +588,8 @@ void main() {
         sendPhase: ChatSendPhase.executingTool,
       );
 
-      expect(find.byKey(const ValueKey('latest-message-running-tail')), findsOneWidget);
+      expect(find.byKey(const ValueKey('latest-message-running-tail')),
+          findsOneWidget);
       expect(find.text('正在规划下一步'), findsOneWidget);
       expect(find.text('正在联网搜索'), findsNothing);
     });
@@ -936,8 +919,7 @@ void main() {
       expect(bubbleTop, lessThan(listBounds.center.dy));
     });
 
-    testWidgets(
-        'adding a new user message does not auto-scroll the timeline',
+    testWidgets('adding a new user message does not auto-scroll the timeline',
         (tester) async {
       final scrollController = ScrollController();
       final container = ProviderContainer(
@@ -995,18 +977,15 @@ void main() {
               role: MessageRole.user,
               contentType: MessageContentType.plainText,
             ),
-      );
+          );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 350));
 
       expect(scrollController.offset, closeTo(initialOffset + 180, 0.1));
     });
 
-    testWidgets(
-        'debug mode still exposes structured output action for assistant text',
-        (
-      tester,
-    ) async {
+    testWidgets('assistant text does not expose removed structured output action',
+        (tester) async {
       await _pumpMessageList(
         tester,
         messages: [
@@ -1021,7 +1000,7 @@ void main() {
       await tester.longPress(find.text('Assistant message').first);
       await tester.pumpAndSettle();
 
-      expect(find.text('结构化整理（调试）'), findsOneWidget);
+      expect(find.text('结构化整理（调试）'), findsNothing);
     });
 
     testWidgets('user anchor does not expose structured output action', (

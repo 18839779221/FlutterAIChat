@@ -142,6 +142,59 @@ void main() {
       expect(decision.assistantMessage, '我已经完成所有步骤。');
       expect(decision.isTerminal, isTrue);
     });
+
+    test('extracts inline think tag from terminal assistant message', () {
+      const adapter = OpenAIChatCompletionsToolLoopAdapter();
+
+      final decision = adapter.parseDecision({
+        'choices': [
+          {
+            'message': {
+              'role': 'assistant',
+              'content': '<think>先判断这个问题是否需要工具。</think>\n\n直接回答。',
+            },
+          },
+        ],
+      });
+
+      expect(decision, isNotNull);
+      expect(decision!.visibleReasoning, '先判断这个问题是否需要工具。');
+      expect(decision.assistantMessage, '直接回答。');
+      expect(decision.toolCalls, isEmpty);
+      expect(decision.isTerminal, isTrue);
+    });
+
+    test('extracts inline think tag when tool calls share the same message',
+        () {
+      const adapter = OpenAIChatCompletionsToolLoopAdapter();
+
+      final decision = adapter.parseDecision({
+        'choices': [
+          {
+            'message': {
+              'role': 'assistant',
+              'content': '<think>需要先读取页面确认内容。</think>\n\n我先读取这个页面。',
+              'tool_calls': [
+                {
+                  'id': 'call_1',
+                  'type': 'function',
+                  'function': {
+                    'name': 'fetch_webpage',
+                    'arguments': jsonEncode({'url': 'https://example.com'}),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
+
+      expect(decision, isNotNull);
+      expect(decision!.visibleReasoning, '需要先读取页面确认内容。');
+      expect(decision.assistantMessage, '我先读取这个页面。');
+      expect(decision.toolCalls.single.toolName, 'fetch_webpage');
+      expect(decision.isTerminal, isFalse);
+    });
   });
 
   group('OpenAIResponsesToolLoopAdapter', () {
@@ -280,7 +333,8 @@ void main() {
 
       expect(decision, isNotNull);
       expect(decision!.toolCalls, hasLength(1));
-      expect(decision.providerState, containsPair('response_id', 'resp_unstored'));
+      expect(
+          decision.providerState, containsPair('response_id', 'resp_unstored'));
     });
   });
 
