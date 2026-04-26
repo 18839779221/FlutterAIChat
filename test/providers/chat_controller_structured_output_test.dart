@@ -287,6 +287,13 @@ class _NoopBaseLLM implements BaseLLM {
   }
 
   @override
+  Future<String> processWebpageContent({
+    required String webpageContent,
+    required String prompt,
+  }) async =>
+      '';
+
+  @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async => '';
 
   @override

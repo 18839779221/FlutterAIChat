@@ -10,6 +10,12 @@ class ModelTurnDecision {
   final List<ModelToolCall> toolCalls;
   final String? assistantMessage;
 
+  /// Provider-returned reasoning/thinking text that is safe to show in the UI.
+  ///
+  /// This is not a request configuration knob. It only carries reasoning that
+  /// the provider already returned in a readable form.
+  final String? visibleReasoning;
+
   /// Planner diagnostic code preserved when compatibility layers translate
   /// legacy planner actions into provider-native decisions.
   final String? diagnosticCode;
@@ -32,6 +38,7 @@ class ModelTurnDecision {
   const ModelTurnDecision({
     required this.toolCalls,
     required this.assistantMessage,
+    this.visibleReasoning,
     this.diagnosticCode,
     required this.providerState,
     this.providerStyle,
@@ -42,6 +49,7 @@ class ModelTurnDecision {
   ModelTurnDecision copyWith({
     List<ModelToolCall>? toolCalls,
     String? assistantMessage,
+    String? visibleReasoning,
     String? diagnosticCode,
     Map<String, dynamic>? providerState,
     ChatTurnProviderStyle? providerStyle,
@@ -51,6 +59,7 @@ class ModelTurnDecision {
     return ModelTurnDecision(
       toolCalls: toolCalls ?? this.toolCalls,
       assistantMessage: assistantMessage ?? this.assistantMessage,
+      visibleReasoning: visibleReasoning ?? this.visibleReasoning,
       diagnosticCode: diagnosticCode ?? this.diagnosticCode,
       providerState: providerState ?? this.providerState,
       providerStyle: providerStyle ?? this.providerStyle,

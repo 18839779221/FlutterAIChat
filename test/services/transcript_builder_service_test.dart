@@ -431,6 +431,16 @@ class _FakeChatEventRepository implements ChatEventRepository {
   }
 
   @override
+  Future<ChatEvent> appendAssistantReasoningDelta({
+    required int turnId,
+    required int groupId,
+    required String content,
+    required String scope,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<ChatEvent> appendAssistantTextFinal({
     required int turnId,
     required int groupId,

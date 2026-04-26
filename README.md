@@ -13,7 +13,7 @@
 - 长对话会按 token budget 压力自动压缩为 session snapshot；最终进入模型的会话上下文固定为 `history summary + recent completed turns + current turn transcript`
 - 进入会话默认定位到最新消息，向上滑动查看更早历史
 - 流式回复、手动中断、生成中自动跟随；手动上滑后可自由查看，点击回到底部后再恢复跟随
-- 深度思考模式、自定义系统提示词
+- provider 返回的 think/reasoning 展示、自定义系统提示词
 
 ### Tool Call 与结构化输出
 - 支持工具决策、确认执行、执行结果展示、失败回退
@@ -84,7 +84,7 @@ UI 只消费 Riverpod providers 和 controller 门面，不直接编排复杂业
 - `ChatSessionCoordinator`：会话加载、切换、删除、分页
 - `ChatSummaryController`：会话总结与自动总结定时逻辑
 - `ChatDebugController`：结构化调试入口
-- `ChatPreferencesController`：系统提示词、推理模式
+- `ChatPreferencesController`：系统提示词
 
 ### Prompt 管理
 - `lib/services/prompt/prompt_catalog.dart`

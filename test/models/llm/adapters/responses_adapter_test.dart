@@ -25,7 +25,7 @@ void main() {
           ChatMessage(text: 'hi', role: MessageRole.user),
           ChatMessage(text: 'yes', role: MessageRole.assistant),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         modelName: 'gpt-x',
         stream: true,
       );
@@ -36,16 +36,6 @@ void main() {
       final input = payload['input'] as List<dynamic>;
       expect(input[0]['content'][0]['type'], 'input_text');
       expect(input[1]['content'][0]['type'], 'output_text');
-    });
-
-    test('includes reasoning block when useReasoning is true', () {
-      final payload = adapter.buildChatPayload(
-        messages: [ChatMessage(text: 'hi', role: MessageRole.user)],
-        config: ChatConfig(useReasoning: true, systemPrompt: ''),
-        modelName: 'gpt-x',
-        stream: false,
-      );
-      expect(payload['reasoning'], {'effort': 'medium'});
     });
 
     test('emits function_call / function_call_output for tool transcript', () {
@@ -70,7 +60,7 @@ void main() {
             },
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         modelName: 'gpt-x',
         stream: false,
       );
@@ -93,7 +83,7 @@ void main() {
     test('forces store=true and injects previous_response_id', () {
       final payload = adapter.buildPlannerPayload(
         messages: [ChatMessage(text: 'q', role: MessageRole.user)],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         modelName: 'gpt-x',
         availableTools: const [
           PlannerToolOption(
@@ -121,7 +111,7 @@ void main() {
         () {
       final payload = adapter.buildPlannerPayload(
         messages: [ChatMessage(text: 'q', role: MessageRole.user)],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         modelName: 'gpt-x',
         availableTools: const [],
         parallelToolCalls: true,
@@ -139,7 +129,7 @@ void main() {
     test('appends continuation items when no previousResponseId', () {
       final payload = adapter.buildPlannerPayload(
         messages: [ChatMessage(text: 'q', role: MessageRole.user)],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         modelName: 'gpt-x',
         availableTools: const [],
         parallelToolCalls: true,

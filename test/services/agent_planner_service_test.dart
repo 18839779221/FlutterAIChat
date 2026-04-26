@@ -73,7 +73,7 @@ void main() {
         turn: _turn(),
         transcript: [_userEvent()],
         steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -124,7 +124,7 @@ void main() {
         turn: _turn(),
         transcript: [_userEvent()],
         steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -168,7 +168,7 @@ void main() {
           turn: _turn(),
           transcript: [_userEvent()],
           steps: const [],
-          config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          config: ChatConfig(systemPrompt: ''),
           limits: const AgentLoopLimits(),
         ),
         throwsA(
@@ -205,7 +205,7 @@ void main() {
         turn: _turn(),
         transcript: [_userEvent()],
         steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -224,7 +224,7 @@ void main() {
         turn: _turn(),
         transcript: [_userEvent()],
         steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -302,7 +302,7 @@ void main() {
           ),
         ],
         steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -404,7 +404,7 @@ void main() {
           ),
         ],
         steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -460,7 +460,7 @@ void main() {
           ),
         ],
         steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -561,7 +561,7 @@ void main() {
             },
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -626,7 +626,7 @@ void main() {
         ),
         transcript: [_userEvent()],
         steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -698,7 +698,7 @@ void main() {
             resultSummary: '旧结果',
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -772,7 +772,7 @@ void main() {
             resultJson: const {'topResult': 'https://example.com/minimax'},
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -860,7 +860,7 @@ void main() {
             },
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -921,7 +921,7 @@ void main() {
             },
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -963,7 +963,7 @@ void main() {
         turn: _turn(),
         transcript: [_userEvent()],
         steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -1001,7 +1001,7 @@ void main() {
         turn: _turn(),
         transcript: [_userEvent()],
         steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -1040,7 +1040,7 @@ void main() {
         turn: _turn(),
         transcript: [_userEvent()],
         steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -1091,7 +1091,7 @@ void main() {
         turn: _turn(),
         transcript: [_userEvent()],
         steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -1160,7 +1160,7 @@ void main() {
             },
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -1230,7 +1230,7 @@ void main() {
             resultSummary: '已经找到两条记录',
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -1296,7 +1296,7 @@ void main() {
         ),
         transcript: [_userEvent()],
         steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -1349,7 +1349,7 @@ void main() {
         ),
         transcript: [_userEvent()],
         steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -1401,7 +1401,7 @@ void main() {
             },
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -1481,7 +1481,7 @@ void main() {
         ),
         transcript: [_userEvent()],
         steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -1579,6 +1579,13 @@ class _NativeDecisionLLM implements BaseLLM {
       null;
 
   @override
+  Future<String> processWebpageContent({
+    required String webpageContent,
+    required String prompt,
+  }) async =>
+      '';
+
+  @override
   Future<String> structureSummaryCard(String sourceText) async => '{}';
 
   @override
@@ -1631,6 +1638,13 @@ class _NativeNullPlannerLLM implements BaseLLM {
       null;
 
   @override
+  Future<String> processWebpageContent({
+    required String webpageContent,
+    required String prompt,
+  }) async =>
+      '';
+
+  @override
   Future<String> structureSummaryCard(String sourceText) async => '{}';
 
   @override
@@ -1681,6 +1695,13 @@ class _ThrowingNativePlannerLLM implements BaseLLM {
     required List<PlannerToolOption> availableTools,
   }) async =>
       null;
+
+  @override
+  Future<String> processWebpageContent({
+    required String webpageContent,
+    required String prompt,
+  }) async =>
+      '';
 
   @override
   Future<String> structureSummaryCard(String sourceText) async => '{}';

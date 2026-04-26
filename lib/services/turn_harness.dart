@@ -342,6 +342,15 @@ class TurnHarness {
       }
       final decisionResponseId = _resolveDecisionResponseId(decision);
       if (decision.toolCalls.isNotEmpty) {
+        final reasoningEvent = await _appendVisibleReasoningIfPresent(
+          turnId: turnId,
+          groupId: runtimeTurn.groupId,
+          decision: decision,
+          scope: 'tool_use',
+        );
+        if (reasoningEvent != null) {
+          yield reasoningEvent;
+        }
         await _turnRepository.incrementIteration(turnId);
         yield await _eventRepository.appendTurnStatus(
             turnId: turnId,
@@ -393,6 +402,15 @@ class TurnHarness {
 
       if (decision.isTerminal &&
           (decision.assistantMessage ?? '').trim().isNotEmpty) {
+        final reasoningEvent = await _appendVisibleReasoningIfPresent(
+          turnId: turnId,
+          groupId: runtimeTurn.groupId,
+          decision: decision,
+          scope: 'final_answer',
+        );
+        if (reasoningEvent != null) {
+          yield reasoningEvent;
+        }
         yield await _eventRepository.appendTurnStatus(
             turnId: turnId,
             groupId: runtimeTurn.groupId,
@@ -540,6 +558,24 @@ class TurnHarness {
       return null;
     }
     return trimmed;
+  }
+
+  Future<ChatEvent?> _appendVisibleReasoningIfPresent({
+    required int turnId,
+    required int groupId,
+    required ModelTurnDecision decision,
+    required String scope,
+  }) {
+    final visibleReasoning = decision.visibleReasoning?.trim();
+    if (visibleReasoning == null || visibleReasoning.isEmpty) {
+      return Future.value(null);
+    }
+    return _eventRepository.appendAssistantReasoningDelta(
+      turnId: turnId,
+      groupId: groupId,
+      content: visibleReasoning,
+      scope: scope,
+    );
   }
 
   Stream<ChatEvent> _handleToolExecution({

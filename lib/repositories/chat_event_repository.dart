@@ -170,6 +170,22 @@ class ChatEventRepository {
     );
   }
 
+  Future<ChatEvent> appendAssistantReasoningDelta({
+    required int turnId,
+    required int groupId,
+    required String content,
+    required String scope,
+  }) {
+    return _appendEvent(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.assistantReasoningDelta,
+      role: MessageRole.assistant,
+      content: content,
+      payloadJson: {'scope': scope},
+    );
+  }
+
   Future<ChatEvent> appendAssistantPlannerMessage({
     required int turnId,
     required int groupId,

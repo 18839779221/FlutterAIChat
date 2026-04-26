@@ -141,7 +141,7 @@ The app uses **flutter_riverpod** with a split provider/controller architecture:
 - `ChatSessionCoordinator` owns group load/select/delete and message pagination
 - `ChatSummaryController` owns auto-summary scheduling and summary title updates
 - `ChatDebugController` owns `structureMessageForDebug` lifecycle
-- `ChatPreferencesController` owns system prompt and reasoning mode
+- `ChatPreferencesController` owns system prompt persistence
 - Prompt management lives under `lib/services/prompt/`
   - `PromptCatalog` owns bilingual prompt text blocks
   - `PromptBuilderService` assembles stage-specific prompts
@@ -322,7 +322,7 @@ Database version: 10
 
 ## Important Notes
 
-- The app uses streaming responses from the LLM, handled via `Stream<String>` in `ChatService.sendMessageStream()`
+- The app uses streaming responses from the LLM, handled via `Stream<String>` in `BaseLLM.chatStream()`
 - Messages are stored in reverse chronological order in the UI (newest first)
 - History messages are filtered to only include completed AI-user message pairs before sending to the LLM
 - Auto-scrolling behavior pauses when user manually scrolls up during generation

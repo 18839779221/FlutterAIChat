@@ -195,7 +195,7 @@ test('turn harness delegates tool decisions to decision executor', () async {
 
   await harness.runTurn(
     turn: _turnWithToolDecision(),
-    config: ChatConfig(useReasoning: false, systemPrompt: ''),
+    config: ChatConfig(systemPrompt: ''),
   ).toList();
 
   expect(fakeExecutor.executeCalls, hasLength(1));
@@ -360,7 +360,7 @@ test('concurrent-safe batch respects max concurrency of 10', () async {
   await executor.executeDecisionToolCalls(
     turn: _turnWithManyConcurrentReads(25),
     decision: _decisionWithManyConcurrentReads(25),
-    config: ChatConfig(useReasoning: false, systemPrompt: ''),
+    config: ChatConfig(systemPrompt: ''),
   ).drain();
 
   expect(tracker.maxObservedConcurrency, lessThanOrEqualTo(10));
@@ -432,7 +432,7 @@ test('failure in one concurrent-safe tool does not stop other tools in the same 
   final events = await executor.executeDecisionToolCalls(
     turn: _turnForConcurrentBatch(),
     decision: _decisionForConcurrentBatch(),
-    config: ChatConfig(useReasoning: false, systemPrompt: ''),
+    config: ChatConfig(systemPrompt: ''),
   ).toList();
 
   expect(events.where((e) => e.eventType == ChatEventType.toolError), hasLength(1));
@@ -487,7 +487,7 @@ test('write tool remains isolated between concurrent read batches', () async {
   await executor.executeDecisionToolCalls(
     turn: _turnForReadWriteReadSequence(),
     decision: _decisionForReadWriteReadSequence(),
-    config: ChatConfig(useReasoning: false, systemPrompt: ''),
+    config: ChatConfig(systemPrompt: ''),
   ).drain();
 
   expect(
@@ -566,7 +566,7 @@ test('turn harness stops after executor reports awaiting confirmation', () async
 
   await harness.runTurn(
     turn: _turnWithToolDecision(),
-    config: ChatConfig(useReasoning: false, systemPrompt: ''),
+    config: ChatConfig(systemPrompt: ''),
   ).toList();
 
   expect(executor.executeCalls, hasLength(1));

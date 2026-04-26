@@ -1,6 +1,7 @@
 import 'package:ai_chat/theme/app_colors.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/theme/app_typography.dart';
+import 'package:ai_chat/widgets/chat_blocks/reasoning_section.dart';
 import 'package:ai_chat/widgets/chat_timeline/stable_markdown_block.dart';
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
 import 'package:flutter/material.dart';
@@ -9,12 +10,14 @@ import 'package:flutter/material.dart';
 class AssistantDocBlock extends StatelessWidget {
   final String text;
   final String? label;
+  final String? reasoningText;
   final String? markdownCacheKey;
 
   const AssistantDocBlock({
     super.key,
     required this.text,
     this.label,
+    this.reasoningText,
     this.markdownCacheKey,
   });
 
@@ -54,6 +57,11 @@ class AssistantDocBlock extends StatelessWidget {
               ),
               SizedBox(height: spacing.xs),
             ],
+            if ((reasoningText ?? '').trim().isNotEmpty)
+              ReasoningSection(
+                text: reasoningText!,
+                variant: ReasoningSectionVariant.toolUseInline,
+              ),
             StableMarkdownBlock(
               cacheKey:
                   markdownCacheKey ?? 'doc:${label ?? 'analysis'}:${text.hashCode}',

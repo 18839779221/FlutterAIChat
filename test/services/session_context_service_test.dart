@@ -133,7 +133,7 @@ void main() {
             content: '结果摘要：TurnHarness 是主入口',
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: '你是一个助手'),
+        config: ChatConfig(systemPrompt: '你是一个助手'),
       );
 
       expect(plannerMessages.first.text, contains('# currentDate'));
@@ -202,7 +202,7 @@ void main() {
             content: '今天的最新新闻是什么',
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: '你是一个助手'),
+        config: ChatConfig(systemPrompt: '你是一个助手'),
       );
 
       expect(plannerMessages.first.text, contains('# currentDate'));
@@ -287,7 +287,7 @@ void main() {
             content: 'current-turn',
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: '你是一个助手'),
+        config: ChatConfig(systemPrompt: '你是一个助手'),
       );
 
       final snapshot = await snapshotRepository.getLatestByGroup(groupId);
@@ -394,7 +394,7 @@ void main() {
             content: '继续',
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: '你是一个助手'),
+        config: ChatConfig(systemPrompt: '你是一个助手'),
       );
 
       final snapshot = await snapshotRepository.getLatestByGroup(groupId);
@@ -513,7 +513,7 @@ void main() {
             content: '继续完善 token-aware working set',
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: '你是一个助手'),
+        config: ChatConfig(systemPrompt: '你是一个助手'),
       );
 
       final snapshot = await snapshotRepository.getLatestByGroup(groupId);
@@ -627,7 +627,7 @@ void main() {
             content: '再顺手把最近新增的爱好移到最前面',
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: '你是一个助手'),
+        config: ChatConfig(systemPrompt: '你是一个助手'),
       );
 
       final combined = plannerMessages.map((message) => message.text).join('\n');
@@ -710,7 +710,7 @@ void main() {
             content: 'turn-30-user',
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: '你是一个助手'),
+        config: ChatConfig(systemPrompt: '你是一个助手'),
       );
 
       final combined =
@@ -820,7 +820,7 @@ void main() {
             content: 'turn-4 current',
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: '你是一个助手'),
+        config: ChatConfig(systemPrompt: '你是一个助手'),
       );
 
       final combined =
@@ -910,7 +910,7 @@ void main() {
             content: 'current-turn',
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: '你是一个助手'),
+        config: ChatConfig(systemPrompt: '你是一个助手'),
       );
 
       final snapshot = await snapshotRepository.getLatestByGroup(groupId);
@@ -985,6 +985,13 @@ class _FakeBaseLlm implements BaseLLM {
 
   @override
   Future<String> structureSummaryCard(String sourceText) async => '';
+
+  @override
+  Future<String> processWebpageContent({
+    required String webpageContent,
+    required String prompt,
+  }) async =>
+      '';
 
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async => '';

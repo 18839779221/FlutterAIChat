@@ -134,9 +134,7 @@ void main() {
         ),
       );
       final turn = (await turnRepository.getTurn(turnId))!;
-      final chatService = _FakeChatService(
-        chunks: const ['不应该再触发第二次回答'],
-      );
+      final chatService = _FakeChatService(chunks: const []);
 
       final harness = TurnHarness(
         plannerService: _NativeDecisionPlannerService([
@@ -166,11 +164,10 @@ void main() {
       final emitted = await harness
           .runTurn(
             turn: turn,
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
-      expect(chatService.capturedFinalAnswerMessages, isEmpty);
       expect(
         emitted.map((event) => event.eventType),
         containsAllInOrder([
@@ -183,6 +180,92 @@ void main() {
         (event) => event.eventType == ChatEventType.finalAnswer,
       );
       expect(finalAnswer.content, '我是你的 AI 助手。');
+    });
+
+    test('emits scoped reasoning for tool-use and final-answer decisions',
+        () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          id: 1,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '查一下资料再总结',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+
+      final harness = TurnHarness(
+        plannerService: _NativeDecisionPlannerService([
+          const ModelTurnDecision(
+            toolCalls: [
+              ModelToolCall(
+                toolName: 'web_search',
+                arguments: {'query': 'OpenAI latest'},
+                sequence: 0,
+              ),
+            ],
+            assistantMessage: null,
+            visibleReasoning: '需要先联网确认最新信息。',
+            providerState: {'response_id': 'resp_tool'},
+            providerStyle: ChatTurnProviderStyle.openaiResponses,
+            modelName: 'gpt-5.4',
+            isTerminal: false,
+          ),
+          const ModelTurnDecision(
+            toolCalls: [],
+            assistantMessage: '这是最终总结。',
+            visibleReasoning: '已经拿到资料，可以整理答案。',
+            providerState: {'response_id': 'resp_final'},
+            providerStyle: ChatTurnProviderStyle.openaiResponses,
+            modelName: 'gpt-5.4',
+            isTerminal: true,
+          ),
+        ]),
+        turnRepository: turnRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        turnVerifier: _AlwaysStopVerifier(),
+        chatService: _FakeChatService(chunks: const []),
+        toolCallService: _FakeToolCallService(
+          executeResult: const ToolPreparationResult.noTool(),
+        ),
+        decisionToolCallExecutor: _FakeDecisionToolCallExecutor(),
+        limits: const AgentLoopLimits(maxIterations: 4),
+      );
+
+      final emitted = await harness
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(systemPrompt: ''),
+          )
+          .toList();
+
+      final reasoningEvents = emitted
+          .where((event) => event.eventType == ChatEventType.assistantReasoningDelta)
+          .toList();
+      expect(reasoningEvents, hasLength(2));
+      expect(reasoningEvents.first.content, '需要先联网确认最新信息。');
+      expect(reasoningEvents.first.payloadJson, containsPair('scope', 'tool_use'));
+      expect(reasoningEvents.last.content, '已经拿到资料，可以整理答案。');
+      expect(
+        reasoningEvents.last.payloadJson,
+        containsPair('scope', 'final_answer'),
+      );
+      expect(
+        emitted.map((event) => event.eventType),
+        containsAllInOrder([
+          ChatEventType.userMessage,
+          ChatEventType.assistantReasoningDelta,
+          ChatEventType.turnStatus,
+          ChatEventType.assistantReasoningDelta,
+          ChatEventType.turnStatus,
+          ChatEventType.finalAnswer,
+        ]),
+      );
     });
 
     test(
@@ -269,7 +352,7 @@ void main() {
       final emitted = await harness
           .runTurn(
             turn: turn,
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -400,7 +483,7 @@ void main() {
       final emitted = await harness
           .runTurn(
             turn: turn,
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -541,7 +624,7 @@ void main() {
       final emitted = await harness
           .runTurn(
             turn: turn,
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -617,7 +700,7 @@ void main() {
       final emitted = await harness
           .runTurn(
             turn: turn,
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -685,7 +768,7 @@ void main() {
               summary: '请确认执行工具：创建提醒',
               requiresConfirmation: true,
             ),
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -776,7 +859,7 @@ void main() {
       final emitted = await harness
           .runTurn(
             turn: turn,
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -886,7 +969,7 @@ void main() {
       final emitted = await harness
           .runTurn(
             turn: turn,
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -1015,7 +1098,7 @@ void main() {
       final emitted = await harness
           .runTurn(
             turn: turn,
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -1096,7 +1179,7 @@ void main() {
               summary: '准备执行工具：创建提醒',
               requiresConfirmation: true,
             ),
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
             trustTool: true,
           )
           .toList();
@@ -1180,7 +1263,7 @@ void main() {
               summary: '请确认执行工具：创建提醒',
               requiresConfirmation: true,
             ),
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -1270,7 +1353,7 @@ void main() {
               requiresConfirmation: true,
               stepId: 7,
             ),
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -1358,7 +1441,7 @@ void main() {
       final emitted = await harness
           .runTurn(
             turn: turn,
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -1480,7 +1563,7 @@ void main() {
               },
               'freeTextAnswersByQuestionId': {},
             }),
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -1549,7 +1632,7 @@ void main() {
       final emitted = await harness
           .runTurn(
             turn: turn,
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -1626,7 +1709,7 @@ void main() {
       final emitted = await harness
           .runTurn(
             turn: turn,
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -1675,7 +1758,7 @@ void main() {
       final emitted = await harness
           .runTurn(
             turn: turn,
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -1725,7 +1808,7 @@ void main() {
       final emitted = await harness
           .runTurn(
             turn: turn,
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -1815,7 +1898,7 @@ void main() {
       final emitted = await harness
           .runTurn(
             turn: turn,
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -1873,7 +1956,7 @@ void main() {
       final emitted = await harness
           .runTurn(
             turn: turn,
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -1979,7 +2062,7 @@ void main() {
       await harness
           .runTurn(
             turn: turn,
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -2067,7 +2150,7 @@ void main() {
       await harness
           .runTurn(
             turn: turn,
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -2151,7 +2234,7 @@ void main() {
       final emitted = await harness
           .runTurn(
             turn: turn,
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -2178,7 +2261,6 @@ void main() {
       );
       expect(plannerMessageIndex, lessThan(toolCallIndex));
 
-      expect(chatService.capturedFinalAnswerMessages, isEmpty);
     });
 
     test(
@@ -2333,7 +2415,7 @@ void main() {
       final emitted = await harness
           .runTurn(
             turn: turn,
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
           )
           .toList();
 
@@ -2352,7 +2434,6 @@ void main() {
         isNot(contains('命中历史消息')),
       );
 
-      expect(chatService.capturedFinalAnswerMessages, isEmpty);
       expect(await stepRepository.listSteps(turnId), hasLength(3));
 
       final finalAnswerEvent = emitted.firstWhere(
@@ -2561,20 +2642,8 @@ class _NeverStopVerifier extends TurnVerifier {
 
 class _FakeChatService extends ChatService {
   final List<String> chunks;
-  final List<List<ChatMessage>> capturedFinalAnswerMessages = [];
 
   _FakeChatService({required this.chunks}) : super(llm: _NoopBaseLLM());
-
-  @override
-  Stream<String> streamFinalAnswer({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-  }) async* {
-    capturedFinalAnswerMessages.add(List<ChatMessage>.from(messages));
-    for (final chunk in chunks) {
-      yield chunk;
-    }
-  }
 }
 
 class _FakeToolCallService extends ToolCallService {
@@ -3004,6 +3073,23 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
       eventType: ChatEventType.assistantTextDelta,
       role: MessageRole.assistant,
       content: content,
+    );
+  }
+
+  @override
+  Future<ChatEvent> appendAssistantReasoningDelta({
+    required int turnId,
+    required int groupId,
+    required String content,
+    required String scope,
+  }) async {
+    return _append(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.assistantReasoningDelta,
+      role: MessageRole.assistant,
+      content: content,
+      payloadJson: {'scope': scope},
     );
   }
 

@@ -77,14 +77,21 @@ void main() {
         ),
       );
 
-      final result = await fetcher(url: 'https://example.com/article');
+      final result = await fetcher(
+        url: 'https://example.com/article',
+        prompt: '提取页面核心内容',
+      );
 
       expect(result.status, ToolExecutionStatus.success);
-      expect(result.summary, '已读取网页：Example Article');
+      expect(result.summary, '已返回网页处理结果');
       expect(result.data['title'], 'Example Article');
-      expect(result.data['content'], contains('Example Heading'));
-      expect(result.data['content'], contains('First paragraph.'));
-      expect(result.data['content'], isNot(contains('console.log')));
+      expect(result.data['prompt'], '提取页面核心内容');
+      expect(result.data['processedContent'], contains('Example Heading'));
+      expect(result.data['processedContent'], contains('First paragraph.'));
+      expect(
+        result.data['processedContent'],
+        isNot(contains('console.log')),
+      );
     });
 
     test('webpage fetcher returns failure for non-200 response', () async {
@@ -96,7 +103,10 @@ void main() {
         ),
       );
 
-      final result = await fetcher(url: 'https://example.com/missing');
+      final result = await fetcher(
+        url: 'https://example.com/missing',
+        prompt: '提取页面核心内容',
+      );
 
       expect(result.status, ToolExecutionStatus.failure);
       expect(result.errorMessage, 'http_404');

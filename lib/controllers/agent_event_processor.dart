@@ -95,7 +95,9 @@ class AgentEventProcessor {
       case ChatEventType.userMessage:
       case ChatEventType.assistantTextFinal:
       case ChatEventType.error:
+        return;
       case ChatEventType.assistantReasoningDelta:
+        await _onAssistantReasoningDelta(dbHelper: dbHelper, event: event);
         return;
       case ChatEventType.turnStatus:
         if (_isTerminalFailureStatus(event.content)) {
@@ -338,6 +340,38 @@ class AgentEventProcessor {
       dbHelper: dbHelper,
     );
     _assistantStreamBuffer!.onDelta(event.content ?? '');
+  }
+
+  Future<void> _onAssistantReasoningDelta({
+    required ChatStorage dbHelper,
+    required ChatEvent event,
+  }) async {
+    if (_assistantMessageId == null) {
+      final placeholder = ChatMessage(
+        text: '',
+        role: MessageRole.assistant,
+        status: MessageStatus.generating,
+        payloadJson: _withIdentity({
+          if (event.payloadJson?['scope'] != null)
+            'reasoningScope': event.payloadJson!['scope'],
+        }),
+      );
+      _assistantMessageId = await dbHelper.insertMessage(placeholder, _groupId);
+      placeholder.id = _assistantMessageId;
+      _assistantMessage = placeholder;
+      _ref.read(messagesProvider.notifier).addMessage(placeholder);
+    }
+    final activeId = _assistantMessageId!;
+    final activeMessage = _assistantMessage!;
+    final content = event.content ?? '';
+    _ref.read(messagesProvider.notifier).appendReasoningToMessage(
+          activeId,
+          content,
+        );
+    await dbHelper.updateMessageReasoning(
+      activeId,
+      activeMessage.reasoningContent,
+    );
   }
 
   Future<void> _onFinalAnswer({

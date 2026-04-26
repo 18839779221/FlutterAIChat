@@ -82,7 +82,7 @@ void main() {
             role: MessageRole.user,
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
             name: 'fetch_webpage',
@@ -172,7 +172,7 @@ void main() {
         messages: [
           ChatMessage(text: '解释一下 tool calling', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
 
@@ -210,7 +210,6 @@ void main() {
           ChatMessage(text: '继续', role: MessageRole.user),
         ],
         config: ChatConfig(
-          useReasoning: false,
           systemPrompt: 'planner system prompt',
         ),
         availableTools: const [],
@@ -269,7 +268,7 @@ void main() {
         messages: [
           ChatMessage(text: '先问我选什么数据库', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
             name: 'ask_user_question',
@@ -325,7 +324,7 @@ void main() {
             role: MessageRole.user,
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
             name: 'web_search',
@@ -418,7 +417,6 @@ void main() {
           ChatMessage(text: '继续', role: MessageRole.user),
         ],
         config: ChatConfig(
-          useReasoning: false,
           systemPrompt: 'planner system prompt',
         ),
         availableTools: const [],
@@ -476,7 +474,7 @@ void main() {
         messages: [
           ChatMessage(text: '什么是 planner prompt', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
 
@@ -504,7 +502,7 @@ void main() {
         messages: [
           ChatMessage(text: '帮我查 Claude 最新进展', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
             name: 'web_search',
@@ -543,6 +541,7 @@ void main() {
         baseUrl: 'https://planner.example/v1',
         httpClient: client,
         plannerRequestTimeout: const Duration(milliseconds: 20),
+        mainFlowNetworkRetryAttempts: 1,
       );
 
       final stopwatch = Stopwatch()..start();
@@ -550,7 +549,7 @@ void main() {
         messages: [
           ChatMessage(text: '帮我查 Claude 最新进展', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
             name: 'web_search',
@@ -605,7 +604,7 @@ void main() {
         messages: [
           ChatMessage(text: '查一下 Anthropic API', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: '你是一个助手'),
+        config: ChatConfig(systemPrompt: '你是一个助手'),
         availableTools: const [
           PlannerToolOption(
             name: 'web_search',
@@ -682,6 +681,7 @@ void main() {
         baseUrl: 'https://planner.example/v1/chat/completions',
         httpClient: client,
         plannerRequestTimeout: const Duration(milliseconds: 20),
+        mainFlowNetworkRetryAttempts: 1,
       );
 
       final stopwatch = Stopwatch()..start();
@@ -690,7 +690,7 @@ void main() {
           messages: [
             ChatMessage(text: '帮我查 Claude 最新进展', role: MessageRole.user),
           ],
-          config: ChatConfig(useReasoning: false, systemPrompt: ''),
+          config: ChatConfig(systemPrompt: ''),
         ),
         throwsException,
       );
@@ -744,7 +744,7 @@ void main() {
             role: MessageRole.user,
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
             name: 'fetch_webpage',
@@ -807,7 +807,7 @@ void main() {
         messages: [
           ChatMessage(text: '帮我查 OpenAI 最新发布', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
             name: 'web_search',
@@ -867,7 +867,7 @@ void main() {
         messages: [
           ChatMessage(text: '查数据库版本', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
             name: 'search_chat_history',
@@ -921,7 +921,7 @@ void main() {
         messages: [
           ChatMessage(text: '今晚 8 点提醒我', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
             name: 'create_reminder',
@@ -978,7 +978,7 @@ void main() {
         messages: [
           ChatMessage(text: '查数据库版本', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
             name: 'search_chat_history',
@@ -1056,7 +1056,7 @@ void main() {
         messages: [
           ChatMessage(text: '查数据库版本并继续下一步', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
             name: 'search_chat_history',
@@ -1117,7 +1117,7 @@ void main() {
         messages: [
           ChatMessage(text: '继续', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
         providerStyle: ChatTurnProviderStyle.openaiResponses,
         providerState: const {'response_id': 'resp_prev'},
@@ -1160,7 +1160,7 @@ void main() {
         messages: [
           ChatMessage(text: '继续', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
         providerStyle: ChatTurnProviderStyle.openaiResponses,
         providerState: const {'response_id': 'resp_prev'},
@@ -1219,7 +1219,7 @@ void main() {
         messages: [
           ChatMessage(text: '继续', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
         providerStyle: ChatTurnProviderStyle.openaiChatCompletions,
         providerContinuationItems: const [
@@ -1291,7 +1291,7 @@ void main() {
         messages: [
           ChatMessage(text: '继续', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
         providerStyle: ChatTurnProviderStyle.openaiChatCompletions,
         providerContinuationItems: const [
@@ -1348,7 +1348,7 @@ void main() {
         messages: [
           ChatMessage(text: '继续', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
         providerStyle: ChatTurnProviderStyle.openaiResponses,
         providerState: const {'response_id': 'resp_prev'},
@@ -1416,7 +1416,7 @@ void main() {
         messages: [
           ChatMessage(text: '请先问我需要哪个方案', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
             name: 'ask_user_question',
@@ -1465,7 +1465,7 @@ void main() {
         messages: [
           ChatMessage(text: '继续搜索', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
             name: 'web_search',
@@ -1514,7 +1514,7 @@ void main() {
         messages: [
           ChatMessage(text: '继续', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
         providerStyle: ChatTurnProviderStyle.anthropicMessages,
         providerContinuationItems: const [
@@ -1572,7 +1572,7 @@ void main() {
         messages: [
           ChatMessage(text: '继续', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
         providerStyle: ChatTurnProviderStyle.anthropicMessages,
         providerState: const {
@@ -1771,7 +1771,7 @@ void main() {
             },
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
       );
 
       final messages = client.lastRequestBody?['messages'] as List<dynamic>?;
@@ -1835,7 +1835,7 @@ void main() {
             },
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
       );
 
       final input = client.lastRequestBody?['input'] as List<dynamic>?;
@@ -1901,7 +1901,7 @@ void main() {
             },
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
       );
 
       final messages = client.lastRequestBody?['messages'] as List<dynamic>?;
@@ -1938,6 +1938,7 @@ Future<ConfigurableHttpLLM> _buildLlm({
   required String baseUrl,
   http.Client? httpClient,
   Duration? plannerRequestTimeout,
+  int mainFlowNetworkRetryAttempts = 5,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
@@ -1963,6 +1964,7 @@ Future<ConfigurableHttpLLM> _buildLlm({
     settingsRepository: repository,
     httpClient: httpClient,
     plannerRequestTimeout: plannerRequestTimeout,
+    mainFlowNetworkRetryAttempts: mainFlowNetworkRetryAttempts,
   );
 }
 

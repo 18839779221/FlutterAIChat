@@ -1,5 +1,6 @@
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/theme/app_typography.dart';
+import 'package:ai_chat/widgets/chat_blocks/reasoning_section.dart';
 import 'package:ai_chat/widgets/chat_timeline/stable_markdown_block.dart';
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
 import 'package:flutter/material.dart';
@@ -8,12 +9,14 @@ import 'package:flutter/material.dart';
 class FinalResponseBlock extends StatelessWidget {
   final String title;
   final String text;
+  final String? reasoningText;
   final String? markdownCacheKey;
 
   const FinalResponseBlock({
     super.key,
     required this.title,
     required this.text,
+    this.reasoningText,
     this.markdownCacheKey,
   });
 
@@ -45,6 +48,12 @@ class FinalResponseBlock extends StatelessWidget {
               ),
               SizedBox(height: spacing.xxs + 1),
             ],
+            if ((reasoningText ?? '').trim().isNotEmpty)
+              ReasoningSection(
+                text: reasoningText!,
+                variant: ReasoningSectionVariant.finalAnswerCollapsible,
+                initiallyExpanded: false,
+              ),
             StableMarkdownBlock(
               cacheKey:
                   markdownCacheKey ?? 'final:${title.trim()}:${text.hashCode}',
