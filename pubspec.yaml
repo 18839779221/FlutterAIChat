@@ -65,7 +65,7 @@ dev_dependencies:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: /Users/zyb_wl/aiSpace/logo_output/app_icon_v3_prism.png
+  image_path: assets/icons/app_launcher_icon.png
   remove_alpha_ios: true
 
 # For information on the generic Dart part of this file, see the
