@@ -30,69 +30,72 @@ class MarkdownCalloutBlock extends StatelessWidget {
     final label = _displayLabel;
     final trimmedTitle = title.trim();
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: tone.backgroundColor,
-        borderRadius: BorderRadius.circular(9),
-        border: Border(
-          left: BorderSide(
-            color: tone.accentColor,
-            width: 1.6,
+    return SizedBox(
+      width: double.infinity,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: tone.backgroundColor,
+          borderRadius: BorderRadius.circular(9),
+          border: Border(
+            left: BorderSide(
+              color: tone.accentColor,
+              width: 1.6,
+            ),
           ),
         ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 9, 11, 10),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  tone.icon,
-                  size: 13,
-                  color: tone.accentColor,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  label,
-                  style: AppTypography.uiStyle(
-                    color: tone.headerColor,
-                    fontSize: 11.5,
-                    height: 1.15,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 9, 11, 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    tone.icon,
+                    size: 13,
+                    color: tone.accentColor,
                   ),
-                ),
-                if (trimmedTitle.isNotEmpty) ...[
-                  const SizedBox(width: 7),
-                  Flexible(
-                    child: Text(
-                      trimmedTitle,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.documentStyle(
-                        color: tone.titleColor,
-                        fontSize: 12.8,
-                        height: 1.2,
-                        fontWeight: FontWeight.w500,
-                      ),
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    style: AppTypography.uiStyle(
+                      color: tone.headerColor,
+                      fontSize: 11.5,
+                      height: 1.15,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0,
                     ),
                   ),
+                  if (trimmedTitle.isNotEmpty) ...[
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        trimmedTitle,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.documentStyle(
+                          color: tone.titleColor,
+                          fontSize: 12.8,
+                          height: 1.2,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ] else
+                    const Spacer(),
                 ],
-              ],
-            ),
-            const SizedBox(height: 7),
-            DefaultTextStyle.merge(
-              style: AppTypography.documentStyle(
-                color: tone.bodyColor,
-                fontSize: 13,
-                height: 1.5,
               ),
-              child: child,
-            ),
-          ],
+              const SizedBox(height: 7),
+              DefaultTextStyle.merge(
+                style: AppTypography.documentStyle(
+                  color: tone.bodyColor,
+                  fontSize: 13,
+                  height: 1.5,
+                ),
+                child: child,
+              ),
+            ],
+          ),
         ),
       ),
     );
