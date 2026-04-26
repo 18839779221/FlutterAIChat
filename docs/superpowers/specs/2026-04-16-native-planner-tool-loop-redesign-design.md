@@ -236,7 +236,7 @@ adapter 只做 provider payload 解析，不做业务级裁剪。
 
 - 使用完整 transcript
 - 结合 step ledger summary
-- 由 `ChatService.streamFinalAnswer()` 生成用户最终看到的收束内容
+- 由 planner 终态答复直接落盘，或在确有整理需求时进入按需 final answer 阶段
 
 这样可以保证：
 

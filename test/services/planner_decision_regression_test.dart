@@ -30,7 +30,7 @@ void main() {
         turn: _turn('请总结这个网页 https://example.com'),
         transcript: [_userEvent('请总结这个网页 https://example.com')],
         steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -51,7 +51,7 @@ void main() {
         turn: _turn('帮我查一下 OpenAI 最近的发布'),
         transcript: [_userEvent('帮我查一下 OpenAI 最近的发布')],
         steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -72,7 +72,7 @@ void main() {
         turn: _turn('明天下午三点提醒我开会'),
         transcript: [_userEvent('明天下午三点提醒我开会')],
         steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -98,7 +98,7 @@ void main() {
         turn: _turn('简单解释一下 Riverpod'),
         transcript: [_userEvent('简单解释一下 Riverpod')],
         steps: const [],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
 
@@ -203,6 +203,13 @@ class _CapturingStructuredPlannerLLM implements BaseLLM {
 
   @override
   String getModelName(ChatConfig config) => 'regression-planner';
+
+  @override
+  Future<String> processWebpageContent({
+    required String webpageContent,
+    required String prompt,
+  }) async =>
+      '';
 
   @override
   Future<ModelTurnDecision?> planTurnDecision({

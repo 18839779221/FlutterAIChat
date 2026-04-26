@@ -183,7 +183,7 @@ test('planner 请求使用 builder 产出的 planner prompt', () async {
     turn: _turn('解释 Riverpod provider 和 notifier 的区别'),
     transcript: [_userEvent('解释 Riverpod provider 和 notifier 的区别')],
     steps: const [],
-    config: ChatConfig(useReasoning: false, systemPrompt: '用户偏好'),
+    config: ChatConfig(systemPrompt: '用户偏好'),
     limits: const AgentLoopLimits(),
   );
 
@@ -251,7 +251,7 @@ test('无需工具且 planner 已给出可直接答复时，不再追加 final a
   final events = await harness
       .runTurn(
         turn: _turn(userInput: '解释什么是 SQLite'),
-        config: ChatConfig(useReasoning: false, systemPrompt: 'base'),
+        config: ChatConfig(systemPrompt: 'base'),
       )
       .toList();
 
@@ -271,7 +271,7 @@ test('无需工具且 planner 已给出可直接答复时，不再追加 final a
 明确规则：
 
 - planner 已经给出终态用户答复且无后续工具需求时，直接落最终事件
-- 只有在存在工具结果汇总、复杂 transcript 整理需求时才触发 `ChatService.streamFinalAnswer()`
+- 只有在存在工具结果汇总、复杂 transcript 整理需求时才触发按需 final answer 阶段
 
 可增加一个最小判定函数，例如：
 

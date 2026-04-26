@@ -134,7 +134,8 @@ void main() {
         () async {
       final executor = ToolExecutor(
         chatStorage: const _FakeChatStorage(messages: []),
-        webpageFetcher: ({required url, extractMode}) async => const ToolResult(
+        webpageFetcher:
+            ({required url, required prompt}) async => const ToolResult(
           toolName: 'fetch_webpage',
           status: ToolExecutionStatus.success,
           summary: '已读取网页',
@@ -148,6 +149,7 @@ void main() {
 
       final result = await executor.executeFetchWebpage(
         url: 'https://example.com',
+        prompt: '提取页面核心内容',
       );
 
       expect(result.status, ToolExecutionStatus.success);

@@ -32,7 +32,7 @@ class ConfigurableHttpLLM implements BaseLLM {
   static const String _tag = 'ConfigurableHttpLLM';
   static const Duration _defaultRequestTimeout = Duration(seconds: 60);
   static const Duration _defaultPlannerRequestTimeout = Duration(seconds: 60);
-  static const int _mainFlowNetworkRetryAttempts = 5;
+  static const int _defaultMainFlowNetworkRetryAttempts = 5;
 
   static const Map<ApiStyle, ApiStyleAdapter> _defaultAdapters = {
     ApiStyle.chatCompletions: ChatCompletionsAdapter(),
@@ -46,6 +46,7 @@ class ConfigurableHttpLLM implements BaseLLM {
   final http.Client _httpClient;
   final Duration _requestTimeout;
   final Duration _plannerRequestTimeout;
+  final int _mainFlowNetworkRetryAttempts;
   final Map<ApiStyle, ApiStyleAdapter> _adapters;
   final OpenAIChatCompletionsToolLoopAdapter _chatCompletionsToolLoopAdapter;
   final OpenAIResponsesToolLoopAdapter _responsesToolLoopAdapter;
@@ -59,6 +60,8 @@ class ConfigurableHttpLLM implements BaseLLM {
     http.Client? httpClient,
     Duration? requestTimeout,
     Duration? plannerRequestTimeout,
+    int mainFlowNetworkRetryAttempts =
+        _defaultMainFlowNetworkRetryAttempts,
     Map<ApiStyle, ApiStyleAdapter>? adapters,
     OpenAIChatCompletionsToolLoopAdapter? chatCompletionsToolLoopAdapter,
     OpenAIResponsesToolLoopAdapter? responsesToolLoopAdapter,
@@ -71,6 +74,7 @@ class ConfigurableHttpLLM implements BaseLLM {
         _requestTimeout = requestTimeout ?? _defaultRequestTimeout,
         _plannerRequestTimeout =
             plannerRequestTimeout ?? _defaultPlannerRequestTimeout,
+        _mainFlowNetworkRetryAttempts = mainFlowNetworkRetryAttempts,
         _adapters = adapters ?? _defaultAdapters,
         _chatCompletionsToolLoopAdapter = chatCompletionsToolLoopAdapter ??
             const OpenAIChatCompletionsToolLoopAdapter(),
@@ -78,7 +82,9 @@ class ConfigurableHttpLLM implements BaseLLM {
             responsesToolLoopAdapter ?? const OpenAIResponsesToolLoopAdapter(),
         _anthropicMessagesToolLoopAdapter = anthropicMessagesToolLoopAdapter ??
             const AnthropicMessagesToolLoopAdapter(),
-        _promptBuilder = promptBuilder ?? const PromptBuilderService();
+        _promptBuilder = promptBuilder ?? const PromptBuilderService() {
+    assert(mainFlowNetworkRetryAttempts >= 1);
+  }
 
   ApiStyleAdapter _adapterFor(ApiStyle apiStyle) {
     final adapter = _adapters[apiStyle];
@@ -90,7 +96,7 @@ class ConfigurableHttpLLM implements BaseLLM {
 
   @override
   String getModelName(ChatConfig config) {
-    return config.useReasoning ? 'deepseek-reasoner' : 'deepseek-chat';
+    return 'deepseek-chat';
   }
 
   @override
@@ -188,7 +194,7 @@ class ConfigurableHttpLLM implements BaseLLM {
 
       final summary = await _sendTextRequest(
         runtimeConfig,
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         messages: summaryPrompt,
       );
       final trimmedSummary = summary.trim();
@@ -259,7 +265,7 @@ class ConfigurableHttpLLM implements BaseLLM {
       ];
       return (await _sendTextRequest(
         runtimeConfig,
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         messages: promptMessages,
       ))
           .trim();
@@ -296,7 +302,7 @@ class ConfigurableHttpLLM implements BaseLLM {
       ];
       return (await _sendTextRequest(
         runtimeConfig,
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         messages: promptMessages,
       ))
           .trim();
@@ -526,10 +532,6 @@ class ConfigurableHttpLLM implements BaseLLM {
     final configuredModel = runtimeConfig.model.trim();
     if (configuredModel.isEmpty) {
       return getModelName(config);
-    }
-
-    if (config.useReasoning && configuredModel == 'deepseek-chat') {
-      return 'deepseek-reasoner';
     }
 
     return configuredModel;

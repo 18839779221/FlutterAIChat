@@ -518,7 +518,7 @@ test('planner uses session context messages instead of only current turn transcr
 
   await harness.runTurn(
     turn: _turn(groupId: 5, id: 22, userInput: '继续'),
-    config: ChatConfig(useReasoning: false, systemPrompt: ''),
+    config: ChatConfig(systemPrompt: ''),
   ).drain();
 
   expect(_capturedPlannerMessagesText(), contains('历史摘要'));

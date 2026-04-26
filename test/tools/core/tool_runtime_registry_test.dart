@@ -160,7 +160,7 @@ Future<ToolResult> _noopWebSearch({
 
 Future<ToolResult> _noopFetchWebpage({
   required String url,
-  String? extractMode,
+  required String prompt,
 }) async {
   return const ToolResult(
     toolName: 'fetch_webpage',

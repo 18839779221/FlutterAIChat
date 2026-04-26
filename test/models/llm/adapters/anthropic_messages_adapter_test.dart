@@ -26,7 +26,7 @@ void main() {
           ChatMessage(text: 'ignored-inline', role: MessageRole.system),
           ChatMessage(text: '你好', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: 'top'),
+        config: ChatConfig(systemPrompt: 'top'),
         modelName: 'claude',
         stream: true,
       );
@@ -42,7 +42,7 @@ void main() {
     test('omits system field when no prompt is configured', () {
       final payload = adapter.buildChatPayload(
         messages: [ChatMessage(text: 'hi', role: MessageRole.user)],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         modelName: 'claude',
         stream: false,
       );
@@ -71,7 +71,7 @@ void main() {
             },
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         modelName: 'claude',
         stream: false,
       );
@@ -104,7 +104,7 @@ void main() {
     test('emits anthropic-style tools and tool_choice', () {
       final payload = adapter.buildPlannerPayload(
         messages: [ChatMessage(text: 'q', role: MessageRole.user)],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         modelName: 'claude',
         availableTools: const [
           PlannerToolOption(
@@ -128,7 +128,7 @@ void main() {
         () {
       final payload = adapter.buildPlannerPayload(
         messages: [ChatMessage(text: 'q', role: MessageRole.user)],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         modelName: 'claude',
         availableTools: const [],
         parallelToolCalls: true,
@@ -168,7 +168,7 @@ void main() {
         () {
       final payload = adapter.buildPlannerPayload(
         messages: [ChatMessage(text: 'q', role: MessageRole.user)],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         modelName: 'claude',
         availableTools: const [],
         parallelToolCalls: true,

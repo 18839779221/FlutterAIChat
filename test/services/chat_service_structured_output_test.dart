@@ -9,51 +9,6 @@ import 'package:ai_chat/services/chat_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('ChatService.streamFinalAnswer', () {
-    test('仅透出 content 类型的增量文本', () async {
-      final llm = _CapturingBaseLLM();
-      final service = ChatService(llm: llm);
-
-      final chunks = await service.streamFinalAnswer(
-        messages: [
-          ChatMessage(
-            text: '系统提示',
-            role: MessageRole.system,
-            status: MessageStatus.completed,
-          ),
-          ChatMessage(
-            text: '帮我总结',
-            role: MessageRole.user,
-            status: MessageStatus.completed,
-          ),
-        ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
-      ).toList();
-
-      expect(chunks, ['第一段', '第二段']);
-      expect(llm.lastMessages, isNotNull);
-      expect(
-          llm.lastMessages!.map((message) => message.text), ['系统提示', '帮我总结']);
-    });
-
-    test('当模型返回原始文本时直接透传非空内容', () async {
-      final service = ChatService(llm: _RawTextBaseLLM());
-
-      final chunks = await service.streamFinalAnswer(
-        messages: [
-          ChatMessage(
-            text: '直接回答',
-            role: MessageRole.user,
-            status: MessageStatus.completed,
-          ),
-        ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
-      ).toList();
-
-      expect(chunks, ['纯文本响应']);
-    });
-  });
-
   group('ChatService.structureMessageForDebug', () {
     test('成功时返回已解析的结构化卡片结果而不是原始 json', () async {
       final service = ChatService(
@@ -130,6 +85,13 @@ class _FakeBaseLLM implements BaseLLM {
       throw UnimplementedError();
 
   @override
+  Future<String> processWebpageContent({
+    required String webpageContent,
+    required String prompt,
+  }) async =>
+      '';
+
+  @override
   Future<PlannerToolChoice?> planNextToolChoice({
     required List<ChatMessage> messages,
     required ChatConfig config,
@@ -158,115 +120,6 @@ class _FakeBaseLLM implements BaseLLM {
       throw structuredError!;
     }
     return structuredResponse!;
-  }
-
-  @override
-  Future<String> summarizeConversation(List<ChatMessage> messages) async =>
-      'summary';
-
-  @override
-  Future<bool> validateApiKey(ChatConfig config) async => true;
-}
-
-class _CapturingBaseLLM implements BaseLLM {
-  List<ChatMessage>? lastMessages;
-
-  @override
-  Map<String, dynamic> get config => const {};
-
-  @override
-  Stream<String> chatStream(
-      List<ChatMessage> messages, ChatConfig config) async* {
-    lastMessages = List<ChatMessage>.from(messages);
-    yield '{"type":"reasoning","content":"先思考"}';
-    yield '{"type":"content","content":"第一段"}';
-    yield '{"type":"content","content":"第二段"}';
-  }
-
-  @override
-  Future<String> planNextAction({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-  }) async =>
-      throw UnimplementedError();
-
-  @override
-  Future<PlannerToolChoice?> planNextToolChoice({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required List<PlannerToolOption> availableTools,
-  }) async =>
-      null;
-
-  @override
-  Future<ModelTurnDecision?> planTurnDecision({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required List<PlannerToolOption> availableTools,
-    ChatTurnProviderStyle? providerStyle,
-    Map<String, dynamic>? providerState,
-    List<Map<String, dynamic>> providerContinuationItems = const [],
-  }) async =>
-      null;
-
-  @override
-  String getModelName(ChatConfig config) => 'capture-model';
-
-  @override
-  Future<String> structureSummaryCard(String sourceText) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<String> summarizeConversation(List<ChatMessage> messages) async =>
-      'summary';
-
-  @override
-  Future<bool> validateApiKey(ChatConfig config) async => true;
-}
-
-class _RawTextBaseLLM implements BaseLLM {
-  @override
-  Map<String, dynamic> get config => const {};
-
-  @override
-  Stream<String> chatStream(
-      List<ChatMessage> messages, ChatConfig config) async* {
-    yield '纯文本响应';
-  }
-
-  @override
-  Future<String> planNextAction({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-  }) async =>
-      throw UnimplementedError();
-
-  @override
-  Future<PlannerToolChoice?> planNextToolChoice({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required List<PlannerToolOption> availableTools,
-  }) async =>
-      null;
-
-  @override
-  Future<ModelTurnDecision?> planTurnDecision({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required List<PlannerToolOption> availableTools,
-    ChatTurnProviderStyle? providerStyle,
-    Map<String, dynamic>? providerState,
-    List<Map<String, dynamic>> providerContinuationItems = const [],
-  }) async =>
-      null;
-
-  @override
-  String getModelName(ChatConfig config) => 'raw-text-model';
-
-  @override
-  Future<String> structureSummaryCard(String sourceText) {
-    throw UnimplementedError();
   }
 
   @override

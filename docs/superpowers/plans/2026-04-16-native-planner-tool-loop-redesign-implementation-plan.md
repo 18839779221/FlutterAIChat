@@ -72,7 +72,7 @@ test('当 native planner 返回 null 时，planNextDecision 返回 planner_reque
     turn: _turn(),
     transcript: [_userEvent()],
     steps: const [],
-    config: ChatConfig(useReasoning: false, systemPrompt: ''),
+    config: ChatConfig(systemPrompt: ''),
     limits: const AgentLoopLimits(),
   );
 
@@ -126,7 +126,7 @@ test('planner tool option 只使用 ToolDefinition.descriptionForModel 作为工
     turn: _turn('请读取 https://example.com'),
     transcript: [_userEvent('请读取 https://example.com')],
     steps: const [],
-    config: ChatConfig(useReasoning: false, systemPrompt: ''),
+    config: ChatConfig(systemPrompt: ''),
     limits: const AgentLoopLimits(),
   );
 

@@ -1957,6 +1957,7 @@ class _FakeChatService extends ChatService {
     required ToolInvocation invocation,
     bool trustTool = false,
     String? turnId,
+    ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
     confirmedTrustFlags.add(trustTool);
     confirmedTurnIds.add(turnId);

@@ -1,4 +1,3 @@
-import 'package:ai_chat/models/agent/planner_tool_choice.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/llm/adapters/chat_completions_adapter.dart';
@@ -25,7 +24,7 @@ void main() {
         messages: [
           ChatMessage(text: '你好', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: 'be concise'),
+        config: ChatConfig(systemPrompt: 'be concise'),
         modelName: 'gpt-x',
         stream: true,
       );
@@ -60,7 +59,7 @@ void main() {
             },
           ),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         modelName: 'gpt-x',
         stream: false,
       );
@@ -84,7 +83,7 @@ void main() {
         messages: [
           ChatMessage(text: '继续', role: MessageRole.user),
         ],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         modelName: 'gpt-x',
         availableTools: const [
           PlannerToolOption(
@@ -139,7 +138,7 @@ void main() {
     test('omits tools when none provided', () {
       final payload = adapter.buildPlannerPayload(
         messages: [ChatMessage(text: 'q', role: MessageRole.user)],
-        config: ChatConfig(useReasoning: false, systemPrompt: ''),
+        config: ChatConfig(systemPrompt: ''),
         modelName: 'gpt-x',
         availableTools: const [],
         parallelToolCalls: false,

@@ -60,7 +60,6 @@ class AgentPlannerService {
       locale: config.promptLocale,
     );
     final plannerConfig = ChatConfig(
-      useReasoning: config.useReasoning,
       systemPrompt: _promptBuilder.buildSystemPrompt(
         stage: PromptStage.planner,
         locale: config.promptLocale,

@@ -34,6 +34,74 @@ void main() {
       expect(blocks.single.text, '最终回答');
     });
 
+    test('carries assistant reasoning content to the final response block', () {
+      final blocks = builder.buildAssistantBlocks(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 10,
+            text: '用户问题',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 3, 29, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 11,
+            text: '最终回答',
+            role: MessageRole.assistant,
+            status: MessageStatus.completed,
+            reasoningContent: '先确认上下文，再给出答案。',
+            timestamp: DateTime(2026, 3, 29, 10, 0, 1),
+          ),
+        ],
+      );
+
+      expect(blocks.single.type, AssistantTurnBlockType.finalResponse);
+      expect(blocks.single.reasoningText, '先确认上下文，再给出答案。');
+    });
+
+    test('keeps tool-use reasoning as analysis before workflow blocks', () {
+      final blocks = builder.buildAssistantBlocks(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 10,
+            text: '用户问题',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 3, 29, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 11,
+            text: '',
+            role: MessageRole.assistant,
+            status: MessageStatus.completed,
+            reasoningContent: '需要先读取文件。',
+            payloadJson: const {'reasoningScope': 'tool_use'},
+            timestamp: DateTime(2026, 3, 29, 10, 0, 1),
+          ),
+          ChatMessage(
+            id: 12,
+            text: '准备读取文件',
+            role: MessageRole.assistant,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const {
+              'toolName': 'read_file',
+              'arguments': {'path': 'README.md'},
+              'summary': '准备读取文件',
+              'status': 'proposed',
+              'requiresConfirmation': false,
+            },
+            timestamp: DateTime(2026, 3, 29, 10, 0, 2),
+          ),
+        ],
+      );
+
+      expect(blocks, hasLength(2));
+      expect(blocks.first.type, AssistantTurnBlockType.analysis);
+      expect(blocks.first.reasoningText, '需要先读取文件。');
+      expect(blocks.last.type, AssistantTurnBlockType.toolWorkflow);
+    });
+
     test('maps structured payload to structured output block', () {
       final blocks = builder.buildAssistantBlocks(
         messages: [

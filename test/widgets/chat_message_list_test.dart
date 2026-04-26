@@ -106,6 +106,72 @@ void main() {
       expect(find.text('assistant reply'), findsOneWidget);
     });
 
+    testWidgets(
+        'completed final-answer reasoning stays collapsed until tapped', (
+      tester,
+    ) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '最终回答',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+            reasoningContent: '先确认上下文，再给出答案。',
+          ),
+        ],
+      );
+
+      expect(find.text('思考过程'), findsOneWidget);
+      expect(find.text('先确认上下文，再给出答案。'), findsNothing);
+      expect(find.text('最终回答'), findsOneWidget);
+
+      await tester.tap(find.text('思考过程'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('先确认上下文，再给出答案。'), findsOneWidget);
+    });
+
+    testWidgets('tool-use reasoning stays directly visible', (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+            reasoningContent: '需要先读取文件。',
+            payloadJson: const {'reasoningScope': 'tool_use'},
+          ),
+        ],
+      );
+
+      expect(find.text('思考过程'), findsOneWidget);
+      expect(find.text('需要先读取文件。'), findsOneWidget);
+    });
+
+    testWidgets('streaming assistant reasoning content is visible', (
+      tester,
+    ) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '正在回答',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+            status: MessageStatus.generating,
+            reasoningContent: '正在整理依据。',
+          ),
+        ],
+      );
+
+      expect(find.byType(StreamingResponseBlock), findsOneWidget);
+      expect(find.text('思考过程'), findsOneWidget);
+      expect(find.text('正在整理依据。'), findsOneWidget);
+      expect(find.text('正在回答'), findsOneWidget);
+    });
+
     testWidgets('idle assistant message does not show running tail', (
       tester,
     ) async {
@@ -1099,11 +1165,13 @@ ChatMessage _buildMessage({
   required MessageContentType contentType,
   MessageStatus status = MessageStatus.completed,
   Map<String, dynamic>? payloadJson,
+  String? reasoningContent,
 }) {
   return ChatMessage(
     text: text,
     role: role,
     status: status,
+    reasoningContent: reasoningContent,
     contentType: contentType,
     payloadJson: payloadJson,
   );

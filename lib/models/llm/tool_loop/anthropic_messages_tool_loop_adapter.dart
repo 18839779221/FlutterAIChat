@@ -21,6 +21,7 @@ class AnthropicMessagesToolLoopAdapter {
 
     final toolCalls = <ModelToolCall>[];
     final textBuffer = StringBuffer();
+    final reasoningBuffer = StringBuffer();
     for (var i = 0; i < content.length; i++) {
       final item = content[i];
       if (item is! Map) {
@@ -44,16 +45,30 @@ class AnthropicMessagesToolLoopAdapter {
         continue;
       }
 
+      final type = normalizedItem['type'];
+      if (type == 'thinking' || type == 'redacted_thinking') {
+        final thinking = _normalizeText(
+          normalizedItem['thinking'] ?? normalizedItem['text'],
+        );
+        if (thinking != null) {
+          reasoningBuffer.write(thinking);
+        }
+        continue;
+      }
+
       final text = _extractText(normalizedItem);
       if (text != null) {
         textBuffer.write(text);
       }
     }
 
+    final visibleReasoning = _normalizeText(reasoningBuffer.toString());
+
     if (toolCalls.isNotEmpty) {
       return ModelTurnDecision(
         toolCalls: toolCalls,
         assistantMessage: null,
+        visibleReasoning: visibleReasoning,
         providerState: providerState,
         isTerminal: false,
       );
@@ -66,6 +81,7 @@ class AnthropicMessagesToolLoopAdapter {
     return ModelTurnDecision(
       toolCalls: const [],
       assistantMessage: assistantMessage,
+      visibleReasoning: visibleReasoning,
       providerState: providerState,
       isTerminal: true,
     );
@@ -73,10 +89,10 @@ class AnthropicMessagesToolLoopAdapter {
 
   String? _extractText(Map<String, dynamic> item) {
     final type = item['type'];
-    if (type != 'text' && type != 'thinking' && type != 'redacted_thinking') {
+    if (type != 'text') {
       return null;
     }
-    return _normalizeText(item['text'] ?? item['thinking']);
+    return _normalizeText(item['text']);
   }
 
   String? _normalizeText(dynamic value) {

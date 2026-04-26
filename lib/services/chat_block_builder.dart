@@ -45,7 +45,8 @@ class ChatBlockBuilder {
       );
       _appendBlock(blocks, block);
 
-      if (block.type == AssistantTurnBlockType.analysis) {
+      if (block.type == AssistantTurnBlockType.analysis &&
+          !_isToolUseReasoningBlock(block)) {
         lastAnalysisIndexByTurn[currentTurnId] = blocks.length - 1;
       }
     }
@@ -76,6 +77,7 @@ class ChatBlockBuilder {
           updatedAt: message.timestamp,
           title: message.payloadJson?['title'] as String?,
           text: message.text,
+          reasoningText: message.reasoningContent,
           payload: message.payloadJson,
         );
       case MessageContentType.askUserQuestionPrompt:
@@ -88,6 +90,7 @@ class ChatBlockBuilder {
           updatedAt: message.timestamp,
           title: 'Question',
           text: message.text,
+          reasoningText: message.reasoningContent,
           payload: message.payloadJson,
         );
       case MessageContentType.askUserQuestionResult:
@@ -100,6 +103,7 @@ class ChatBlockBuilder {
           updatedAt: message.timestamp,
           title: 'Answer',
           text: message.text,
+          reasoningText: message.reasoningContent,
           payload: message.payloadJson,
         );
       case MessageContentType.toolInvocation:
@@ -114,6 +118,7 @@ class ChatBlockBuilder {
             createdAt: message.timestamp,
             updatedAt: message.timestamp,
             text: message.text,
+            reasoningText: message.reasoningContent,
             payload: message.payloadJson,
           );
         }
@@ -146,6 +151,7 @@ class ChatBlockBuilder {
           status: step.status.name,
           title: step.title,
           text: step.summary,
+          reasoningText: message.reasoningContent,
           payload: {
             'sourceMessageId': message.id,
             'steps': [_stepToJson(step)],
@@ -162,6 +168,7 @@ class ChatBlockBuilder {
             createdAt: message.timestamp,
             updatedAt: message.timestamp,
             text: message.text,
+            reasoningText: message.reasoningContent,
             payload: message.payloadJson,
           );
         }
@@ -175,6 +182,7 @@ class ChatBlockBuilder {
           status: result.status.name,
           title: result.toolName,
           text: result.summary,
+          reasoningText: message.reasoningContent,
           payload: {
             'sourceMessageId': message.id,
             ...result.toJson(),
@@ -189,6 +197,7 @@ class ChatBlockBuilder {
           createdAt: message.timestamp,
           updatedAt: message.timestamp,
           text: message.text,
+          reasoningText: message.reasoningContent,
           payload: message.payloadJson,
         );
     }
@@ -200,6 +209,12 @@ class ChatBlockBuilder {
     required int fallbackIndex,
   }) {
     return '${groupId ?? 0}_${messageId ?? 'user_$fallbackIndex'}';
+  }
+
+  bool _isToolUseReasoningBlock(AssistantTurnBlock block) {
+    return block.payload?['reasoningScope'] == 'tool_use' &&
+        (block.reasoningText ?? '').trim().isNotEmpty &&
+        (block.text ?? '').trim().isEmpty;
   }
 
   ToolInvocation _readToolInvocation(ChatMessage message) {

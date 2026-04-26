@@ -36,6 +36,9 @@ class AssistantTurnBlock {
   /// Main body text.
   final String? text;
 
+  /// Provider-returned reasoning/thinking text shown as secondary UI content.
+  final String? reasoningText;
+
   /// Structured block payload for future renderers.
   final Map<String, dynamic>? payload;
 
@@ -49,6 +52,7 @@ class AssistantTurnBlock {
     this.status,
     this.title,
     this.text,
+    this.reasoningText,
     this.payload,
   });
 
@@ -62,6 +66,7 @@ class AssistantTurnBlock {
     String? status,
     String? title,
     String? text,
+    String? reasoningText,
     Map<String, dynamic>? payload,
   }) {
     return AssistantTurnBlock(
@@ -74,6 +79,7 @@ class AssistantTurnBlock {
       status: status ?? this.status,
       title: title ?? this.title,
       text: text ?? this.text,
+      reasoningText: reasoningText ?? this.reasoningText,
       payload: payload ?? this.payload,
     );
   }

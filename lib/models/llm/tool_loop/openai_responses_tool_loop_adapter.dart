@@ -17,10 +17,14 @@ class OpenAIResponsesToolLoopAdapter {
     if (output is List) {
       final toolCalls = _parseToolCalls(output);
       final assistantMessage = _extractAssistantMessage(output);
-      if (toolCalls.isNotEmpty || assistantMessage != null) {
+      final visibleReasoning = _extractVisibleReasoning(output);
+      if (toolCalls.isNotEmpty ||
+          assistantMessage != null ||
+          visibleReasoning != null) {
         return ModelTurnDecision(
           toolCalls: toolCalls,
           assistantMessage: assistantMessage,
+          visibleReasoning: visibleReasoning,
           providerState: providerState,
           isTerminal: toolCalls.isEmpty,
         );
@@ -32,6 +36,7 @@ class OpenAIResponsesToolLoopAdapter {
       return ModelTurnDecision(
         toolCalls: const [],
         assistantMessage: outputText,
+        visibleReasoning: _normalizeText(payload['reasoning']),
         providerState: providerState,
         isTerminal: true,
       );
@@ -96,6 +101,45 @@ class OpenAIResponsesToolLoopAdapter {
         final text = _normalizeText(normalizedPart['text']);
         if (text != null) {
           buffer.write(text);
+        }
+      }
+    }
+    final aggregated = buffer.toString().trim();
+    if (aggregated.isEmpty) {
+      return null;
+    }
+    return aggregated;
+  }
+
+  String? _extractVisibleReasoning(List<dynamic> output) {
+    final buffer = StringBuffer();
+    for (final item in output) {
+      if (item is! Map) {
+        continue;
+      }
+      final normalizedItem = item.cast<String, dynamic>();
+      if (normalizedItem['type'] != 'reasoning') {
+        continue;
+      }
+      final directText = _normalizeText(
+        normalizedItem['text'] ?? normalizedItem['content'],
+      );
+      if (directText != null) {
+        buffer.write(directText);
+      }
+      final summary = normalizedItem['summary'];
+      if (summary is List) {
+        for (final entry in summary) {
+          if (entry is! Map) {
+            continue;
+          }
+          final normalizedEntry = entry.cast<String, dynamic>();
+          final text = _normalizeText(
+            normalizedEntry['text'] ?? normalizedEntry['summary_text'],
+          );
+          if (text != null) {
+            buffer.write(text);
+          }
         }
       }
     }

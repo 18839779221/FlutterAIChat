@@ -3,6 +3,7 @@ import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/tools/core/tool_display_names.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/streaming_response_block.dart';
 import 'package:ai_chat/widgets/chat_timeline/stable_markdown_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
@@ -60,6 +61,29 @@ void main() {
       expect(find.text('Analysis'), findsOneWidget);
       expect(find.text('这是一段分析内容'), findsOneWidget);
       expect(find.byType(StableMarkdownBlock), findsOneWidget);
+    });
+
+    testWidgets('collapsed final reasoning reads as quiet secondary text',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: FinalResponseBlock(
+              title: '最终回答',
+              text: '这是最终回答。',
+              reasoningText: '先确认上下文，再给出答案。',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('思考过程'), findsOneWidget);
+      expect(find.text('先确认上下文，再给出答案。'), findsNothing);
+
+      final label = tester.widget<Text>(find.text('思考过程'));
+      expect(label.style?.fontSize, 10.8);
+      expect(label.style?.fontWeight, FontWeight.w500);
     });
 
     testWidgets('markdown typography follows hybrid reader rhythm', (

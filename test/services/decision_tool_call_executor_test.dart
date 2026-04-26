@@ -72,7 +72,7 @@ void main() {
               providerState: const {'response_id': 'resp_parallel'},
               isTerminal: false,
             ),
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
             consecutiveFailures: 0,
             startingStepIndex: 0,
           )
@@ -141,7 +141,7 @@ void main() {
               providerState: const {'response_id': 'resp_failure'},
               isTerminal: false,
             ),
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
             consecutiveFailures: 0,
             startingStepIndex: 0,
           )
@@ -216,7 +216,7 @@ void main() {
               providerState: const {'response_id': 'resp_started_once'},
               isTerminal: false,
             ),
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
             consecutiveFailures: 0,
             startingStepIndex: 0,
           )
@@ -308,7 +308,7 @@ void main() {
               providerState: {'response_id': 'resp_mixed'},
               isTerminal: false,
             ),
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
             consecutiveFailures: 0,
             startingStepIndex: 0,
           )
@@ -419,7 +419,7 @@ void main() {
               providerState: {'response_id': 'resp_stop'},
               isTerminal: false,
             ),
-            config: ChatConfig(useReasoning: false, systemPrompt: ''),
+            config: ChatConfig(systemPrompt: ''),
             consecutiveFailures: 0,
             startingStepIndex: 0,
           )

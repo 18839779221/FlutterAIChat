@@ -1,14 +1,17 @@
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/theme/app_typography.dart';
+import 'package:ai_chat/widgets/chat_blocks/reasoning_section.dart';
 import 'package:flutter/material.dart';
 
 /// Lightweight text block used while the assistant is still streaming content.
 class StreamingResponseBlock extends StatelessWidget {
   final String text;
+  final String? reasoningText;
 
   const StreamingResponseBlock({
     super.key,
     required this.text,
+    this.reasoningText,
   });
 
   @override
@@ -24,13 +27,24 @@ class StreamingResponseBlock extends StatelessWidget {
       ),
       child: SizedBox(
         width: double.infinity,
-        child: SelectableText(
-          text,
-          style: AppTypography.documentStyle(
-            color: Theme.of(context).colorScheme.onSurface,
-            fontSize: 13.2,
-            height: 1.48,
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if ((reasoningText ?? '').trim().isNotEmpty)
+              ReasoningSection(
+                text: reasoningText!,
+                variant: ReasoningSectionVariant.finalAnswerCollapsible,
+                initiallyExpanded: true,
+              ),
+            SelectableText(
+              text,
+              style: AppTypography.documentStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontSize: 13.2,
+                height: 1.48,
+              ),
+            ),
+          ],
         ),
       ),
     );

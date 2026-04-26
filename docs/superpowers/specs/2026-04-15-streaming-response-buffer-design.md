@@ -4,7 +4,7 @@
 
 当前聊天回复的“打字机”体验并不是一个独立动画器在按固定速率吐字，而是模型每返回一个流式文本片段，客户端就立刻做一次完整消费：
 
-- `ChatService.streamFinalAnswer()` 直接把上游流式内容透传给上层
+- 当前主回答链路直接消费上游流式文本片段，不再依赖单独的 `ChatService.streamFinalAnswer()` 包装层
 - `ChatSendCoordinator` 每个 delta 都会更新消息文本，并立即写入存储
 - UI 渲染层会基于更新后的整段文本重新构建消息块
 - 助手最终回答默认使用 Markdown 渲染，长文本时重建成本会持续变高

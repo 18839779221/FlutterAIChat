@@ -98,6 +98,7 @@ class ChatTimelineRow extends ConsumerWidget {
           child: AssistantDocBlock(
             label: 'Analysis',
             text: block.text ?? '',
+            reasoningText: block.reasoningText,
             markdownCacheKey: item.stableKey,
           ),
         );
@@ -110,10 +111,12 @@ class ChatTimelineRow extends ConsumerWidget {
           child: sourceMessage?.status == MessageStatus.generating
               ? StreamingResponseBlock(
                   text: block.text ?? '',
+                  reasoningText: block.reasoningText,
                 )
               : FinalResponseBlock(
                   title: block.title ?? '最终回答',
                   text: block.text ?? '',
+                  reasoningText: block.reasoningText,
                   markdownCacheKey: item.stableKey,
                 ),
         );
@@ -148,6 +151,7 @@ class ChatTimelineRow extends ConsumerWidget {
         if (payload == null) {
           blockWidget = AssistantDocBlock(
             text: block.text ?? '',
+            reasoningText: block.reasoningText,
             markdownCacheKey: item.stableKey,
           );
           break;

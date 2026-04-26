@@ -50,7 +50,6 @@ class ResponsesAdapter extends ApiStyleAdapter {
           .toList(),
       'stream': stream,
       'store': false,
-      if (config.useReasoning) 'reasoning': {'effort': 'medium'},
     };
   }
 
