@@ -141,7 +141,15 @@ class ChatBlockBuilder {
           reasoningText: message.reasoningContent,
           payload: {
             'sourceMessageId': message.id,
-            'steps': [_stepToJson(step)],
+            'steps': [
+              {
+                ..._stepToJson(step),
+                if ((message.payloadJson?['providerCallId'] ?? '')
+                    .toString()
+                    .isNotEmpty)
+                  'providerCallId': message.payloadJson?['providerCallId'],
+              },
+            ],
           },
         );
       case MessageContentType.toolResult:
@@ -376,16 +384,38 @@ class ChatBlockBuilder {
       blocks.add(block);
       return;
     }
+    final nextProviderCallId =
+        (nextStep['providerCallId'] ?? '').toString().trim();
 
     final alreadyTracked =
-        previousSteps.any((step) => step['stepId'] == nextStepId);
+        previousSteps.any((step) {
+          if (step['stepId'] != nextStepId) {
+            return false;
+          }
+          final previousProviderCallId =
+              (step['providerCallId'] ?? '').toString().trim();
+          if (previousProviderCallId.isEmpty || nextProviderCallId.isEmpty) {
+            return previousProviderCallId == nextProviderCallId;
+          }
+          return previousProviderCallId == nextProviderCallId;
+        });
     if (!alreadyTracked) {
       blocks.add(block);
       return;
     }
 
     final mergedSteps = previousSteps
-        .map((step) => step['stepId'] == nextStepId ? nextStep : step)
+        .map((step) {
+          if (step['stepId'] != nextStepId) {
+            return step;
+          }
+          final previousProviderCallId =
+              (step['providerCallId'] ?? '').toString().trim();
+          if (previousProviderCallId != nextProviderCallId) {
+            return step;
+          }
+          return nextStep;
+        })
         .toList();
     final latestStep = mergedSteps.last;
 
@@ -535,6 +565,23 @@ class ChatBlockBuilder {
     if (matchingIndexes.isEmpty) {
       return -1;
     }
+
+    // Match by providerCallId so parallel calls of the same tool find their
+    // own workflow step instead of always landing on the last one.
+    final providerCallId =
+        (payload?['providerCallId'] ?? '').toString().trim();
+    if (providerCallId.isNotEmpty) {
+      final exactIndex = matchingIndexes.lastWhere(
+        (index) =>
+            (candidateSteps[index]['providerCallId'] ?? '').toString() ==
+            providerCallId,
+        orElse: () => -1,
+      );
+      if (exactIndex != -1) {
+        return exactIndex;
+      }
+    }
+
     final data = payload?['data'];
     if (data is Map) {
       final typedData = Map<String, dynamic>.from(data);

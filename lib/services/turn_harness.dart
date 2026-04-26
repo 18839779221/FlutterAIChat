@@ -179,11 +179,16 @@ class TurnHarness {
     );
     await _turnRepository.markRunning(turnId);
     yield await _eventRepository.appendUserInteractionResult(
-        turnId: turnId,
-        groupId: currentTurn.groupId,
-        response: response,
-        content: _formatUserInteractionTranscript(request, response),
-      );
+      turnId: turnId,
+      groupId: currentTurn.groupId,
+      response: response,
+      content: _formatUserInteractionTranscript(request, response),
+      payloadJson: {
+        ...response.toJson(),
+        if ((request.providerCallId ?? '').trim().isNotEmpty)
+          'providerCallId': request.providerCallId,
+      },
+    );
     if (request.stepId != null) {
       final transcriptContent = _formatUserInteractionTranscript(
         request,
@@ -359,6 +364,25 @@ class TurnHarness {
           );
 
         DecisionToolExecutionSummary? executionSummary;
+        final sharedStepId = _stepRepository == null
+            ? null
+            : await _stepRepository!.createStep(
+                ChatTurnStep(
+                  turnId: turnId,
+                  stepIndex: steps.length + 1,
+                  providerResponseId: decisionResponseId,
+                  providerCallId: decision.toolCalls.length == 1
+                      ? decision.toolCalls.single.providerCallId
+                      : null,
+                  toolName: decision.toolCalls.length == 1
+                      ? decision.toolCalls.single.toolName
+                      : decision.toolCalls.map((c) => c.toolName).join(','),
+                  toolArgsJson: decision.toolCalls.length == 1
+                      ? decision.toolCalls.single.arguments
+                      : const {},
+                  status: ChatTurnStepStatus.planned,
+                ),
+              );
         await for (final update
             in _decisionToolCallExecutor.executeDecisionToolCalls(
           turn: runtimeTurn,
@@ -370,7 +394,7 @@ class TurnHarness {
           ),
           config: config,
           consecutiveFailures: failures,
-          startingStepIndex: steps.length,
+          sharedStepId: sharedStepId,
         )) {
           if (update.event != null) {
             yield update.event!;

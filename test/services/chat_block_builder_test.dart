@@ -477,6 +477,79 @@ void main() {
     });
 
     test(
+        'does not merge adjacent workflow cards when shared step id has different provider call ids',
+        () {
+      final blocks = builder.buildAssistantBlocks(
+        messages: [
+          ChatMessage(
+            id: 190,
+            text: '帮我分别看三个目录',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 27, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 191,
+            text: '正在执行工具：列出目录',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const {
+              'toolName': 'LS',
+              'arguments': {'path': 'artifacts'},
+              'status': 'running',
+              'summary': '正在执行工具：列出目录',
+              'requiresConfirmation': false,
+              'stepId': 89,
+              'providerCallId': 'call_ls_1',
+            },
+            timestamp: DateTime(2026, 4, 27, 10, 0, 1),
+          ),
+          ChatMessage(
+            id: 192,
+            text: '正在执行工具：列出目录',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const {
+              'toolName': 'LS',
+              'arguments': {'path': 'memories'},
+              'status': 'running',
+              'summary': '正在执行工具：列出目录',
+              'requiresConfirmation': false,
+              'stepId': 89,
+              'providerCallId': 'call_ls_2',
+            },
+            timestamp: DateTime(2026, 4, 27, 10, 0, 2),
+          ),
+          ChatMessage(
+            id: 193,
+            text: '正在执行工具：列出目录',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const {
+              'toolName': 'LS',
+              'arguments': {'path': 'tmp'},
+              'status': 'running',
+              'summary': '正在执行工具：列出目录',
+              'requiresConfirmation': false,
+              'stepId': 89,
+              'providerCallId': 'call_ls_3',
+            },
+            timestamp: DateTime(2026, 4, 27, 10, 0, 3),
+          ),
+        ],
+      );
+
+      expect(blocks, hasLength(3));
+      expect(
+        blocks.map((block) => block.payload?['steps'][0]['providerCallId']).toList(),
+        ['call_ls_1', 'call_ls_2', 'call_ls_3'],
+      );
+      expect(
+        blocks.map((block) => block.payload?['steps'][0]['details']['path']).toList(),
+        ['artifacts', 'memories', 'tmp'],
+      );
+    });
+
+    test(
         'merges tool result into the existing workflow card instead of appending',
         () {
       final blocks = builder.buildAssistantBlocks(

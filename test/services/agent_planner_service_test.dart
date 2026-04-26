@@ -635,7 +635,7 @@ void main() {
     });
 
     test(
-        'planNextDecision builds responses continuation items from current response steps',
+        'planNextDecision does not fall back to responses continuation from steps',
         () async {
       final llm = _NativeDecisionLLM(
         decision: const ModelTurnDecision(
@@ -702,22 +702,143 @@ void main() {
         limits: const AgentLoopLimits(),
       );
 
-      expect(llm.lastProviderContinuationItems, hasLength(1));
-      expect(
-        llm.lastProviderContinuationItems.single,
-        containsPair('type', 'function_call_output'),
+      expect(llm.lastProviderContinuationItems, isEmpty);
+    });
+
+    test(
+        'planNextDecision builds responses continuation items from transcript when multiple tool calls share one step',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: 'ok',
+          providerState: {'response_id': 'resp_next'},
+          isTerminal: true,
+        ),
       );
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [
+          ToolDefinition(
+            name: 'search_chat_history',
+            title: '搜索聊天记录',
+            descriptionForModel: '当用户要求从历史记录找结论时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'query': ToolArgumentProperty.string(description: '查询词'),
+              },
+              required: ['query'],
+            ),
+          ),
+          ToolDefinition(
+            name: 'Write',
+            title: '写入文件',
+            descriptionForModel: '当需要写文件时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'file_path': ToolArgumentProperty.string(description: '路径'),
+              },
+            ),
+          ),
+        ],
+      );
+
+      await service.planNextDecision(
+        turn: ChatTurn(
+          id: 1,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '继续执行 responses tool loop',
+          providerStyle: ChatTurnProviderStyle.openaiResponses,
+          providerStateJson: const {'response_id': 'resp_prev'},
+        ),
+        transcript: [
+          _userEvent(),
+          ChatEvent(
+            id: 2,
+            turnId: 1,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.assistantToolCall,
+            role: MessageRole.assistant,
+            content: '准备执行工具：搜索聊天记录',
+            payloadJson: const {
+              'toolName': 'search_chat_history',
+              'arguments': {'query': '数据库版本'},
+              'providerCallId': 'fc_1',
+              'providerResponseId': 'resp_prev',
+              'stepId': 1,
+            },
+          ),
+          ChatEvent(
+            id: 3,
+            turnId: 1,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.assistantToolCall,
+            role: MessageRole.assistant,
+            content: '准备执行工具：写入文件',
+            payloadJson: const {
+              'toolName': 'Write',
+              'arguments': {'file_path': 'notes/db.md'},
+              'providerCallId': 'fc_2',
+              'providerResponseId': 'resp_prev',
+              'stepId': 1,
+            },
+          ),
+          ChatEvent(
+            id: 4,
+            turnId: 1,
+            groupId: 1,
+            sequence: 4,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: '已确认数据库版本 7',
+            payloadJson: const {
+              'summary': '已确认数据库版本 7',
+              'data': {'databaseVersion': '7'},
+              'providerCallId': 'fc_1',
+            },
+          ),
+          ChatEvent(
+            id: 5,
+            turnId: 1,
+            groupId: 1,
+            sequence: 5,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: '已写入 notes/db.md',
+            payloadJson: const {
+              'summary': '已写入 notes/db.md',
+              'data': {'file_path': 'notes/db.md'},
+              'providerCallId': 'fc_2',
+            },
+          ),
+        ],
+        steps: [
+          ChatTurnStep(
+            id: 1,
+            turnId: 1,
+            stepIndex: 1,
+            providerResponseId: 'resp_prev',
+            toolName: 'search_chat_history,Write',
+            toolArgsJson: {},
+            status: ChatTurnStepStatus.completed,
+          ),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(llm.lastProviderContinuationItems, hasLength(2));
       expect(
-        llm.lastProviderContinuationItems.single,
+        llm.lastProviderContinuationItems.first,
         containsPair('call_id', 'fc_1'),
       );
       expect(
-        llm.lastProviderContinuationItems.single['output'] as String,
-        contains('"status":"success"'),
-      );
-      expect(
-        llm.lastProviderContinuationItems.single['output'] as String,
-        contains('"databaseVersion":"7"'),
+        llm.lastProviderContinuationItems.last,
+        containsPair('call_id', 'fc_2'),
       );
     });
 
@@ -758,20 +879,36 @@ void main() {
           userInput: '继续完成联网搜索结论',
           providerStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
-        transcript: [_userEvent()],
-        steps: [
-          ChatTurnStep(
-            id: 3,
+        transcript: [
+          _userEvent(),
+          ChatEvent(
             turnId: 2,
-            stepIndex: 1,
-            providerCallId: 'call_web_1',
-            toolName: 'web_search',
-            toolArgsJson: const {'query': 'MiniMax API'},
-            status: ChatTurnStepStatus.completed,
-            resultSummary: '已完成联网搜索',
-            resultJson: const {'topResult': 'https://example.com/minimax'},
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.assistantToolCall,
+            role: MessageRole.assistant,
+            content: '准备执行工具：联网搜索',
+            payloadJson: const {
+              'toolName': 'web_search',
+              'arguments': {'query': 'MiniMax API'},
+              'providerCallId': 'call_web_1',
+            },
+          ),
+          ChatEvent(
+            turnId: 2,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: '已完成联网搜索',
+            payloadJson: const {
+              'summary': '已完成联网搜索',
+              'data': {'topResult': 'https://example.com/minimax'},
+              'providerCallId': 'call_web_1',
+            },
           ),
         ],
+        steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
@@ -838,28 +975,37 @@ void main() {
           userInput: '继续根据我的偏好给建议',
           providerStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
-        transcript: const [],
-        steps: [
-          ChatTurnStep(
-            id: 4,
+        transcript: [
+          _userEvent(),
+          ChatEvent(
             turnId: 3,
-            stepIndex: 1,
-            providerCallId: 'call_ask_1',
-            toolName: 'ask_user_question',
-            toolArgsJson: const {
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.assistantQuestionPrompt,
+            role: MessageRole.assistant,
+            content: '请选择存储方案',
+            payloadJson: const {
+              'toolName': 'ask_user_question',
               'questions': [
                 {'id': 'storage', 'question': '请选择存储方案'},
               ],
+              'providerCallId': 'call_ask_1',
             },
-            status: ChatTurnStepStatus.completed,
-            resultSummary: 'user_answered',
-            resultJson: const {
-              'transcriptContent':
-                  'User answered AskUserQuestion:\n- Storage: SQLite',
+          ),
+          ChatEvent(
+            turnId: 3,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.userInteractionResult,
+            role: MessageRole.system,
+            content: 'User answered AskUserQuestion:\n- Storage: SQLite',
+            payloadJson: const {
               'answersByQuestionId': {'storage': 'SQLite'},
+              'providerCallId': 'call_ask_1',
             },
           ),
         ],
+        steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
@@ -877,7 +1023,7 @@ void main() {
     });
 
     test(
-        'planNextDecision builds responses ask-user continuation as user answer',
+        'planNextDecision does not fall back to responses ask-user continuation from steps',
         () async {
       final llm = _NativeDecisionLLM(
         decision: const ModelTurnDecision(
@@ -921,6 +1067,87 @@ void main() {
             },
           ),
         ],
+        config: ChatConfig(systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(llm.lastProviderContinuationItems, isEmpty);
+    });
+
+    test(
+        'planNextDecision deduplicates responses ask-user continuation items from transcript',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: '继续处理',
+          providerState: {'response_id': 'resp_next'},
+          isTerminal: true,
+        ),
+      );
+      final service = AgentPlannerService(llm: llm);
+
+      await service.planNextDecision(
+        turn: ChatTurn(
+          id: 3,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '继续根据我的偏好给建议',
+          providerStyle: ChatTurnProviderStyle.openaiResponses,
+          providerStateJson: const {'response_id': 'resp_prev'},
+        ),
+        transcript: [
+          _userEvent(),
+          ChatEvent(
+            turnId: 3,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.assistantToolCall,
+            role: MessageRole.assistant,
+            content: '准备执行工具：向用户提问',
+            payloadJson: const {
+              'toolName': 'ask_user_question',
+              'arguments': {
+                'questions': [
+                  {'id': 'storage', 'question': '请选择存储方案'},
+                ],
+              },
+              'providerCallId': 'call_ask_1',
+              'providerResponseId': 'resp_prev',
+              'stepId': 8,
+            },
+          ),
+          ChatEvent(
+            turnId: 3,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.assistantQuestionPrompt,
+            role: MessageRole.assistant,
+            content: '请选择存储方案',
+            payloadJson: const {
+              'questions': [
+                {'id': 'storage', 'question': '请选择存储方案'},
+              ],
+              'agentTurnId': 3,
+              'providerCallId': 'call_ask_1',
+              'providerResponseId': 'resp_prev',
+              'stepId': 8,
+            },
+          ),
+          ChatEvent(
+            turnId: 3,
+            groupId: 1,
+            sequence: 4,
+            eventType: ChatEventType.userInteractionResult,
+            role: MessageRole.system,
+            content: 'User answered AskUserQuestion:\n- Storage: SQLite',
+            payloadJson: const {
+              'answersByQuestionId': {'storage': 'SQLite'},
+              'providerCallId': 'call_ask_1',
+            },
+          ),
+        ],
+        steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
@@ -1388,27 +1615,51 @@ void main() {
           providerStyle: ChatTurnProviderStyle.anthropicMessages,
           providerStateJson: const {'message_id': 'msg_prev'},
         ),
-        transcript: [_userEvent()],
-        steps: [
-          ChatTurnStep(
-            id: 7,
+        transcript: [
+          ChatEvent(
             turnId: 3,
-            stepIndex: 1,
-            providerResponseId: 'msg_prev',
-            providerCallId: 'call_function_123',
-            toolName: 'ask_user_question',
-            toolArgsJson: const {
-              'questions': [
-                {'id': 'platform', 'question': '目标平台是什么？'},
-              ],
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '继续完成方案',
+          ),
+          ChatEvent(
+            turnId: 3,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.assistantToolCall,
+            role: MessageRole.assistant,
+            content: '准备执行工具：向用户提问',
+            payloadJson: const {
+              'toolName': 'ask_user_question',
+              'arguments': {
+                'questions': [
+                  {'id': 'platform', 'question': '目标平台是什么？'},
+                ],
+              },
+              'providerCallId': 'call_function_123',
+              'providerResponseId': 'msg_prev',
             },
-            status: ChatTurnStepStatus.completed,
-            resultSummary: 'user_answered',
-            resultJson: const {
+          ),
+          ChatEvent(
+            turnId: 3,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: 'user_answered',
+            payloadJson: const {
+              'summary': 'user_answered',
               'answersByQuestionId': {'platform': 'Android'},
+              'data': {
+                'answersByQuestionId': {'platform': 'Android'},
+              },
+              'providerCallId': 'call_function_123',
             },
           ),
         ],
+        steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
       );
@@ -1439,6 +1690,123 @@ void main() {
                 'tool_use_id': 'call_function_123',
                 'content':
                     '{"status":"success","summary":"user_answered","data":{"answersByQuestionId":{"platform":"Android"}}}',
+              },
+            ],
+          },
+        ],
+      );
+    });
+
+    test(
+        'planNextDecision appends anthropic tool_result from transcript when provider content blocks already contain tool_use',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: '继续处理',
+          providerState: {'message_id': 'msg_next'},
+          isTerminal: true,
+        ),
+      );
+      final service = AgentPlannerService(llm: llm);
+
+      await service.planNextDecision(
+        turn: ChatTurn(
+          id: 4,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '帮我看下本地的文件夹都有哪些文件',
+          providerStyle: ChatTurnProviderStyle.anthropicMessages,
+          providerStateJson: const {
+            'message_id': 'msg_prev',
+            'content_blocks': [
+              {
+                'type': 'thinking',
+                'thinking': '我要先列出目录。',
+                'signature': 'sig_1',
+              },
+              {
+                'type': 'tool_use',
+                'id': 'call_function_123',
+                'name': 'LS',
+                'input': {'path': '.'},
+              },
+            ],
+          },
+        ),
+        transcript: [
+          ChatEvent(
+            turnId: 4,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '帮我看下本地的文件夹都有哪些文件',
+          ),
+          ChatEvent(
+            turnId: 4,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.assistantToolCall,
+            role: MessageRole.assistant,
+            content: '准备执行工具：列出目录',
+            payloadJson: const {
+              'toolName': 'LS',
+              'arguments': {'path': '.'},
+              'providerCallId': 'call_function_123',
+            },
+          ),
+          ChatEvent(
+            turnId: 4,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: '已列出目录：.',
+            payloadJson: const {
+              'toolName': 'LS',
+              'summary': '已列出目录：.',
+              'status': 'success',
+              'data': {
+                'path': '.',
+                'entries': [],
+              },
+              'providerCallId': 'call_function_123',
+            },
+          ),
+        ],
+        steps: const [],
+        config: ChatConfig(systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(
+        llm.lastProviderContinuationItems,
+        [
+          {
+            'role': 'assistant',
+            'content': [
+              {
+                'type': 'thinking',
+                'thinking': '我要先列出目录。',
+                'signature': 'sig_1',
+              },
+              {
+                'type': 'tool_use',
+                'id': 'call_function_123',
+                'name': 'LS',
+                'input': {'path': '.'},
+              },
+            ],
+          },
+          {
+            'role': 'user',
+            'content': [
+              {
+                'type': 'tool_result',
+                'tool_use_id': 'call_function_123',
+                'content':
+                    '{"status":"success","summary":"已列出目录：.","data":{"path":".","entries":[]}}',
               },
             ],
           },

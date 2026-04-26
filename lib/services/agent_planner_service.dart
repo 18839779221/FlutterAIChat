@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:convert';
 
 import '../models/agent/agent_loop_limits.dart';
@@ -81,7 +82,7 @@ class AgentPlannerService {
       );
       final continuationItems = _buildProviderContinuationItems(
         turn: turn,
-        steps: steps,
+        transcript: transcript,
       );
       final decision = await _llm.planTurnDecision(
         messages: messages,
@@ -245,161 +246,284 @@ class AgentPlannerService {
 
   List<Map<String, dynamic>> _buildProviderContinuationItems({
     required ChatTurn turn,
-    required List<ChatTurnStep> steps,
+    required List<ChatEvent> transcript,
   }) {
     switch (turn.providerStyle) {
       case ChatTurnProviderStyle.openaiResponses:
-        final responseId = turn.providerStateJson?['response_id'];
-        if (responseId is! String || responseId.trim().isEmpty) {
-          return const [];
-        }
-
-        final items = <Map<String, dynamic>>[];
-        for (final step in steps) {
-          if (step.providerResponseId != responseId ||
-              (step.providerCallId ?? '').trim().isEmpty) {
-            continue;
-          }
-          if (step.status != ChatTurnStepStatus.completed &&
-              step.status != ChatTurnStepStatus.failed) {
-            continue;
-          }
-          if (step.toolName == 'ask_user_question') {
-            final content = _resolveUserInteractionContinuationContent(step);
-            if (content != null) {
-              items.add({
-                'type': 'user_interaction_answer',
-                'toolCallId': step.providerCallId!.trim(),
-                'content': content,
-              });
-            }
-            continue;
-          }
-          items.add({
-            'type': 'function_call_output',
-            'call_id': step.providerCallId!.trim(),
-            'output': _encodeProviderStepOutput(step),
-          });
-        }
-        return items;
+        return _buildResponsesContinuationFromTranscript(
+          turn: turn,
+          transcript: transcript,
+        );
       case ChatTurnProviderStyle.anthropicMessages:
-        final messageId = turn.providerStateJson?['message_id'];
-        if (messageId is! String || messageId.trim().isEmpty) {
-          return const [];
-        }
-
-        final items = <Map<String, dynamic>>[];
-        final contentBlocks = turn.providerStateJson?['content_blocks'];
-        if (contentBlocks is List) {
-          final normalizedBlocks = contentBlocks
-              .whereType<Map>()
-              .map((item) => Map<String, dynamic>.from(item))
-              .toList(growable: false);
-          if (normalizedBlocks.isNotEmpty) {
-            items.add({
-              'role': 'assistant',
-              'content': normalizedBlocks,
-            });
-          }
-        }
-
-        for (final step in steps) {
-          if (step.providerResponseId != messageId ||
-              (step.providerCallId ?? '').trim().isEmpty) {
-            continue;
-          }
-          if (step.status != ChatTurnStepStatus.completed &&
-              step.status != ChatTurnStepStatus.failed) {
-            continue;
-          }
-          if (items.isEmpty) {
-            items.add({
-              'role': 'assistant',
-              'content': [
-                {
-                  'type': 'tool_use',
-                  'id': step.providerCallId!.trim(),
-                  'name': step.toolName,
-                  'input': step.toolArgsJson,
-                },
-              ],
-            });
-          }
-          items.add({
-            'role': 'user',
-            'content': [
-              {
-                'type': 'tool_result',
-                'tool_use_id': step.providerCallId!.trim(),
-                'content': _encodeProviderStepOutput(step),
-              },
-            ],
-          });
-        }
-        return items;
+        return _buildAnthropicContinuationFromTranscript(
+          turn: turn,
+          transcript: transcript,
+        );
       case ChatTurnProviderStyle.openaiChatCompletions:
-        final items = <Map<String, dynamic>>[];
-        for (final step in steps) {
-          if ((step.providerCallId ?? '').trim().isEmpty) {
-            continue;
-          }
-          if (step.status != ChatTurnStepStatus.completed &&
-              step.status != ChatTurnStepStatus.failed) {
-            continue;
-          }
-          if (step.toolName == 'ask_user_question') {
-            final content = _resolveUserInteractionContinuationContent(step);
-            if (content != null) {
-              items.add({
-                'type': 'user_interaction_answer',
-                'toolCallId': step.providerCallId!.trim(),
-                'content': content,
-              });
-            }
-            continue;
-          }
-          items.add({
-            'type': 'assistant_tool_call',
-            'toolCallId': step.providerCallId!.trim(),
-            'toolName': step.toolName,
-            'arguments': step.toolArgsJson,
-          });
-          items.add({
-            'type': 'tool_result',
-            'toolCallId': step.providerCallId!.trim(),
-            'toolName': step.toolName,
-            'output': _encodeProviderStepOutput(step),
-          });
-        }
-        return items;
+        return _buildChatCompletionsContinuationFromTranscript(
+          transcript: transcript,
+        );
       case null:
         return const [];
     }
   }
 
-  String? _resolveUserInteractionContinuationContent(ChatTurnStep step) {
-    final resultJson = step.resultJson ?? const <String, dynamic>{};
-    final transcriptContent = resultJson['transcriptContent'];
-    if (transcriptContent is String && transcriptContent.trim().isNotEmpty) {
-      return transcriptContent.trim();
+  List<Map<String, dynamic>> _buildResponsesContinuationFromTranscript({
+    required ChatTurn turn,
+    required List<ChatEvent> transcript,
+  }) {
+    final responseId = turn.providerStateJson?['response_id'];
+    if (responseId is! String || responseId.trim().isEmpty) {
+      return const [];
     }
-    final summary = step.resultSummary?.trim();
-    if (summary != null && summary.isNotEmpty) {
-      return summary;
+
+    final orderedCallIds = LinkedHashSet<String>();
+    final outputsByCallId = <String, String>{};
+    final interactionAnswersByCallId = <String, String>{};
+
+    for (final event in transcript) {
+      final payload = event.payloadJson ?? const <String, dynamic>{};
+      final providerCallId = (payload['providerCallId'] ?? '').toString().trim();
+      switch (event.eventType) {
+        case ChatEventType.assistantToolCall:
+        case ChatEventType.assistantQuestionPrompt:
+          final providerResponseId =
+              (payload['providerResponseId'] ?? '').toString().trim();
+          if (providerResponseId == responseId && providerCallId.isNotEmpty) {
+            orderedCallIds.add(providerCallId);
+          }
+          break;
+        case ChatEventType.toolResult:
+        case ChatEventType.toolError:
+          if (providerCallId.isNotEmpty) {
+            outputsByCallId[providerCallId] =
+                _encodeProviderEventOutput(event: event);
+          }
+          break;
+        case ChatEventType.userInteractionResult:
+          if (providerCallId.isNotEmpty &&
+              (event.content ?? '').trim().isNotEmpty) {
+            interactionAnswersByCallId[providerCallId] = event.content!.trim();
+          }
+          break;
+        default:
+          break;
+      }
     }
-    return null;
+
+    final items = <Map<String, dynamic>>[];
+    for (final callId in orderedCallIds) {
+      final interactionAnswer = interactionAnswersByCallId[callId];
+      if (interactionAnswer != null) {
+        items.add({
+          'type': 'user_interaction_answer',
+          'toolCallId': callId,
+          'content': interactionAnswer,
+        });
+        continue;
+      }
+      final output = outputsByCallId[callId];
+      if (output != null) {
+        items.add({
+          'type': 'function_call_output',
+          'call_id': callId,
+          'output': output,
+        });
+      }
+    }
+    return items;
   }
 
-  String _encodeProviderStepOutput(ChatTurnStep step) {
-    final payload = <String, dynamic>{
+  List<Map<String, dynamic>> _buildAnthropicContinuationFromTranscript({
+    required ChatTurn turn,
+    required List<ChatEvent> transcript,
+  }) {
+    final messageId = turn.providerStateJson?['message_id'];
+    if (messageId is! String || messageId.trim().isEmpty) {
+      return const [];
+    }
+
+    final contentBlocks = turn.providerStateJson?['content_blocks'];
+    final assistantContentBlocks = contentBlocks is List
+        ? contentBlocks
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList(growable: false)
+        : const <Map<String, dynamic>>[];
+
+    final orderedCallIds = LinkedHashSet<String>();
+    for (final block in assistantContentBlocks) {
+      if (block['type'] != 'tool_use') {
+        continue;
+      }
+      final toolUseId = (block['id'] ?? '').toString().trim();
+      if (toolUseId.isNotEmpty) {
+        orderedCallIds.add(toolUseId);
+      }
+    }
+
+    final toolCalls = <String, Map<String, dynamic>>{};
+    final toolResults = <String, String>{};
+    for (final event in transcript) {
+      final payload = event.payloadJson ?? const <String, dynamic>{};
+      final providerCallId = (payload['providerCallId'] ?? '').toString().trim();
+      switch (event.eventType) {
+        case ChatEventType.assistantToolCall:
+          final providerResponseId =
+              (payload['providerResponseId'] ?? '').toString().trim();
+          if (providerResponseId == messageId && providerCallId.isNotEmpty) {
+            orderedCallIds.add(providerCallId);
+            toolCalls[providerCallId] = payload;
+          }
+          break;
+        case ChatEventType.toolResult:
+        case ChatEventType.toolError:
+          if (providerCallId.isNotEmpty) {
+            toolResults[providerCallId] = _encodeProviderEventOutput(event: event);
+          }
+          break;
+        default:
+          break;
+      }
+    }
+
+    final matchedCallIds = orderedCallIds
+        .where((callId) => toolResults.containsKey(callId))
+        .toList(growable: false);
+    if (matchedCallIds.isEmpty) {
+      return const [];
+    }
+
+    final items = <Map<String, dynamic>>[];
+    if (assistantContentBlocks.isNotEmpty) {
+      items.add({
+        'role': 'assistant',
+        'content': assistantContentBlocks,
+      });
+    }
+
+    for (final callId in matchedCallIds) {
+      if (assistantContentBlocks.isEmpty) {
+        final toolCall = toolCalls[callId];
+        if (toolCall == null) {
+          continue;
+        }
+        items.add({
+          'role': 'assistant',
+          'content': [
+            {
+              'type': 'tool_use',
+              'id': callId,
+              'name': toolCall['toolName'],
+              'input': toolCall['arguments'] ?? const <String, dynamic>{},
+            },
+          ],
+        });
+      }
+      final result = toolResults[callId];
+      if (result == null) {
+        continue;
+      }
+      items.add({
+        'role': 'user',
+        'content': [
+          {
+            'type': 'tool_result',
+            'tool_use_id': callId,
+            'content': result,
+          },
+        ],
+      });
+    }
+
+    return items;
+  }
+
+  List<Map<String, dynamic>> _buildChatCompletionsContinuationFromTranscript({
+    required List<ChatEvent> transcript,
+  }) {
+    final toolCalls = <String, Map<String, dynamic>>{};
+    final toolResults = <String, String>{};
+    final interactionAnswers = <String, String>{};
+
+    for (final event in transcript) {
+      final payload = event.payloadJson ?? const <String, dynamic>{};
+      final providerCallId = (payload['providerCallId'] ?? '').toString().trim();
+      if (providerCallId.isEmpty) {
+        continue;
+      }
+      switch (event.eventType) {
+        case ChatEventType.assistantToolCall:
+        case ChatEventType.assistantQuestionPrompt:
+          toolCalls[providerCallId] = payload;
+          break;
+        case ChatEventType.toolResult:
+        case ChatEventType.toolError:
+          toolResults[providerCallId] = _encodeProviderEventOutput(event: event);
+          break;
+        case ChatEventType.userInteractionResult:
+          if ((event.content ?? '').trim().isNotEmpty) {
+            interactionAnswers[providerCallId] = event.content!.trim();
+          }
+          break;
+        default:
+          break;
+      }
+    }
+
+    final items = <Map<String, dynamic>>[];
+    for (final entry in toolCalls.entries) {
+      final interactionAnswer = interactionAnswers[entry.key];
+      if (interactionAnswer != null) {
+        items.add({
+          'type': 'user_interaction_answer',
+          'toolCallId': entry.key,
+          'content': interactionAnswer,
+        });
+        continue;
+      }
+      items.add({
+        'type': 'assistant_tool_call',
+        'toolCallId': entry.key,
+        'toolName': entry.value['toolName'],
+        'arguments': entry.value['arguments'] ?? const <String, dynamic>{},
+      });
+      final result = toolResults[entry.key];
+      if (result != null) {
+        items.add({
+          'type': 'tool_result',
+          'toolCallId': entry.key,
+          'toolName': entry.value['toolName'],
+          'output': result,
+        });
+      }
+    }
+    return items;
+  }
+
+  String _encodeProviderEventOutput({
+    required ChatEvent event,
+  }) {
+    final payload = event.payloadJson ?? const <String, dynamic>{};
+    final output = <String, dynamic>{
       'status':
-          step.status == ChatTurnStepStatus.completed ? 'success' : 'failure',
-      if ((step.resultSummary ?? '').trim().isNotEmpty)
-        'summary': step.resultSummary!.trim(),
-      if ((step.errorCode ?? '').trim().isNotEmpty) 'error': step.errorCode,
-      if ((step.resultJson ?? const {}).isNotEmpty) 'data': step.resultJson,
+          event.eventType == ChatEventType.toolError ? 'failure' : 'success',
     };
-    return jsonEncode(payload);
+    final summary = (payload['summary'] ?? event.content ?? '').toString().trim();
+    if (summary.isNotEmpty) {
+      output['summary'] = summary;
+    }
+    final error = (payload['errorMessage'] ?? payload['error'] ?? event.status ?? '')
+        .toString()
+        .trim();
+    if (error.isNotEmpty) {
+      output['error'] = error;
+    }
+    final data = payload['data'];
+    if (data is Map && data.isNotEmpty) {
+      output['data'] = Map<String, dynamic>.from(data);
+    }
+    return jsonEncode(output);
   }
 
   Future<List<ToolAccessSnapshot>> _resolveVisibleToolAccess(

@@ -69,7 +69,7 @@ abstract class DecisionToolCallExecutor {
     required ModelTurnDecision decision,
     required ChatConfig config,
     required int consecutiveFailures,
-    required int startingStepIndex,
+    int? sharedStepId,
   });
 }
 
@@ -104,39 +104,59 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
     required ModelTurnDecision decision,
     required ChatConfig config,
     required int consecutiveFailures,
-    required int startingStepIndex,
+    int? sharedStepId,
   }) async* {
-    final turnId = turn.id!;
     final decisionResponseId = _resolveDecisionResponseId(decision);
     var executedToolCount = 0;
     var enteredAwaitingConfirmation = false;
     var enteredAwaitingUserInteraction = false;
     var hasFailedStep = false;
     var shouldStopFurtherExecution = false;
-    var nextStepIndex = startingStepIndex;
 
     for (final batch in debugBuildExecutionBatches(decision.toolCalls)) {
       final preparedCalls = await _createPreparedToolCalls(
-        turnId: turnId,
+        turnId: turn.id!,
         toolCalls: batch.toolCalls,
-        startingStepIndex: nextStepIndex,
+        sharedStepId: sharedStepId,
         decisionResponseId: decisionResponseId,
       );
-      nextStepIndex += preparedCalls.length;
 
       if (batch.isConcurrent) {
+        var batchHasFailedStep = false;
+        var batchEnteredAwaitingConfirmation = false;
+        var batchEnteredAwaitingUserInteraction = false;
         await for (final update in _executeConcurrentBatch(
           turn: turn,
           preparedCalls: preparedCalls,
           consecutiveFailures: consecutiveFailures,
           config: config,
         )) {
+          final event = update.event;
+          if (event != null) {
+            switch (event.eventType) {
+              case ChatEventType.toolError:
+                batchHasFailedStep = true;
+                break;
+              case ChatEventType.assistantToolConfirmation:
+                batchEnteredAwaitingConfirmation = true;
+                break;
+              case ChatEventType.assistantQuestionPrompt:
+                batchEnteredAwaitingUserInteraction = true;
+                break;
+              default:
+                break;
+            }
+          }
           yield update;
         }
         executedToolCount += preparedCalls.length;
         final batchSummary = await _summarizeBatchOutcome(
           turn: turn,
           stepIds: preparedCalls.map((call) => call.stepId).toList(),
+          hasFailedStepHint: batchHasFailedStep,
+          enteredAwaitingConfirmationHint: batchEnteredAwaitingConfirmation,
+          enteredAwaitingUserInteractionHint:
+              batchEnteredAwaitingUserInteraction,
         );
         enteredAwaitingConfirmation = enteredAwaitingConfirmation ||
             batchSummary.enteredAwaitingConfirmation;
@@ -147,13 +167,30 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
             batchSummary.shouldStopFurtherExecution;
       } else {
         for (final preparedCall in preparedCalls) {
+          var batchHasFailedStep = false;
+          var batchEnteredAwaitingConfirmation = false;
+          var batchEnteredAwaitingUserInteraction = false;
           await for (final event in _executePlannedToolCall(
             turn: turn,
             toolCall: preparedCall.toolCall,
             stepId: preparedCall.stepId,
             consecutiveFailures: consecutiveFailures,
             config: config,
+            providerResponseId: preparedCall.providerResponseId,
           )) {
+            switch (event.eventType) {
+              case ChatEventType.toolError:
+                batchHasFailedStep = true;
+                break;
+              case ChatEventType.assistantToolConfirmation:
+                batchEnteredAwaitingConfirmation = true;
+                break;
+              case ChatEventType.assistantQuestionPrompt:
+                batchEnteredAwaitingUserInteraction = true;
+                break;
+              default:
+                break;
+            }
             yield DecisionToolExecutionUpdate.event(event);
           }
 
@@ -161,6 +198,11 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
           final executionSummary = await _summarizeBatchOutcome(
             turn: turn,
             stepIds: [preparedCall.stepId],
+            hasFailedStepHint: batchHasFailedStep,
+            enteredAwaitingConfirmationHint:
+                batchEnteredAwaitingConfirmation,
+            enteredAwaitingUserInteractionHint:
+                batchEnteredAwaitingUserInteraction,
           );
           enteredAwaitingConfirmation = enteredAwaitingConfirmation ||
               executionSummary.enteredAwaitingConfirmation;
@@ -220,30 +262,46 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
   Future<List<_PreparedDecisionToolCall>> _createPreparedToolCalls({
     required int turnId,
     required List<ModelToolCall> toolCalls,
-    required int startingStepIndex,
+    required int? sharedStepId,
     required String? decisionResponseId,
   }) async {
+    if (sharedStepId != null || _stepRepository == null) {
+      return [
+        for (final toolCall in toolCalls)
+          _PreparedDecisionToolCall(
+            toolCall: toolCall,
+            stepId: sharedStepId,
+            providerResponseId: decisionResponseId,
+          ),
+      ];
+    }
+
     final preparedCalls = <_PreparedDecisionToolCall>[];
-    var nextStepIndex = startingStepIndex;
+    var nextStepIndex =
+        (await _stepRepository!.listSteps(turnId)).fold<int>(
+              0,
+              (maxValue, step) =>
+                  step.stepIndex > maxValue ? step.stepIndex : maxValue,
+            ) +
+            1;
     for (final toolCall in toolCalls) {
+      final stepId = await _stepRepository!.createStep(
+        ChatTurnStep(
+          turnId: turnId,
+          stepIndex: nextStepIndex,
+          providerResponseId: decisionResponseId,
+          providerCallId: toolCall.providerCallId,
+          toolName: toolCall.toolName,
+          toolArgsJson: toolCall.arguments,
+          status: ChatTurnStepStatus.planned,
+        ),
+      );
       nextStepIndex += 1;
-      final stepId = _stepRepository == null
-          ? null
-          : await _stepRepository!.createStep(
-              ChatTurnStep(
-                turnId: turnId,
-                stepIndex: nextStepIndex,
-                providerResponseId: decisionResponseId,
-                providerCallId: toolCall.providerCallId,
-                toolName: toolCall.toolName,
-                toolArgsJson: toolCall.arguments,
-                status: ChatTurnStepStatus.planned,
-              ),
-            );
       preparedCalls.add(
         _PreparedDecisionToolCall(
           toolCall: toolCall,
           stepId: stepId,
+          providerResponseId: decisionResponseId,
         ),
       );
     }
@@ -290,6 +348,7 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
               stepId: preparedCall.stepId,
               consecutiveFailures: consecutiveFailures,
               config: config,
+              providerResponseId: preparedCall.providerResponseId,
             )) {
               controller.add(DecisionToolExecutionUpdate.event(event));
             }
@@ -315,17 +374,22 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
   Future<DecisionToolExecutionSummary> _summarizeBatchOutcome({
     required ChatTurn turn,
     required List<int?> stepIds,
+    bool hasFailedStepHint = false,
+    bool enteredAwaitingConfirmationHint = false,
+    bool enteredAwaitingUserInteractionHint = false,
   }) async {
     final refreshedTurn = await _turnRepository.getTurn(turn.id!) ?? turn;
     final enteredAwaitingConfirmation =
+        enteredAwaitingConfirmationHint ||
         refreshedTurn.status == ChatTurnStatus.awaitingToolConfirmation;
     final enteredAwaitingUserInteraction =
+        enteredAwaitingUserInteractionHint ||
         refreshedTurn.status == ChatTurnStatus.awaitingUserInteraction;
     final terminalOrStopped = refreshedTurn.status == ChatTurnStatus.failed ||
         refreshedTurn.status == ChatTurnStatus.completed ||
         refreshedTurn.status == ChatTurnStatus.cancelled;
 
-    var hasFailedStep = false;
+    var hasFailedStep = hasFailedStepHint;
     var hasPendingStep = false;
     if (_stepRepository != null) {
       for (final stepId in stepIds.whereType<int>()) {
@@ -380,6 +444,7 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
     required int? stepId,
     required int consecutiveFailures,
     required ChatConfig config,
+    String? providerResponseId,
   }) async* {
     final toolDisplayName = resolveToolDisplayName(toolCall.toolName);
     Logger.trace(
@@ -405,6 +470,7 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
         'toolName': toolCall.toolName,
         'arguments': toolCall.arguments,
         'providerCallId': toolCall.providerCallId,
+        if (providerResponseId != null) 'providerResponseId': providerResponseId,
         'status': ToolInvocationStatus.proposed.name,
         'summary': '准备执行工具：$toolDisplayName',
         'requiresConfirmation': false,
@@ -436,6 +502,11 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
         groupId: turn.groupId,
         request: request,
         content: _buildQuestionPromptSummary(request),
+        payloadJson: {
+          ...request.toJson(),
+          if (providerResponseId != null)
+            'providerResponseId': providerResponseId,
+        },
       );
       return;
     }
@@ -481,6 +552,7 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
           config: config,
           resumeLoopAfterSuccess: false,
           stepId: stepId,
+          providerCallId: toolCall.providerCallId,
         )) {
           controller.add(event);
         }
@@ -502,6 +574,7 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
     required ChatConfig config,
     bool resumeLoopAfterSuccess = true,
     int? stepId,
+    String? providerCallId,
   }) async* {
     final turnId = turn.id!;
     final groupId = turn.groupId;
@@ -568,7 +641,10 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
         groupId: groupId,
         content: toolResult?.summary ?? 'tool_execution_failed',
         errorCode: toolResult?.errorMessage,
-        payloadJson: toolResult?.toJson(),
+        payloadJson: {
+          ...?toolResult?.toJson(),
+          if (providerCallId != null) 'providerCallId': providerCallId,
+        },
       );
       await _turnRepository.incrementToolCallCount(turnId);
       if (stepId != null) {
@@ -608,7 +684,10 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
       turnId: turnId,
       groupId: groupId,
       content: toolResult.summary,
-      payloadJson: toolResult.toJson(),
+      payloadJson: {
+        ...toolResult.toJson(),
+        if (providerCallId != null) 'providerCallId': providerCallId,
+      },
     );
     await _turnRepository.incrementToolCallCount(turnId);
     if (stepId != null) {
@@ -641,9 +720,11 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
 class _PreparedDecisionToolCall {
   final ModelToolCall toolCall;
   final int? stepId;
+  final String? providerResponseId;
 
   const _PreparedDecisionToolCall({
     required this.toolCall,
     required this.stepId,
+    this.providerResponseId,
   });
 }
