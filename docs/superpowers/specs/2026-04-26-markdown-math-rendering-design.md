@@ -25,6 +25,8 @@
 
 公式渲染使用 `flutter_math_fork`。它负责 TeX AST 解析和 Flutter Widget 绘制；项目内新增的适配层负责把 Markdown 文本中的公式片段转换为自定义节点，并根据行内 / 块级场景选择合适的展示组件。
 
+本项目固定 Flutter 3.29.2，`flutter_math_fork 0.7.4` 面向 Flutter 3.32.0，不能在当前工具链下编译。第一版应固定使用 `flutter_math_fork 0.7.3`，该版本声明支持 Flutter 3.27.0，实测可在 Flutter 3.29.2 下通过目标测试。
+
 不直接采用 `flutter_markdown_latex` 作为第一版集成层，原因是公式展示在本项目里不仅是“能渲染”，还涉及阅读栏宽度、横向滚动、深浅色主题、错误降级、与 Callout / blockquote / code 的节奏一致性。保持薄适配层在项目内，可以让这些行为可测试、可调优。
 
 ## Markdown 语法
