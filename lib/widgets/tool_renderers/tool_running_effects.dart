@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:ai_chat/utils/logger.dart';
 
 /// Gently pulses a compact status dot while a tool card is running.
 class RunningStatusDot extends StatefulWidget {
@@ -24,7 +23,6 @@ class RunningStatusDot extends StatefulWidget {
 
 class _RunningStatusDotState extends State<RunningStatusDot>
     with SingleTickerProviderStateMixin {
-  static const String _animationDebugTag = 'ToolAnimationDebug';
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 760),
@@ -57,27 +55,9 @@ class _RunningStatusDotState extends State<RunningStatusDot>
 
   void _syncAnimation() {
     if (widget.isRunning) {
-      Logger.temp(
-        _animationDebugTag,
-        'status_dot_repeat',
-        data: {
-          'widget': 'RunningStatusDot',
-          'stateHash': identityHashCode(this),
-          'size': widget.size,
-        },
-      );
       _controller.repeat(reverse: true);
       return;
     }
-    Logger.temp(
-      _animationDebugTag,
-      'status_dot_stop',
-      data: {
-        'widget': 'RunningStatusDot',
-        'stateHash': identityHashCode(this),
-        'size': widget.size,
-      },
-    );
     _controller.stop();
     _controller.value = 0;
   }
@@ -146,7 +126,6 @@ class SubtleRunningBreathingSurface extends StatefulWidget {
 class _SubtleRunningBreathingSurfaceState
     extends State<SubtleRunningBreathingSurface>
     with SingleTickerProviderStateMixin {
-  static const String _animationDebugTag = 'ToolAnimationDebug';
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1500),
@@ -179,25 +158,9 @@ class _SubtleRunningBreathingSurfaceState
 
   void _syncAnimation() {
     if (widget.isRunning) {
-      Logger.temp(
-        _animationDebugTag,
-        'breathing_surface_repeat',
-        data: {
-          'widget': 'SubtleRunningBreathingSurface',
-          'stateHash': identityHashCode(this),
-        },
-      );
       _controller.repeat(reverse: true);
       return;
     }
-    Logger.temp(
-      _animationDebugTag,
-      'breathing_surface_stop',
-      data: {
-        'widget': 'SubtleRunningBreathingSurface',
-        'stateHash': identityHashCode(this),
-      },
-    );
     _controller.stop();
     _controller.value = 0;
   }
@@ -262,7 +225,6 @@ class RunningSweepSurface extends StatefulWidget {
 
 class _RunningSweepSurfaceState extends State<RunningSweepSurface>
     with SingleTickerProviderStateMixin {
-  static const String _animationDebugTag = 'ToolAnimationDebug';
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: widget.duration,
@@ -301,25 +263,9 @@ class _RunningSweepSurfaceState extends State<RunningSweepSurface>
 
   void _syncAnimation() {
     if (widget.isRunning) {
-      Logger.temp(
-        _animationDebugTag,
-        'sweep_surface_repeat',
-        data: {
-          'widget': 'RunningSweepSurface',
-          'stateHash': identityHashCode(this),
-        },
-      );
       _controller.repeat();
       return;
     }
-    Logger.temp(
-      _animationDebugTag,
-      'sweep_surface_stop',
-      data: {
-        'widget': 'RunningSweepSurface',
-        'stateHash': identityHashCode(this),
-      },
-    );
     _controller.stop();
     _controller.value = 0;
   }
@@ -433,7 +379,6 @@ class RunningSweepLabel extends StatefulWidget {
 
 class _RunningSweepLabelState extends State<RunningSweepLabel>
     with SingleTickerProviderStateMixin {
-  static const String _animationDebugTag = 'ToolAnimationDebug';
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 3000),
@@ -482,25 +427,9 @@ class _RunningSweepLabelState extends State<RunningSweepLabel>
 
   void _syncAnimation() {
     if (widget.isRunning) {
-      Logger.temp(
-        _animationDebugTag,
-        'sweep_label_repeat',
-        data: {
-          'widget': 'RunningSweepLabel',
-          'stateHash': identityHashCode(this),
-        },
-      );
       _controller.repeat();
       return;
     }
-    Logger.temp(
-      _animationDebugTag,
-      'sweep_label_stop',
-      data: {
-        'widget': 'RunningSweepLabel',
-        'stateHash': identityHashCode(this),
-      },
-    );
     _controller.stop();
     _controller.value = 0;
   }
