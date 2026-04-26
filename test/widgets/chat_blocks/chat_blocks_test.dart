@@ -13,6 +13,7 @@ import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
 import 'package:ai_chat/widgets/markdown/code_widget.dart';
 import 'package:ai_chat/widgets/markdown/markdown_widget_impl.dart';
 import 'package:ai_chat/widgets/markdown/markdown_callout_block.dart';
+import 'package:ai_chat/widgets/markdown/markdown_math_widgets.dart';
 import 'package:ai_chat/widgets/markdown/table_edge_fade_scroll_shell.dart';
 import 'package:ai_chat/widgets/technical_content_surface.dart';
 import 'package:flutter/material.dart';
@@ -173,6 +174,59 @@ void main() {
       expect(find.byType(MarkdownCalloutBlock), findsOneWidget);
       expect(find.text('EXAMPLE'), findsOneWidget);
       expect(find.text('具体用法。'), findsOneWidget);
+    });
+
+    testWidgets('markdown renders inline math', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: FlutterMarkdownImpl(
+              data: r'能量公式 $E = mc^2$ 很常见。',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(MarkdownInlineMath), findsOneWidget);
+      expect(find.text('E = mc^2'), findsNothing);
+    });
+
+    testWidgets('markdown renders block math', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: FlutterMarkdownImpl(
+              data: r'''
+$$
+\sum_{i=1}^{n} i = \frac{n(n+1)}{2}
+$$
+''',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(MarkdownBlockMath), findsOneWidget);
+      expect(find.byType(SingleChildScrollView), findsOneWidget);
+    });
+
+    testWidgets('markdown keeps ordinary dollar text as text', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: FlutterMarkdownImpl(
+              data: r'价格是 $12.99，路径是 $HOME。',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(MarkdownInlineMath), findsNothing);
+      expect(find.textContaining(r'$12.99'), findsOneWidget);
+      expect(find.textContaining(r'$HOME'), findsOneWidget);
     });
 
     testWidgets('streaming response stays close to completed markdown rhythm', (

@@ -6,7 +6,10 @@ import 'callout_block_syntax.dart';
 import 'code_block_builder.dart';
 import 'flutter_markdown_reader_tokens.dart';
 import 'markdown_callout_builder.dart';
+import 'markdown_math_builder.dart';
 import 'markdown_widget_impl.dart';
+import 'math_block_syntax.dart';
+import 'math_inline_syntax.dart';
 
 class FlutterMarkdownImpl extends StatelessWidget {
   final String data;
@@ -33,7 +36,11 @@ class FlutterMarkdownImpl extends StatelessWidget {
         fitContent: false,
         onTapLink: (text, href, title) => _launchUrl(text, href),
         blockSyntaxes: const [
+          MathBlockSyntax(),
           CalloutBlockSyntax(),
+        ],
+        inlineSyntaxes: [
+          MathInlineSyntax(),
         ],
         styleSheet: MarkdownStyleSheet(
           p: reader.body,
@@ -71,6 +78,8 @@ class FlutterMarkdownImpl extends StatelessWidget {
           ),
         ),
         builders: {
+          'math-inline': MarkdownInlineMathBuilder(),
+          'math-block': MarkdownBlockMathBuilder(),
           'callout': MarkdownCalloutBuilder(),
           'code': CodeElementBuilder(),
           'pre': CodeBlockBuilder(),
