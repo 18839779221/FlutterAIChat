@@ -46,6 +46,31 @@ void main() {
       expect(find.text('具体用法。'), findsOneWidget);
     });
 
+    testWidgets('fills the available document width for short content', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 280),
+                child: const MarkdownCalloutBlock(
+                  type: 'NOTE',
+                  rawType: 'NOTE',
+                  title: '',
+                  child: Text('短句。'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.getSize(find.byType(MarkdownCalloutBlock)).width, 280);
+    });
+
     testWidgets('renders common semantic labels', (tester) async {
       const cases = <({String type, String rawType, String expectedLabel})>[
         (type: 'NOTE', rawType: 'NOTE', expectedLabel: 'NOTE'),
