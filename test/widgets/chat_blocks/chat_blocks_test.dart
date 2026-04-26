@@ -12,6 +12,7 @@ import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
 import 'package:ai_chat/widgets/markdown/code_widget.dart';
 import 'package:ai_chat/widgets/markdown/markdown_widget_impl.dart';
+import 'package:ai_chat/widgets/markdown/markdown_callout_block.dart';
 import 'package:ai_chat/widgets/markdown/table_edge_fade_scroll_shell.dart';
 import 'package:ai_chat/widgets/technical_content_surface.dart';
 import 'package:flutter/material.dart';
@@ -127,6 +128,51 @@ void main() {
           styleSheet.blockquotePadding, const EdgeInsets.fromLTRB(13, 8, 9, 8));
       expect(decoration.borderRadius, BorderRadius.circular(8));
       expect(border.left.width, 1.4);
+    });
+
+    testWidgets('markdown callout renders semantic block', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: FlutterMarkdownImpl(
+              data: '''
+> [!WARNING] 数据限制
+> 只基于当前样本。
+''',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(MarkdownCalloutBlock), findsOneWidget);
+      expect(find.text('WARNING'), findsOneWidget);
+      expect(find.text('数据限制'), findsOneWidget);
+      expect(find.text('只基于当前样本。'), findsOneWidget);
+    });
+
+    testWidgets('unknown markdown callout falls back to generic block', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: FlutterMarkdownImpl(
+              data: '''
+> [!EXAMPLE]
+> 具体用法。
+''',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(MarkdownCalloutBlock), findsOneWidget);
+      expect(find.text('EXAMPLE'), findsOneWidget);
+      expect(find.text('具体用法。'), findsOneWidget);
     });
 
     testWidgets('streaming response stays close to completed markdown rhythm', (
