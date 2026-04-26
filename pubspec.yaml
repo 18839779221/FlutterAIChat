@@ -114,6 +114,12 @@ flutter:
       fonts:
         - asset: fonts/AnthropicSansVariable-TextRegular.ttf
           weight: 400
+        - asset: fonts/AnthropicSansVariable-TextRegular.ttf
+          weight: 500
+        - asset: fonts/AnthropicSansVariable-TextRegular.ttf
+          weight: 600
+        - asset: fonts/AnthropicSansVariable-TextRegular.ttf
+          weight: 700
     - family: NotoSansCJKSC
       fonts:
         - asset: fonts/NotoSansCJKsc-Regular.otf
