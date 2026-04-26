@@ -20,7 +20,7 @@ class FlutterMarkdownImpl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (_containsMarkdownTable(data)) {
+    if (_containsMarkdownTable(data) && !_containsMarkdownMath(data)) {
       return RepaintBoundary(
         child: MarkdownWidgetImpl(data: data),
       );
@@ -113,5 +113,21 @@ class FlutterMarkdownImpl extends StatelessWidget {
 
   static final RegExp _tableDividerPattern = RegExp(
     r'^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$',
+  );
+
+  static bool _containsMarkdownMath(String input) {
+    if (_blockMathPattern.hasMatch(input)) {
+      return true;
+    }
+    return _inlineMathPattern.hasMatch(input);
+  }
+
+  static final RegExp _blockMathPattern = RegExp(
+    r'^\s*(\$\$|\\\[)\s*$',
+    multiLine: true,
+  );
+
+  static final RegExp _inlineMathPattern = RegExp(
+    r'\\\(.+?\\\)|(?<![A-Za-z0-9])\$[^\s$](?:[^$]*?[^\s$])?\$(?![A-Za-z0-9])',
   );
 }

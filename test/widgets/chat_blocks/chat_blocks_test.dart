@@ -229,6 +229,35 @@ $$
       expect(find.textContaining(r'$HOME'), findsOneWidget);
     });
 
+    testWidgets('markdown with formulas and tables keeps math rendering', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: FlutterMarkdownImpl(
+              data: r'''
+行内公式 $E = mc^2$
+
+$$
+\int_0^1 x^2 dx = \frac{1}{3}
+$$
+
+| 类型 | 示例 |
+| --- | --- |
+| 分数 | $\frac{a}{b}$ |
+''',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(MarkdownInlineMath), findsWidgets);
+      expect(find.byType(MarkdownBlockMath), findsOneWidget);
+      expect(find.byType(MarkdownWidgetImpl), findsNothing);
+    });
+
     testWidgets('streaming response stays close to completed markdown rhythm', (
       tester,
     ) async {
