@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'callout_block_syntax.dart';
 import 'code_block_builder.dart';
 import 'flutter_markdown_reader_tokens.dart';
+import 'markdown_callout_builder.dart';
 import 'markdown_widget_impl.dart';
 
 class FlutterMarkdownImpl extends StatelessWidget {
@@ -30,6 +32,9 @@ class FlutterMarkdownImpl extends StatelessWidget {
         selectable: false,
         fitContent: false,
         onTapLink: (text, href, title) => _launchUrl(text, href),
+        blockSyntaxes: const [
+          CalloutBlockSyntax(),
+        ],
         styleSheet: MarkdownStyleSheet(
           p: reader.body,
           h1: reader.h1,
@@ -66,6 +71,7 @@ class FlutterMarkdownImpl extends StatelessWidget {
           ),
         ),
         builders: {
+          'callout': MarkdownCalloutBuilder(),
           'code': CodeElementBuilder(),
           'pre': CodeBlockBuilder(),
         },

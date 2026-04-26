@@ -1,5 +1,4 @@
 import 'package:markdown/markdown.dart' as md;
-import 'package:markdown/src/line.dart';
 
 /// Parses blockquote-style Markdown callouts such as `> [!NOTE] Title`.
 class CalloutBlockSyntax extends md.BlockSyntax {
@@ -31,7 +30,7 @@ class CalloutBlockSyntax extends md.BlockSyntax {
     final rawType = match.group(1)!.trim().toUpperCase();
     final normalizedType = normalizeCalloutType(rawType);
     final title = (match.group(2) ?? '').trim();
-    final childLines = <Line>[];
+    final childLines = <String>[];
 
     parser.advance();
 
@@ -40,14 +39,14 @@ class CalloutBlockSyntax extends md.BlockSyntax {
       if (!_blockquoteLinePattern.hasMatch(content)) {
         break;
       }
-      childLines.add(Line(content.replaceFirst(_blockquoteLinePattern, '')));
+      childLines.add(content.replaceFirst(_blockquoteLinePattern, ''));
       parser.advance();
     }
 
-    final children = md.BlockParser(childLines, parser.document).parseLines(
-      parentSyntax: this,
+    final element = md.Element(
+      'callout',
+      <md.Node>[md.Text(childLines.join('\n').trim())],
     );
-    final element = md.Element('callout', children);
     element.attributes['type'] = normalizedType;
     element.attributes['rawType'] = rawType;
     element.attributes['title'] = title;
