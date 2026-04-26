@@ -59,7 +59,7 @@ void main() {
       expect(find.byType(StableMarkdownBlock), findsOneWidget);
     });
 
-    testWidgets('markdown typography favors tighter document rhythm', (
+    testWidgets('markdown typography follows hybrid reader rhythm', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -67,7 +67,7 @@ void main() {
           theme: AppTheme.light(),
           home: const Scaffold(
             body: FlutterMarkdownImpl(
-              data: '# Heading\n\nFirst paragraph.\n\n- item',
+              data: '# Heading\n\n## Section\n\nFirst paragraph.\n\n- item',
             ),
           ),
         ),
@@ -76,8 +76,8 @@ void main() {
       final markdown = tester.widget<MarkdownBody>(find.byType(MarkdownBody));
       final styleSheet = markdown.styleSheet!;
 
-      expect(styleSheet.p!.fontSize, 13);
-      expect(styleSheet.p!.height, 1.4);
+      expect(styleSheet.p!.fontSize, 13.2);
+      expect(styleSheet.p!.height, 1.52);
       expect(styleSheet.p!.fontFamily, 'AnthropicSans');
       expect(styleSheet.p!.fontWeight, FontWeight.w400);
       expect(
@@ -86,15 +86,46 @@ void main() {
           const ['NotoSansCJKSC', 'Noto Sans SC', 'PingFang SC'],
         ),
       );
-      expect(styleSheet.h1!.fontSize, 18);
-      expect(styleSheet.h2!.fontSize, 15);
+      expect(styleSheet.strong!.fontWeight, FontWeight.w500);
+      expect(styleSheet.h1!.fontSize, 17);
+      expect(styleSheet.h1!.fontWeight, FontWeight.w500);
+      expect(styleSheet.h2!.fontSize, 15.2);
+      expect(styleSheet.h2!.fontWeight, FontWeight.w500);
       expect(styleSheet.h3!.fontSize, 14);
-      expect(styleSheet.listBullet!.fontSize, 13);
-      expect(styleSheet.listBullet!.height, 1.34);
-      expect(styleSheet.blockSpacing, greaterThanOrEqualTo(7));
+      expect(styleSheet.blockSpacing, 10);
       expect(
           styleSheet.h2Padding!.top, greaterThan(styleSheet.h2Padding!.bottom));
-      expect(styleSheet.listIndent, greaterThanOrEqualTo(16));
+      expect(
+          styleSheet.h3Padding!.top, greaterThan(styleSheet.h3Padding!.bottom));
+      expect(styleSheet.listIndent, lessThanOrEqualTo(17));
+      expect(styleSheet.listBullet!.height, 1.46);
+    });
+
+    testWidgets('markdown blockquote reads as a quiet side note', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: FlutterMarkdownImpl(
+              data: '> 压缩边界应优先选择已完成 turn。',
+            ),
+          ),
+        ),
+      );
+
+      final markdown = tester.widget<MarkdownBody>(find.byType(MarkdownBody));
+      final styleSheet = markdown.styleSheet!;
+      final decoration = styleSheet.blockquoteDecoration! as BoxDecoration;
+      final border = decoration.border! as Border;
+
+      expect(styleSheet.blockquote!.fontSize, 13);
+      expect(styleSheet.blockquote!.height, 1.5);
+      expect(
+          styleSheet.blockquotePadding, const EdgeInsets.fromLTRB(13, 8, 9, 8));
+      expect(decoration.borderRadius, BorderRadius.circular(8));
+      expect(border.left.width, 1.4);
     });
 
     testWidgets('markdown content is isolated by repaint boundary', (
