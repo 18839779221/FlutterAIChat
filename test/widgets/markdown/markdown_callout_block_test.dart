@@ -45,5 +45,36 @@ void main() {
       expect(find.text('EXAMPLE'), findsOneWidget);
       expect(find.text('具体用法。'), findsOneWidget);
     });
+
+    testWidgets('renders common semantic labels', (tester) async {
+      const cases = <({String type, String rawType, String expectedLabel})>[
+        (type: 'NOTE', rawType: 'NOTE', expectedLabel: 'NOTE'),
+        (type: 'TIP', rawType: 'TIP', expectedLabel: 'TIP'),
+        (type: 'WARNING', rawType: 'WARNING', expectedLabel: 'WARNING'),
+        (type: 'RESULT', rawType: 'RESULT', expectedLabel: 'RESULT'),
+        (type: 'SOURCES', rawType: 'SOURCES', expectedLabel: 'SOURCES'),
+        (type: 'CALLOUT', rawType: 'INFO', expectedLabel: 'INFO'),
+        (type: 'CALLOUT', rawType: 'CALLOUT', expectedLabel: 'CALLOUT'),
+      ];
+
+      for (final entry in cases) {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.light(),
+            home: Scaffold(
+              body: MarkdownCalloutBlock(
+                type: entry.type,
+                rawType: entry.rawType,
+                title: '',
+                child: const Text('正文内容。'),
+              ),
+            ),
+          ),
+        );
+
+        expect(find.text(entry.expectedLabel), findsOneWidget);
+        expect(find.text('正文内容。'), findsOneWidget);
+      }
+    });
   });
 }
