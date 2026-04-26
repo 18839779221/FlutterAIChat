@@ -74,7 +74,6 @@ void main() {
             ),
             config: ChatConfig(systemPrompt: ''),
             consecutiveFailures: 0,
-            startingStepIndex: 0,
           )
           .toList();
 
@@ -143,7 +142,6 @@ void main() {
             ),
             config: ChatConfig(systemPrompt: ''),
             consecutiveFailures: 0,
-            startingStepIndex: 0,
           )
           .toList();
 
@@ -170,6 +168,85 @@ void main() {
           2);
       expect(eventTypes.where((type) => type == ChatEventType.toolError).length,
           1);
+    });
+
+    test('preserves provider response id on concurrent assistant tool calls',
+        () async {
+      final turnRepository = _InMemoryChatTurnRepository();
+      final stepRepository = _InMemoryChatTurnStepRepository();
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          id: 21,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '并发继续执行 provider tool loop',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+      final toolCallService = _TrackingToolCallService(
+        definitionsByName: {
+          'Read': const ToolDefinition(
+            name: 'Read',
+            title: '读取文件',
+            isConcurrencySafe: true,
+          ),
+        },
+        handlersByKey: {
+          'alpha.txt': () => _delayedSuccess('Read', 'alpha.txt'),
+          'beta.txt': () => _delayedSuccess('Read', 'beta.txt'),
+        },
+      );
+      final executor = DefaultDecisionToolCallExecutor(
+        turnRepository: turnRepository,
+        stepRepository: stepRepository,
+        eventRepository: eventRepository,
+        toolCallService: toolCallService,
+        limits: const AgentLoopLimits(),
+        maxConcurrentExecutions: 2,
+      );
+
+      await executor
+          .executeDecisionToolCalls(
+            turn: turn,
+            decision: ModelTurnDecision(
+              toolCalls: const [
+                ModelToolCall(
+                  providerCallId: 'call_alpha',
+                  toolName: 'Read',
+                  arguments: {'file_path': 'alpha.txt'},
+                  sequence: 1,
+                ),
+                ModelToolCall(
+                  providerCallId: 'call_beta',
+                  toolName: 'Read',
+                  arguments: {'file_path': 'beta.txt'},
+                  sequence: 2,
+                ),
+              ],
+              assistantMessage: null,
+              providerState: const {'response_id': 'resp_parallel_calls'},
+              isTerminal: false,
+            ),
+            config: ChatConfig(systemPrompt: ''),
+            consecutiveFailures: 0,
+          )
+          .toList();
+
+      final toolCallEvents = eventRepository.events
+          .where((event) => event.eventType == ChatEventType.assistantToolCall)
+          .toList(growable: false);
+      expect(toolCallEvents, hasLength(2));
+      expect(
+        toolCallEvents
+            .map((event) => event.payloadJson?['providerResponseId'])
+            .toSet(),
+        {'resp_parallel_calls'},
+      );
+      expect(
+        toolCallEvents.map((event) => event.payloadJson?['providerCallId']).toSet(),
+        {'call_alpha', 'call_beta'},
+      );
     });
 
     test('emits tool execution started once even when service reports pre-start',
@@ -218,7 +295,6 @@ void main() {
             ),
             config: ChatConfig(systemPrompt: ''),
             consecutiveFailures: 0,
-            startingStepIndex: 0,
           )
           .toList();
 
@@ -310,7 +386,6 @@ void main() {
             ),
             config: ChatConfig(systemPrompt: ''),
             consecutiveFailures: 0,
-            startingStepIndex: 0,
           )
           .listen(
         collected.add,
@@ -421,7 +496,6 @@ void main() {
             ),
             config: ChatConfig(systemPrompt: ''),
             consecutiveFailures: 0,
-            startingStepIndex: 0,
           )
           .toList();
 
@@ -843,13 +917,14 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
     required int groupId,
     required AskUserQuestionRequest request,
     required String content,
+    Map<String, dynamic>? payloadJson,
   }) async {
     return _append(
       turnId,
       groupId,
       ChatEventType.assistantQuestionPrompt,
       content,
-      payloadJson: request.toJson(),
+      payloadJson: payloadJson ?? request.toJson(),
     );
   }
 
@@ -859,13 +934,14 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
     required int groupId,
     required AskUserQuestionResponse response,
     required String content,
+    Map<String, dynamic>? payloadJson,
   }) async {
     return _append(
       turnId,
       groupId,
       ChatEventType.userInteractionResult,
       content,
-      payloadJson: response.toJson(),
+      payloadJson: payloadJson ?? response.toJson(),
     );
   }
 

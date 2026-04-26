@@ -111,6 +111,7 @@ class ChatEventRepository {
     required int groupId,
     required AskUserQuestionRequest request,
     required String content,
+    Map<String, dynamic>? payloadJson,
   }) {
     return _appendEvent(
       turnId: turnId,
@@ -118,7 +119,7 @@ class ChatEventRepository {
       eventType: ChatEventType.assistantQuestionPrompt,
       role: MessageRole.assistant,
       content: content,
-      payloadJson: request.toJson(),
+      payloadJson: payloadJson ?? request.toJson(),
     );
   }
 
@@ -127,6 +128,7 @@ class ChatEventRepository {
     required int groupId,
     required AskUserQuestionResponse response,
     required String content,
+    Map<String, dynamic>? payloadJson,
   }) {
     return _appendEvent(
       turnId: turnId,
@@ -134,7 +136,7 @@ class ChatEventRepository {
       eventType: ChatEventType.userInteractionResult,
       role: MessageRole.system,
       content: content,
-      payloadJson: response.toJson(),
+      payloadJson: payloadJson ?? response.toJson(),
     );
   }
 

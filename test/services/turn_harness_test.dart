@@ -489,7 +489,6 @@ void main() {
           .toList();
 
       expect(fakeExecutor.executeCalls, hasLength(1));
-      expect(fakeExecutor.executeCalls.single.startingStepIndex, 0);
       expect(
         emitted.map((event) => event.eventType),
         contains(ChatEventType.toolResult),
@@ -2441,7 +2440,14 @@ void main() {
         isNot(contains('命中历史消息')),
       );
 
-      expect(await stepRepository.listSteps(turnId), hasLength(3));
+      final persistedSteps = await stepRepository.listSteps(turnId);
+      expect(persistedSteps, hasLength(1));
+      expect(
+        toolResults
+            .map((event) => event.payloadJson?['providerCallId'])
+            .toList(growable: false),
+        ['call_1', 'call_2', 'call_3'],
+      );
 
       final finalAnswerEvent = emitted.firstWhere(
         (event) => event.eventType == ChatEventType.finalAnswer,
@@ -3003,6 +3009,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
     required int groupId,
     required AskUserQuestionRequest request,
     required String content,
+    Map<String, dynamic>? payloadJson,
   }) async {
     return _append(
       turnId: turnId,
@@ -3010,7 +3017,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
       eventType: ChatEventType.assistantQuestionPrompt,
       role: MessageRole.assistant,
       content: content,
-      payloadJson: request.toJson(),
+      payloadJson: payloadJson ?? request.toJson(),
     );
   }
 
@@ -3020,6 +3027,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
     required int groupId,
     required AskUserQuestionResponse response,
     required String content,
+    Map<String, dynamic>? payloadJson,
   }) async {
     return _append(
       turnId: turnId,
@@ -3027,7 +3035,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
       eventType: ChatEventType.userInteractionResult,
       role: MessageRole.system,
       content: content,
-      payloadJson: response.toJson(),
+      payloadJson: payloadJson ?? response.toJson(),
     );
   }
 
@@ -3188,14 +3196,14 @@ class _FakeDecisionToolCallExecutor implements DecisionToolCallExecutor {
     required ModelTurnDecision decision,
     required ChatConfig config,
     required int consecutiveFailures,
-    required int startingStepIndex,
+    int? sharedStepId,
   }) async* {
     executeCalls.add(
       _DecisionExecutorCall(
         turn: turn,
         decision: decision,
         consecutiveFailures: consecutiveFailures,
-        startingStepIndex: startingStepIndex,
+        sharedStepId: sharedStepId,
       ),
     );
     for (final update in updates) {
@@ -3208,13 +3216,13 @@ class _DecisionExecutorCall {
   final ChatTurn turn;
   final ModelTurnDecision decision;
   final int consecutiveFailures;
-  final int startingStepIndex;
+  final int? sharedStepId;
 
   _DecisionExecutorCall({
     required this.turn,
     required this.decision,
     required this.consecutiveFailures,
-    required this.startingStepIndex,
+    required this.sharedStepId,
   });
 }
 
