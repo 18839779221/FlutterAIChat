@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/chat_providers.dart';
-import 'context_window/context_window_status_bar.dart';
+import 'context_window/context_window_usage_indicator.dart';
 
 class ChatInput extends ConsumerWidget {
   const ChatInput({
@@ -98,157 +98,152 @@ class ChatInput extends ConsumerWidget {
             child: Semantics(
               container: true,
               label: '聊天输入主面板',
-              child: Stack(
+              child: Column(
                 key: const ValueKey('chat-input-panel'),
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Padding(
-                    padding: EdgeInsets.only(top: spacing.sm),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
+                  Semantics(
+                    container: true,
+                    textField: true,
+                    enabled: !isComposerLocked,
+                    focused: focusNode.hasFocus,
+                    label: '聊天输入框',
+                    hint: '输入消息',
+                    value: composerValue,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 36),
+                      child: TextField(
+                        key: const ValueKey('chat-input-field'),
+                        focusNode: focusNode,
+                        controller: textController,
+                        enabled: !isComposerLocked,
+                        minLines: 1,
+                        maxLines: 4,
+                        textInputAction: TextInputAction.newline,
+                        keyboardType: TextInputType.multiline,
+                        style: AppTypography.uiStyle(
+                          color: colors.primaryText,
+                          fontSize: 13.7,
+                          height: 1.34,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: '继续追问，或补充你的要求',
+                          hintStyle: AppTypography.uiStyle(
+                            color: colors.secondaryText.withValues(
+                              alpha: 0.66,
+                            ),
+                            fontSize: 13.3,
+                            height: 1.28,
+                          ),
+                          isDense: true,
+                          filled: false,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          focusedErrorBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.fromLTRB(
+                            spacing.xs,
+                            spacing.xxs + 2,
+                            spacing.xs,
+                            spacing.xxs + 2,
+                          ),
+                        ),
+                        onSubmitted: (_) => submitCurrentInput(),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: spacing.xxs + 2),
+                  Semantics(
+                    container: true,
+                    label: '输入辅助操作栏',
+                    child: Row(
+                      key: const ValueKey('chat-input-bottom-bar'),
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Expanded(
-                              child: Semantics(
-                                container: true,
-                                textField: true,
-                                enabled: !isComposerLocked,
-                                focused: focusNode.hasFocus,
-                                label: '聊天输入框',
-                                hint: '输入消息',
-                                value: composerValue,
-                                child: ConstrainedBox(
-                                  constraints: const BoxConstraints(minHeight: 36),
-                                  child: TextField(
-                                    key: const ValueKey('chat-input-field'),
-                                    focusNode: focusNode,
-                                    controller: textController,
-                                    enabled: !isComposerLocked,
-                                    minLines: 1,
-                                    maxLines: 4,
-                                    textInputAction: TextInputAction.newline,
-                                    keyboardType: TextInputType.multiline,
-                                    style: AppTypography.uiStyle(
-                                      color: colors.primaryText,
-                                      fontSize: 13.7,
-                                      height: 1.34,
-                                    ),
-                                    decoration: InputDecoration(
-                                      hintText: '继续追问，或补充你的要求',
-                                      hintStyle: AppTypography.uiStyle(
-                                        color: colors.secondaryText.withValues(
-                                          alpha: 0.66,
-                                        ),
-                                        fontSize: 13.3,
-                                        height: 1.28,
-                                      ),
-                                      isDense: true,
-                                      filled: false,
-                                      border: InputBorder.none,
-                                      enabledBorder: InputBorder.none,
-                                      focusedBorder: InputBorder.none,
-                                      disabledBorder: InputBorder.none,
-                                      errorBorder: InputBorder.none,
-                                      focusedErrorBorder: InputBorder.none,
-                                      contentPadding: EdgeInsets.fromLTRB(
-                                        spacing.xs,
-                                        spacing.xxs + 2,
-                                        spacing.xs,
-                                        spacing.xxs + 2,
-                                      ),
-                                    ),
-                                    onSubmitted: (_) => submitCurrentInput(),
-                                  ),
-                                ),
+                        const Spacer(),
+                        contextWindowSnapshot.maybeWhen(
+                          data: (snapshot) {
+                            if (snapshot == null) {
+                              return const SizedBox.shrink();
+                            }
+                            return Padding(
+                              padding: EdgeInsets.only(right: spacing.xxs + 2),
+                              child: ContextWindowUsageIndicator(
+                                snapshot: snapshot,
+                                onTap: onContextWindowPressed ?? () {},
                               ),
-                            ),
-                            SizedBox(width: spacing.xxs + 2),
-                            Semantics(
-                              container: true,
-                              button: true,
-                              enabled: isSendButtonEnabled,
-                              label: sendButtonLabel,
-                              child: SizedBox(
-                                width: 40,
-                                height: 40,
-                                child: FilledButton(
-                                  style: FilledButton.styleFrom(
-                                    padding: EdgeInsets.zero,
-                                    shape: const CircleBorder(),
-                                    backgroundColor: isAwaitingConfirmation
-                                        ? colors.secondaryText.withValues(alpha: 0.82)
-                                        : colors.workflowRunning
-                                            .withValues(alpha: 0.88),
-                                    foregroundColor: Colors.white,
-                                    elevation: 0,
-                                    shadowColor: Colors.transparent,
-                                  ),
-                                  onPressed: () {
-                                    if (isCancellablePhase) {
-                                      chatController.cancelStreamSubscription();
-                                      return;
-                                    }
+                            );
+                          },
+                          orElse: () => const SizedBox.shrink(),
+                        ),
+                        Semantics(
+                          container: true,
+                          button: true,
+                          enabled: isSendButtonEnabled,
+                          label: sendButtonLabel,
+                          child: SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: FilledButton(
+                              style: FilledButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                shape: const CircleBorder(),
+                                backgroundColor: isAwaitingConfirmation
+                                    ? colors.secondaryText.withValues(alpha: 0.82)
+                                    : colors.workflowRunning
+                                        .withValues(alpha: 0.88),
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shadowColor: Colors.transparent,
+                              ),
+                              onPressed: () {
+                                if (isCancellablePhase) {
+                                  chatController.cancelStreamSubscription();
+                                  return;
+                                }
 
-                                    if (isBlockingPhase ||
-                                        isAwaitingConfirmation) {
-                                      return;
-                                    }
+                                if (isBlockingPhase ||
+                                    isAwaitingConfirmation) {
+                                  return;
+                                }
 
-                                    submitCurrentInput();
-                                  },
-                                  child: AnimatedSwitcher(
-                                    duration: const Duration(milliseconds: 200),
-                                    child: isCancellablePhase
-                                        ? const Icon(
-                                            Icons.stop_rounded,
-                                            key: ValueKey('chat-input-stop-icon'),
-                                            size: 18,
-                                          )
-                                        : isBlockingPhase
-                                        ? const SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              valueColor:
-                                                  AlwaysStoppedAnimation<Color>(
-                                                Colors.white,
-                                              ),
-                                            ),
-                                          )
-                                        : Icon(
-                                            isStreamingResponse
-                                                ? Icons.stop_rounded
-                                                : Icons.arrow_upward_rounded,
-                                            key: ValueKey(sendButtonLabel),
-                                            size: 18,
+                                submitCurrentInput();
+                              },
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 200),
+                                child: isCancellablePhase
+                                    ? const Icon(
+                                        Icons.stop_rounded,
+                                        key: ValueKey('chat-input-stop-icon'),
+                                        size: 18,
+                                      )
+                                    : isBlockingPhase
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                            Colors.white,
                                           ),
-                                  ),
-                                ),
+                                        ),
+                                      )
+                                    : Icon(
+                                        isStreamingResponse
+                                            ? Icons.stop_rounded
+                                            : Icons.arrow_upward_rounded,
+                                        key: ValueKey(sendButtonLabel),
+                                        size: 18,
+                                      ),
                               ),
                             ),
-                          ],
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                  contextWindowSnapshot.maybeWhen(
-                    data: (snapshot) {
-                      if (snapshot == null) {
-                        return const SizedBox.shrink();
-                      }
-                      return Positioned(
-                        top: 0,
-                        right: spacing.xs + 44,
-                        child: ContextWindowStatusBar(
-                          snapshot: snapshot,
-                          onTap: onContextWindowPressed ?? () {},
-                          compact: true,
-                        ),
-                      );
-                    },
-                    orElse: () => const SizedBox.shrink(),
                   ),
                 ],
               ),
