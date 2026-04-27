@@ -1936,9 +1936,6 @@ class _NativeDecisionLLM implements BaseLLM {
   }
 
   @override
-  Stream<String> chatStream(
-      List<ChatMessage> messages, ChatConfig config) async* {}
-  @override
   Future<String> processWebpageContent({
     required String webpageContent,
     required String prompt,
@@ -1949,8 +1946,6 @@ class _NativeDecisionLLM implements BaseLLM {
   Future<String> summarizeConversation(List<ChatMessage> messages) async =>
       'summary';
 
-  @override
-  Future<bool> validateApiKey(ChatConfig config) async => true;
 }
 
 class _NativeNullPlannerLLM implements BaseLLM {
@@ -1976,9 +1971,6 @@ class _NativeNullPlannerLLM implements BaseLLM {
   }
 
   @override
-  Stream<String> chatStream(
-      List<ChatMessage> messages, ChatConfig config) async* {}
-  @override
   Future<String> processWebpageContent({
     required String webpageContent,
     required String prompt,
@@ -1989,8 +1981,6 @@ class _NativeNullPlannerLLM implements BaseLLM {
   Future<String> summarizeConversation(List<ChatMessage> messages) async =>
       'summary';
 
-  @override
-  Future<bool> validateApiKey(ChatConfig config) async => true;
 }
 
 class _ThrowingNativePlannerLLM implements BaseLLM {
@@ -2016,9 +2006,6 @@ class _ThrowingNativePlannerLLM implements BaseLLM {
   }
 
   @override
-  Stream<String> chatStream(
-      List<ChatMessage> messages, ChatConfig config) async* {}
-  @override
   Future<String> processWebpageContent({
     required String webpageContent,
     required String prompt,
@@ -2029,6 +2016,4 @@ class _ThrowingNativePlannerLLM implements BaseLLM {
   Future<String> summarizeConversation(List<ChatMessage> messages) async =>
       'summary';
 
-  @override
-  Future<bool> validateApiKey(ChatConfig config) async => true;
 }

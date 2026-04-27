@@ -75,13 +75,6 @@ class _NoopBaseLLM extends BaseLLM {
   String getModelName(ChatConfig config) => 'noop';
 
   @override
-  Stream<String> chatStream(
-      List<ChatMessage> messages, ChatConfig config) async* {}
-
-  @override
-  Future<bool> validateApiKey(ChatConfig config) async => true;
-
-  @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async => '';
   @override
   Future<ModelTurnDecision?> planTurnDecision({

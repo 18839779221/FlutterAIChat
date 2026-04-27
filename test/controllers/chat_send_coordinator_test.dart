@@ -483,10 +483,6 @@ class _NoopBaseLLM implements BaseLLM {
   Map<String, dynamic> get config => const {};
 
   @override
-  Stream<String> chatStream(List<ChatMessage> messages, ChatConfig config) =>
-      const Stream.empty();
-
-  @override
   Future<ModelTurnDecision?> planTurnDecision({
     required List<ChatMessage> messages,
     required ChatConfig config,
@@ -510,6 +506,4 @@ class _NoopBaseLLM implements BaseLLM {
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async => '';
 
-  @override
-  Future<bool> validateApiKey(ChatConfig config) async => true;
 }

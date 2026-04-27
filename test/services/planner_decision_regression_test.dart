@@ -225,12 +225,7 @@ class _CapturingStructuredPlannerLLM implements BaseLLM {
   }
 
   @override
-  Stream<String> chatStream(
-      List<ChatMessage> messages, ChatConfig config) async* {}
-  @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async =>
       'summary';
 
-  @override
-  Future<bool> validateApiKey(ChatConfig config) async => true;
 }

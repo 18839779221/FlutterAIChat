@@ -2505,12 +2505,6 @@ class _QueuedNativeDecisionLLM implements BaseLLM {
   }
 
   @override
-  Stream<String> chatStream(
-    List<ChatMessage> messages,
-    ChatConfig config,
-  ) async* {}
-
-  @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async =>
       'summary';
 
@@ -2521,8 +2515,6 @@ class _QueuedNativeDecisionLLM implements BaseLLM {
   }) async =>
       '';
 
-  @override
-  Future<bool> validateApiKey(ChatConfig config) async => true;
 }
 
 ModelTurnDecision _decisionFromAction(AgentAction action) {
@@ -3180,9 +3172,6 @@ class _NoopBaseLLM implements BaseLLM {
   Map<String, dynamic> get config => const {};
 
   @override
-  Stream<String> chatStream(
-      List<ChatMessage> messages, ChatConfig config) async* {}
-  @override
   String getModelName(ChatConfig config) => 'noop';
 
   @override
@@ -3206,8 +3195,6 @@ class _NoopBaseLLM implements BaseLLM {
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async => '';
 
-  @override
-  Future<bool> validateApiKey(ChatConfig config) async => true;
 }
 
 class _NoopChatStorage implements ChatStorage {
