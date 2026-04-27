@@ -16,6 +16,57 @@ import 'session_context_projector.dart';
 import 'session_summary_service.dart';
 import 'session_token_budget_service.dart';
 
+class SessionContextTurnSegment {
+  final int turnId;
+  final List<ChatMessage> messages;
+  final int estimatedTokens;
+
+  const SessionContextTurnSegment({
+    required this.turnId,
+    required this.messages,
+    required this.estimatedTokens,
+  });
+}
+
+class SessionContextBuildResult {
+  final String modelName;
+  final String resolvedSystemPrompt;
+  final int systemPromptTokens;
+  final ChatMessage runtimeUserContextMessage;
+  final int runtimeUserContextTokens;
+  final SessionContextSnapshot? activeSnapshot;
+  final List<SessionContextTurnSegment> recentSegments;
+  final List<ChatMessage> currentTurnMessages;
+  final SessionPlannerBudgetEvaluation budgetEvaluation;
+  final bool didCompactHistory;
+
+  const SessionContextBuildResult({
+    required this.modelName,
+    required this.resolvedSystemPrompt,
+    required this.systemPromptTokens,
+    required this.runtimeUserContextMessage,
+    required this.runtimeUserContextTokens,
+    required this.activeSnapshot,
+    required this.recentSegments,
+    required this.currentTurnMessages,
+    required this.budgetEvaluation,
+    required this.didCompactHistory,
+  });
+
+  List<ChatMessage> get plannerMessages => [
+        runtimeUserContextMessage,
+        if (activeSnapshot != null)
+          ChatMessage(
+            text: activeSnapshot!.summaryText,
+            role: MessageRole.system,
+            timestamp: activeSnapshot!.updatedAt,
+            status: MessageStatus.completed,
+          ),
+        ...recentSegments.expand((segment) => segment.messages),
+        ...currentTurnMessages,
+      ];
+}
+
 class SessionContextService {
   static const String _tag = 'SessionContextService';
 
@@ -57,6 +108,27 @@ class SessionContextService {
     required List<ChatEvent> currentTurnTranscript,
     required ChatConfig config,
   }) async {
+    final state = await buildPlannerContextState(
+      groupId: groupId,
+      currentTurnId: currentTurnId,
+      currentTurnTranscript: currentTurnTranscript,
+      config: config,
+    );
+    return [
+      state.runtimeUserContextMessage,
+      if (state.activeSnapshot != null)
+        _contextProjector.projectSnapshotToContext(state.activeSnapshot!.summaryText),
+      ...state.recentSegments.expand((segment) => segment.messages),
+      ...state.currentTurnMessages,
+    ];
+  }
+
+  Future<SessionContextBuildResult> buildPlannerContextState({
+    required int groupId,
+    required int currentTurnId,
+    required List<ChatEvent> currentTurnTranscript,
+    required ChatConfig config,
+  }) async {
     final snapshot = await _snapshotRepository.getLatestByGroup(groupId);
     final currentTurn = await _chatTurnRepository.getTurn(currentTurnId);
     final modelName = _chatService.getModelName(config);
@@ -93,9 +165,12 @@ class SessionContextService {
     ];
     final normalizedCurrentMessages =
         _contextProjector.encodeContextItems(currentItems);
-    final fixedPrefixTokens =
-        _tokenBudgetService.estimateTextTokens(_resolveSystemPrompt(config)) +
-            _tokenBudgetService.estimateMessagesTokens([userContextMessage]);
+    final resolvedSystemPrompt = _resolveSystemPrompt(config);
+    final systemPromptTokens =
+        _tokenBudgetService.estimateTextTokens(resolvedSystemPrompt);
+    final runtimeUserContextTokens =
+        _tokenBudgetService.estimateMessagesTokens([userContextMessage]);
+    final fixedPrefixTokens = systemPromptTokens + runtimeUserContextTokens;
     final currentTurnTokens =
         _tokenBudgetService.estimateMessagesTokens(normalizedCurrentMessages);
 
@@ -105,6 +180,7 @@ class SessionContextService {
       usableInputBudget: profile.usableInputBudget,
       compactionConfig: compactionConfig,
     );
+    var didCompactHistory = false;
 
     var budget = _tokenBudgetService.evaluatePlannerBudget(
       modelName: modelName,
@@ -127,6 +203,7 @@ class SessionContextService {
       );
       activeSummary = compactionResult.snapshot;
       recentSegments = compactionResult.recentSegments;
+      didCompactHistory = compactionResult.didCompactHistory;
     } else {
       budget = _tokenBudgetService.evaluatePlannerBudget(
         modelName: modelName,
@@ -137,13 +214,18 @@ class SessionContextService {
       );
     }
 
-    return [
-      userContextMessage,
-      if (activeSummary != null)
-        _contextProjector.projectSnapshotToContext(activeSummary.summaryText),
-      ...recentSegments.expand((segment) => segment.messages),
-      ...normalizedCurrentMessages,
-    ];
+    return SessionContextBuildResult(
+      modelName: modelName,
+      resolvedSystemPrompt: resolvedSystemPrompt,
+      systemPromptTokens: systemPromptTokens,
+      runtimeUserContextMessage: userContextMessage,
+      runtimeUserContextTokens: runtimeUserContextTokens,
+      activeSnapshot: activeSummary,
+      recentSegments: recentSegments,
+      currentTurnMessages: normalizedCurrentMessages,
+      budgetEvaluation: budget,
+      didCompactHistory: didCompactHistory,
+    );
   }
 
   Future<Map<int, List<ChatEvent>>> _loadHistoryEventsByTurn({
@@ -164,11 +246,11 @@ class SessionContextService {
     return grouped;
   }
 
-  List<_TurnContextSegment> _buildHistorySegments({
+  List<SessionContextTurnSegment> _buildHistorySegments({
     required List<ChatTurn> historyTurns,
     required Map<int, List<ChatEvent>> groupedEvents,
   }) {
-    final projected = <_TurnContextSegment>[];
+    final projected = <SessionContextTurnSegment>[];
     for (final turn in historyTurns) {
       final turnId = turn.id;
       if (turnId == null) {
@@ -181,7 +263,7 @@ class SessionContextService {
         continue;
       }
       projected.add(
-        _TurnContextSegment(
+        SessionContextTurnSegment(
           turnId: turnId,
           messages: messages,
           estimatedTokens: _tokenBudgetService.estimateMessagesTokens(messages),
@@ -191,8 +273,8 @@ class SessionContextService {
     return projected;
   }
 
-  List<_TurnContextSegment> _selectRecentCompletedTurns({
-    required List<_TurnContextSegment> historySegments,
+  List<SessionContextTurnSegment> _selectRecentCompletedTurns({
+    required List<SessionContextTurnSegment> historySegments,
     required int usableInputBudget,
     required ContextCompactionConfig compactionConfig,
   }) {
@@ -219,8 +301,8 @@ class SessionContextService {
   Future<_CompactionResult> _compactHistory({
     required int groupId,
     required SessionContextSnapshot? existingSnapshot,
-    required List<_TurnContextSegment> historySegments,
-    required List<_TurnContextSegment> initialRecentSegments,
+    required List<SessionContextTurnSegment> historySegments,
+    required List<SessionContextTurnSegment> initialRecentSegments,
     required String modelName,
     required int fixedPrefixTokens,
     required int currentTurnTokens,
@@ -258,6 +340,7 @@ class SessionContextService {
         return _CompactionResult(
           snapshot: existingSnapshot,
           recentSegments: historySegments.toList(growable: false),
+          didCompactHistory: false,
         );
       }
     }
@@ -265,13 +348,14 @@ class SessionContextService {
     return _CompactionResult(
       snapshot: activeSnapshot,
       recentSegments: recentSegments.toList(growable: false),
+      didCompactHistory: compactedSegments.isNotEmpty,
     );
   }
 
   Future<SessionContextSnapshot?> _rollSummaryForward({
     required int groupId,
     required SessionContextSnapshot? existingSnapshot,
-    required List<_TurnContextSegment> compactedSegments,
+    required List<SessionContextTurnSegment> compactedSegments,
   }) async {
     try {
       final summary = await _summaryService.summarizeHistory(
@@ -296,7 +380,7 @@ class SessionContextService {
     }
   }
 
-  int _estimateSegmentsTokens(Iterable<_TurnContextSegment> segments) {
+  int _estimateSegmentsTokens(Iterable<SessionContextTurnSegment> segments) {
     return segments.fold<int>(0, (total, item) => total + item.estimatedTokens);
   }
 
@@ -337,24 +421,14 @@ class SessionContextService {
   }
 }
 
-class _TurnContextSegment {
-  final int turnId;
-  final List<ChatMessage> messages;
-  final int estimatedTokens;
-
-  const _TurnContextSegment({
-    required this.turnId,
-    required this.messages,
-    required this.estimatedTokens,
-  });
-}
-
 class _CompactionResult {
   final SessionContextSnapshot? snapshot;
-  final List<_TurnContextSegment> recentSegments;
+  final List<SessionContextTurnSegment> recentSegments;
+  final bool didCompactHistory;
 
   const _CompactionResult({
     required this.snapshot,
     required this.recentSegments,
+    required this.didCompactHistory,
   });
 }
