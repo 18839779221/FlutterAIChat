@@ -46,7 +46,8 @@ final debugTestCaseLoaderProvider = Provider<DebugTestCaseLoader>((ref) {
   return AssetDebugTestCaseLoader();
 });
 
-final debugTestCaseLibraryProvider = FutureProvider<DebugTestCaseLibrary>((ref) {
+final debugTestCaseLibraryProvider =
+    FutureProvider<DebugTestCaseLibrary>((ref) {
   return ref.watch(debugTestCaseLoaderProvider).load();
 });
 
@@ -67,6 +68,10 @@ final featuredDebugTestCasesProvider = Provider<List<DebugTestCase>>((ref) {
 // 流订阅提供者
 final streamSubscriptionProvider =
     StateProvider<StreamSubscription?>((ref) => null);
+
+/// Async cancellation hook for the currently running send transaction.
+final activeSendCancellationProvider =
+    StateProvider<Future<void> Function()?>((ref) => null);
 
 /// Pair of the message that currently owns the confirmation step and the
 /// parsed invocation payload used by the bottom confirmation bar.

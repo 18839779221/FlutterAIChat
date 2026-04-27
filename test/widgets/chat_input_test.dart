@@ -1,3 +1,6 @@
+import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_input.dart';
@@ -92,6 +95,43 @@ void main() {
     expect(find.text('正在规划下一步'), findsNothing);
   });
 
+  testWidgets('chat input shows stop icon and cancels while preparing', (
+    tester,
+  ) async {
+    var cancelCount = 0;
+    final container = ProviderContainer(
+      overrides: [
+        chatSendStateProvider.overrideWith(
+          (ref) => ChatSendStateNotifier()
+            ..update(
+              phase: ChatSendPhase.preparing,
+              isGenerating: false,
+            ),
+        ),
+        chatControllerProvider.overrideWith(
+          (ref) => _SpyChatController(ref, onCancel: () => cancelCount += 1),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+
+    expect(find.byIcon(Icons.stop_rounded), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    await tester.tap(find.byType(FilledButton));
+    expect(cancelCount, 1);
+  });
+
   testWidgets('chat input does not show tool running helper text', (tester) async {
     final container = ProviderContainer(
       overrides: [
@@ -119,17 +159,21 @@ void main() {
     expect(find.text('工具执行中'), findsNothing);
   });
 
-  testWidgets('chat input shows stop icon instead of spinner while streaming', (
+  testWidgets('chat input shows stop icon and cancels while executing tool', (
     tester,
   ) async {
+    var cancelCount = 0;
     final container = ProviderContainer(
       overrides: [
         chatSendStateProvider.overrideWith(
           (ref) => ChatSendStateNotifier()
             ..update(
-              phase: ChatSendPhase.streamingResponse,
-              isGenerating: true,
+              phase: ChatSendPhase.executingTool,
+              isGenerating: false,
             ),
+        ),
+        chatControllerProvider.overrideWith(
+          (ref) => _SpyChatController(ref, onCancel: () => cancelCount += 1),
         ),
       ],
     );
@@ -147,5 +191,128 @@ void main() {
 
     expect(find.byIcon(Icons.stop_rounded), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    await tester.tap(find.byType(FilledButton));
+    expect(cancelCount, 1);
   });
+
+  testWidgets('chat input shows stop icon instead of spinner while streaming', (
+    tester,
+  ) async {
+    var cancelCount = 0;
+    final container = ProviderContainer(
+      overrides: [
+        chatSendStateProvider.overrideWith(
+          (ref) => ChatSendStateNotifier()
+            ..update(
+              phase: ChatSendPhase.streamingResponse,
+              isGenerating: true,
+            ),
+        ),
+        chatControllerProvider.overrideWith(
+          (ref) => _SpyChatController(ref, onCancel: () => cancelCount += 1),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+
+    expect(find.byIcon(Icons.stop_rounded), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    await tester.tap(find.byType(FilledButton));
+    expect(cancelCount, 1);
+  });
+}
+
+class _SpyChatController extends ChatController {
+  _SpyChatController(
+    super.ref, {
+    required this.onCancel,
+  })
+      : super(
+          sendCoordinator: _NoopChatSendCoordinator(),
+          sessionCoordinator: _NoopChatSessionCoordinator(),
+          summaryController: _NoopChatSummaryController(),
+          preferencesController: _NoopChatPreferencesController(),
+        );
+
+  final VoidCallback onCancel;
+
+  @override
+  void cancelStreamSubscription() {
+    onCancel();
+  }
+}
+
+class _NoopChatSendCoordinator implements ChatSendCoordinator {
+  @override
+  Future<void> cancelToolInvocation(ChatMessage message) async {}
+
+  @override
+  Future<void> confirmToolInvocation(
+    ChatMessage message, {
+    bool trustTool = false,
+  }) async {}
+
+  @override
+  Future<void> sendMessage(
+    String text, {
+    required void Function() scheduleAutoSummary,
+    required void Function() cancelActiveStream,
+  }) async {}
+
+  @override
+  Future<void> submitQuestionAnswers(
+    ChatMessage message, {
+    required AskUserQuestionResponse response,
+  }) async {}
+}
+
+class _NoopChatSessionCoordinator implements ChatSessionCoordinator {
+  @override
+  Future<void> createNewGroup() async {}
+
+  @override
+  Future<void> deleteGroup(int id) async {}
+
+  @override
+  Future<void> loadCurrentGroup() async {}
+
+  @override
+  Future<void> loadGroups() async {}
+
+  @override
+  Future<void> loadMessages() async {}
+
+  @override
+  Future<void> loadMoreMessages() async {}
+
+  @override
+  Future<void> selectGroup(ChatGroup group) async {}
+}
+
+class _NoopChatSummaryController implements ChatSummaryController {
+  @override
+  void cancelAutoSummaryTimer() {}
+
+  @override
+  void scheduleAutoSummary() {}
+
+  @override
+  Future<String?> summarizeAndUpdateTitle() async => null;
+}
+
+class _NoopChatPreferencesController implements ChatPreferencesController {
+  @override
+  Future<void> setSystemPrompt(String? prompt) async {}
 }

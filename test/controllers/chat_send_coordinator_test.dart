@@ -1,0 +1,516 @@
+import 'dart:async';
+
+import 'package:ai_chat/database/database_helper.dart';
+import 'package:ai_chat/models/agent/model_turn_decision.dart';
+import 'package:ai_chat/models/agent/planner_tool_option.dart';
+import 'package:ai_chat/models/chat_event.dart';
+import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
+import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
+import 'package:ai_chat/models/llm/base_llm.dart';
+import 'package:ai_chat/models/response/message_content_type.dart';
+import 'package:ai_chat/models/tool/tool_invocation.dart';
+import 'package:ai_chat/providers/chat_providers.dart';
+import 'package:ai_chat/repositories/chat_event_repository.dart';
+import 'package:ai_chat/repositories/chat_turn_repository.dart';
+import 'package:ai_chat/services/agent_planner_service.dart';
+import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/services/turn_harness.dart';
+import 'package:ai_chat/services/turn_verifier.dart';
+import 'package:ai_chat/services/tool_call_service.dart';
+import 'package:ai_chat/services/tool_executor.dart';
+import 'package:ai_chat/services/transcript_builder_service.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('DefaultChatSendCoordinator', () {
+    setUpAll(() {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    });
+
+    test('completes a streamed assistant reply on final answer', () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.assistantTextDelta,
+            role: MessageRole.assistant,
+            content: '你好，',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.assistantTextDelta,
+            role: MessageRole.assistant,
+            content: '世界',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.finalAnswer,
+            role: MessageRole.assistant,
+            content: '你好，世界',
+          ),
+        ],
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      await container.read(chatSendCoordinatorProvider).sendMessage(
+            '打一声招呼',
+            scheduleAutoSummary: () {},
+            cancelActiveStream:
+                container.read(chatControllerProvider).cancelStreamSubscription,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      final assistant = container
+          .read(messagesProvider)
+          .lastWhere((message) => message.role == MessageRole.assistant);
+      expect(assistant.text, '你好，世界');
+      expect(assistant.status, MessageStatus.completed);
+      expect(container.read(chatSendStateProvider).phase, ChatSendPhase.idle);
+      expect(container.read(chatSendStateProvider).isGenerating, isFalse);
+
+      final persisted = await databaseHelper.getMessagesByGroup(groupId);
+      final persistedAssistant = persisted
+          .lastWhere((message) => message.role == MessageRole.assistant);
+      expect(persistedAssistant.text, '你好，世界');
+      expect(persistedAssistant.status, MessageStatus.completed);
+    });
+
+    test('keeps interrupted status when interrupted assistant later fails',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final afterEventsGate = Completer<void>();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.assistantTextDelta,
+            role: MessageRole.assistant,
+            content: '还在生成',
+          ),
+        ],
+        afterEventsGate: afterEventsGate,
+        runTurnFailureCode: 'max_iterations_reached',
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      unawaited(
+        container.read(chatSendCoordinatorProvider).sendMessage(
+              '开始生成',
+              scheduleAutoSummary: () {},
+              cancelActiveStream: () {},
+            ),
+      );
+
+      await _waitForAssistantStatus(
+        container,
+        MessageStatus.generating,
+      );
+
+      await _interruptLatestAssistant(
+        container: container,
+        databaseHelper: databaseHelper,
+      );
+      afterEventsGate.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      final assistant = container
+          .read(messagesProvider)
+          .lastWhere((message) => message.role == MessageRole.assistant);
+      expect(assistant.status, MessageStatus.interrupted);
+      expect(assistant.text, '还在生成');
+      expect(container.read(chatSendStateProvider).phase, ChatSendPhase.idle);
+      expect(container.read(chatSendStateProvider).isGenerating, isFalse);
+
+      final persisted = await databaseHelper.getMessagesByGroup(groupId);
+      final persistedAssistant = persisted
+          .lastWhere((message) => message.role == MessageRole.assistant);
+      expect(persistedAssistant.status, MessageStatus.interrupted);
+      expect(persistedAssistant.text, '还在生成');
+    });
+
+    test(
+        'cancelStreamSubscription settles active send and marks turn cancelled',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final afterEventsGate = Completer<void>();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.assistantTextDelta,
+            role: MessageRole.assistant,
+            content: '正在生成中',
+          ),
+        ],
+        afterEventsGate: afterEventsGate,
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      final sendFuture = container.read(chatControllerProvider).sendMessage(
+            '请开始生成',
+          );
+
+      await _waitForAssistantStatus(
+        container,
+        MessageStatus.generating,
+      );
+
+      container.read(chatControllerProvider).cancelStreamSubscription();
+      afterEventsGate.complete();
+      await sendFuture.timeout(const Duration(seconds: 1));
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      final assistant = container
+          .read(messagesProvider)
+          .lastWhere((message) => message.role == MessageRole.assistant);
+      expect(assistant.status, MessageStatus.interrupted);
+      expect(container.read(streamSubscriptionProvider), isNull);
+      expect(container.read(chatSendStateProvider).phase, ChatSendPhase.idle);
+      expect(container.read(chatSendStateProvider).isGenerating, isFalse);
+
+      final turns = await ChatTurnRepository(databaseHelper).getTurnsByGroup(
+        groupId,
+      );
+      expect(turns, isNotEmpty);
+      expect(turns.single.status, ChatTurnStatus.cancelled);
+      expect(turns.single.stopReason, 'cancelled_by_user');
+    });
+
+    test('cancelled turn during preparing appends visible cancellation summary',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final afterEventsGate = Completer<void>();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: const [],
+        afterEventsGate: afterEventsGate,
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      final sendFuture = container.read(chatControllerProvider).sendMessage(
+            '请开始处理',
+          );
+
+      await _waitForSendPhase(container, ChatSendPhase.preparing);
+
+      container.read(chatControllerProvider).cancelStreamSubscription();
+      afterEventsGate.complete();
+      await sendFuture.timeout(const Duration(seconds: 1));
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      final assistant = container
+          .read(messagesProvider)
+          .lastWhere((message) => message.role == MessageRole.assistant);
+      expect(assistant.text, '已停止本轮回答。你可以继续提问，或让我基于当前结果继续整理。');
+      expect(assistant.status, MessageStatus.interrupted);
+    });
+
+    test('cancelled turn marks active tool workflow message as cancelled',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final afterEventsGate = Completer<void>();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: const [],
+        afterEventsGate: afterEventsGate,
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      final sendFuture = container.read(chatControllerProvider).sendMessage(
+            '先搜索',
+          );
+
+      await _waitForSendPhase(container, ChatSendPhase.preparing);
+      final toolMessage = ChatMessage(
+        text: '正在执行工具：web_search',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.toolInvocation,
+        payloadJson: {
+          'toolName': 'web_search',
+          'arguments': {'query': 'OpenAI'},
+          'status': 'running',
+          'summary': '正在执行工具：web_search',
+          'requiresConfirmation': false,
+        },
+      );
+      final toolMessageId =
+          await databaseHelper.insertMessage(toolMessage, groupId);
+      toolMessage.id = toolMessageId;
+      container.read(messagesProvider.notifier).addMessage(toolMessage);
+
+      container.read(chatControllerProvider).cancelStreamSubscription();
+      afterEventsGate.complete();
+      await sendFuture.timeout(const Duration(seconds: 1));
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      final cancelledToolMessage = container.read(messagesProvider).lastWhere(
+            (message) =>
+                message.contentType == MessageContentType.toolInvocation,
+          );
+      expect(cancelledToolMessage.text, '已取消工具执行');
+      expect(cancelledToolMessage.payloadJson?['status'], 'cancelled');
+    });
+  });
+}
+
+int _testDatabaseCounter = 0;
+
+DatabaseHelper _createTestDatabaseHelper() {
+  _testDatabaseCounter += 1;
+  return DatabaseHelper(
+    databaseName: 'chat_send_coordinator_test_$_testDatabaseCounter.db',
+  );
+}
+
+ProviderContainer _createContainer({
+  required DatabaseHelper databaseHelper,
+  required TurnHarness harness,
+}) {
+  return ProviderContainer(
+    overrides: [
+      databaseProvider.overrideWith((ref) => databaseHelper),
+      chatServiceProvider
+          .overrideWith((ref) => ChatService(llm: _NoopBaseLLM())),
+      turnHarnessProvider.overrideWith((ref) => harness),
+      scrollControllerProvider.overrideWith((ref) => ScrollController()),
+      textControllerProvider.overrideWith((ref) => TextEditingController()),
+      focusNodeProvider.overrideWith((ref) => FocusNode()),
+    ],
+  );
+}
+
+Future<void> _waitForAssistantStatus(
+  ProviderContainer container,
+  MessageStatus status,
+) async {
+  for (var attempt = 0; attempt < 50; attempt += 1) {
+    final messages = container.read(messagesProvider);
+    final assistant =
+        messages.where((message) => message.isAssistant).lastOrNull;
+    if (assistant?.status == status) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  fail('Timed out waiting for assistant status $status');
+}
+
+Future<void> _waitForSendPhase(
+  ProviderContainer container,
+  ChatSendPhase phase,
+) async {
+  for (var attempt = 0; attempt < 50; attempt += 1) {
+    if (container.read(sendPhaseProvider) == phase) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  fail('Timed out waiting for send phase $phase');
+}
+
+class _FakeTurnHarness extends TurnHarness {
+  final DatabaseHelper databaseHelper;
+  final List<ChatEvent> events;
+  final Completer<void>? afterEventsGate;
+  final String? runTurnFailureCode;
+
+  _FakeTurnHarness({
+    required this.databaseHelper,
+    required this.events,
+    this.afterEventsGate,
+    this.runTurnFailureCode,
+  }) : super(
+          plannerService: AgentPlannerService(llm: _NoopBaseLLM()),
+          turnRepository: ChatTurnRepository(databaseHelper),
+          eventRepository: ChatEventRepository(databaseHelper),
+          transcriptBuilderService: TranscriptBuilderService(
+            eventRepository: ChatEventRepository(databaseHelper),
+          ),
+          turnVerifier: TurnVerifier(),
+          chatService: ChatService(llm: _NoopBaseLLM()),
+          toolCallService: ToolCallService(
+            toolExecutor: ToolExecutor(chatStorage: databaseHelper),
+          ),
+        );
+
+  @override
+  Stream<ChatEvent> runTurn({
+    required ChatTurn turn,
+    required ChatConfig config,
+  }) async* {
+    for (final event in events) {
+      yield ChatEvent(
+        turnId: turn.id ?? event.turnId,
+        groupId: turn.groupId,
+        sequence: event.sequence,
+        eventType: event.eventType,
+        role: event.role,
+        status: event.status,
+        content: event.content,
+        payloadJson: event.payloadJson,
+        createdAt: event.createdAt,
+      );
+    }
+
+    final gate = afterEventsGate;
+    if (gate != null) {
+      await gate.future;
+    }
+
+    final failureCode = runTurnFailureCode;
+    if (failureCode != null && turn.id != null) {
+      await ChatTurnRepository(databaseHelper).markFailed(
+        turn.id!,
+        errorMessage: failureCode,
+      );
+    }
+  }
+
+  @override
+  Stream<ChatEvent> resumeAfterConfirmation({
+    required int turnId,
+    required ToolInvocation invocation,
+    required ChatConfig config,
+    bool trustTool = false,
+  }) =>
+      const Stream.empty();
+
+  @override
+  Stream<ChatEvent> resumeAfterQuestionAnswered({
+    required int turnId,
+    required AskUserQuestionRequest request,
+    required AskUserQuestionResponse response,
+    required ChatConfig config,
+  }) =>
+      const Stream.empty();
+}
+
+Future<void> _interruptLatestAssistant({
+  required ProviderContainer container,
+  required DatabaseHelper databaseHelper,
+}) async {
+  container.read(chatSendStateProvider.notifier).update(
+        isGenerating: false,
+        phase: ChatSendPhase.idle,
+      );
+  final assistant = container
+      .read(messagesProvider)
+      .where((message) => message.isAssistant)
+      .lastOrNull;
+  if (assistant?.id == null) {
+    fail('Expected an assistant message to interrupt');
+  }
+  final assistantId = assistant!.id!;
+  container
+      .read(messagesProvider.notifier)
+      .updateMessageStatus(assistantId, MessageStatus.interrupted);
+  await databaseHelper.updateMessageStatus(
+    assistantId,
+    MessageStatus.interrupted,
+  );
+}
+
+class _NoopBaseLLM implements BaseLLM {
+  @override
+  Map<String, dynamic> get config => const {};
+
+  @override
+  Stream<String> chatStream(List<ChatMessage> messages, ChatConfig config) =>
+      const Stream.empty();
+
+  @override
+  Future<ModelTurnDecision?> planTurnDecision({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+    ChatTurnProviderStyle? providerStyle,
+    Map<String, dynamic>? providerState,
+    List<Map<String, dynamic>> providerContinuationItems = const [],
+  }) async =>
+      null;
+
+  @override
+  String getModelName(ChatConfig config) => 'noop';
+
+  @override
+  Future<String> processWebpageContent({
+    required String webpageContent,
+    required String prompt,
+  }) async =>
+      '';
+
+  @override
+  Future<String> summarizeConversation(List<ChatMessage> messages) async => '';
+
+  @override
+  Future<bool> validateApiKey(ChatConfig config) async => true;
+}
