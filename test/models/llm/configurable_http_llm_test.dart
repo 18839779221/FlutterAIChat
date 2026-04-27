@@ -40,6 +40,119 @@ void main() {
   });
 
   group('ConfigurableHttpLLM.planTurnDecision', () {
+    test('rejects empty API key before sending planner request', () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response('{}', 200),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+        apiKey: '',
+      );
+
+      expect(
+        () => llm.planTurnDecision(
+          messages: [
+            ChatMessage(text: '继续', role: MessageRole.user),
+          ],
+          config: ChatConfig(systemPrompt: ''),
+          availableTools: const [],
+        ),
+        throwsA(isA<Exception>()),
+      );
+      expect(client.lastRequest, isNull);
+    });
+
+    test('returns null when planner response body is empty', () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response('', 200),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '继续', role: MessageRole.user),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [],
+      );
+
+      expect(decision, isNull);
+    });
+
+    test('returns null when planner response payload is not an object',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode([
+            {'type': 'message', 'content': 'unexpected'},
+          ]),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '继续', role: MessageRole.user),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [],
+      );
+
+      expect(decision, isNull);
+    });
+
+    test('retries planner request on timeout before succeeding', () async {
+      var attempts = 0;
+      final client = _RecordingHttpClient(
+        handler: (request) {
+          attempts += 1;
+          if (attempts < 3) {
+            throw TimeoutException('planner timeout');
+          }
+          return http.Response(
+            jsonEncode({
+              'choices': [
+                {
+                  'message': {
+                    'role': 'assistant',
+                    'content': '重试后成功。',
+                  },
+                },
+              ],
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        },
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+        mainFlowNetworkRetryAttempts: 3,
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '继续', role: MessageRole.user),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [],
+      );
+
+      expect(attempts, 3);
+      expect(decision, isNotNull);
+      expect(decision!.assistantMessage, '重试后成功。');
+    });
+
     test('chat completions decision keeps assistant text when tool calls exist',
         () async {
       final client = _RecordingHttpClient(
@@ -1059,6 +1172,84 @@ void main() {
       expect(summary, isEmpty);
     });
 
+    test('injects summary system prompt when input has no system message',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'role': 'assistant',
+                  'content': 'stable summary',
+                },
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+      );
+
+      await llm.summarizeConversation([
+        ChatMessage(text: '历史消息', role: MessageRole.user),
+      ]);
+
+      final messages = client.lastRequestBody?['messages'] as List<dynamic>?;
+      expect(messages, isNotNull);
+      expect(messages, hasLength(2));
+      expect(messages!.first['role'], 'system');
+      expect(
+        messages.first['content'],
+        contains('Summarize and compress the conversation.'),
+      );
+    });
+
+    test('retries summary request on socket exception before succeeding',
+        () async {
+      var attempts = 0;
+      final client = _RecordingHttpClient(
+        handler: (request) {
+          attempts += 1;
+          if (attempts < 3) {
+            throw http.ClientException('SocketException: broken pipe');
+          }
+          return http.Response(
+            jsonEncode({
+              'choices': [
+                {
+                  'message': {
+                    'role': 'assistant',
+                    'content': 'stable summary',
+                  },
+                },
+              ],
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        },
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+        mainFlowNetworkRetryAttempts: 3,
+      );
+
+      final summary = await llm.summarizeConversation([
+        ChatMessage(text: '历史消息', role: MessageRole.user),
+      ]);
+
+      expect(attempts, 3);
+      expect(summary, 'stable summary');
+    });
+
     test(
         'responses summary request uses side-model native payload without tools',
         () async {
@@ -1101,6 +1292,25 @@ void main() {
   });
 
   group('ConfigurableHttpLLM.processWebpageContent', () {
+    test('fails fast when runtime base URL is invalid', () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response('{}', 200),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'not-a-url',
+        httpClient: client,
+      );
+
+      expect(
+        () => llm.processWebpageContent(
+          webpageContent: '网页正文',
+          prompt: '提取核心结论',
+        ),
+        throwsA(isA<Exception>()),
+      );
+      expect(client.lastRequest, isNull);
+    });
+
     test(
         'responses webpage side-model request uses native payload without tools',
         () async {
@@ -1141,6 +1351,48 @@ void main() {
       expect(client.lastRequestBody?['tools'], isNull);
       expect(client.lastRequestBody?['previous_response_id'], isNull);
     });
+
+    test('ignores unexpected tool calls in webpage side-model response',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'role': 'assistant',
+                  'content': '网页核心结论',
+                  'tool_calls': [
+                    {
+                      'id': 'call_1',
+                      'type': 'function',
+                      'function': {
+                        'name': 'web_search',
+                        'arguments': jsonEncode({'query': 'unexpected'}),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+      );
+
+      final result = await llm.processWebpageContent(
+        webpageContent: '网页正文',
+        prompt: '提取核心结论',
+      );
+
+      expect(result, '网页核心结论');
+    });
   });
 }
 
@@ -1149,6 +1401,8 @@ Future<ConfigurableHttpLLM> _buildLlm({
   http.Client? httpClient,
   Duration? plannerRequestTimeout,
   int mainFlowNetworkRetryAttempts = 5,
+  String apiKey = 'test-key',
+  String modelId = 'gpt-5.4',
 }) async {
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
@@ -1156,15 +1410,15 @@ Future<ConfigurableHttpLLM> _buildLlm({
     preferences,
     localDefaultsLoader: () async => LlmLocalDefaults(
       defaultProviderId: 'test-provider',
-      defaultModelId: 'gpt-5.4',
+      defaultModelId: modelId,
       providers: [
         LlmProviderConfig(
           id: 'test-provider',
           name: 'Test Provider',
-          apiKey: 'test-key',
+          apiKey: apiKey,
           baseUrl: baseUrl,
-          models: const [
-            LlmProviderModel(id: 'gpt-5.4', name: 'GPT-5.4'),
+          models: [
+            LlmProviderModel(id: modelId, name: modelId),
           ],
         ),
       ],
