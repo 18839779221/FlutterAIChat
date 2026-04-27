@@ -141,7 +141,6 @@ void main() async {
         eventRepository: eventRepository,
       ),
       turnVerifier: TurnVerifier(),
-      chatService: chatService,
       toolCallService: toolCallService,
       sessionContextService: sessionContextService,
     );

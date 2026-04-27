@@ -133,8 +133,6 @@ void main() {
         ),
       );
       final turn = (await turnRepository.getTurn(turnId))!;
-      final chatService = _FakeChatService(chunks: const []);
-
       final harness = TurnHarness(
         plannerService: _NativeDecisionPlannerService([
           const ModelTurnDecision(
@@ -153,7 +151,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: chatService,
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult.noTool(),
         ),
@@ -228,7 +225,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: _FakeChatService(chunks: const []),
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult.noTool(),
         ),
@@ -304,9 +300,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: _FakeChatService(
-          chunks: const ['最终', '回答'],
-        ),
         toolCallService: _FakeToolCallService(
           executeResult: ToolPreparationResult(
             toolInvocation: const ToolInvocation(
@@ -474,7 +467,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: _FakeChatService(chunks: const []),
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult.noTool(),
         ),
@@ -598,7 +590,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: _FakeChatService(chunks: const []),
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult(
             toolInvocation: ToolInvocation(
@@ -677,7 +668,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: _FakeChatService(chunks: const []),
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult(
             toolInvocation: ToolInvocation(
@@ -739,7 +729,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: _FakeChatService(chunks: const []),
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult(
             toolInvocation: ToolInvocation(
@@ -835,7 +824,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: _FakeChatService(chunks: const ['最终回答']),
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult(
             toolInvocation: ToolInvocation(
@@ -943,9 +931,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: _FakeChatService(
-          chunks: const ['最终', '结论'],
-        ),
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult(
             toolInvocation: ToolInvocation(
@@ -1075,7 +1060,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: _FakeChatService(chunks: const []),
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult(
             toolInvocation: ToolInvocation(
@@ -1151,9 +1135,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: _FakeChatService(
-          chunks: const ['提醒', '已创建'],
-        ),
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult(
             toolInvocation: ToolInvocation(
@@ -1235,9 +1216,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: TurnVerifier(),
-        chatService: _FakeChatService(
-          chunks: const ['提醒已记录'],
-        ),
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult(
             toolInvocation: ToolInvocation(
@@ -1323,9 +1301,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: TurnVerifier(),
-        chatService: _FakeChatService(
-          chunks: const ['提醒已记录'],
-        ),
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult(
             toolInvocation: ToolInvocation(
@@ -1429,7 +1404,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: _FakeChatService(chunks: const ['unused']),
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult.noTool(),
           definitionsByName: const {
@@ -1530,9 +1504,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: _FakeChatService(
-          chunks: const ['建议先用 SQLite。'],
-        ),
         toolCallService: toolCallService,
         limits: const AgentLoopLimits(maxIterations: 4),
       );
@@ -1625,9 +1596,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _NeverStopVerifier(),
-        chatService: _FakeChatService(
-          chunks: const ['未完成'],
-        ),
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult.noTool(),
         ),
@@ -1704,7 +1672,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: _FakeChatService(chunks: const []),
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult.noTool(),
         ),
@@ -1754,7 +1721,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: _FakeChatService(chunks: const []),
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult.noTool(),
         ),
@@ -1804,7 +1770,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: _FakeChatService(chunks: const []),
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult.noTool(),
         ),
@@ -1863,7 +1828,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: _FakeChatService(chunks: const []),
         toolCallService: _SequencedToolCallService([
           ToolPreparationResult(
             toolInvocation: const ToolInvocation(
@@ -1950,9 +1914,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: _FakeChatService(
-          chunks: const ['最终回答'],
-        ),
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult.noTool(),
         ),
@@ -2024,9 +1985,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: _FakeChatService(
-          chunks: const ['最终回答'],
-        ),
         toolCallService: _FakeToolCallService(
           executeResult: ToolPreparationResult(
             toolInvocation: const ToolInvocation(
@@ -2125,7 +2083,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: _FakeChatService(chunks: const ['最终回答']),
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult(
             toolInvocation: ToolInvocation(
@@ -2206,8 +2163,6 @@ void main() {
           isTerminal: true,
         ),
       ]);
-      final chatService = _FakeChatService(chunks: const ['最终回答']);
-
       final harness = TurnHarness(
         plannerService: plannerService,
         turnRepository: turnRepository,
@@ -2216,7 +2171,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: chatService,
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult(
             toolInvocation: ToolInvocation(
@@ -2323,10 +2277,6 @@ void main() {
           isTerminal: true,
         ),
       ]);
-      final chatService = _FakeChatService(
-        chunks: const ['最终回答'],
-      );
-
       final harness = TurnHarness(
         plannerService: plannerService,
         turnRepository: turnRepository,
@@ -2336,7 +2286,6 @@ void main() {
           eventRepository: eventRepository,
         ),
         turnVerifier: _AlwaysStopVerifier(),
-        chatService: chatService,
         toolCallService: _SequencedToolCallService([
           ToolPreparationResult(
             toolInvocation: const ToolInvocation(

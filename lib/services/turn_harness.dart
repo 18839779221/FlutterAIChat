@@ -42,7 +42,6 @@ class TurnHarness {
     required ChatEventRepository eventRepository,
     required TranscriptBuilderService transcriptBuilderService,
     required TurnVerifier turnVerifier,
-    required ChatService chatService,
     required ToolCallService toolCallService,
     SessionContextService? sessionContextService,
     DecisionToolCallExecutor? decisionToolCallExecutor,
