@@ -10,10 +10,12 @@ class ContextWindowStatusBar extends StatelessWidget {
     super.key,
     required this.snapshot,
     required this.onTap,
+    this.compact = false,
   });
 
   final ContextWindowSnapshot snapshot;
   final VoidCallback onTap;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -22,8 +24,8 @@ class ContextWindowStatusBar extends StatelessWidget {
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final ratio = snapshot.totalWindowUsageRatio.clamp(0.0, 1.0);
 
-    return Padding(
-      padding: EdgeInsets.only(bottom: spacing.xs),
+    return SizedBox(
+      width: compact ? 48 : double.infinity,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -32,13 +34,13 @@ class ContextWindowStatusBar extends StatelessWidget {
           borderRadius: BorderRadius.circular(radius.pill),
           child: Padding(
             padding: EdgeInsets.symmetric(
-              horizontal: spacing.xs,
-              vertical: spacing.xxs,
+              horizontal: compact ? spacing.xxs : spacing.xs,
+              vertical: compact ? 0 : spacing.xxs,
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(radius.pill),
               child: LinearProgressIndicator(
-                minHeight: 4,
+                minHeight: compact ? 3 : 4,
                 value: ratio,
                 backgroundColor: colors.secondaryText.withValues(alpha: 0.12),
                 valueColor: AlwaysStoppedAnimation<Color>(

@@ -25,6 +25,7 @@ void main() {
           body: ContextWindowStatusBar(
             snapshot: _snapshot(0.61),
             onTap: () => tapCount += 1,
+            compact: true,
           ),
         ),
       ),
@@ -33,6 +34,10 @@ void main() {
     expect(find.textContaining('%'), findsNothing);
     expect(find.textContaining('上下文'), findsNothing);
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('context-window-status-bar'))).width,
+      lessThan(72),
+    );
 
     await tester.tap(find.byKey(const ValueKey('context-window-status-bar')));
     expect(tapCount, 1);
