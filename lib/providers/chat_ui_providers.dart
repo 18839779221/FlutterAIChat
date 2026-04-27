@@ -1,10 +1,13 @@
 import 'dart:async';
 
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/session/context_window_snapshot.dart';
 import 'package:ai_chat/models/debug/debug_test_case.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
+import 'package:ai_chat/providers/chat_dependency_providers.dart';
+import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/debug_test_case_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -62,6 +65,24 @@ final featuredDebugTestCasesProvider = Provider<List<DebugTestCase>>((ref) {
   return ref.watch(debugTestCaseLibraryProvider).maybeWhen(
         data: (library) => library.featuredCases,
         orElse: () => const <DebugTestCase>[],
+      );
+});
+
+final contextWindowSnapshotProvider =
+    FutureProvider<ContextWindowSnapshot?>((ref) async {
+  final group = ref.watch(currentGroupProvider);
+  final groupId = group?.id;
+  if (groupId == null) {
+    return null;
+  }
+  final config = ChatConfig(
+    systemPrompt: ref.watch(systemPromptProvider) ?? '',
+    userSystemPrompt: ref.watch(systemPromptProvider) ?? '',
+  );
+  return ref.watch(sessionContextInspectorServiceProvider)
+      .buildLatestWindowSnapshotForGroup(
+        groupId: groupId,
+        config: config,
       );
 });
 

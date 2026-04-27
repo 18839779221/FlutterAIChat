@@ -158,6 +158,8 @@ void main() {
             },
           ),
         ),
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
       );
 
       final snapshot = await inspector.buildLatestWindowSnapshot(
@@ -272,6 +274,8 @@ void main() {
             pressureThreshold: 0.5,
           ),
         ),
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
       );
 
       final snapshot = await inspector.buildLatestWindowSnapshot(
