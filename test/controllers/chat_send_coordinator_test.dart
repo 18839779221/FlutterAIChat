@@ -396,7 +396,6 @@ class _FakeTurnHarness extends TurnHarness {
             eventRepository: ChatEventRepository(databaseHelper),
           ),
           turnVerifier: TurnVerifier(),
-          chatService: ChatService(llm: _NoopBaseLLM()),
           toolCallService: ToolCallService(
             toolExecutor: ToolExecutor(chatStorage: databaseHelper),
           ),
