@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
+import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/chat_block_builder.dart';
@@ -92,8 +93,23 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     }
   }
 
+  void _resetScrollToInitial() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) {
+        return;
+      }
+      _scrollController.jumpTo(_scrollController.position.minScrollExtent);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.listen<ChatGroup?>(currentGroupProvider, (previous, next) {
+      if (previous?.id != next?.id) {
+        _resetScrollToInitial();
+      }
+    });
+
     final messages = ref.watch(messagesProvider);
     final sendPhase = ref.watch(sendPhaseProvider);
     final hasMoreMessages = ref.watch(hasMoreMessagesProvider);
