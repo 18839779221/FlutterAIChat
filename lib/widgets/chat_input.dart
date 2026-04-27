@@ -6,9 +6,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/chat_providers.dart';
+import 'context_window/context_window_status_bar.dart';
 
 class ChatInput extends ConsumerWidget {
-  const ChatInput({super.key});
+  const ChatInput({
+    super.key,
+    this.onContextWindowPressed,
+  });
+
+  final VoidCallback? onContextWindowPressed;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -19,6 +25,7 @@ class ChatInput extends ConsumerWidget {
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
     final colors = Theme.of(context).extension<AppColors>()!;
+    final contextWindowSnapshot = ref.watch(contextWindowSnapshotProvider);
 
     final bottomSafeArea = MediaQuery.of(context).padding.bottom;
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
@@ -95,6 +102,18 @@ class ChatInput extends ConsumerWidget {
                 key: const ValueKey('chat-input-panel'),
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  contextWindowSnapshot.maybeWhen(
+                    data: (snapshot) {
+                      if (snapshot == null) {
+                        return const SizedBox.shrink();
+                      }
+                      return ContextWindowStatusBar(
+                        snapshot: snapshot,
+                        onTap: onContextWindowPressed ?? () {},
+                      );
+                    },
+                    orElse: () => const SizedBox.shrink(),
+                  ),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [

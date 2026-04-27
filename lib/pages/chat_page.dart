@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -12,6 +13,7 @@ import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/chat_drawer.dart';
 import '../widgets/debug/debug_test_case_sheet.dart';
+import '../widgets/context_window/context_window_bottom_sheet.dart';
 import '../widgets/tool_confirmation/tool_confirmation_bottom_bar.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
@@ -137,7 +139,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                         trustTool: true,
                       ),
                     ),
-                  const ChatInput(),
+                  ChatInput(
+                    onContextWindowPressed: () {
+                      unawaited(_showContextWindowSheet(context));
+                    },
+                  ),
                 ],
               ),
             ),
@@ -191,6 +197,20 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           focusNode.requestFocus();
         },
       ),
+    );
+  }
+
+  Future<void> _showContextWindowSheet(BuildContext context) async {
+    final snapshot = await ref.read(contextWindowSnapshotProvider.future);
+    if (!context.mounted || snapshot == null) {
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).extension<AppColors>()!.chatBackground,
+      builder: (_) => ContextWindowBottomSheet(snapshot: snapshot),
     );
   }
 
