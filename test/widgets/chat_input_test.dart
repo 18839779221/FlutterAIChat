@@ -1,6 +1,8 @@
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
+import 'package:ai_chat/models/session/context_window_segment.dart';
+import 'package:ai_chat/models/session/context_window_snapshot.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_input.dart';
@@ -27,6 +29,7 @@ void main() {
 
     expect(find.byKey(const ValueKey('chat-input-dock')), findsOneWidget);
     expect(find.byKey(const ValueKey('chat-input-panel')), findsOneWidget);
+    expect(find.byKey(const ValueKey('chat-input-bottom-bar')), findsOneWidget);
     expect(find.text('Balanced · 可追溯输出'), findsNothing);
     expect(find.text('深度'), findsNothing);
     expect(find.text('简洁'), findsNothing);
@@ -37,6 +40,37 @@ void main() {
         .widget<TextField>(find.byKey(const ValueKey('chat-input-field')));
     expect(textField.minLines, 1);
     expect(textField.maxLines, 4);
+  });
+
+  testWidgets('chat input keeps second row reserved for context usage info', (
+    tester,
+  ) async {
+    final container = ProviderContainer(
+      overrides: [
+        contextWindowSnapshotProvider.overrideWith(
+          (ref) async => _contextSnapshot(0.54),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('chat-input-bottom-bar')), findsOneWidget);
+    expect(find.text('54%'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('context-window-usage-indicator')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('chat input does not show pending label while awaiting confirmation', (
@@ -315,4 +349,19 @@ class _NoopChatSummaryController implements ChatSummaryController {
 class _NoopChatPreferencesController implements ChatPreferencesController {
   @override
   Future<void> setSystemPrompt(String? prompt) async {}
+}
+
+ContextWindowSnapshot _contextSnapshot(double ratio) {
+  return ContextWindowSnapshot(
+    modelName: 'GPT-5.4',
+    maxContextTokens: 128000,
+    usableInputBudget: 104000,
+    compressionTriggerRatio: 0.8,
+    totalEstimatedInputTokens: 70000,
+    totalWindowUsageRatio: ratio,
+    usableInputUsageRatio: 0.0,
+    didCompactHistory: false,
+    recentCompletedTurnCount: 0,
+    segments: const <ContextWindowSegment>[],
+  );
 }

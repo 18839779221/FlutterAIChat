@@ -1,0 +1,48 @@
+import 'package:ai_chat/models/session/context_window_segment.dart';
+import 'package:ai_chat/models/session/context_window_snapshot.dart';
+import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/widgets/context_window/context_window_usage_color.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  final colors = AppColors.light();
+
+  ContextWindowSnapshot snapshot(double ratio) {
+    return ContextWindowSnapshot(
+      modelName: 'gpt-test',
+      maxContextTokens: 128000,
+      usableInputBudget: 104000,
+      compressionTriggerRatio: 0.8,
+      totalEstimatedInputTokens: 0,
+      totalWindowUsageRatio: ratio,
+      usableInputUsageRatio: 0.0,
+      didCompactHistory: false,
+      recentCompletedTurnCount: 0,
+      segments: const <ContextWindowSegment>[],
+    );
+  }
+
+  test('low ratio uses secondaryText base color', () {
+    final color = resolveContextWindowUsageColor(colors, snapshot(0.2));
+    expect(
+      color.toARGB32(),
+      colors.secondaryText.withValues(alpha: 0.48).toARGB32(),
+    );
+  });
+
+  test('mid ratio uses workflowRunning', () {
+    final color = resolveContextWindowUsageColor(colors, snapshot(0.7));
+    expect(
+      color.toARGB32(),
+      colors.workflowRunning.withValues(alpha: 0.64).toARGB32(),
+    );
+  });
+
+  test('at or above trigger uses workflowWarning', () {
+    final color = resolveContextWindowUsageColor(colors, snapshot(0.8));
+    expect(
+      color.toARGB32(),
+      colors.workflowWarning.withValues(alpha: 0.72).toARGB32(),
+    );
+  });
+}

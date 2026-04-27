@@ -11,7 +11,7 @@
 目标：将输入区改造为 **2 行布局**——
 
 - 第一行：文本输入（保持现有 `minLines: 1, maxLines: 4` 行为）；
-- 第二行：底部工具栏，右下角承载 context 使用率圆环 + 发送按钮。
+- 第二行：底部工具栏，右下角承载 context 使用率信息（圆环 + 百分比）与发送按钮。
 
 本次改造仅做**布局重排**和**表达形式迁移**，不新增功能按钮（无附件、权限、模型选择器等）。
 
@@ -63,7 +63,7 @@ DecoratedBox
 
 职责：在底部工具栏 inline 显示 context 使用率。
 
-形态：**仅圆环，不显示百分比数字**。
+形态：**轻量圆环 + 常驻百分比文字**。
 
 ```dart
 class ContextWindowUsageIndicator extends StatelessWidget {
@@ -81,10 +81,11 @@ class ContextWindowUsageIndicator extends StatelessWidget {
 视觉规格：
 
 - 圆环本体：`CircularProgressIndicator(value: ratio, strokeWidth: 2)`，尺寸 16×16；
+- 百分比文字：常驻显示，例如 `54%`，使用弱化 caption 风格，不单独显示更多说明文案；
 - 颜色：沿用当前三档逻辑（`secondaryText → workflowRunning → workflowWarning`），阈值与 `ContextWindowStatusBar._resolveValueColor` 完全一致；
 - 背景：`secondaryText.withValues(alpha: 0.12)`（与现状一致）；
 - 点击热区：外层 `InkWell` + `Padding`，热区不小于 32×32，保证小尺寸下仍可点击；
-- 无障碍：`Semantics(label: 'Context 使用率 ${(ratio*100).round()}%', button: true)`——百分比不显示但提供给读屏。
+- 无障碍：`Semantics(label: 'Context 使用率 ${(ratio*100).round()}%', button: true)`。
 
 ### 4.3 颜色阈值函数共享
 
@@ -103,6 +104,7 @@ class ContextWindowUsageIndicator extends StatelessWidget {
 - 新增 `test/widgets/context_window/context_window_usage_indicator_test.dart`，覆盖：
   - `ratio` 在三个阈值档位下，`CircularProgressIndicator.valueColor` 取值正确；
   - 点击触发 `onTap` 一次；
+  - 屏幕上直接显示正确的百分比；
   - `Semantics.label` 包含正确的百分比（四舍五入）；
   - 热区至少 32×32（通过查询渲染盒尺寸验证）；
 - `docs/superpowers/plans/2026-04-27-session-context-window-visualization-implementation-plan.md` 中若引用了 `ContextWindowStatusBar`，保留历史引用不修订（历史文档不回写）。
@@ -140,8 +142,8 @@ class ContextWindowUsageIndicator extends StatelessWidget {
 
 - **widget 测试** `context_window_usage_indicator_test.dart`：见 4.4；
 - **widget 测试** `chat_input_test.dart`（若不存在则新建精简版）：
-  - `snapshot == null` 时工具栏不含圆环；
-  - `snapshot != null` 时圆环可见，点击触发 `onContextWindowPressed` 回调一次；
+- `snapshot == null` 时工具栏不含 context 使用率信息；
+- `snapshot != null` 时百分比与圆环可见，点击触发 `onContextWindowPressed` 回调一次；
   - 发送按钮在 `idle` / `streamingResponse` / `preparing` 三态下图标与可点击性正确（至少覆盖 idle + streamingResponse）；
 - **回归**：`fvm flutter analyze` + `fvm flutter test` 全量通过；
 - **端到端**：按 `AGENTS.md` 推荐，在 Android 真机或 Droidrun driver smoke 上手动确认输入框视觉与发送路径。

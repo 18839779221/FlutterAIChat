@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 把 `ChatInput` 由单行 + 覆盖层 `ContextWindowStatusBar` 重构为 Column 两行布局（TextField 上，工具栏下），在右下角以仅圆环形式展示 context 使用率；旧 `ContextWindowStatusBar` 及其测试一并删除。
+**Goal:** 把 `ChatInput` 由单行 + 覆盖层 `ContextWindowStatusBar` 重构为 Column 两行布局（TextField 上，工具栏下），在右下角以轻量圆环 + 常驻百分比形式展示 context 使用率；旧 `ContextWindowStatusBar` 及其测试一并删除。
 
 **Architecture:** UI 侧局部重构。新增纯展示组件 `ContextWindowUsageIndicator` 与共享颜色函数 `resolveContextWindowUsageColor`；`ChatInput` 改为 `Column(TextField, Row(Spacer, Indicator, SendButton))`。不新增/改动 provider、controller、service；不触达 `ContextWindowSnapshot` 模型及上游服务。
 
@@ -134,9 +134,9 @@ git commit -m "feat: extract shared context window usage color helper"
 
 ---
 
-## Task 2：新增 `ContextWindowUsageIndicator` 组件（仅圆环，无百分比）
+## Task 2：新增 `ContextWindowUsageIndicator` 组件（轻量圆环 + 常驻百分比）
 
-**目标：** 新建一个 Stateless 组件，入参 `ContextWindowSnapshot` + `VoidCallback onTap`；视觉上只是一枚 16×16 圆环（`CircularProgressIndicator`），外层 `InkWell` 热区不小于 32×32，Semantics 里保留百分比（不在界面上显示）。
+**目标：** 新建一个 Stateless 组件，入参 `ContextWindowSnapshot` + `VoidCallback onTap`；视觉上是一枚 16×16 圆环（`CircularProgressIndicator`）配合常驻百分比文字，外层 `InkWell` 热区不小于 32×32，Semantics 里保留完整百分比标签。
 
 **Files:**
 - Create: `lib/widgets/context_window/context_window_usage_indicator.dart`
@@ -185,7 +185,7 @@ Widget _host(Widget child) {
 }
 
 void main() {
-  testWidgets('renders a 16px determinate ring without percentage text',
+  testWidgets('renders a 16px determinate ring with visible percentage text',
       (tester) async {
     await tester.pumpWidget(_host(
       ContextWindowUsageIndicator(
@@ -199,7 +199,7 @@ void main() {
     );
     expect(ring.value, closeTo(0.23, 1e-9));
     expect(ring.strokeWidth, 2.0);
-    expect(find.textContaining('%'), findsNothing);
+    expect(find.text('23%'), findsOneWidget);
 
     final ringSize = tester.getSize(find.byType(CircularProgressIndicator));
     expect(ringSize.width, 16);
@@ -281,7 +281,7 @@ import 'context_window_usage_color.dart';
 
 /// 底部工具栏右下角的 context 使用率指示器。
 ///
-/// 仅以圆环呈现（不显示百分比文字），点击打开详情 bottom sheet。
+/// 以轻量圆环和常驻百分比呈现，点击打开详情 bottom sheet。
 class ContextWindowUsageIndicator extends StatelessWidget {
   const ContextWindowUsageIndicator({
     super.key,

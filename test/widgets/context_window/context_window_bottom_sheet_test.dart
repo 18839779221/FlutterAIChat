@@ -3,8 +3,8 @@ import 'package:ai_chat/models/session/context_window_snapshot.dart';
 import 'package:ai_chat/theme/app_colors.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
-import 'package:ai_chat/widgets/context_window/context_window_status_bar.dart';
 import 'package:ai_chat/widgets/context_window/context_window_bottom_sheet.dart';
+import 'package:ai_chat/widgets/context_window/context_window_usage_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -36,7 +36,7 @@ void main() {
     expect(find.textContaining('可用输入预算'), findsOneWidget);
   });
 
-  testWidgets('tapping status bar opens context window bottom sheet',
+  testWidgets('tapping usage indicator opens context window bottom sheet',
       (tester) async {
     final snapshot = _snapshot();
 
@@ -51,7 +51,7 @@ void main() {
         ),
         home: Scaffold(
           body: Builder(
-            builder: (context) => ContextWindowStatusBar(
+            builder: (context) => ContextWindowUsageIndicator(
               snapshot: snapshot,
               onTap: () {
                 showModalBottomSheet<void>(
@@ -65,7 +65,9 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const ValueKey('context-window-status-bar')));
+    await tester.tap(
+      find.byKey(const ValueKey('context-window-usage-indicator')),
+    );
     await tester.pumpAndSettle();
 
     expect(
@@ -76,7 +78,7 @@ void main() {
 }
 
 ContextWindowSnapshot _snapshot() {
-  return ContextWindowSnapshot(
+  return const ContextWindowSnapshot(
     modelName: 'GPT-5.4',
     maxContextTokens: 128000,
     usableInputBudget: 104000,
@@ -87,7 +89,7 @@ ContextWindowSnapshot _snapshot() {
     didCompactHistory: true,
     snapshotCoveredUntilTurnId: 42,
     recentCompletedTurnCount: 3,
-    segments: const [
+    segments: [
       ContextWindowSegment(
         type: ContextWindowSegmentType.systemPrompt,
         label: 'system prompt',
