@@ -314,10 +314,6 @@ class _FakeBaseLlm implements BaseLLM {
   String getModelName(ChatConfig config) => 'gpt-5.4';
 
   @override
-  Stream<String> chatStream(List<ChatMessage> messages, ChatConfig config) =>
-      const Stream.empty();
-
-  @override
   Future<ModelTurnDecision?> planTurnDecision({
     required List<ChatMessage> messages,
     required ChatConfig config,
@@ -342,6 +338,4 @@ class _FakeBaseLlm implements BaseLLM {
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async => '';
 
-  @override
-  Future<bool> validateApiKey(ChatConfig config) async => true;
 }
