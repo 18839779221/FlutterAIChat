@@ -6,6 +6,7 @@ import 'package:ai_chat/services/model_budget_registry.dart';
 import 'package:ai_chat/repositories/session_runtime_marker_repository.dart';
 import 'package:ai_chat/services/prompt/runtime_user_context_service.dart';
 import 'package:ai_chat/services/session_context_projector.dart';
+import 'package:ai_chat/services/session_context_inspector_service.dart';
 import 'package:ai_chat/services/session_context_service.dart';
 import 'package:ai_chat/services/session_runtime_marker_service.dart';
 import 'package:ai_chat/services/session_summary_service.dart';
@@ -99,6 +100,16 @@ final sessionContextServiceProvider = Provider<SessionContextService>((ref) {
     tokenBudgetService: ref.watch(sessionTokenBudgetServiceProvider),
     summaryService: ref.watch(sessionSummaryServiceProvider),
     chatService: ref.watch(chatServiceProvider),
+  );
+});
+
+final sessionContextInspectorServiceProvider =
+    Provider<SessionContextInspectorService>((ref) {
+  return SessionContextInspectorService(
+    sessionContextService: ref.watch(sessionContextServiceProvider),
+    tokenBudgetService: ref.watch(sessionTokenBudgetServiceProvider),
+    chatTurnRepository: ref.watch(chatTurnRepositoryProvider),
+    chatEventRepository: ref.watch(chatEventRepositoryProvider),
   );
 });
 

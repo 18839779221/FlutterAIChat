@@ -1,6 +1,8 @@
 import '../models/chat_event.dart';
 import '../models/session/context_window_segment.dart';
 import '../models/session/context_window_snapshot.dart';
+import '../repositories/chat_event_repository.dart';
+import '../repositories/chat_turn_repository.dart';
 import 'chat_service.dart';
 import 'session_context_service.dart';
 import 'session_token_budget_service.dart';
@@ -9,11 +11,48 @@ class SessionContextInspectorService {
   SessionContextInspectorService({
     required SessionContextService sessionContextService,
     required SessionTokenBudgetService tokenBudgetService,
+    required ChatTurnRepository chatTurnRepository,
+    required ChatEventRepository chatEventRepository,
   })  : _sessionContextService = sessionContextService,
-        _tokenBudgetService = tokenBudgetService;
+        _tokenBudgetService = tokenBudgetService,
+        _chatTurnRepository = chatTurnRepository,
+        _chatEventRepository = chatEventRepository;
 
   final SessionContextService _sessionContextService;
   final SessionTokenBudgetService _tokenBudgetService;
+  final ChatTurnRepository _chatTurnRepository;
+  final ChatEventRepository _chatEventRepository;
+
+  Future<ContextWindowSnapshot?> buildLatestWindowSnapshotForGroup({
+    required int groupId,
+    required ChatConfig config,
+  }) async {
+    final turns = await _chatTurnRepository.getTurnsByGroup(groupId);
+    if (turns.isEmpty) {
+      return null;
+    }
+    final sortedTurns = [...turns]
+      ..sort((left, right) {
+        final leftId = left.id ?? 0;
+        final rightId = right.id ?? 0;
+        return leftId.compareTo(rightId);
+      });
+    final latestTurn = sortedTurns.lastWhere(
+      (turn) => turn.id != null,
+      orElse: () => sortedTurns.last,
+    );
+    final latestTurnId = latestTurn.id;
+    if (latestTurnId == null) {
+      return null;
+    }
+    final transcript = await _chatEventRepository.listEventsByTurn(latestTurnId);
+    return buildLatestWindowSnapshot(
+      groupId: groupId,
+      currentTurnId: latestTurnId,
+      currentTurnTranscript: transcript,
+      config: config,
+    );
+  }
 
   Future<ContextWindowSnapshot> buildLatestWindowSnapshot({
     required int groupId,

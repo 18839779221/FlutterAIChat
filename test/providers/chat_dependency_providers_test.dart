@@ -10,6 +10,7 @@ import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
 import 'package:ai_chat/models/session/session_runtime_marker.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
+import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -42,6 +43,27 @@ void main() {
     addTearDown(container.dispose);
 
     expect(container.read(sessionContextServiceProvider), isNotNull);
+  });
+
+  test('contextWindowSnapshotProvider resolves inspector-backed snapshot', () async {
+    final expected = ChatService(llm: _NoopBaseLLM());
+    final container = ProviderContainer(
+      overrides: [
+        chatServiceFactoryProvider.overrideWith((ref) => expected),
+        databaseProvider.overrideWithValue(_ContextSnapshotChatStorage()),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.read(currentGroupProvider.notifier).state = ChatGroup(
+      id: 1,
+      title: 'Context Group',
+    );
+    container.read(systemPromptProvider.notifier).state = '你是一个助手';
+
+    final snapshot = await container.read(contextWindowSnapshotProvider.future);
+    expect(snapshot, isNotNull);
+    expect(snapshot!.segments, isNotEmpty);
   });
 }
 
@@ -205,4 +227,41 @@ class _NoopChatStorage implements ChatStorage {
 
   @override
   Future<void> updateTurnStep(ChatTurnStep step) async {}
+}
+
+class _ContextSnapshotChatStorage extends _NoopChatStorage {
+  final ChatTurn _turn = ChatTurn(
+    id: 1,
+    groupId: 1,
+    status: ChatTurnStatus.running,
+    userInput: '继续',
+  );
+
+  @override
+  Future<ChatTurn?> getTurn(int id) async => id == 1 ? _turn : null;
+
+  @override
+  Future<List<ChatTurn>> getTurnsByGroup(int groupId) async {
+    if (groupId != 1) {
+      return const [];
+    }
+    return [_turn];
+  }
+
+  @override
+  Future<List<ChatEvent>> getEventsByTurn(int turnId) async {
+    if (turnId != 1) {
+      return const [];
+    }
+    return [
+      ChatEvent(
+        turnId: 1,
+        groupId: 1,
+        sequence: 1,
+        eventType: ChatEventType.userMessage,
+        role: MessageRole.user,
+        content: '继续',
+      ),
+    ];
+  }
 }
