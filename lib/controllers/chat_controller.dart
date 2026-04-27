@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:ai_chat/controllers/chat_preferences_controller.dart';
 import 'package:ai_chat/controllers/chat_send_coordinator.dart';
 import 'package:ai_chat/controllers/chat_session_coordinator.dart';
@@ -80,8 +82,13 @@ class ChatController {
   void cancelStreamSubscription() {
     final subscription = _ref.read(streamSubscriptionProvider);
     if (subscription != null) {
-      subscription.cancel();
+      unawaited(subscription.cancel());
       _ref.read(streamSubscriptionProvider.notifier).state = null;
+    }
+
+    final cancelActiveSend = _ref.read(activeSendCancellationProvider);
+    if (cancelActiveSend != null) {
+      unawaited(cancelActiveSend());
     }
 
     if (!_ref.read(isGeneratingProvider)) return;

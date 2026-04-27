@@ -25,19 +25,20 @@ class ChatInput extends ConsumerWidget {
     final isStreamingResponse = sendPhase == ChatSendPhase.streamingResponse;
     final isAwaitingConfirmation =
         sendPhase == ChatSendPhase.awaitingConfirmation;
-    final isBlockingPhase = sendPhase == ChatSendPhase.preparing ||
+    final isCancellablePhase = sendPhase == ChatSendPhase.preparing ||
         sendPhase == ChatSendPhase.executingTool ||
         sendPhase == ChatSendPhase.streamingResponse;
+    final isBlockingPhase = isCancellablePhase;
     final isComposerLocked = sendPhase != ChatSendPhase.idle;
     final composerValue =
         textController.text.trim().isEmpty ? '空白' : textController.text;
-    final sendButtonLabel = isStreamingResponse
+    final sendButtonLabel = isCancellablePhase
         ? '停止生成'
         : isAwaitingConfirmation
             ? '等待工具确认'
             : '发送消息';
     final isSendButtonEnabled =
-        isStreamingResponse || (!isBlockingPhase && !isAwaitingConfirmation);
+        isCancellablePhase || (!isBlockingPhase && !isAwaitingConfirmation);
     void submitCurrentInput() {
       if (isComposerLocked) {
         return;
@@ -173,7 +174,7 @@ class ChatInput extends ConsumerWidget {
                               shadowColor: Colors.transparent,
                             ),
                             onPressed: () {
-                              if (isStreamingResponse) {
+                              if (isCancellablePhase) {
                                 chatController.cancelStreamSubscription();
                                 return;
                               }
@@ -186,7 +187,7 @@ class ChatInput extends ConsumerWidget {
                             },
                             child: AnimatedSwitcher(
                               duration: const Duration(milliseconds: 200),
-                              child: isStreamingResponse
+                              child: isCancellablePhase
                                   ? const Icon(
                                       Icons.stop_rounded,
                                       key: ValueKey('chat-input-stop-icon'),

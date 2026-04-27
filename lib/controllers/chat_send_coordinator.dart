@@ -62,6 +62,11 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
 
     final currentGroup = _ref.read(currentGroupProvider);
     if (currentGroup == null) return;
+    var cancellationRequested = false;
+
+    Future<void> requestPreparingCancellation() async {
+      cancellationRequested = true;
+    }
 
     _ref.read(focusNodeProvider).unfocus();
     Logger.d(
@@ -70,6 +75,8 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     );
 
     cancelActiveStream();
+    _ref.read(activeSendCancellationProvider.notifier).state =
+        requestPreparingCancellation;
     _ref.read(chatSendStateProvider.notifier).setPhase(ChatSendPhase.preparing);
     final traceRecorder = _ref.read(traceRecorderProvider);
     final turnId = traceRecorder.newTurnId();
@@ -119,7 +126,8 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     try {
       final dbHelper = _ref.read(databaseProvider);
       final currentGroupId = _ref.read(currentGroupProvider)!.id!;
-      final runtimeMarkerService = _ref.read(sessionRuntimeMarkerServiceProvider);
+      final runtimeMarkerService =
+          _ref.read(sessionRuntimeMarkerServiceProvider);
       final runtimeMarkerPreparation =
           await runtimeMarkerService.prepareForUserMessage(
         groupId: currentGroupId,
@@ -129,6 +137,18 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       final userMessageId =
           await dbHelper.insertMessage(userMessage, currentGroupId);
       userMessage.id = userMessageId;
+
+      if (cancellationRequested) {
+        await _projectCancelledTurnOutcome(
+          groupId: currentGroupId,
+          assistantMessageId: null,
+        );
+        _ref.read(chatSendStateProvider.notifier).update(
+              isGenerating: false,
+              phase: ChatSendPhase.idle,
+            );
+        return;
+      }
 
       final turnHarness = _ref.read(turnHarnessProvider);
       if (turnHarness == null) {
@@ -168,6 +188,13 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
             isGenerating: false,
             phase: ChatSendPhase.idle,
           );
+    } finally {
+      if (identical(
+        _ref.read(activeSendCancellationProvider),
+        requestPreparingCancellation,
+      )) {
+        _ref.read(activeSendCancellationProvider.notifier).state = null;
+      }
     }
   }
 
@@ -279,6 +306,21 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     );
 
     _ref.read(streamSubscriptionProvider.notifier).state = subscription;
+    Future<void> cancelActiveSend() async {
+      if (!completion.isCompleted) {
+        await turnRepository.markCancelled(
+          turnRecordId,
+          stopReason: 'cancelled_by_user',
+        );
+        await _projectCancelledTurnOutcome(
+          groupId: currentGroupId,
+          assistantMessageId: processor.assistantMessageId,
+        );
+        completion.complete();
+      }
+    }
+
+    _ref.read(activeSendCancellationProvider.notifier).state = cancelActiveSend;
     try {
       await completion.future;
       await _finalizeTurnOutcome(
@@ -288,6 +330,15 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       );
     } finally {
       await processor.dispose();
+      if (identical(_ref.read(streamSubscriptionProvider), subscription)) {
+        _ref.read(streamSubscriptionProvider.notifier).state = null;
+      }
+      if (identical(
+        _ref.read(activeSendCancellationProvider),
+        cancelActiveSend,
+      )) {
+        _ref.read(activeSendCancellationProvider.notifier).state = null;
+      }
     }
   }
 
@@ -333,7 +384,8 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       return;
     }
 
-    if (turn.status == ChatTurnStatus.failed && !processor.receivedFinalAnswer) {
+    if (turn.status == ChatTurnStatus.failed &&
+        !processor.receivedFinalAnswer) {
       await _upsertAssistantFailureMessage(
         groupId: groupId,
         assistantMessageId: processor.assistantMessageId,
@@ -345,6 +397,27 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
           isGenerating: false,
           phase: ChatSendPhase.idle,
         );
+  }
+
+  Future<void> _projectCancelledTurnOutcome({
+    required int groupId,
+    required int? assistantMessageId,
+  }) async {
+    final activeToolMessage = _resolveLatestActiveToolMessageInCurrentTurn();
+    if (activeToolMessage != null) {
+      await _markToolMessageCancelled(activeToolMessage);
+    }
+
+    if (_hasVisibleInterruptedAssistantText(assistantMessageId) ||
+        activeToolMessage != null) {
+      return;
+    }
+
+    await _upsertAssistantCancelledMessage(
+      groupId: groupId,
+      assistantMessageId: assistantMessageId,
+      text: _cancelledTurnSummaryText(),
+    );
   }
 
   Future<void> _upsertAssistantFailureMessage({
@@ -365,6 +438,10 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       return;
     }
 
+    if (!_shouldProjectAssistantFailure(assistantMessageId)) {
+      return;
+    }
+
     _ref.read(messagesProvider.notifier).updateMessage(
           assistantMessageId,
           text,
@@ -374,7 +451,50 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
           MessageStatus.failed,
         );
     await dbHelper.updateMessage(assistantMessageId, text);
-    await dbHelper.updateMessageStatus(assistantMessageId, MessageStatus.failed);
+    await dbHelper.updateMessageStatus(
+        assistantMessageId, MessageStatus.failed);
+  }
+
+  Future<void> _upsertAssistantCancelledMessage({
+    required int groupId,
+    required int? assistantMessageId,
+    required String text,
+  }) async {
+    final dbHelper = _ref.read(databaseProvider);
+    final currentMessage = assistantMessageId == null
+        ? null
+        : _ref
+            .read(messagesProvider)
+            .where((candidate) => candidate.id == assistantMessageId)
+            .firstOrNull;
+    if (currentMessage != null &&
+        currentMessage.contentType == MessageContentType.plainText &&
+        currentMessage.text.trim().isEmpty) {
+      final resolvedAssistantMessageId = assistantMessageId!;
+      _ref.read(messagesProvider.notifier).updateMessage(
+            resolvedAssistantMessageId,
+            text,
+          );
+      _ref.read(messagesProvider.notifier).updateMessageStatus(
+            resolvedAssistantMessageId,
+            MessageStatus.interrupted,
+          );
+      await dbHelper.updateMessage(resolvedAssistantMessageId, text);
+      await dbHelper.updateMessageStatus(
+        resolvedAssistantMessageId,
+        MessageStatus.interrupted,
+      );
+      return;
+    }
+
+    final cancelledMessage = ChatMessage(
+      text: text,
+      role: MessageRole.assistant,
+      status: MessageStatus.interrupted,
+    );
+    final messageId = await dbHelper.insertMessage(cancelledMessage, groupId);
+    cancelledMessage.id = messageId;
+    _ref.read(messagesProvider.notifier).addMessage(cancelledMessage);
   }
 
   void _syncAssistantFailureState({
@@ -398,6 +518,10 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       return;
     }
 
+    if (!_shouldProjectAssistantFailure(assistantMessageId)) {
+      return;
+    }
+
     _ref.read(messagesProvider.notifier).updateMessage(
           assistantMessageId,
           failureText,
@@ -408,6 +532,100 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         );
     dbHelper.updateMessage(assistantMessageId, failureText);
     dbHelper.updateMessageStatus(assistantMessageId, MessageStatus.failed);
+  }
+
+  bool _shouldProjectAssistantFailure(int assistantMessageId) {
+    final message = _ref
+        .read(messagesProvider)
+        .where((candidate) => candidate.id == assistantMessageId)
+        .firstOrNull;
+    if (message == null) {
+      return true;
+    }
+
+    return switch (message.status) {
+      MessageStatus.initial || MessageStatus.generating => true,
+      MessageStatus.completed ||
+      MessageStatus.interrupted ||
+      MessageStatus.failed =>
+        false,
+    };
+  }
+
+  bool _hasVisibleInterruptedAssistantText(int? assistantMessageId) {
+    if (assistantMessageId == null) {
+      return false;
+    }
+
+    final message = _ref
+        .read(messagesProvider)
+        .where((candidate) => candidate.id == assistantMessageId)
+        .firstOrNull;
+    return message != null &&
+        message.status == MessageStatus.interrupted &&
+        message.text.trim().isNotEmpty;
+  }
+
+  ChatMessage? _resolveLatestActiveToolMessageInCurrentTurn() {
+    final messages = _ref.read(messagesProvider);
+    final lastUserIndex = messages.lastIndexWhere((message) => message.isUser);
+    final currentTurnMessages =
+        lastUserIndex == -1 ? messages : messages.sublist(lastUserIndex + 1);
+
+    for (final message in currentTurnMessages.reversed) {
+      if (!message.isAssistant) {
+        continue;
+      }
+      if (message.contentType != MessageContentType.toolInvocation &&
+          message.contentType != MessageContentType.actionConfirmation) {
+        continue;
+      }
+      final payload = message.payloadJson;
+      if (payload == null) {
+        continue;
+      }
+      ToolInvocation invocation;
+      try {
+        invocation = ToolInvocation.fromJson(payload);
+      } catch (_) {
+        continue;
+      }
+      if (invocation.status == ToolInvocationStatus.awaitingConfirmation ||
+          invocation.status == ToolInvocationStatus.running) {
+        return message;
+      }
+    }
+
+    return null;
+  }
+
+  Future<void> _markToolMessageCancelled(ChatMessage message) async {
+    final messageId = message.id;
+    final payload = message.payloadJson;
+    if (messageId == null || payload == null) {
+      return;
+    }
+
+    final cancelledPayload = {
+      ...payload,
+      'status': ToolInvocationStatus.cancelled.name,
+    };
+    final cancelledMessage = message.copyWith(
+      text: '已取消工具执行',
+      payloadJson: cancelledPayload,
+    );
+    _ref.read(messagesProvider.notifier).replaceMessage(cancelledMessage);
+    await _ref.read(databaseProvider).updateStructuredMessage(
+          messageId,
+          text: cancelledMessage.text,
+          status: cancelledMessage.status,
+          contentType: cancelledMessage.contentType,
+          payloadJson: jsonEncode(cancelledPayload),
+        );
+  }
+
+  String _cancelledTurnSummaryText() {
+    return '已停止本轮回答。你可以继续提问，或让我基于当前结果继续整理。';
   }
 
   String _formatSendFailureText(Object error) {
@@ -516,7 +734,9 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       return;
     }
 
-    _ref.read(chatSendStateProvider.notifier).setPhase(ChatSendPhase.executingTool);
+    _ref
+        .read(chatSendStateProvider.notifier)
+        .setPhase(ChatSendPhase.executingTool);
     final traceRecorder = _ref.read(traceRecorderProvider);
     final traceTurnId = _resolveTraceTurnId(payload, traceRecorder);
     final agentTurnId = payload['agentTurnId'] as int?;
@@ -605,14 +825,14 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     final completion = Completer<void>();
     final subscription = harness
         .resumeAfterQuestionAnswered(
-          turnId: turnId,
-          request: request,
-          response: response,
-          config: ChatConfig(
-            systemPrompt: _ref.read(systemPromptProvider) ?? '',
-            userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
-          ),
-        )
+      turnId: turnId,
+      request: request,
+      response: response,
+      config: ChatConfig(
+        systemPrompt: _ref.read(systemPromptProvider) ?? '',
+        userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
+      ),
+    )
         .asyncMap((event) async {
       await processor.handle(event);
     }).listen(
@@ -711,14 +931,14 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     final completion = Completer<void>();
     final subscription = harness
         .resumeAfterConfirmation(
-          turnId: turnId,
-          invocation: invocation,
-          config: ChatConfig(
-            systemPrompt: _ref.read(systemPromptProvider) ?? '',
-            userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
-          ),
-          trustTool: trustTool,
-        )
+      turnId: turnId,
+      invocation: invocation,
+      config: ChatConfig(
+        systemPrompt: _ref.read(systemPromptProvider) ?? '',
+        userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
+      ),
+      trustTool: trustTool,
+    )
         .asyncMap((event) async {
       await processor.handle(event);
     }).listen(
