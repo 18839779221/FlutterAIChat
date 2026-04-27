@@ -64,6 +64,21 @@ flutter test
 fvm flutter test
 ```
 
+- For `ConfigurableHttpLLM`, provider-adapter, request-payload, or API-style compatibility changes, do not stop at mocked unit tests
+- First run the fast local contract suite:
+  - `fvm flutter test test/models/llm/configurable_http_llm_test.dart`
+- Then run opt-in live provider contract tests against real upstream APIs:
+  - `LIVE_LLM_PROVIDER_IDS=minimax-openai-chat-completions fvm flutter test --tags live-llm test/models/llm/configurable_http_llm_live_test.dart`
+  - `LIVE_LLM_PROVIDER_IDS=minimax-anthropic fvm flutter test --tags live-llm test/models/llm/configurable_http_llm_live_test.dart`
+- Prefer validating at least one real provider for each still-supported API style you touched
+  - current examples in local defaults include `responses`, `chat completions`, and `anthropic messages`
+- Keep live tests opt-in
+  - do not make default `flutter test` depend on external network access or provider credentials
+  - use `LIVE_LLM_PROVIDER_IDS` to explicitly select which providers to hit from `config/local_defaults.json`
+- Treat live-test failures as first-class signal
+  - mocked tests passing does not prove real provider compatibility
+  - handshake, timeout, undocumented validation, and real response-shape issues must be investigated rather than waived away
+
 ### Web Automation
 - For Flutter Web automation, prefer `fvm flutter run -d web-server` over ad-hoc local servers
 - Keep the host and port stable so browser storage stays reusable:
@@ -334,6 +349,7 @@ Database version: 10
   - When adding or changing debug cases, consider whether empty-state featured entries, Debug `Cases` grouping, and related tests also need updates
 - `config/local_defaults.json` is a runtime-facing local defaults file
   - Changes to its schema or semantics must consider app boot-time config loading, settings fallback behavior, and Android/Web automation scripts that read it directly
+  - When adding or changing LLM providers, consider whether `test/models/llm/configurable_http_llm_live_test.dart` should also be exercised against the new provider
 - When generating or modifying code, add necessary comments for public interfaces, payload models, and important fields
   - This is especially required for interface fields, schema fields, DTO/model fields, and tool/message payload fields
   - Comments should explain the meaning and usage of the field, not restate the field name mechanically
@@ -349,6 +365,9 @@ Database version: 10
   - README capability/architecture docs
   - AGENTS implementation constraints
   - backlog/todo docs if the feature changes future priorities
+- For LLM integration, adapter, or provider-compatibility work:
+  - update mocked contract tests first
+  - then run real-provider contract tests for the touched API styles before considering the work complete
 - For any trace/log changes, keep detailed rules only in `docs/architecture/logging.md` and let other docs reference it instead of duplicating fields, categories, or cleanup policy
 - For new interaction checkpoints in the agent loop:
   - prefer message-card interactions over modal-only state
