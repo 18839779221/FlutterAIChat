@@ -30,6 +30,84 @@ void main() {
   });
 
   group('SessionContextService', () {
+    test('builds planner context state with planner messages and budget info',
+        () async {
+      final storage = DatabaseHelper(
+        databaseName: 'session_context_service_state_builder_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(title: 'Session Context State'),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final eventRepository = ChatEventRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+
+      final previousTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.completed,
+          userInput: '上一轮',
+        ),
+      );
+      await eventRepository.appendAssistantPlannerMessage(
+        turnId: previousTurnId,
+        groupId: groupId,
+        content: '最近工作集：共享 build result 不能改变 planner 行为',
+      );
+
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '继续',
+        ),
+      );
+
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetResolver: (_) => const SessionModelBudget(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw UnimplementedError(),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      );
+
+      final state = await service.buildPlannerContextState(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: [
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '继续',
+          ),
+        ],
+        config: ChatConfig(systemPrompt: '你是一个助手'),
+      );
+
+      expect(state.plannerMessages.first.text, contains('# currentDate'));
+      expect(
+        state.plannerMessages.map((message) => message.text).join('\n'),
+        contains('最近工作集：共享 build result 不能改变 planner 行为'),
+      );
+      expect(state.budgetEvaluation.totalInputTokens, greaterThan(0));
+      expect(state.modelName, 'gpt-5.4');
+
+      await storage.deleteGroup(groupId);
+    });
+
     test(
         'builds planner messages from snapshot, recent working set, and current turn transcript',
         () async {
