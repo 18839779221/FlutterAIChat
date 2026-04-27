@@ -3,6 +3,7 @@ import 'package:ai_chat/models/session/context_window_snapshot.dart';
 import 'package:ai_chat/theme/app_colors.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
+import 'package:ai_chat/widgets/context_window/context_window_status_bar.dart';
 import 'package:ai_chat/widgets/context_window/context_window_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -33,6 +34,44 @@ void main() {
     expect(find.text('GPT-5.4'), findsOneWidget);
     expect(find.textContaining('总窗口'), findsOneWidget);
     expect(find.textContaining('可用输入预算'), findsOneWidget);
+  });
+
+  testWidgets('tapping status bar opens context window bottom sheet',
+      (tester) async {
+    final snapshot = _snapshot();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          extensions: [
+            AppColors.light(),
+            AppSpacing.base(),
+            AppRadius.base(),
+          ],
+        ),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => ContextWindowStatusBar(
+              snapshot: snapshot,
+              onTap: () {
+                showModalBottomSheet<void>(
+                  context: context,
+                  builder: (_) => ContextWindowBottomSheet(snapshot: snapshot),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('context-window-status-bar')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('context-window-bottom-sheet')),
+      findsOneWidget,
+    );
   });
 }
 

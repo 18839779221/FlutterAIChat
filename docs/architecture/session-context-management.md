@@ -26,6 +26,11 @@ Session 代表“同一个会话容器下的完整连续上下文对话”。
    - 载体：`SessionContextService`、`session_context_snapshots`
    - 作用：构建真正发给模型的 Session 上下文
 
+基于这一层，项目还提供一个只读观察能力：
+
+- `SessionContextInspectorService`
+  - 作用：把当前真实 planner 上下文和预算保留区整理为 `ContextWindowSnapshot`，供主界面状态条和详情面板展示
+
 任何新逻辑都不应再把 UI `messages` 直接当成模型输入，也不应把压缩摘要伪装成 UI 消息。
 
 ## 组件
@@ -47,16 +52,21 @@ Session 代表“同一个会话容器下的完整连续上下文对话”。
 保留：
 
 - 用户消息
+- assistant tool use
 - 最终 assistant 消息
 - tool result / tool error 的紧凑文本
 - ask-user-question 的提问与用户回答
 
 过滤：
 
-- `assistantToolCall`
 - `toolExecutionStarted`
 - `turnStatus`
 - 其他纯内部过程噪音
+
+说明：
+
+- 当前代码实现已经保留 `assistantToolCall` 对应的 tool use 结构语义
+- 文档中若出现“tool call 一律过滤”的旧描述，以当前实现为准，不再适用
 
 ### ToolResult 文本约定
 
@@ -121,6 +131,18 @@ inputBudget = maxContextTokens - reservedOutputTokens - safetyMarginTokens
 负责读取与写入 `session_context_snapshots`。
 
 第一版只关心每个 `group` 的最近有效 snapshot。
+
+### SessionContextInspectorService
+
+负责把当前会话的真实上下文窗口整理为 UI 可见快照。
+
+输出重点包括：
+
+- 占总上下文窗口的比例
+- 占可用输入预算的比例
+- planner 可见 segment 拆解
+- `reserved output`、`reasoning reserve`、`safety margin`、`free headroom`
+- 当前是否已经触发历史压缩
 
 ## 存储模型
 

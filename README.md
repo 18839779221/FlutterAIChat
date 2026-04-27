@@ -11,6 +11,7 @@
 - 消息本地持久化，支持分页加载历史消息
 - 同一会话内支持 Session 级多轮上下文继承，planner 不再只看当前 turn transcript
 - 长对话会按 token budget 压力自动压缩为 session snapshot；最终进入模型的会话上下文固定为 `history summary + recent completed turns + current turn transcript`
+- 聊天输入区上方提供一个极轻量、无文案的上下文占用状态条；点击后可在 Bottom Sheet 查看上下文分段、预算占比与压缩状态
 - 进入会话默认定位到最新消息，向上滑动查看更早历史
 - 流式回复、手动中断、生成中自动跟随；手动上滑后可自由查看，点击回到底部后再恢复跟随
 - provider 返回的 think/reasoning 展示、自定义系统提示词
@@ -108,15 +109,19 @@ Service 层负责 LLM 通信、Session 上下文编排、工具编排与 trace �
 - `lib/services/model_budget_registry.dart`
 - `lib/services/session_token_budget_service.dart`
 - `lib/services/session_summary_service.dart`
+- `lib/services/session_context_inspector_service.dart`
 - `lib/repositories/session_context_snapshot_repository.dart`
 - `lib/models/session/session_context_snapshot.dart`
 - `lib/models/session/model_budget_profile.dart`
 - `lib/models/session/context_compaction_config.dart`
+- `lib/models/session/context_window_snapshot.dart`
+- `lib/models/session/context_window_segment.dart`
 
 职责分工：
 - `SessionContextService`：为 planner 构建 `history summary + recent completed turns + current turn transcript`，并保证三层边界互斥
 - `SessionRuntimeMarkerService`：按 session 级持久化日期基线判断是否需要在当前 turn 前注入跨天 reminder
 - `SessionContextProjector`：把消息、tool result、interaction result 投影成模型可见上下文
+- `SessionContextInspectorService`：把当前真实 planner 上下文与预算保留区整理为 UI 可读的 `ContextWindowSnapshot`
 - `ModelBudgetRegistry`：统一解析模型预算配置，优先使用运行时 provider/model 覆盖，再回落到内置默认表与 fallback
 - `SessionTokenBudgetService`：统一按模型上下文预算做分项估算，并判断是否需要压缩
 - `SessionSummaryService`：把退出 recent working set 的较早历史滚动整理为固定栏目摘要
@@ -131,6 +136,7 @@ Service 层负责 LLM 通信、Session 上下文编排、工具编排与 trace �
 - 当同一 session 再次发送时若日期与最近一次注入基线不同，会在当前 user message 前追加 `<system-reminder>` 形式的日期变化提醒
 - 这些运行时 reminder 不会进入 UI timeline，也不会写入 session summary
 - tool transcript 进入 planner / final answer 上下文时会尽量保留“tool use 发起 + tool result 返回”的结构语义，而不是统一改写成摘要式 assistant 历史文本
+- 上下文窗口可视化复用同一套 SessionContext 构建结果与 token 估算逻辑，不在 UI 侧单独复算第二套上下文
 - 对超长 `tool_result`，架构上允许未来增加工具级 context transform；默认仍保持原样透传
 
 ### 时间感知与 WebSearch
