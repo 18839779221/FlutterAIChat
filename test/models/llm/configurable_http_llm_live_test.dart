@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:ai_chat/models/agent/model_turn_decision.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
 import 'package:ai_chat/models/llm/configurable_http_llm.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
@@ -76,6 +78,79 @@ void main() {
               decision!.toolCalls.isNotEmpty ||
                   (decision.assistantMessage ?? '').trim().isNotEmpty,
               isTrue,
+            );
+          },
+          skip: missingProviderReason,
+          tags: const ['live-llm'],
+        );
+
+        test(
+          'planTurnDecision supports live tool continuation round-trip',
+          () async {
+            final llm = await _buildLiveLlm(provider!);
+            final initialDecision = await llm.planTurnDecision(
+              messages: [
+                ChatMessage(
+                  text:
+                      'You must call the only available tool exactly once. '
+                      'Do not answer directly. Query for "database schema drift".',
+                  role: MessageRole.user,
+                ),
+              ],
+              config: ChatConfig(
+                systemPrompt:
+                    'Use the available tool when the user explicitly requires it. '
+                    'If a tool is available and the user says you must call it, '
+                    'call that tool instead of answering directly.',
+              ),
+              availableTools: const [
+                PlannerToolOption(
+                  name: 'search_chat_history',
+                  description:
+                      'Searches prior chat history by query text and returns matches.',
+                  inputSchema: {
+                    'type': 'object',
+                    'properties': {
+                      'query': {'type': 'string'},
+                    },
+                    'required': ['query'],
+                  },
+                ),
+              ],
+            );
+
+            expect(initialDecision, isNotNull);
+            expect(initialDecision!.toolCalls, isNotEmpty);
+            final firstToolCall = initialDecision.toolCalls.single;
+            expect(firstToolCall.toolName, 'search_chat_history');
+            expect(firstToolCall.providerCallId?.trim(), isNotEmpty);
+            expect(initialDecision.providerStyle, isNotNull);
+
+            final continuationDecision = await llm.planTurnDecision(
+              messages: [
+                ChatMessage(
+                  text:
+                      'Continue from the tool result. '
+                      'If the tool result contains a schema version, '
+                      'reply with exactly "schema_version=10" and nothing else.',
+                  role: MessageRole.user,
+                ),
+              ],
+              config: ChatConfig(systemPrompt: ''),
+              availableTools: const [],
+              providerStyle: initialDecision.providerStyle,
+              providerState: initialDecision.providerState,
+              providerContinuationItems: _buildToolContinuationItems(
+                decision: initialDecision,
+                toolResultOutput: 'schema_version=10',
+              ),
+            );
+
+            expect(continuationDecision, isNotNull);
+            expect(continuationDecision!.toolCalls, isEmpty);
+            expect(
+              (continuationDecision.assistantMessage ?? '').trim(),
+              contains('schema_version=10'),
             );
           },
           skip: missingProviderReason,
@@ -184,4 +259,62 @@ Future<ConfigurableHttpLLM> _buildLiveLlm(LlmProviderConfig provider) async {
     plannerRequestTimeout: const Duration(seconds: 12),
     mainFlowNetworkRetryAttempts: 1,
   );
+}
+
+List<Map<String, dynamic>> _buildToolContinuationItems({
+  required ModelTurnDecision decision,
+  required String toolResultOutput,
+}) {
+  final providerStyle = decision.providerStyle;
+  final toolCall = decision.toolCalls.single;
+  final providerCallId = toolCall.providerCallId;
+  if (providerStyle == null || providerCallId == null || providerCallId.isEmpty) {
+    throw StateError('Live continuation test requires providerStyle and providerCallId.');
+  }
+
+  switch (providerStyle) {
+    case ChatTurnProviderStyle.openaiResponses:
+      return [
+        {
+          'type': 'assistant_tool_call',
+          'toolCallId': providerCallId,
+          'toolName': toolCall.toolName,
+          'arguments': toolCall.arguments,
+        },
+        {
+          'type': 'tool_result',
+          'toolCallId': providerCallId,
+          'toolName': toolCall.toolName,
+          'output': toolResultOutput,
+        },
+      ];
+    case ChatTurnProviderStyle.openaiChatCompletions:
+      return [
+        {
+          'type': 'assistant_tool_call',
+          'toolCallId': providerCallId,
+          'toolName': toolCall.toolName,
+          'arguments': toolCall.arguments,
+        },
+        {
+          'type': 'tool_result',
+          'toolCallId': providerCallId,
+          'toolName': toolCall.toolName,
+          'output': toolResultOutput,
+        },
+      ];
+    case ChatTurnProviderStyle.anthropicMessages:
+      return [
+        {
+          'role': 'user',
+          'content': [
+            {
+              'type': 'tool_result',
+              'tool_use_id': providerCallId,
+              'content': toolResultOutput,
+            },
+          ],
+        },
+      ];
+  }
 }

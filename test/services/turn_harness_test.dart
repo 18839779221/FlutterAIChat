@@ -3453,11 +3453,13 @@ class _AssertingLoopPlannerLLM implements BaseLLM {
     if (planCalls == 2) {
       expect(providerStyle, ChatTurnProviderStyle.openaiResponses);
       expect(providerState, equals(const {'response_id': 'resp_1'}));
-      expect(providerContinuationItems, hasLength(1));
-      expect(providerContinuationItems.single['type'], 'function_call_output');
-      expect(providerContinuationItems.single['call_id'], 'call_1');
+      expect(providerContinuationItems, hasLength(2));
+      expect(providerContinuationItems.first['type'], 'assistant_tool_call');
+      expect(providerContinuationItems.first['toolCallId'], 'call_1');
+      expect(providerContinuationItems.last['type'], 'tool_result');
+      expect(providerContinuationItems.last['toolCallId'], 'call_1');
       expect(
-        providerContinuationItems.single['output'].toString(),
+        providerContinuationItems.last['output'].toString(),
         contains('已执行：搜索历史记录'),
       );
       expect(joinedText, contains('我先检索历史记录。'));
@@ -3486,11 +3488,13 @@ class _AssertingLoopPlannerLLM implements BaseLLM {
     expect(planCalls, 3);
     expect(providerStyle, ChatTurnProviderStyle.openaiResponses);
     expect(providerState, equals(const {'response_id': 'resp_2'}));
-    expect(providerContinuationItems, hasLength(1));
-    expect(providerContinuationItems.single['type'], 'function_call_output');
-    expect(providerContinuationItems.single['call_id'], 'call_2');
+    expect(providerContinuationItems, hasLength(2));
+    expect(providerContinuationItems.first['type'], 'assistant_tool_call');
+    expect(providerContinuationItems.first['toolCallId'], 'call_2');
+    expect(providerContinuationItems.last['type'], 'tool_result');
+    expect(providerContinuationItems.last['toolCallId'], 'call_2');
     expect(
-      providerContinuationItems.single['output'].toString(),
+      providerContinuationItems.last['output'].toString(),
       contains('已写入文件：notes/version.md'),
     );
     expect(joinedText, contains('我把确认结果写入文件。'));

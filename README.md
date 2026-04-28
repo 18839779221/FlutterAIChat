@@ -173,6 +173,14 @@ Service 层负责 LLM 通信、Session 上下文编排、工具编排与 trace �
 
 这层测试主要用于覆盖多轮 loop、等待态、resume、tool result 到 UI projection 的关键链路；真实环境测试则继续聚焦 provider 协议兼容、平台时序与真机问题。
 
+LLM provider 真实环境验证建议走统一闭环，而不是只跑零散命令：
+
+- 先跑本地 contract：`fvm flutter test test/models/llm/configurable_http_llm_test.dart`
+- 再跑 opt-in live contract：`bash scripts/run_live_llm_contract_tests.sh beehears-responses`
+- 如果改动涉及多种 API 风格，至少补跑一组 `responses`、一组 `chat completions`、一组 `anthropic messages`
+
+当前 live suite 不只验证基础文本通路，也会验证一次真实的 `tool call -> continuation/tool result -> final answer` round-trip，以便更早暴露 provider wire compatibility 问题。
+
 ### 主流程
 
 ```mermaid
