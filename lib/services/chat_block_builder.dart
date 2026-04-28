@@ -1,6 +1,8 @@
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
+import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
@@ -68,6 +70,7 @@ class ChatBlockBuilder {
   }) {
     switch (message.contentType) {
       case MessageContentType.askUserQuestionPrompt:
+        final request = _readAskUserQuestionRequest(message.payloadJson);
         return AssistantTurnBlock(
           id: '$turnId-question-prompt-$sequence',
           turnId: turnId,
@@ -79,8 +82,10 @@ class ChatBlockBuilder {
           text: message.text,
           reasoningText: message.reasoningContent,
           payload: message.payloadJson,
+          askUserQuestionRequest: request,
         );
       case MessageContentType.askUserQuestionResult:
+        final response = _readAskUserQuestionResponse(message.payloadJson);
         return AssistantTurnBlock(
           id: '$turnId-question-result-$sequence',
           turnId: turnId,
@@ -92,6 +97,7 @@ class ChatBlockBuilder {
           text: message.text,
           reasoningText: message.reasoningContent,
           payload: message.payloadJson,
+          askUserQuestionResponse: response,
         );
       case MessageContentType.toolInvocation:
       case MessageContentType.actionConfirmation:
@@ -151,6 +157,7 @@ class ChatBlockBuilder {
               },
             ],
           },
+          workflowSteps: [step],
         );
       case MessageContentType.toolResult:
         final result = _readToolResult(message);
@@ -182,6 +189,7 @@ class ChatBlockBuilder {
             'sourceMessageId': message.id,
             ...result.toJson(),
           },
+          toolResult: result,
         );
       case MessageContentType.plainText:
         return AssistantTurnBlock(
@@ -255,6 +263,41 @@ class ChatBlockBuilder {
       status: ToolExecutionStatus.success,
       summary: message.text,
     );
+  }
+
+  AskUserQuestionRequest? _readAskUserQuestionRequest(
+    Map<String, dynamic>? payload,
+  ) {
+    if (payload == null) {
+      return null;
+    }
+    try {
+      return AskUserQuestionRequest.fromJson(payload);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  AskUserQuestionResponse? _readAskUserQuestionResponse(
+    Map<String, dynamic>? payload,
+  ) {
+    if (payload == null) {
+      return null;
+    }
+    final submittedAnswers = payload['submittedAnswers'];
+    if (submittedAnswers is Map<String, dynamic>) {
+      return AskUserQuestionResponse.fromJson(submittedAnswers);
+    }
+    if (submittedAnswers is Map) {
+      return AskUserQuestionResponse.fromJson(
+        Map<String, dynamic>.from(submittedAnswers),
+      );
+    }
+    try {
+      return AskUserQuestionResponse.fromJson(payload);
+    } catch (_) {
+      return null;
+    }
   }
 
   ToolWorkflowStepStatus _mapInvocationStatus(ToolInvocationStatus status) {
@@ -387,37 +430,36 @@ class ChatBlockBuilder {
     final nextProviderCallId =
         (nextStep['providerCallId'] ?? '').toString().trim();
 
-    final alreadyTracked =
-        previousSteps.any((step) {
-          if (step['stepId'] != nextStepId) {
-            return false;
-          }
-          final previousProviderCallId =
-              (step['providerCallId'] ?? '').toString().trim();
-          if (previousProviderCallId.isEmpty || nextProviderCallId.isEmpty) {
-            return previousProviderCallId == nextProviderCallId;
-          }
-          return previousProviderCallId == nextProviderCallId;
-        });
+    final alreadyTracked = previousSteps.any((step) {
+      if (step['stepId'] != nextStepId) {
+        return false;
+      }
+      final previousProviderCallId =
+          (step['providerCallId'] ?? '').toString().trim();
+      if (previousProviderCallId.isEmpty || nextProviderCallId.isEmpty) {
+        return previousProviderCallId == nextProviderCallId;
+      }
+      return previousProviderCallId == nextProviderCallId;
+    });
     if (!alreadyTracked) {
       blocks.add(block);
       return;
     }
 
-    final mergedSteps = previousSteps
-        .map((step) {
-          if (step['stepId'] != nextStepId) {
-            return step;
-          }
-          final previousProviderCallId =
-              (step['providerCallId'] ?? '').toString().trim();
-          if (previousProviderCallId != nextProviderCallId) {
-            return step;
-          }
-          return nextStep;
-        })
-        .toList();
+    final mergedSteps = previousSteps.map((step) {
+      if (step['stepId'] != nextStepId) {
+        return step;
+      }
+      final previousProviderCallId =
+          (step['providerCallId'] ?? '').toString().trim();
+      if (previousProviderCallId != nextProviderCallId) {
+        return step;
+      }
+      return nextStep;
+    }).toList();
     final latestStep = mergedSteps.last;
+    final typedMergedSteps =
+        mergedSteps.map(_stepFromJson).toList(growable: false);
 
     blocks[blocks.length - 1] = previous.copyWith(
       updatedAt: block.updatedAt,
@@ -431,6 +473,7 @@ class ChatBlockBuilder {
             previous.payload?['sourceMessageId'],
         'steps': mergedSteps,
       },
+      workflowSteps: typedMergedSteps,
     );
   }
 
@@ -518,6 +561,7 @@ class ChatBlockBuilder {
             'sourceMessageId': block.payload?['sourceMessageId'] ??
                 candidate.payload?['sourceMessageId'],
           },
+          toolResult: block.toolResult ?? _toolResultFromPayload(block.payload),
         );
       } else {
         final nextSteps = [...candidateSteps];
@@ -531,6 +575,7 @@ class ChatBlockBuilder {
             ...?candidate.payload,
             'steps': nextSteps,
           },
+          workflowSteps: nextSteps.map(_stepFromJson).toList(growable: false),
         );
       }
       return true;
@@ -568,8 +613,7 @@ class ChatBlockBuilder {
 
     // Match by providerCallId so parallel calls of the same tool find their
     // own workflow step instead of always landing on the last one.
-    final providerCallId =
-        (payload?['providerCallId'] ?? '').toString().trim();
+    final providerCallId = (payload?['providerCallId'] ?? '').toString().trim();
     if (providerCallId.isNotEmpty) {
       final exactIndex = matchingIndexes.lastWhere(
         (index) =>
@@ -657,5 +701,41 @@ class ChatBlockBuilder {
       }
     }
     return null;
+  }
+
+  ToolWorkflowStep _stepFromJson(Map<String, dynamic> json) {
+    final statusName = json['status'] as String? ?? 'proposed';
+    final status = ToolWorkflowStepStatus.values.firstWhere(
+      (value) => value.name == statusName,
+      orElse: () => ToolWorkflowStepStatus.proposed,
+    );
+
+    return ToolWorkflowStep(
+      stepId: json['stepId'] as String? ?? 'unknown-step',
+      turnId: json['turnId'] as String? ?? '',
+      toolName: json['toolName'] as String? ?? 'unknown_tool',
+      title: json['title'] as String? ?? '',
+      summary: json['summary'] as String? ?? '',
+      status: status,
+      requiresConfirmation: json['requiresConfirmation'] as bool? ?? false,
+      executionPolicy: json['executionPolicy'] as String?,
+      toolAccess: json['toolAccess'] is Map
+          ? Map<String, dynamic>.from(json['toolAccess'] as Map)
+          : null,
+      details: json['details'] is Map
+          ? Map<String, dynamic>.from(json['details'] as Map)
+          : const {},
+    );
+  }
+
+  ToolResult? _toolResultFromPayload(Map<String, dynamic>? payload) {
+    if (payload == null) {
+      return null;
+    }
+    try {
+      return ToolResult.fromJson(payload);
+    } catch (_) {
+      return null;
+    }
   }
 }

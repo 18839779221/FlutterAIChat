@@ -239,6 +239,15 @@ Important rules:
 - `recent completed turns` should be selected by both default count and budget ratio limits, with at least the previous completed turn retained when available
 - older history that exits the recent working set must roll into snapshot summary instead of being dropped directly
 
+### Agent Loop Boundary Guardrails
+
+- Treat `TurnHarness` as the only main entry for turn-loop execution; do not move planner-loop, waiting-state, or stop-condition logic back into controllers, providers, or widgets
+- Treat provider/API request-response compatibility as a `Model Gateway / Provider Adapter` concern, not as part of the Agent Loop Core
+- Treat prompt assembly, runtime markers, and session-context composition as `Planner Input Assembly`, not as loop-state rules
+- Treat repositories/DB writes as persistence adapters; do not make UI message storage shape the primary source of loop semantics
+- Treat UI waiting-state / workflow rendering as projection concerns; do not rely on `ChatMessage.payloadJson` scanning as the long-term single source of truth for pending tool or interaction state
+- See `docs/architecture/agent-loop-boundaries-and-decoupling.md` for the current decoupling target and testing rationale
+
 ### LLM Integration
 
  

@@ -1,3 +1,8 @@
+import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
+import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
+import 'package:ai_chat/models/chat/tool_workflow_step.dart';
+import 'package:ai_chat/models/tool/tool_result.dart';
+
 /// Supported block types rendered inside one assistant turn.
 enum AssistantTurnBlockType {
   analysis,
@@ -42,6 +47,18 @@ class AssistantTurnBlock {
   /// Structured block payload for future renderers.
   final Map<String, dynamic>? payload;
 
+  /// Typed workflow projection for tool workflow rendering.
+  final List<ToolWorkflowStep>? workflowSteps;
+
+  /// Typed tool result projection for result rendering.
+  final ToolResult? toolResult;
+
+  /// Typed ask-user-question request projection for active prompt rendering.
+  final AskUserQuestionRequest? askUserQuestionRequest;
+
+  /// Typed ask-user-question result projection for submitted answers.
+  final AskUserQuestionResponse? askUserQuestionResponse;
+
   const AssistantTurnBlock({
     required this.id,
     required this.turnId,
@@ -54,6 +71,10 @@ class AssistantTurnBlock {
     this.text,
     this.reasoningText,
     this.payload,
+    this.workflowSteps,
+    this.toolResult,
+    this.askUserQuestionRequest,
+    this.askUserQuestionResponse,
   });
 
   AssistantTurnBlock copyWith({
@@ -68,6 +89,10 @@ class AssistantTurnBlock {
     String? text,
     String? reasoningText,
     Map<String, dynamic>? payload,
+    List<ToolWorkflowStep>? workflowSteps,
+    ToolResult? toolResult,
+    AskUserQuestionRequest? askUserQuestionRequest,
+    AskUserQuestionResponse? askUserQuestionResponse,
   }) {
     return AssistantTurnBlock(
       id: id ?? this.id,
@@ -81,6 +106,12 @@ class AssistantTurnBlock {
       text: text ?? this.text,
       reasoningText: reasoningText ?? this.reasoningText,
       payload: payload ?? this.payload,
+      workflowSteps: workflowSteps ?? this.workflowSteps,
+      toolResult: toolResult ?? this.toolResult,
+      askUserQuestionRequest:
+          askUserQuestionRequest ?? this.askUserQuestionRequest,
+      askUserQuestionResponse:
+          askUserQuestionResponse ?? this.askUserQuestionResponse,
     );
   }
 }

@@ -143,8 +143,11 @@ class ChatTimelineRow extends ConsumerWidget {
         );
         break;
       case AssistantTurnBlockType.toolResultSummary:
-        final payload = block.payload;
-        if (payload == null) {
+        final result = block.toolResult ??
+            (block.payload == null
+                ? null
+                : ToolResult.fromJson(block.payload!));
+        if (result == null) {
           blockWidget = AssistantDocBlock(
             text: block.text ?? '',
             reasoningText: block.reasoningText,
@@ -152,7 +155,6 @@ class ChatTimelineRow extends ConsumerWidget {
           );
           break;
         }
-        final result = ToolResult.fromJson(payload);
         final resultWidget = _buildToolResultBlockWidget(
           context: context,
           result: result,
@@ -388,6 +390,11 @@ class ChatTimelineRow extends ConsumerWidget {
   }
 
   List<ToolWorkflowStep> _extractWorkflowSteps(AssistantTurnBlock block) {
+    final typedSteps = block.workflowSteps;
+    if (typedSteps != null) {
+      return typedSteps;
+    }
+
     final rawSteps = block.payload?['steps'];
     if (rawSteps is! List) {
       return const [];

@@ -136,6 +136,8 @@ void main() {
 
       expect(blocks.single.type, AssistantTurnBlockType.toolWorkflow);
       expect(blocks.single.status, 'awaitingConfirmation');
+      expect(blocks.single.workflowSteps, isNotNull);
+      expect(blocks.single.workflowSteps, hasLength(1));
       expect(
         blocks.single.payload?['steps'][0]['requiresConfirmation'],
         isTrue,
@@ -228,6 +230,8 @@ void main() {
 
       expect(blocks.single.type, AssistantTurnBlockType.toolResultSummary);
       expect(blocks.single.title, 'search_chat_history');
+      expect(blocks.single.toolResult, isNotNull);
+      expect(blocks.single.toolResult?.data['matchCount'], 1);
       expect(blocks.single.payload?['data']['matchCount'], 1);
       expect(blocks.single.payload?['executionPolicy'], isNull);
       expect(
@@ -271,6 +275,8 @@ void main() {
 
       expect(blocks.single.type, AssistantTurnBlockType.structuredOutput);
       expect(blocks.single.title, 'Question');
+      expect(blocks.single.askUserQuestionRequest, isNotNull);
+      expect(blocks.single.askUserQuestionRequest?.agentTurnId, 42);
       expect(blocks.single.payload?['type'], 'prompt');
     });
 
@@ -300,6 +306,11 @@ void main() {
 
       expect(blocks.single.type, AssistantTurnBlockType.structuredOutput);
       expect(blocks.single.title, 'Answer');
+      expect(blocks.single.askUserQuestionResponse, isNotNull);
+      expect(
+        blocks.single.askUserQuestionResponse?.answersByQuestionId,
+        containsPair('storage_layer', 'SQLite'),
+      );
       expect(blocks.single.payload?['type'], 'result');
     });
 
@@ -540,11 +551,15 @@ void main() {
 
       expect(blocks, hasLength(3));
       expect(
-        blocks.map((block) => block.payload?['steps'][0]['providerCallId']).toList(),
+        blocks
+            .map((block) => block.payload?['steps'][0]['providerCallId'])
+            .toList(),
         ['call_ls_1', 'call_ls_2', 'call_ls_3'],
       );
       expect(
-        blocks.map((block) => block.payload?['steps'][0]['details']['path']).toList(),
+        blocks
+            .map((block) => block.payload?['steps'][0]['details']['path'])
+            .toList(),
         ['artifacts', 'memories', 'tmp'],
       );
     });

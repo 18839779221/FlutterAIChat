@@ -112,12 +112,17 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
 
     final messages = ref.watch(messagesProvider);
     final sendPhase = ref.watch(sendPhaseProvider);
+    final timelineProjection = ref.watch(chatTimelineProjectionProvider);
     final hasMoreMessages = ref.watch(hasMoreMessagesProvider);
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final textController = ref.read(textControllerProvider);
     final focusNode = ref.read(focusNodeProvider);
 
-    final timelineItems = _buildTimelineItems(messages, sendPhase);
+    final timelineItems = _buildTimelineItems(
+      messages,
+      sendPhase,
+      timelineProjection.assistantBlocks,
+    );
     final itemCount = timelineItems.length + (hasMoreMessages ? 1 : 0);
     final currentGroupId = ref.read(currentGroupProvider)?.id;
 
@@ -188,6 +193,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   List<ChatTimelineItem> _buildTimelineItems(
     List<ChatMessage> messages,
     ChatSendPhase sendPhase,
+    List<AssistantTurnBlock> projectedAssistantBlocks,
   ) {
     if (messages.isEmpty) {
       return const [];
@@ -229,9 +235,12 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           ),
         );
 
-        final blocks = _blockBuilder.buildAssistantBlocks(
-          messages: segment,
+        final blocks = _blocksForSegment(
+          sourceMessages: segment,
+          projectedAssistantBlocks: projectedAssistantBlocks,
           groupId: currentGroup?.id,
+          fallbackUserIndex:
+              items.where((item) => item.userMessage != null).length,
         );
         items.addAll(
           _buildAssistantItems(
@@ -287,6 +296,36 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     }
 
     return items;
+  }
+
+  List<AssistantTurnBlock> _blocksForSegment({
+    required List<ChatMessage> sourceMessages,
+    required List<AssistantTurnBlock> projectedAssistantBlocks,
+    required int? groupId,
+    required int fallbackUserIndex,
+  }) {
+    final userAnchor =
+        sourceMessages.where((message) => message.isUser).firstOrNull;
+    if (userAnchor == null) {
+      return _blockBuilder.buildAssistantBlocks(
+        messages: sourceMessages,
+        groupId: groupId,
+      );
+    }
+
+    final turnId =
+        '${groupId ?? 0}_${userAnchor.id ?? 'user_$fallbackUserIndex'}';
+    final blocks = projectedAssistantBlocks
+        .where((block) => block.turnId == turnId)
+        .toList(growable: false);
+    if (blocks.isNotEmpty) {
+      return blocks;
+    }
+
+    return _blockBuilder.buildAssistantBlocks(
+      messages: sourceMessages,
+      groupId: groupId,
+    );
   }
 
   String _buildUserItemKey(ChatMessage message) {

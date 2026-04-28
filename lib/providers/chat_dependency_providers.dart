@@ -1,5 +1,6 @@
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/services/chat_timeline_projection_service.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/latest_message_running_status_resolver.dart';
 import 'package:ai_chat/services/model_budget_registry.dart';
@@ -34,6 +35,11 @@ final traceRecorderProvider = Provider<ChatTraceRecorder>((ref) {
 final latestMessageRunningStatusResolverProvider =
     Provider<LatestMessageRunningStatusResolver>((ref) {
   return const LatestMessageRunningStatusResolver();
+});
+
+final chatTimelineProjectionServiceProvider =
+    Provider<ChatTimelineProjectionService>((ref) {
+  return ChatTimelineProjectionService();
 });
 
 // 聊天服务提供者
