@@ -61,6 +61,25 @@
 
 如果没有明确边界，团队很容易把这类问题当成 Agent Loop 本身的问题处理，最终让 Core 逐步吸收 provider 私有逻辑。
 
+真实环境验证还暴露了一个更细的风险：
+
+- 同样被识别为 OpenAI `responses` 风格的 provider
+- 其真实能力完备度也可能明显不同
+
+例如某些 relay / gateway 可能支持：
+
+- `stream:true` 的 SSE 主通路
+- stateless continuation（手动重放上下文 / tool transcript）
+- tool call -> tool result -> final answer round-trip
+
+但同时又不支持：
+
+- `stream:false` 非流式返回完整 response object
+- `previous_response_id`
+
+这说明“API 风格”只能回答“请求/响应大体长什么样”，不能回答“这个 provider 完整支持哪些运行路径”。
+如果系统继续把“responses 风格”直接等价成“完整 OpenAI Responses 能力”，provider 兼容问题就会持续泄漏到 loop、UI 与测试层。
+
 ### 4. 缺少一层足够稳定的“模拟环境集成测试入口”
 
 当前测试虽然已经覆盖了：
@@ -85,6 +104,7 @@
 4. 将 provider/API 兼容问题稳定约束在 adapter 边界内
 5. 为模拟环境集成测试建立明确的输入输出边界和测试夹具模型
 6. 在不引入大规模兼容层和历史包袱的前提下，分阶段完成重构
+7. 将“provider 风格识别”与“provider 能力声明”分离，避免把半兼容 relay 误当成标准 provider
 
 ## 非目标
 
@@ -189,6 +209,7 @@ flowchart LR
 职责：
 
 - 兼容各 provider 的 API 风格差异
+- 声明并约束各 provider 的能力边界
 - 处理 continuation、tool call、reasoning 等 provider 特定协议
 - 将 provider 返回统一转换为 Core 可消费契约
 
@@ -196,6 +217,18 @@ flowchart LR
 
 - `configurable_http_llm.dart`
 - 各 provider 特定 adapter / normalizer
+
+这一层后续应显式承载 provider capability，例如：
+
+- `supportsStreamingResponses`
+- `supportsNonStreamingResponses`
+- `supportsPreviousResponseId`
+- `supportsStatelessContinuation`
+- `supportsToolRoundTrip`
+
+这些 capability 不等于 API style。
+`responses` / `chat completions` / `anthropic messages` 只是一层协议分类；
+真正决定某条运行路径是否可用的，是 capability 组合。
 
 不负责：
 
@@ -277,11 +310,74 @@ flowchart LR
 - 集成测试很难缩小作用域
 - 后续任何小改动都容易牵动大链路
 
+### `ConfigurableHttpLLM` 的“风格识别”与“能力假设”仍未完全分离
+
+当前系统已经能根据 Base URL 自动识别：
+
+- OpenAI `responses`
+- OpenAI `chat/completions`
+- Anthropic `messages`
+
+但真实 provider 验证表明，这还不够。
+
+问题在于：
+
+- planner / summary / side-task 当前默认使用非流式请求
+- 某些 `responses`-like provider 实际只支持流式主通路
+- 某些 provider 支持 stateless continuation，但不支持 `previous_response_id`
+
+如果没有 capability boundary：
+
+- Core 上游会误以为自己面对的是“完整 responses provider”
+- adapter 只能在运行时报错后临时兜底
+- 测试很容易把 provider 不完整实现误判成主架构问题
+
+因此后续要补的不是更多 prompt patch，而是 provider capability contract。
+
+## Provider Capability Boundary
+
+### 为什么需要单独的 capability 层
+
+`API style` 解决的是“请求和响应的大体形状”。
+但下面这些问题无法仅靠 style 回答：
+
+- planner 是否能安全走非流式
+- continuation 应优先走 `previous_response_id` 还是 stateless replay
+- side-model 任务是否能复用同一 provider
+- live contract test 对该 provider 的预期应该是什么
+
+因此需要在 Model Gateway 内新增一层更稳定的 capability contract。
+
+### 建议的最小 capability 集
+
+首批 capability 建议只覆盖当前已经被真实问题验证过的维度：
+
+1. `supportsStreamingResponses`
+2. `supportsNonStreamingResponses`
+3. `supportsPreviousResponseId`
+4. `supportsStatelessContinuation`
+5. `supportsToolRoundTrip`
+
+这些字段先服务于运行时选路与 live contract test，不需要一开始就演进成过厚的 provider DSL。
+
+### capability 的使用原则
+
+1. Agent Loop Core 不直接读取 provider capability
+2. capability 只在 Model Gateway / Provider Adapter 与其上游调用编排层使用
+3. “某 provider 不支持某能力”要被视为 provider boundary 事实，而不是 loop bug
+4. live contract tests 必须按 capability 维度验证，而不是只按 API style 打标签
+5. 不要为了迁就某个半兼容 relay，把 provider 私有补丁反向注入 Core
+
 ## 分阶段方案
 
 本总设计建议拆为三个顺序执行的子项目。
 
 顺序不能随意打乱，原因是前一阶段负责建立后一阶段的稳定边界。
+
+另外，provider capability boundary 虽然不属于 UI projection 主线，但它是后续模拟环境集成测试与真实 provider 验证闭环的共同前提。
+因此它不作为“阶段零”插队重写主架构，而是作为一条并行约束工作流推进，具体落地见：
+
+- [Provider Capability Boundary Implementation Plan](/Users/zyb_wl/flutterSpace/FlutterAIChat/docs/superpowers/plans/2026-04-28-provider-capability-boundary-implementation-plan.md)
 
 ### 阶段一：建立 `turn ledger -> projection model -> UI` 稳定边界
 

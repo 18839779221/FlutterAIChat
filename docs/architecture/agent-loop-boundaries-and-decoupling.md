@@ -93,6 +93,7 @@ Core 不应该直接承担：
 它负责：
 
 - 不同 provider 的请求参数适配
+- 不同 provider 的能力边界声明
 - tool call / continuation / reasoning 等 provider 特定协议兼容
 - provider 返回结果解析成统一的 `ModelTurnDecision` 或统一中间结果
 
@@ -106,6 +107,22 @@ Core 不应该直接承担：
 
 - Core 关心的是“决策契约”，不是“HTTP 长什么样”
 - provider 可以替换，但 `TurnHarness` 不应因此改变主状态机
+
+进一步地，`API style` 与 `provider capability` 也必须视为两层不同概念：
+
+- `API style`：OpenAI `responses`、OpenAI `chat/completions`、Anthropic `messages`
+- `provider capability`：该 provider 真实支持哪些运行路径
+
+一个 provider 即便被识别为 `responses` 风格，也不代表它一定同时支持：
+
+- `stream:true`
+- `stream:false`
+- `previous_response_id`
+- stateless continuation
+- tool round-trip
+
+真实环境验证已经证明：存在 `responses`-like relay 只支持“流式 + stateless continuation”，却不支持 `previous_response_id` 与非流式 response body。
+因此，后续所有 provider 兼容判断都不应再把“风格识别”当成“能力完备”的同义词。
 
 ### 3. Planner Input Assembly
 
@@ -244,6 +261,29 @@ Core 不应该直接承担：
 - 外层编排边界较宽
 - 任何“接近真实发送”的测试都很容易跨越过多职责，导致 fixture 重、断言多、定位慢
 
+### `ConfigurableHttpLLM`
+
+文件：
+- [lib/models/llm/configurable_http_llm.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/models/llm/configurable_http_llm.dart)
+
+现状：
+
+- 已经通过 Base URL 推断 API style
+- 已经有 provider-specific adapter
+- 已经能对部分 continuation 异常做兼容 fallback
+
+风险：
+
+- 当前仍然较容易把 `responses` 风格视为“完整 OpenAI Responses provider”
+- 非流式 planner / summary / side-task 路径默认假定 provider 有完整非流式能力
+- 真实 relay 的 capability 缺失如果只靠运行时报错暴露，容易被误判成 loop 架构问题
+
+后续方向：
+
+- 在 gateway 层补显式 capability contract
+- 让 live contract tests 输出 capability matrix，而不是只有粗粒度 PASS/FAIL
+- 保证 capability 缺失不会反向污染 Core 语义
+
 ## 不可漂移的长期守则
 
 以下约束用于保证后续重构不偏离 Agent Loop 主架构。
@@ -258,7 +298,21 @@ Core 不应该直接承担：
 - provider 特定的请求参数、字段命名、continuation 细节 `MUST` 留在 Model Gateway / Provider Adapter
 - 不得让 `TurnHarness` 或 `TurnVerifier` 理解某个 provider 的私有 wire 协议
 
-### 3. Prompt / Session Context 不得回流成 loop 规则
+### 3. Provider capability 不得伪装成 Core 规则
+
+- `streaming-only`、`non-streaming unsupported`、`previous_response_id unsupported` 这类事实 `MUST` 被视为 provider capability 边界
+- 不得为了兼容某个 relay，把这些差异改写成 `TurnHarness` 停止规则、等待态规则或 UI workflow 规则
+
+### 4. Live contract tests 必须按 capability 维度解释结果
+
+- 对 `responses` 风格 provider，至少区分：
+  - 流式首轮是否通过
+  - stateless continuation 是否通过
+  - `previous_response_id` 是否支持
+  - 非流式 response body 是否正常
+- 不得因为某个 provider “能聊天”就默认它完整兼容当前所有 side-task / planner 路径
+
+### 5. Prompt / Session Context 不得回流成 loop 规则
 
 - prompt 拼接
 - runtime marker 注入
@@ -269,13 +323,13 @@ Core 不应该直接承担：
 - 它们可以影响模型看到什么
 - 但不应定义 Core 的状态机和停止语义
 
-### 4. DB 与 repository 是适配层，不是 loop 语义
+### 6. DB 与 repository 是适配层，不是 loop 语义
 
 - turn / step / event 的结构化持久化是必须的
 - 但“如何写 SQLite”不是 Agent Loop Core 本身
 - 新逻辑应尽量依赖 repository 契约，而不是散布直接 SQL 语义
 
-### 5. UI 不得把 `payloadJson` 当成唯一真相源
+### 7. UI 不得把 `payloadJson` 当成唯一真相源
 
 - `ChatMessage.payloadJson` 可以作为投影载体
 - 但等待态、workflow step、interaction state 的真相源不应长期只靠消息扫描推断
