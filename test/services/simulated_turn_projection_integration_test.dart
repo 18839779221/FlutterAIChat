@@ -824,6 +824,190 @@ void main() {
         'max_iterations_reached',
       );
     });
+
+    test(
+        'resumed confirmation loop preserves tool error payload and still reaches final response',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final toolPolicyService = await _createToolPolicyService();
+      final planner = AgentPlannerService(
+        llm: _QueuedDecisionLLM([
+          const ModelTurnDecision(
+            toolCalls: [
+              ModelToolCall(
+                toolName: 'search_chat_history',
+                arguments: {'query': '历史', 'maxResults': 2},
+                sequence: 0,
+              ),
+            ],
+            assistantMessage: null,
+            diagnosticCode: 'planner_action_call_tool',
+            providerState: {'response_id': 'resp_search_5'},
+            isTerminal: false,
+          ),
+          const ModelTurnDecision(
+            toolCalls: [
+              ModelToolCall(
+                toolName: 'search_chat_history',
+                arguments: {'query': ''},
+                sequence: 0,
+              ),
+            ],
+            assistantMessage: null,
+            diagnosticCode: 'planner_action_call_tool',
+            providerState: {'response_id': 'resp_confirm_5'},
+            isTerminal: false,
+          ),
+          const ModelTurnDecision(
+            toolCalls: [],
+            assistantMessage: '我改用直接回答继续完成本轮。',
+            diagnosticCode: 'planner_action_respond',
+            providerState: {'response_id': 'resp_final_5'},
+            isTerminal: true,
+          ),
+        ]),
+        availableTools: [
+          _searchChatHistoryDefinition,
+        ],
+        toolPolicyService: toolPolicyService,
+      );
+      final toolCallService = _QueuedToolCallService(
+        chatStorage: databaseHelper,
+        definitions: {
+          'search_chat_history': _searchChatHistoryDefinition,
+        },
+        queuedResultsByTool: {
+          'search_chat_history': Queue.of([
+            const ToolPreparationResult(
+              toolInvocation: ToolInvocation(
+                toolName: 'search_chat_history',
+                arguments: {'query': '历史', 'maxResults': 2},
+                status: ToolInvocationStatus.running,
+                summary: '正在执行工具：搜索历史记录',
+                requiresConfirmation: false,
+              ),
+              toolResult: ToolResult(
+                toolName: 'search_chat_history',
+                status: ToolExecutionStatus.success,
+                summary: '已执行：搜索历史记录',
+                data: {
+                  'query': '历史',
+                  'matchCount': 1,
+                },
+              ),
+              additionalContextMessages: [],
+            ),
+            const ToolPreparationResult(
+              toolInvocation: ToolInvocation(
+                toolName: 'search_chat_history',
+                arguments: {'query': ''},
+                status: ToolInvocationStatus.awaitingConfirmation,
+                summary: '请确认执行工具：搜索历史记录',
+                requiresConfirmation: true,
+              ),
+              toolResult: null,
+              additionalContextMessages: [],
+            ),
+            const ToolPreparationResult(
+              toolInvocation: ToolInvocation(
+                toolName: 'search_chat_history',
+                arguments: {'query': ''},
+                status: ToolInvocationStatus.running,
+                summary: '正在执行工具：搜索历史记录',
+                requiresConfirmation: false,
+              ),
+              toolResult: ToolResult(
+                toolName: 'search_chat_history',
+                status: ToolExecutionStatus.failure,
+                summary: '搜索历史记录失败',
+                data: {
+                  'query': '',
+                  'reason': 'empty_query',
+                },
+                errorMessage: 'empty_query',
+                executionPolicy: 'blocked',
+                toolAccess: {
+                  'toolName': 'search_chat_history',
+                  'executionDecision': 'blocked',
+                  'executionPolicy': 'blocked',
+                  'isVisibleToPlanner': false,
+                },
+              ),
+              additionalContextMessages: [],
+            ),
+          ]),
+        },
+      );
+      final harness = _createHarness(
+        databaseHelper: databaseHelper,
+        planner: planner,
+        toolCallService: toolCallService,
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId = await databaseHelper
+          .insertGroup(ChatGroup(title: 'projection group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'projection group');
+
+      final turnRepository = ChatTurnRepository(databaseHelper);
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '先搜一次，再确认一次空查询。',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+
+      await _consumeEventStream(
+        container: container,
+        groupId: groupId,
+        traceTurnId: 'trace-tool-error-after-confirm',
+        agentTurnId: turnId,
+        stream: harness.runTurn(
+          turn: turn,
+          config: ChatConfig(systemPrompt: ''),
+        ),
+      );
+
+      final pending = container.read(activePendingToolConfirmationProvider);
+      expect(pending, isNotNull);
+
+      await container.read(chatSendCoordinatorProvider).confirmToolInvocation(
+            pending!.message,
+            trustTool: true,
+          );
+
+      final errorMessage = container
+          .read(messagesProvider)
+          .where((message) =>
+              message.contentType == MessageContentType.toolResult &&
+              message.text == '搜索历史记录失败')
+          .last;
+      expect(
+        errorMessage.payloadJson?['toolAccess']?['executionPolicy'],
+        'blocked',
+      );
+      expect(errorMessage.payloadJson?['errorMessage'], 'empty_query');
+      expect(container.read(activePendingToolConfirmationProvider), isNull);
+      expect(
+        container
+            .read(messagesProvider)
+            .where((message) =>
+                message.role == MessageRole.assistant &&
+                message.contentType == MessageContentType.plainText)
+            .last
+            .text,
+        '我改用直接回答继续完成本轮。',
+      );
+      expect((await turnRepository.getTurn(turnId))!.status,
+          ChatTurnStatus.completed);
+    });
   });
 }
 
