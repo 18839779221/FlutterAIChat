@@ -12,6 +12,7 @@ import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -158,6 +159,33 @@ void main() {
         );
 
         test(
+          'responses provider previous_response_id probe returns support or explicit rejection',
+          () async {
+            final liveProvider = provider!;
+            final style = const ApiProtocolResolver().resolveStyle(
+              liveProvider.baseUrl,
+            );
+            if (style != ApiStyle.responses) {
+              return;
+            }
+
+            final probeResult = await _probePreviousResponseIdSupport(
+              provider: liveProvider,
+            );
+
+            expect(
+              probeResult.isSupported || probeResult.isExplicitlyUnsupported,
+              isTrue,
+              reason:
+                  'Expected responses provider to either support previous_response_id '
+                  'or reject it explicitly, but got: ${probeResult.detail}',
+            );
+          },
+          skip: missingProviderReason,
+          tags: const ['live-llm'],
+        );
+
+        test(
           'summarizeConversation returns a non-empty factual summary',
           () async {
             final llm = await _buildLiveLlm(provider!);
@@ -259,6 +287,129 @@ Future<ConfigurableHttpLLM> _buildLiveLlm(LlmProviderConfig provider) async {
     plannerRequestTimeout: const Duration(seconds: 12),
     mainFlowNetworkRetryAttempts: 1,
   );
+}
+
+class _PreviousResponseIdProbeResult {
+  final bool isSupported;
+  final bool isExplicitlyUnsupported;
+  final String detail;
+
+  const _PreviousResponseIdProbeResult({
+    required this.isSupported,
+    required this.isExplicitlyUnsupported,
+    required this.detail,
+  });
+}
+
+Future<_PreviousResponseIdProbeResult> _probePreviousResponseIdSupport({
+  required LlmProviderConfig provider,
+}) async {
+  final resolver = const ApiProtocolResolver();
+  final uri = resolver.buildRequestUri(provider.baseUrl, ApiStyle.responses);
+  final client = http.Client();
+
+  try {
+    final firstResponse = await client.post(
+      uri,
+      headers: {
+        'Authorization': 'Bearer ${provider.apiKey}',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'model': provider.models.first.id,
+        'input': [
+          {
+            'role': 'user',
+            'content': [
+              {
+                'type': 'input_text',
+                'text': 'Reply with exactly "ack".',
+              },
+            ],
+          },
+        ],
+        'stream': false,
+        'store': true,
+      }),
+    );
+
+    final firstBody = utf8.decode(firstResponse.bodyBytes);
+    if (firstResponse.statusCode != 200 || firstBody.trim().isEmpty) {
+      return _PreviousResponseIdProbeResult(
+        isSupported: false,
+        isExplicitlyUnsupported: false,
+        detail:
+            'initial request failed: ${firstResponse.statusCode} ${firstBody.trim()}',
+      );
+    }
+
+    final decoded = jsonDecode(firstBody);
+    if (decoded is! Map<String, dynamic>) {
+      return const _PreviousResponseIdProbeResult(
+        isSupported: false,
+        isExplicitlyUnsupported: false,
+        detail: 'initial request returned non-object payload',
+      );
+    }
+
+    final responseId = (decoded['id'] as String? ?? '').trim();
+    if (responseId.isEmpty) {
+      return const _PreviousResponseIdProbeResult(
+        isSupported: false,
+        isExplicitlyUnsupported: false,
+        detail: 'initial request did not return response id',
+      );
+    }
+
+    final secondResponse = await client.post(
+      uri,
+      headers: {
+        'Authorization': 'Bearer ${provider.apiKey}',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'model': provider.models.first.id,
+        'input': [
+          {
+            'role': 'user',
+            'content': [
+              {
+                'type': 'input_text',
+                'text': 'Reply with exactly "ack-2".',
+              },
+            ],
+          },
+        ],
+        'stream': false,
+        'store': true,
+        'previous_response_id': responseId,
+      }),
+    );
+
+    final secondBody = utf8.decode(secondResponse.bodyBytes);
+    if (secondResponse.statusCode == 200 && secondBody.trim().isNotEmpty) {
+      return const _PreviousResponseIdProbeResult(
+        isSupported: true,
+        isExplicitlyUnsupported: false,
+        detail: 'provider accepted previous_response_id',
+      );
+    }
+
+    final normalized = secondBody.toLowerCase();
+    final explicitUnsupported = normalized.contains('previous_response_id') &&
+        (normalized.contains('unsupported') ||
+            normalized.contains('not supported') ||
+            normalized.contains('only supported'));
+
+    return _PreviousResponseIdProbeResult(
+      isSupported: false,
+      isExplicitlyUnsupported: explicitUnsupported,
+      detail:
+          'follow-up response: ${secondResponse.statusCode} ${secondBody.trim()}',
+    );
+  } finally {
+    client.close();
+  }
 }
 
 List<Map<String, dynamic>> _buildToolContinuationItems({
