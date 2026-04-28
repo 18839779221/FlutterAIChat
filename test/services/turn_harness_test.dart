@@ -2088,6 +2088,338 @@ void main() {
     });
 
     test(
+        'integrates planner session context and responses continuation across a multi-round loop',
+        () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      final stepRepository = _InMemoryChatTurnStepRepository();
+      final previousTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          id: 60,
+          groupId: 1,
+          status: ChatTurnStatus.completed,
+          userInput: '上一轮确认数据库版本',
+        ),
+      );
+      await eventRepository.appendAssistantPlannerMessage(
+        turnId: previousTurnId,
+        groupId: 1,
+        content: '历史结论：数据库版本线索在发布记录里。',
+      );
+
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          id: 61,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '继续确认版本并整理结果',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+      final llm = _AssertingLoopPlannerLLM();
+      final harness = TurnHarness(
+        plannerService: AgentPlannerService(
+          llm: llm,
+          toolPolicyService: await _createToolPolicyService(),
+          availableTools: const [
+            ToolDefinition(
+              name: 'search_chat_history',
+              title: '搜索聊天记录',
+              descriptionForModel: '当需要从历史记录确认事实时使用。',
+              argumentSchema: ToolArgumentSchema(
+                properties: {
+                  'query': ToolArgumentProperty.string(description: '查询词'),
+                },
+                required: ['query'],
+              ),
+            ),
+            ToolDefinition(
+              name: 'Write',
+              title: '写入文件',
+              descriptionForModel: '当需要把结果写入文件时使用。',
+              argumentSchema: ToolArgumentSchema(
+                properties: {
+                  'file_path': ToolArgumentProperty.string(description: '文件路径'),
+                  'content': ToolArgumentProperty.string(description: '内容'),
+                },
+                required: ['file_path', 'content'],
+              ),
+            ),
+          ],
+        ),
+        turnRepository: turnRepository,
+        turnStepRepository: stepRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        turnVerifier: _AlwaysStopVerifier(),
+        toolCallService: _SequencedToolCallService([
+          ToolPreparationResult(
+            toolInvocation: const ToolInvocation(
+              toolName: 'search_chat_history',
+              arguments: {'query': '数据库版本'},
+              status: ToolInvocationStatus.running,
+              summary: '正在执行工具：搜索历史',
+              requiresConfirmation: false,
+            ),
+            toolResult: const ToolResult(
+              toolName: 'search_chat_history',
+              status: ToolExecutionStatus.success,
+              summary: '已执行：搜索历史记录',
+              data: {
+                'query': '数据库版本',
+                'matchCount': 1,
+                'matches': [
+                  {'text': '数据库版本是 7'},
+                ],
+              },
+            ),
+            additionalContextMessages: const [],
+          ),
+          ToolPreparationResult(
+            toolInvocation: const ToolInvocation(
+              toolName: 'Write',
+              arguments: {
+                'file_path': 'notes/version.md',
+                'content': '数据库版本是 7',
+              },
+              status: ToolInvocationStatus.running,
+              summary: '正在执行工具：写入文件',
+              requiresConfirmation: false,
+            ),
+            toolResult: const ToolResult(
+              toolName: 'Write',
+              status: ToolExecutionStatus.success,
+              summary: '已写入文件：notes/version.md',
+              data: {
+                'filePath': 'notes/version.md',
+              },
+            ),
+            additionalContextMessages: const [],
+          ),
+        ]),
+        sessionContextService: SessionContextService(
+          chatTurnRepository: turnRepository,
+          chatEventRepository: eventRepository,
+          snapshotRepository: SessionContextSnapshotRepository(
+            _NoopChatStorage(),
+          ),
+          contextProjector: SessionContextProjector(),
+          tokenBudgetService: SessionTokenBudgetService(
+            modelBudgetResolver: (_) => const SessionModelBudget(
+              maxContextTokens: 10000,
+              reservedOutputTokens: 1000,
+              safetyMarginTokens: 500,
+            ),
+          ),
+          summaryService: SessionSummaryService(
+            summaryGenerator: (_) async => 'summary',
+          ),
+          chatService: ChatService(llm: llm),
+        ),
+        limits: const AgentLoopLimits(maxIterations: 5),
+      );
+
+      final emitted = await harness
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(systemPrompt: ''),
+          )
+          .toList();
+
+      expect(llm.planCalls, 3);
+      expect(
+        emitted.where((event) => event.eventType == ChatEventType.toolResult),
+        hasLength(2),
+      );
+      expect(
+        emitted.lastWhere((event) => event.eventType == ChatEventType.finalAnswer)
+            .content,
+        '数据库版本已确认，并已记录到 notes/version.md。',
+      );
+
+      final persistedSteps = await stepRepository.listSteps(turnId);
+      expect(persistedSteps, hasLength(2));
+      expect(
+        persistedSteps.map((step) => step.providerResponseId).toList(),
+        ['resp_1', 'resp_2'],
+      );
+      expect(
+        persistedSteps.map((step) => step.providerCallId).toList(),
+        ['call_1', 'call_2'],
+      );
+      expect(
+        persistedSteps.every((step) => step.status == ChatTurnStepStatus.completed),
+        isTrue,
+      );
+
+      final persistedTurn = (await turnRepository.getTurn(turnId))!;
+      expect(persistedTurn.status, ChatTurnStatus.completed);
+      expect(
+        persistedTurn.providerStateJson,
+        equals(const {'response_id': 'resp_3'}),
+      );
+      expect(persistedTurn.providerStyle, ChatTurnProviderStyle.openaiResponses);
+      expect(persistedTurn.modelName, 'gpt-5.4');
+    });
+
+    test(
+        'integrates ask-user resume with planner continuation items and final response',
+        () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      final stepRepository = _InMemoryChatTurnStepRepository();
+      final llm = _AssertingQuestionLoopPlannerLLM();
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          id: 62,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '帮我确定存储方案',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+      final harness = TurnHarness(
+        plannerService: AgentPlannerService(
+          llm: llm,
+          toolPolicyService: await _createToolPolicyService(),
+          availableTools: const [
+            ToolDefinition(
+              name: 'ask_user_question',
+              title: '向用户提问',
+              descriptionForModel: '当需要用户补充关键决策时使用。',
+              runtimeKind: ToolRuntimeKind.userInteraction,
+              argumentSchema: ToolArgumentSchema(
+                properties: {
+                  'questions': ToolArgumentProperty(
+                    type: 'array',
+                    description: '问题列表',
+                  ),
+                },
+                required: ['questions'],
+              ),
+            ),
+          ],
+        ),
+        turnRepository: turnRepository,
+        turnStepRepository: stepRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        turnVerifier: _AlwaysStopVerifier(),
+        toolCallService: _FakeToolCallService(
+          executeResult: const ToolPreparationResult.noTool(),
+          definitionsByName: const {
+            'ask_user_question': ToolDefinition(
+              name: 'ask_user_question',
+              title: '向用户提问',
+              runtimeKind: ToolRuntimeKind.userInteraction,
+            ),
+          },
+        ),
+        sessionContextService: SessionContextService(
+          chatTurnRepository: turnRepository,
+          chatEventRepository: eventRepository,
+          snapshotRepository: SessionContextSnapshotRepository(
+            _NoopChatStorage(),
+          ),
+          contextProjector: SessionContextProjector(),
+          tokenBudgetService: SessionTokenBudgetService(
+            modelBudgetResolver: (_) => const SessionModelBudget(
+              maxContextTokens: 10000,
+              reservedOutputTokens: 1000,
+              safetyMarginTokens: 500,
+            ),
+          ),
+          summaryService: SessionSummaryService(
+            summaryGenerator: (_) async => 'summary',
+          ),
+          chatService: ChatService(llm: llm),
+        ),
+        limits: const AgentLoopLimits(maxIterations: 4),
+      );
+
+      final suspended = await harness
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(systemPrompt: ''),
+          )
+          .toList();
+
+      expect(llm.planCalls, 1);
+      expect(
+        suspended.map((event) => event.eventType),
+        contains(ChatEventType.assistantQuestionPrompt),
+      );
+      expect(
+        (await turnRepository.getTurn(turnId))!.status,
+        ChatTurnStatus.awaitingUserInteraction,
+      );
+
+      final step = (await stepRepository.listSteps(turnId)).single;
+      final resumed = await harness
+          .resumeAfterQuestionAnswered(
+            turnId: turnId,
+            request: AskUserQuestionRequest.fromJson({
+              'questions': const [
+                {
+                  'id': 'storage_layer',
+                  'header': 'Storage',
+                  'question': 'Which storage layer should we use?',
+                  'multiSelect': false,
+                  'options': [
+                    {
+                      'label': 'SQLite',
+                      'description': 'Local relational store',
+                    },
+                  ],
+                },
+              ],
+              'agentTurnId': turnId,
+              'stepId': step.id,
+              'providerCallId': 'ask_call_1',
+            }),
+            response: AskUserQuestionResponse.fromJson(const {
+              'answersByQuestionId': {
+                'storage_layer': 'SQLite',
+              },
+              'selectedOptionLabelsByQuestionId': {
+                'storage_layer': ['SQLite'],
+              },
+              'freeTextAnswersByQuestionId': {},
+            }),
+            config: ChatConfig(systemPrompt: ''),
+          )
+          .toList();
+
+      expect(llm.planCalls, 2);
+      expect(
+        resumed.map((event) => event.eventType),
+        containsAllInOrder([
+          ChatEventType.userInteractionResult,
+          ChatEventType.finalAnswer,
+        ]),
+      );
+      expect(
+        resumed.lastWhere((event) => event.eventType == ChatEventType.finalAnswer)
+            .content,
+        '建议采用 SQLite 作为当前方案。',
+      );
+      expect(
+        (await turnRepository.getTurn(turnId))!.status,
+        ChatTurnStatus.completed,
+      );
+      expect(
+        (await turnRepository.getTurn(turnId))!.providerStateJson,
+        equals(const {'response_id': 'resp_ask_2'}),
+      );
+      expect((await stepRepository.getStep(step.id!))!.status,
+          ChatTurnStepStatus.completed);
+    });
+
+    test(
         'stops turn with max_iterations_reached when stop verifier keeps rejecting',
         () async {
       final eventRepository = _InMemoryChatEventRepository();
@@ -3069,6 +3401,223 @@ class _QueuedNativeDecisionLLM implements BaseLLM {
 
 }
 
+class _AssertingLoopPlannerLLM implements BaseLLM {
+  int planCalls = 0;
+
+  @override
+  Map<String, dynamic> get config => const {};
+
+  @override
+  String getModelName(ChatConfig config) => 'gpt-5.4';
+
+  @override
+  Future<ModelTurnDecision?> planTurnDecision({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+    ChatTurnProviderStyle? providerStyle,
+    Map<String, dynamic>? providerState,
+    List<Map<String, dynamic>> providerContinuationItems = const [],
+  }) async {
+    planCalls += 1;
+    final joinedText = messages.map((message) => message.text).join('\n');
+
+    if (planCalls == 1) {
+      expect(providerStyle, isNull);
+      expect(providerState, isNull);
+      expect(providerContinuationItems, isEmpty);
+      expect(joinedText, contains('历史结论：数据库版本线索在发布记录里。'));
+      expect(joinedText, contains('继续确认版本并整理结果'));
+      expect(
+        availableTools.map((tool) => tool.name).toList(),
+        containsAll(['search_chat_history', 'Write']),
+      );
+      return const ModelTurnDecision(
+        toolCalls: [
+          ModelToolCall(
+            providerCallId: 'call_1',
+            toolName: 'search_chat_history',
+            arguments: {'query': '数据库版本'},
+            sequence: 1,
+          ),
+        ],
+        assistantMessage: '我先检索历史记录。',
+        diagnosticCode: 'planner_action_call_tool',
+        providerState: {'response_id': 'resp_1'},
+        providerStyle: ChatTurnProviderStyle.openaiResponses,
+        modelName: 'gpt-5.4',
+        isTerminal: false,
+      );
+    }
+
+    if (planCalls == 2) {
+      expect(providerStyle, ChatTurnProviderStyle.openaiResponses);
+      expect(providerState, equals(const {'response_id': 'resp_1'}));
+      expect(providerContinuationItems, hasLength(1));
+      expect(providerContinuationItems.single['type'], 'function_call_output');
+      expect(providerContinuationItems.single['call_id'], 'call_1');
+      expect(
+        providerContinuationItems.single['output'].toString(),
+        contains('已执行：搜索历史记录'),
+      );
+      expect(joinedText, contains('我先检索历史记录。'));
+      expect(joinedText, contains('已执行：搜索历史记录'));
+      return const ModelTurnDecision(
+        toolCalls: [
+          ModelToolCall(
+            providerCallId: 'call_2',
+            toolName: 'Write',
+            arguments: {
+              'file_path': 'notes/version.md',
+              'content': '数据库版本是 7',
+            },
+            sequence: 1,
+          ),
+        ],
+        assistantMessage: '我把确认结果写入文件。',
+        diagnosticCode: 'planner_action_call_tool',
+        providerState: {'response_id': 'resp_2'},
+        providerStyle: ChatTurnProviderStyle.openaiResponses,
+        modelName: 'gpt-5.4',
+        isTerminal: false,
+      );
+    }
+
+    expect(planCalls, 3);
+    expect(providerStyle, ChatTurnProviderStyle.openaiResponses);
+    expect(providerState, equals(const {'response_id': 'resp_2'}));
+    expect(providerContinuationItems, hasLength(1));
+    expect(providerContinuationItems.single['type'], 'function_call_output');
+    expect(providerContinuationItems.single['call_id'], 'call_2');
+    expect(
+      providerContinuationItems.single['output'].toString(),
+      contains('已写入文件：notes/version.md'),
+    );
+    expect(joinedText, contains('我把确认结果写入文件。'));
+    expect(joinedText, contains('已写入文件：notes/version.md'));
+    return const ModelTurnDecision(
+      toolCalls: [],
+      assistantMessage: '数据库版本已确认，并已记录到 notes/version.md。',
+      diagnosticCode: 'planner_action_respond',
+      providerState: {'response_id': 'resp_3'},
+      providerStyle: ChatTurnProviderStyle.openaiResponses,
+      modelName: 'gpt-5.4',
+      isTerminal: true,
+    );
+  }
+
+  @override
+  Future<String> summarizeConversation(List<ChatMessage> messages) async =>
+      'summary';
+
+  @override
+  Future<String> processWebpageContent({
+    required String webpageContent,
+    required String prompt,
+  }) async =>
+      '';
+}
+
+class _AssertingQuestionLoopPlannerLLM implements BaseLLM {
+  int planCalls = 0;
+
+  @override
+  Map<String, dynamic> get config => const {};
+
+  @override
+  String getModelName(ChatConfig config) => 'gpt-5.4';
+
+  @override
+  Future<ModelTurnDecision?> planTurnDecision({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+    ChatTurnProviderStyle? providerStyle,
+    Map<String, dynamic>? providerState,
+    List<Map<String, dynamic>> providerContinuationItems = const [],
+  }) async {
+    planCalls += 1;
+    final joinedText = messages.map((message) => message.text).join('\n');
+
+    if (planCalls == 1) {
+      expect(providerStyle, isNull);
+      expect(providerState, isNull);
+      expect(providerContinuationItems, isEmpty);
+      expect(joinedText, contains('帮我确定存储方案'));
+      expect(availableTools.map((tool) => tool.name), contains('ask_user_question'));
+      return const ModelTurnDecision(
+        toolCalls: [
+          ModelToolCall(
+            providerCallId: 'ask_call_1',
+            toolName: 'ask_user_question',
+            arguments: {
+              'questions': [
+                {
+                  'id': 'storage_layer',
+                  'header': 'Storage',
+                  'question': 'Which storage layer should we use?',
+                  'multiSelect': false,
+                  'options': [
+                    {
+                      'label': 'SQLite',
+                      'description': 'Local relational store',
+                    },
+                  ],
+                },
+              ],
+            },
+            sequence: 1,
+          ),
+        ],
+        assistantMessage: null,
+        diagnosticCode: 'planner_action_call_tool',
+        providerState: {'response_id': 'resp_ask_1'},
+        providerStyle: ChatTurnProviderStyle.openaiResponses,
+        modelName: 'gpt-5.4',
+        isTerminal: false,
+      );
+    }
+
+    expect(planCalls, 2);
+    expect(providerStyle, ChatTurnProviderStyle.openaiResponses);
+    expect(providerState, equals(const {'response_id': 'resp_ask_1'}));
+    expect(providerContinuationItems, hasLength(1));
+    expect(
+      providerContinuationItems.single,
+      containsPair('type', 'user_interaction_answer'),
+    );
+    expect(
+      providerContinuationItems.single,
+      containsPair('toolCallId', 'ask_call_1'),
+    );
+    expect(
+      providerContinuationItems.single['content'].toString(),
+      contains('Storage: SQLite'),
+    );
+    expect(joinedText, contains('Storage: SQLite'));
+    return const ModelTurnDecision(
+      toolCalls: [],
+      assistantMessage: '建议采用 SQLite 作为当前方案。',
+      diagnosticCode: 'planner_action_respond',
+      providerState: {'response_id': 'resp_ask_2'},
+      providerStyle: ChatTurnProviderStyle.openaiResponses,
+      modelName: 'gpt-5.4',
+      isTerminal: true,
+    );
+  }
+
+  @override
+  Future<String> summarizeConversation(List<ChatMessage> messages) async =>
+      'summary';
+
+  @override
+  Future<String> processWebpageContent({
+    required String webpageContent,
+    required String prompt,
+  }) async =>
+      '';
+}
+
 ModelTurnDecision _decisionFromAction(AgentAction action) {
   if (action.type == AgentActionType.callTool && action.toolCall != null) {
     return ModelTurnDecision(
@@ -3267,6 +3816,17 @@ class _InMemoryChatTurnRepository extends ChatTurnRepository {
 
   @override
   Future<ChatTurn?> getTurn(int id) async => turns[id];
+
+  @override
+  Future<List<ChatTurn>> getTurnsByGroup(int groupId) async {
+    final matching = turns.values.where((turn) => turn.groupId == groupId).toList();
+    matching.sort((left, right) {
+      final leftId = left.id ?? 0;
+      final rightId = right.id ?? 0;
+      return leftId.compareTo(rightId);
+    });
+    return matching;
+  }
 
   @override
   Future<void> markAwaitingToolConfirmation(int turnId) async {
@@ -3685,6 +4245,11 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
   @override
   Future<List<ChatEvent>> listEventsByTurn(int turnId) async {
     return events.where((event) => event.turnId == turnId).toList();
+  }
+
+  @override
+  Future<List<ChatEvent>> listEventsByGroup(int groupId) async {
+    return events.where((event) => event.groupId == groupId).toList();
   }
 
   Future<ChatEvent> _append({

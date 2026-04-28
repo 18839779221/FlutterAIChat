@@ -319,6 +319,245 @@ void main() {
       expect(cancelledToolMessage.text, '已取消工具执行');
       expect(cancelledToolMessage.payloadJson?['status'], 'cancelled');
     });
+
+    test(
+        'confirmToolInvocation resumes pending confirmation and settles the turn',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: const [],
+        resumeAfterConfirmationEvents: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.toolExecutionStarted,
+            role: MessageRole.system,
+            content: '正在执行工具：创建提醒',
+            payloadJson: {
+              'toolName': 'create_reminder',
+              'arguments': {'title': '开会'},
+              'status': 'running',
+              'summary': '正在执行工具：创建提醒',
+              'requiresConfirmation': false,
+            },
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: '已创建提醒：开会',
+            payloadJson: {
+              'toolName': 'create_reminder',
+              'status': 'success',
+              'summary': '已创建提醒：开会',
+            },
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.finalAnswer,
+            role: MessageRole.assistant,
+            content: '提醒已经安排好了。',
+          ),
+        ],
+        resumeAfterConfirmationFinalStatus: ChatTurnStatus.completed,
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+      final turnId = await ChatTurnRepository(databaseHelper).createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.awaitingToolConfirmation,
+          userInput: '提醒我开会',
+        ),
+      );
+
+      final confirmationMessage = ChatMessage(
+        text: '请确认执行工具：创建提醒',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.actionConfirmation,
+        payloadJson: {
+          'toolName': 'create_reminder',
+          'arguments': {'title': '开会'},
+          'status': 'awaitingConfirmation',
+          'summary': '请确认执行工具：创建提醒',
+          'requiresConfirmation': true,
+          'agentTurnId': turnId,
+          traceTurnIdPayloadKey: 'trace-confirm-1',
+        },
+      );
+      final messageId =
+          await databaseHelper.insertMessage(confirmationMessage, groupId);
+      confirmationMessage.id = messageId;
+      container.read(messagesProvider.notifier).addMessage(confirmationMessage);
+
+      await container.read(chatSendCoordinatorProvider).confirmToolInvocation(
+            confirmationMessage,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(harness.resumeAfterConfirmationInvocations, hasLength(1));
+      final resumedMessage = container
+          .read(messagesProvider)
+          .firstWhere((message) => message.id == messageId);
+      expect(resumedMessage.text, '正在执行工具：创建提醒');
+      expect(resumedMessage.contentType, MessageContentType.toolInvocation);
+      expect(resumedMessage.payloadJson?['status'], 'running');
+
+      final finalAnswer = container.read(messagesProvider).lastWhere(
+            (message) =>
+                message.role == MessageRole.assistant &&
+                message.contentType == MessageContentType.plainText,
+          );
+      expect(finalAnswer.text, '提醒已经安排好了。');
+      expect(container.read(chatSendStateProvider).phase, ChatSendPhase.idle);
+      expect(container.read(chatSendStateProvider).isGenerating, isFalse);
+      expect(
+        (await ChatTurnRepository(databaseHelper).getTurn(turnId))!.status,
+        ChatTurnStatus.completed,
+      );
+    });
+
+    test(
+        'submitQuestionAnswers replaces prompt with result and completes resumed turn',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: const [],
+        resumeAfterQuestionAnsweredEvents: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.userInteractionResult,
+            role: MessageRole.system,
+            content: 'User answered AskUserQuestion:\n- Storage: SQLite',
+            payloadJson: {
+              'answersByQuestionId': {'storage_layer': 'SQLite'},
+              'providerCallId': 'ask_call_1',
+            },
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.finalAnswer,
+            role: MessageRole.assistant,
+            content: '建议采用 SQLite 方案。',
+          ),
+        ],
+        resumeAfterQuestionAnsweredFinalStatus: ChatTurnStatus.completed,
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+      final turnId = await ChatTurnRepository(databaseHelper).createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.awaitingUserInteraction,
+          userInput: '帮我确定存储方案',
+        ),
+      );
+
+      final promptPayload = {
+        'questions': const [
+          {
+            'id': 'storage_layer',
+            'header': 'Storage',
+            'question': 'Which storage layer should we use?',
+            'multiSelect': false,
+            'options': [
+              {
+                'label': 'SQLite',
+                'description': 'Local relational store',
+              },
+            ],
+          },
+        ],
+        'agentTurnId': turnId,
+        'stepId': 9,
+        'providerCallId': 'ask_call_1',
+        traceTurnIdPayloadKey: 'trace-ask-1',
+      };
+      final promptMessage = ChatMessage(
+        text: '请先回答几个问题',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.askUserQuestionPrompt,
+        payloadJson: promptPayload,
+      );
+      final promptMessageId =
+          await databaseHelper.insertMessage(promptMessage, groupId);
+      promptMessage.id = promptMessageId;
+      container.read(messagesProvider.notifier).addMessage(promptMessage);
+
+      await container.read(chatSendCoordinatorProvider).submitQuestionAnswers(
+            promptMessage,
+            response: AskUserQuestionResponse.fromJson(const {
+              'answersByQuestionId': {
+                'storage_layer': 'SQLite',
+              },
+              'selectedOptionLabelsByQuestionId': {
+                'storage_layer': ['SQLite'],
+              },
+              'freeTextAnswersByQuestionId': {},
+            }),
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(harness.resumeAfterQuestionAnsweredRequests, hasLength(1));
+      final resultMessage = container
+          .read(messagesProvider)
+          .firstWhere((message) => message.id == promptMessageId);
+      expect(
+        resultMessage.contentType,
+        MessageContentType.askUserQuestionResult,
+      );
+      expect(
+        resultMessage.text,
+        'User answered AskUserQuestion:\n- Storage: SQLite',
+      );
+      expect(resultMessage.payloadJson?['status'], 'submitted');
+      expect(
+        resultMessage.payloadJson?['submittedAnswers'],
+        isA<Map<String, dynamic>>(),
+      );
+
+      final finalAnswer = container.read(messagesProvider).lastWhere(
+            (message) =>
+                message.role == MessageRole.assistant &&
+                message.contentType == MessageContentType.plainText,
+          );
+      expect(finalAnswer.text, '建议采用 SQLite 方案。');
+      expect(container.read(chatSendStateProvider).phase, ChatSendPhase.idle);
+      expect(container.read(chatSendStateProvider).isGenerating, isFalse);
+      expect(
+        (await ChatTurnRepository(databaseHelper).getTurn(turnId))!.status,
+        ChatTurnStatus.completed,
+      );
+    });
   });
 }
 
@@ -382,12 +621,22 @@ class _FakeTurnHarness extends TurnHarness {
   final List<ChatEvent> events;
   final Completer<void>? afterEventsGate;
   final String? runTurnFailureCode;
+  final List<ChatEvent> resumeAfterConfirmationEvents;
+  final ChatTurnStatus? resumeAfterConfirmationFinalStatus;
+  final List<ChatEvent> resumeAfterQuestionAnsweredEvents;
+  final ChatTurnStatus? resumeAfterQuestionAnsweredFinalStatus;
+  final List<ToolInvocation> resumeAfterConfirmationInvocations = [];
+  final List<AskUserQuestionRequest> resumeAfterQuestionAnsweredRequests = [];
 
   _FakeTurnHarness({
     required this.databaseHelper,
     required this.events,
     this.afterEventsGate,
     this.runTurnFailureCode,
+    this.resumeAfterConfirmationEvents = const [],
+    this.resumeAfterConfirmationFinalStatus,
+    this.resumeAfterQuestionAnsweredEvents = const [],
+    this.resumeAfterQuestionAnsweredFinalStatus,
   }) : super(
           plannerService: AgentPlannerService(llm: _NoopBaseLLM()),
           turnRepository: ChatTurnRepository(databaseHelper),
@@ -440,8 +689,34 @@ class _FakeTurnHarness extends TurnHarness {
     required ToolInvocation invocation,
     required ChatConfig config,
     bool trustTool = false,
-  }) =>
-      const Stream.empty();
+  }) async* {
+    resumeAfterConfirmationInvocations.add(invocation);
+    for (final event in resumeAfterConfirmationEvents) {
+      yield ChatEvent(
+        turnId: turnId,
+        groupId: event.groupId,
+        sequence: event.sequence,
+        eventType: event.eventType,
+        role: event.role,
+        status: event.status,
+        content: event.content,
+        payloadJson: event.payloadJson,
+        createdAt: event.createdAt,
+      );
+    }
+    final finalStatus = resumeAfterConfirmationFinalStatus;
+    if (finalStatus == ChatTurnStatus.completed) {
+      await ChatTurnRepository(databaseHelper).markCompleted(
+        turnId,
+        finalResponseText: resumeAfterConfirmationEvents.lastOrNull?.content,
+      );
+    } else if (finalStatus == ChatTurnStatus.failed) {
+      await ChatTurnRepository(databaseHelper).markFailed(
+        turnId,
+        errorMessage: 'resume_after_confirmation_failed',
+      );
+    }
+  }
 
   @override
   Stream<ChatEvent> resumeAfterQuestionAnswered({
@@ -449,8 +724,34 @@ class _FakeTurnHarness extends TurnHarness {
     required AskUserQuestionRequest request,
     required AskUserQuestionResponse response,
     required ChatConfig config,
-  }) =>
-      const Stream.empty();
+  }) async* {
+    resumeAfterQuestionAnsweredRequests.add(request);
+    for (final event in resumeAfterQuestionAnsweredEvents) {
+      yield ChatEvent(
+        turnId: turnId,
+        groupId: event.groupId,
+        sequence: event.sequence,
+        eventType: event.eventType,
+        role: event.role,
+        status: event.status,
+        content: event.content,
+        payloadJson: event.payloadJson,
+        createdAt: event.createdAt,
+      );
+    }
+    final finalStatus = resumeAfterQuestionAnsweredFinalStatus;
+    if (finalStatus == ChatTurnStatus.completed) {
+      await ChatTurnRepository(databaseHelper).markCompleted(
+        turnId,
+        finalResponseText: resumeAfterQuestionAnsweredEvents.lastOrNull?.content,
+      );
+    } else if (finalStatus == ChatTurnStatus.failed) {
+      await ChatTurnRepository(databaseHelper).markFailed(
+        turnId,
+        errorMessage: 'resume_after_question_failed',
+      );
+    }
+  }
 }
 
 Future<void> _interruptLatestAssistant({
