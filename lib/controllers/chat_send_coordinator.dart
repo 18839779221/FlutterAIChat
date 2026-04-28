@@ -334,16 +334,11 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     if (groupId == null) {
       return;
     }
-
-    final failureMessage = ChatMessage(
+    await _insertAssistantStatusMessage(
+      groupId: groupId,
       text: _formatSendFailureText(error),
-      role: MessageRole.assistant,
       status: MessageStatus.failed,
     );
-    final dbHelper = _ref.read(databaseProvider);
-    final messageId = await dbHelper.insertMessage(failureMessage, groupId);
-    failureMessage.id = messageId;
-    _ref.read(messagesProvider.notifier).addMessage(failureMessage);
   }
 
   Future<void> _runAgentEventStream({
@@ -464,34 +459,23 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     required int? assistantMessageId,
     required String text,
   }) async {
-    final dbHelper = _ref.read(databaseProvider);
     if (assistantMessageId == null) {
-      final failureMessage = ChatMessage(
+      await _insertAssistantStatusMessage(
+        groupId: groupId,
         text: text,
-        role: MessageRole.assistant,
         status: MessageStatus.failed,
       );
-      final messageId = await dbHelper.insertMessage(failureMessage, groupId);
-      failureMessage.id = messageId;
-      _ref.read(messagesProvider.notifier).addMessage(failureMessage);
       return;
     }
 
     if (!_shouldProjectAssistantFailure(assistantMessageId)) {
       return;
     }
-
-    _ref.read(messagesProvider.notifier).updateMessage(
-          assistantMessageId,
-          text,
-        );
-    _ref.read(messagesProvider.notifier).updateMessageStatus(
-          assistantMessageId,
-          MessageStatus.failed,
-        );
-    await dbHelper.updateMessage(assistantMessageId, text);
-    await dbHelper.updateMessageStatus(
-        assistantMessageId, MessageStatus.failed);
+    await _updateAssistantStatusMessage(
+      assistantMessageId: assistantMessageId,
+      text: text,
+      status: MessageStatus.failed,
+    );
   }
 
   Future<void> _upsertAssistantCancelledMessage({
@@ -499,41 +483,25 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     required int? assistantMessageId,
     required String text,
   }) async {
-    final dbHelper = _ref.read(databaseProvider);
     final currentMessage = assistantMessageId == null
         ? null
-        : _ref
-            .read(messagesProvider)
-            .where((candidate) => candidate.id == assistantMessageId)
-            .firstOrNull;
+        : _findMessageById(assistantMessageId);
     if (currentMessage != null &&
         currentMessage.contentType == MessageContentType.plainText &&
         currentMessage.text.trim().isEmpty) {
-      final resolvedAssistantMessageId = assistantMessageId!;
-      _ref.read(messagesProvider.notifier).updateMessage(
-            resolvedAssistantMessageId,
-            text,
-          );
-      _ref.read(messagesProvider.notifier).updateMessageStatus(
-            resolvedAssistantMessageId,
-            MessageStatus.interrupted,
-          );
-      await dbHelper.updateMessage(resolvedAssistantMessageId, text);
-      await dbHelper.updateMessageStatus(
-        resolvedAssistantMessageId,
-        MessageStatus.interrupted,
+      await _updateAssistantStatusMessage(
+        assistantMessageId: assistantMessageId!,
+        text: text,
+        status: MessageStatus.interrupted,
       );
       return;
     }
 
-    final cancelledMessage = ChatMessage(
+    await _insertAssistantStatusMessage(
+      groupId: groupId,
       text: text,
-      role: MessageRole.assistant,
       status: MessageStatus.interrupted,
     );
-    final messageId = await dbHelper.insertMessage(cancelledMessage, groupId);
-    cancelledMessage.id = messageId;
-    _ref.read(messagesProvider.notifier).addMessage(cancelledMessage);
   }
 
   void _syncAssistantFailureState({
@@ -541,43 +509,33 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     required int? assistantMessageId,
     required Object rawError,
   }) {
-    final dbHelper = _ref.read(databaseProvider);
     final failureText = _formatSendFailureText(rawError);
 
     if (assistantMessageId == null) {
-      final failureMessage = ChatMessage(
-        text: failureText,
-        role: MessageRole.assistant,
-        status: MessageStatus.failed,
+      unawaited(
+        _insertAssistantStatusMessage(
+          groupId: groupId,
+          text: failureText,
+          status: MessageStatus.failed,
+        ),
       );
-      dbHelper.insertMessage(failureMessage, groupId).then((messageId) {
-        failureMessage.id = messageId;
-        _ref.read(messagesProvider.notifier).addMessage(failureMessage);
-      });
       return;
     }
 
     if (!_shouldProjectAssistantFailure(assistantMessageId)) {
       return;
     }
-
-    _ref.read(messagesProvider.notifier).updateMessage(
-          assistantMessageId,
-          failureText,
-        );
-    _ref.read(messagesProvider.notifier).updateMessageStatus(
-          assistantMessageId,
-          MessageStatus.failed,
-        );
-    dbHelper.updateMessage(assistantMessageId, failureText);
-    dbHelper.updateMessageStatus(assistantMessageId, MessageStatus.failed);
+    unawaited(
+      _updateAssistantStatusMessage(
+        assistantMessageId: assistantMessageId,
+        text: failureText,
+        status: MessageStatus.failed,
+      ),
+    );
   }
 
   bool _shouldProjectAssistantFailure(int assistantMessageId) {
-    final message = _ref
-        .read(messagesProvider)
-        .where((candidate) => candidate.id == assistantMessageId)
-        .firstOrNull;
+    final message = _findMessageById(assistantMessageId);
     if (message == null) {
       return true;
     }
@@ -596,13 +554,54 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       return false;
     }
 
-    final message = _ref
-        .read(messagesProvider)
-        .where((candidate) => candidate.id == assistantMessageId)
-        .firstOrNull;
+    final message = _findMessageById(assistantMessageId);
     return message != null &&
         message.status == MessageStatus.interrupted &&
         message.text.trim().isNotEmpty;
+  }
+
+  Future<void> _insertAssistantStatusMessage({
+    required int groupId,
+    required String text,
+    required MessageStatus status,
+  }) async {
+    final message = ChatMessage(
+      text: text,
+      role: MessageRole.assistant,
+      status: status,
+    );
+    final messageId = await _ref.read(databaseProvider).insertMessage(
+          message,
+          groupId,
+        );
+    message.id = messageId;
+    _ref.read(messagesProvider.notifier).addMessage(message);
+  }
+
+  Future<void> _updateAssistantStatusMessage({
+    required int assistantMessageId,
+    required String text,
+    required MessageStatus status,
+  }) async {
+    _ref.read(messagesProvider.notifier).updateMessage(
+          assistantMessageId,
+          text,
+        );
+    _ref.read(messagesProvider.notifier).updateMessageStatus(
+          assistantMessageId,
+          status,
+        );
+    await _ref.read(databaseProvider).updateMessage(assistantMessageId, text);
+    await _ref
+        .read(databaseProvider)
+        .updateMessageStatus(assistantMessageId, status);
+  }
+
+  ChatMessage? _findMessageById(int messageId) {
+    return _ref
+        .read(messagesProvider)
+        .where((candidate) => candidate.id == messageId)
+        .firstOrNull;
   }
 
   ChatMessage? _resolveLatestActiveToolMessageInCurrentTurn() {
