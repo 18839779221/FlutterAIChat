@@ -150,6 +150,20 @@ class TurnHarness {
         )) {
           controller.add(event);
         }
+
+        final refreshedTurn = await _turnRepository.getTurn(turnId) ?? currentTurn;
+        final failedToolExecution = execution.toolResult == null ||
+            execution.toolResult!.status == ToolExecutionStatus.failure;
+        if (failedToolExecution &&
+            refreshedTurn.status == ChatTurnStatus.running) {
+          await for (final event in _continueTurnLoop(
+            turn: refreshedTurn,
+            config: config,
+            consecutiveFailures: 1,
+          )) {
+            controller.add(event);
+          }
+        }
       } catch (error, stackTrace) {
         controller.addError(error, stackTrace);
       } finally {
