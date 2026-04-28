@@ -377,6 +377,10 @@ Database version: 10
 - For LLM integration, adapter, or provider-compatibility work:
   - update mocked contract tests first
   - then run real-provider contract tests for the touched API styles before considering the work complete
+- For agent-loop regression coverage, prefer adding simulated integration tests before reaching for heavier e2e flows
+  - the preferred shape is: fake planner / fake tool call service / real `TurnHarness` / real `AgentEventProcessor` / real projection providers
+  - these tests should cover multi-iteration loop, waiting states, resume paths, and projection consumption together
+  - keep real-environment tests focused on provider wire compatibility, real devices, platform timing, and other issues that simulation cannot expose
 - For any trace/log changes, keep detailed rules only in `docs/architecture/logging.md` and let other docs reference it instead of duplicating fields, categories, or cleanup policy
 - For new interaction checkpoints in the agent loop:
   - prefer message-card interactions over modal-only state
