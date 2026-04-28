@@ -839,30 +839,16 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       response: response,
       dbHelper: dbHelper,
     );
-    await _runAgentEventStream(
+    await _runResumedAgentLoop(
+      groupId: currentGroupId,
+      turnId: turnId,
+      processor: processor,
       stream: harness.resumeAfterQuestionAnswered(
         turnId: turnId,
         request: request,
         response: response,
         config: _buildChatConfig(),
       ),
-      processor: processor,
-      onError: (error, stackTrace, completion) {
-        _ref.read(chatSendStateProvider.notifier).update(
-              isGenerating: false,
-              phase: ChatSendPhase.idle,
-            );
-        if (!completion.isCompleted) {
-          completion.completeError(error, stackTrace);
-        }
-      },
-      onSuccess: () async {
-        await _finalizeTurnOutcome(
-          groupId: currentGroupId,
-          turnId: turnId,
-          processor: processor,
-        );
-      },
       onFinally: () async {
         _setIdleUnlessAwaitingConfirmation();
       },
@@ -895,32 +881,18 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       dbHelper: dbHelper,
     );
 
-    await _runAgentEventStream(
+    await _runResumedAgentLoop(
+      groupId: currentGroupId,
+      turnId: turnId,
+      processor: processor,
       stream: harness.resumeAfterConfirmation(
         turnId: turnId,
         invocation: invocation,
         config: _buildChatConfig(),
         trustTool: trustTool,
       ),
-      processor: processor,
-      onError: (error, stackTrace, completion) {
-        if (!completion.isCompleted) {
-          completion.completeError(error, stackTrace);
-        }
-      },
-      onSuccess: () async {
-        await _finalizeTurnOutcome(
-          groupId: currentGroupId,
-          turnId: turnId,
-          processor: processor,
-        );
-      },
       onFinally: () async {
-        _ref.read(chatSendStateProvider.notifier).setPhase(
-              processor.hasPendingConfirmation
-                  ? ChatSendPhase.awaitingConfirmation
-                  : ChatSendPhase.idle,
-            );
+        _settleSendPhaseFromProcessor(processor);
       },
     );
   }
@@ -951,13 +923,10 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
               traceTurnIdPayloadKey: traceTurnId,
             },
           );
-          _ref.read(messagesProvider.notifier).replaceMessage(resultMessage);
-          await dbHelper.updateStructuredMessage(
-            sourceMessage.id!,
-            text: resultMessage.text,
-            status: resultMessage.status,
-            contentType: resultMessage.contentType,
-            payloadJson: jsonEncode(resultMessage.payloadJson),
+          await _replaceStructuredMessage(
+            messageId: sourceMessage.id!,
+            message: resultMessage,
+            dbHelper: dbHelper,
           );
           return true;
         },
@@ -996,17 +965,55 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
             contentType: MessageContentType.toolInvocation,
             payloadJson: runningPayload,
           );
-          _ref.read(messagesProvider.notifier).replaceMessage(runningMessage);
-          await dbHelper.updateStructuredMessage(
-            sourceMessageId,
-            text: runningMessage.text,
-            status: runningMessage.status,
-            contentType: runningMessage.contentType,
-            payloadJson: jsonEncode(runningPayload),
+          await _replaceStructuredMessage(
+            messageId: sourceMessageId,
+            message: runningMessage,
+            dbHelper: dbHelper,
           );
           return true;
         },
       ),
+    );
+  }
+
+  Future<void> _runResumedAgentLoop({
+    required int groupId,
+    required int turnId,
+    required AgentEventProcessor processor,
+    required Stream<ChatEvent> stream,
+    Future<void> Function()? onFinally,
+  }) async {
+    await _runAgentEventStream(
+      stream: stream,
+      processor: processor,
+      onError: (error, stackTrace, completion) {
+        if (!completion.isCompleted) {
+          completion.completeError(error, stackTrace);
+        }
+      },
+      onSuccess: () async {
+        await _finalizeTurnOutcome(
+          groupId: groupId,
+          turnId: turnId,
+          processor: processor,
+        );
+      },
+      onFinally: onFinally,
+    );
+  }
+
+  Future<void> _replaceStructuredMessage({
+    required int messageId,
+    required ChatMessage message,
+    required dynamic dbHelper,
+  }) async {
+    _ref.read(messagesProvider.notifier).replaceMessage(message);
+    await dbHelper.updateStructuredMessage(
+      messageId,
+      text: message.text,
+      status: message.status,
+      contentType: message.contentType,
+      payloadJson: jsonEncode(message.payloadJson),
     );
   }
 
@@ -1016,6 +1023,14 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         sendState.phase != ChatSendPhase.awaitingConfirmation) {
       _ref.read(chatSendStateProvider.notifier).setPhase(ChatSendPhase.idle);
     }
+  }
+
+  void _settleSendPhaseFromProcessor(AgentEventProcessor processor) {
+    _ref.read(chatSendStateProvider.notifier).setPhase(
+          processor.hasPendingConfirmation
+              ? ChatSendPhase.awaitingConfirmation
+              : ChatSendPhase.idle,
+        );
   }
 
   String _resolveTraceTurnId(
