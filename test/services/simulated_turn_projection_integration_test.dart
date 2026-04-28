@@ -664,6 +664,166 @@ void main() {
       expect((await turnRepository.getTurn(turnId))!.status,
           ChatTurnStatus.awaitingToolConfirmation);
     });
+
+    test(
+        'resumed confirmation loop appends visible failure when max iterations are already exhausted',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final toolPolicyService = await _createToolPolicyService();
+      final planner = AgentPlannerService(
+        llm: _QueuedDecisionLLM([
+          const ModelTurnDecision(
+            toolCalls: [
+              ModelToolCall(
+                toolName: 'search_chat_history',
+                arguments: {'query': '提醒', 'maxResults': 2},
+                sequence: 0,
+              ),
+            ],
+            assistantMessage: null,
+            diagnosticCode: 'planner_action_call_tool',
+            providerState: {'response_id': 'resp_search_4'},
+            isTerminal: false,
+          ),
+          const ModelTurnDecision(
+            toolCalls: [
+              ModelToolCall(
+                toolName: 'create_reminder',
+                arguments: {'title': '提醒测试'},
+                sequence: 0,
+              ),
+            ],
+            assistantMessage: null,
+            diagnosticCode: 'planner_action_call_tool',
+            providerState: {'response_id': 'resp_confirm_4'},
+            isTerminal: false,
+          ),
+        ]),
+        availableTools: [
+          _searchChatHistoryDefinition,
+          _createReminderDefinition,
+        ],
+        toolPolicyService: toolPolicyService,
+      );
+      final toolCallService = _QueuedToolCallService(
+        chatStorage: databaseHelper,
+        definitions: {
+          'search_chat_history': _searchChatHistoryDefinition,
+          'create_reminder': _createReminderDefinition,
+        },
+        queuedResultsByTool: {
+          'search_chat_history': Queue.of([
+            const ToolPreparationResult(
+              toolInvocation: ToolInvocation(
+                toolName: 'search_chat_history',
+                arguments: {'query': '提醒', 'maxResults': 2},
+                status: ToolInvocationStatus.running,
+                summary: '正在执行工具：搜索历史记录',
+                requiresConfirmation: false,
+              ),
+              toolResult: ToolResult(
+                toolName: 'search_chat_history',
+                status: ToolExecutionStatus.success,
+                summary: '已执行：搜索历史记录',
+                data: {
+                  'query': '提醒',
+                  'matchCount': 1,
+                },
+              ),
+              additionalContextMessages: [],
+            ),
+          ]),
+          'create_reminder': Queue.of([
+            const ToolPreparationResult(
+              toolInvocation: ToolInvocation(
+                toolName: 'create_reminder',
+                arguments: {'title': '提醒测试'},
+                status: ToolInvocationStatus.awaitingConfirmation,
+                summary: '请确认执行工具：创建提醒',
+                requiresConfirmation: true,
+              ),
+              toolResult: null,
+              additionalContextMessages: [],
+            ),
+            const ToolPreparationResult(
+              toolInvocation: ToolInvocation(
+                toolName: 'create_reminder',
+                arguments: {'title': '提醒测试'},
+                status: ToolInvocationStatus.running,
+                summary: '正在执行工具：创建提醒',
+                requiresConfirmation: false,
+              ),
+              toolResult: ToolResult(
+                toolName: 'create_reminder',
+                status: ToolExecutionStatus.success,
+                summary: '已创建提醒：提醒测试',
+              ),
+              additionalContextMessages: [],
+            ),
+          ]),
+        },
+      );
+      final harness = _createHarness(
+        databaseHelper: databaseHelper,
+        planner: planner,
+        toolCallService: toolCallService,
+        limits: const AgentLoopLimits(maxIterations: 2),
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId = await databaseHelper
+          .insertGroup(ChatGroup(title: 'projection group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'projection group');
+
+      final turnRepository = ChatTurnRepository(databaseHelper);
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '先搜索，再准备一个需要确认的提醒。',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+
+      await _consumeEventStream(
+        container: container,
+        groupId: groupId,
+        traceTurnId: 'trace-max-iteration-after-confirm',
+        agentTurnId: turnId,
+        stream: harness.runTurn(
+          turn: turn,
+          config: ChatConfig(systemPrompt: ''),
+        ),
+      );
+
+      final pending = container.read(activePendingToolConfirmationProvider);
+      expect(pending, isNotNull);
+      await container.read(chatSendCoordinatorProvider).confirmToolInvocation(
+            pending!.message,
+            trustTool: true,
+          );
+
+      expect(container.read(activePendingToolConfirmationProvider), isNull);
+      final failedAssistant = container
+          .read(messagesProvider)
+          .where((message) =>
+              message.role == MessageRole.assistant &&
+              message.status == MessageStatus.failed)
+          .last;
+      expect(failedAssistant.text, contains('已达到工具探索上限'));
+      expect(container.read(sendPhaseProvider), ChatSendPhase.idle);
+      expect((await turnRepository.getTurn(turnId))!.status,
+          ChatTurnStatus.failed);
+      expect(
+        (await turnRepository.getTurn(turnId))!.errorMessage,
+        'max_iterations_reached',
+      );
+    });
   });
 }
 
@@ -729,6 +889,7 @@ TurnHarness _createHarness({
   required DatabaseHelper databaseHelper,
   required AgentPlannerService planner,
   required ToolCallService toolCallService,
+  AgentLoopLimits limits = const AgentLoopLimits(maxIterations: 6),
 }) {
   final eventRepository = ChatEventRepository(databaseHelper);
   return TurnHarness(
@@ -740,7 +901,7 @@ TurnHarness _createHarness({
     ),
     turnVerifier: _AlwaysStopVerifier(),
     toolCallService: toolCallService,
-    limits: const AgentLoopLimits(maxIterations: 6),
+    limits: limits,
   );
 }
 
