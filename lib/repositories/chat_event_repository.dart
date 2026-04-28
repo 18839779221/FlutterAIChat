@@ -7,8 +7,22 @@ import '../storage/chat_storage.dart';
 
 class ChatEventRepository {
   final ChatStorage _storage;
+  final Map<int, Future<void>> _turnLocks = {};
 
   ChatEventRepository(this._storage);
+
+  Future<T> _withTurnLock<T>(int turnId, Future<T> Function() action) {
+    final previous = _turnLocks[turnId] ?? Future<void>.value();
+    final result = previous.then((_) => action());
+    final tail = result.then<void>((_) {}, onError: (_) {});
+    _turnLocks[turnId] = tail;
+    tail.whenComplete(() {
+      if (identical(_turnLocks[turnId], tail)) {
+        _turnLocks.remove(turnId);
+      }
+    });
+    return result;
+  }
 
   Future<ChatEvent> appendUserMessage({
     required int turnId,
@@ -262,19 +276,21 @@ class ChatEventRepository {
     String? content,
     String? status,
     Map<String, dynamic>? payloadJson,
-  }) async {
-    final sequence = await _storage.getNextEventSequence(turnId);
-    final event = ChatEvent(
-      turnId: turnId,
-      groupId: groupId,
-      sequence: sequence,
-      eventType: eventType,
-      role: role,
-      status: status,
-      content: content,
-      payloadJson: payloadJson,
-    );
-    final id = await _storage.insertEvent(event);
-    return event.copyWith(id: id);
+  }) {
+    return _withTurnLock(turnId, () async {
+      final sequence = await _storage.getNextEventSequence(turnId);
+      final event = ChatEvent(
+        turnId: turnId,
+        groupId: groupId,
+        sequence: sequence,
+        eventType: eventType,
+        role: role,
+        status: status,
+        content: content,
+        payloadJson: payloadJson,
+      );
+      final id = await _storage.insertEvent(event);
+      return event.copyWith(id: id);
+    });
   }
 }
