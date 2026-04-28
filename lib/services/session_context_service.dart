@@ -158,10 +158,14 @@ class SessionContextService {
     final userContextMessage = _userContextMessageBuilder.buildMessage(
       snapshot: await _runtimeUserContextService.buildSnapshot(),
     );
+    final filteredCurrentTranscript = _filterCurrentTurnTranscriptForPlanner(
+      currentTurn: currentTurn,
+      transcript: currentTurnTranscript,
+    );
     final currentItems = <ModelContextItem>[
       if (_extractDateReminderMessage(currentTurn) case final reminder?)
         ..._contextProjector.projectMessagesToContextItems([reminder]),
-      ..._contextProjector.projectEventsToContextItems(currentTurnTranscript),
+      ..._contextProjector.projectEventsToContextItems(filteredCurrentTranscript),
     ];
     final normalizedCurrentMessages =
         _contextProjector.encodeContextItems(currentItems);
@@ -350,6 +354,72 @@ class SessionContextService {
       recentSegments: recentSegments.toList(growable: false),
       didCompactHistory: compactedSegments.isNotEmpty,
     );
+  }
+
+  List<ChatEvent> _filterCurrentTurnTranscriptForPlanner({
+    required ChatTurn? currentTurn,
+    required List<ChatEvent> transcript,
+  }) {
+    if (!_hasProviderManagedContinuation(currentTurn)) {
+      return transcript;
+    }
+
+    return transcript
+        .where(
+          (event) => _shouldRetainCurrentTurnEventForPlanner(
+            providerStyle: currentTurn!.providerStyle!,
+            eventType: event.eventType,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  bool _hasProviderManagedContinuation(ChatTurn? turn) {
+    if (turn == null) {
+      return false;
+    }
+    switch (turn.providerStyle) {
+      case ChatTurnProviderStyle.openaiChatCompletions:
+        return true;
+      case ChatTurnProviderStyle.openaiResponses:
+        final responseId = turn.providerStateJson?['response_id'];
+        return responseId is String && responseId.trim().isNotEmpty;
+      case ChatTurnProviderStyle.anthropicMessages:
+        final messageId = turn.providerStateJson?['message_id'];
+        if (messageId is String && messageId.trim().isNotEmpty) {
+          return true;
+        }
+        final contentBlocks = turn.providerStateJson?['content_blocks'];
+        return contentBlocks is List && contentBlocks.isNotEmpty;
+      case null:
+        return false;
+    }
+  }
+
+  bool _shouldRetainCurrentTurnEventForPlanner({
+    required ChatTurnProviderStyle providerStyle,
+    required ChatEventType eventType,
+  }) {
+    switch (eventType) {
+      case ChatEventType.assistantToolCall:
+      case ChatEventType.assistantToolConfirmation:
+      case ChatEventType.toolResult:
+      case ChatEventType.toolError:
+        return false;
+      case ChatEventType.assistantQuestionPrompt:
+      case ChatEventType.userInteractionResult:
+        return providerStyle == ChatTurnProviderStyle.anthropicMessages;
+      case ChatEventType.userMessage:
+      case ChatEventType.assistantPlannerMessage:
+      case ChatEventType.finalAnswer:
+      case ChatEventType.assistantReasoningDelta:
+      case ChatEventType.assistantTextDelta:
+      case ChatEventType.assistantTextFinal:
+      case ChatEventType.toolExecutionStarted:
+      case ChatEventType.turnStatus:
+      case ChatEventType.error:
+        return true;
+    }
   }
 
   Future<SessionContextSnapshot?> _rollSummaryForward({

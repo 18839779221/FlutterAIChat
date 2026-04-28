@@ -16,6 +16,7 @@ class ModelContextItem {
   final String text;
   final DateTime? timestamp;
   final String? toolName;
+  final String? providerCallId;
   final Map<String, dynamic>? arguments;
 
   const ModelContextItem({
@@ -23,6 +24,7 @@ class ModelContextItem {
     required this.text,
     this.timestamp,
     this.toolName,
+    this.providerCallId,
     this.arguments,
   });
 
@@ -62,6 +64,7 @@ class ModelContextItem {
   factory ModelContextItem.assistantToolUse({
     required String text,
     String? toolName,
+    String? providerCallId,
     Map<String, dynamic>? arguments,
     DateTime? timestamp,
   }) {
@@ -69,6 +72,7 @@ class ModelContextItem {
       type: ModelContextItemType.assistantToolUse,
       text: text,
       toolName: toolName,
+      providerCallId: providerCallId,
       arguments: arguments,
       timestamp: timestamp,
     );
@@ -77,12 +81,14 @@ class ModelContextItem {
   factory ModelContextItem.userToolResult({
     required String text,
     String? toolName,
+    String? providerCallId,
     DateTime? timestamp,
   }) {
     return ModelContextItem(
       type: ModelContextItemType.userToolResult,
       text: text,
       toolName: toolName,
+      providerCallId: providerCallId,
       timestamp: timestamp,
     );
   }

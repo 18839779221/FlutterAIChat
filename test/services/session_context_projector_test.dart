@@ -90,6 +90,7 @@ void main() {
           content: '准备执行工具：编辑文件',
           payloadJson: const {
             'toolName': 'Edit',
+            'providerCallId': 'call_edit_1',
             'arguments': {
               'file_path': 'my_hobbies.md',
               'old_string': '篮球',
@@ -109,6 +110,7 @@ void main() {
           content: '准备执行工具：编辑文件',
           payloadJson: const {
             'toolName': 'Edit',
+            'providerCallId': 'call_edit_1',
             'arguments': {
               'file_path': 'my_hobbies.md',
               'old_string': '篮球',
@@ -121,8 +123,10 @@ void main() {
       expect(item, isNotNull);
       expect(item!.type, ModelContextItemType.assistantToolUse);
       expect(item.toolName, 'Edit');
+      expect(item.providerCallId, 'call_edit_1');
       expect(message, isNotNull);
       expect(message!.role, MessageRole.assistant);
+      expect(message.payloadJson?['providerCallId'], 'call_edit_1');
       expect(message.text, contains('[assistant tool_use]'));
       expect(message.text, contains('Edit'));
       expect(message.text, contains('my_hobbies.md'));
@@ -142,6 +146,7 @@ void main() {
           content: '已编辑文件：my_hobbies.md',
           payloadJson: const {
             'toolName': 'Edit',
+            'providerCallId': 'call_edit_1',
             'status': 'success',
             'summary': '已编辑文件：my_hobbies.md',
             'toolResultText': 'Successfully edited my_hobbies.md',
@@ -162,6 +167,7 @@ void main() {
           content: '已编辑文件：my_hobbies.md',
           payloadJson: const {
             'toolName': 'Edit',
+            'providerCallId': 'call_edit_1',
             'status': 'success',
             'summary': '已编辑文件：my_hobbies.md',
             'toolResultText': 'Successfully edited my_hobbies.md',
@@ -175,9 +181,11 @@ void main() {
       expect(item, isNotNull);
       expect(item!.type, ModelContextItemType.userToolResult);
       expect(item.toolName, 'Edit');
+      expect(item.providerCallId, 'call_edit_1');
       expect(item.text, 'Successfully edited my_hobbies.md');
       expect(message, isNotNull);
       expect(message!.role, MessageRole.user);
+      expect(message.payloadJson?['providerCallId'], 'call_edit_1');
       expect(
         message.text,
         '[user tool_result] Successfully edited my_hobbies.md',

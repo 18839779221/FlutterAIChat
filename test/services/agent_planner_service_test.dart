@@ -1822,6 +1822,173 @@ void main() {
       );
     });
 
+    test(
+        'planNextDecision groups anthropic multi-tool results into one immediate user continuation message',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: '继续处理',
+          providerState: {'message_id': 'msg_next'},
+          isTerminal: true,
+        ),
+      );
+      final service = AgentPlannerService(llm: llm);
+
+      await service.planNextDecision(
+        turn: ChatTurn(
+          id: 5,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '继续整理 Google 最新新闻',
+          providerStyle: ChatTurnProviderStyle.anthropicMessages,
+          providerStateJson: const {
+            'message_id': 'msg_prev_multi',
+            'content_blocks': [
+              {
+                'type': 'thinking',
+                'thinking': '我要补充细节。',
+                'signature': 'sig_multi',
+              },
+              {
+                'type': 'tool_use',
+                'id': 'call_00',
+                'name': 'fetch_webpage',
+                'input': {'url': 'https://example.com/a'},
+              },
+              {
+                'type': 'tool_use',
+                'id': 'call_01',
+                'name': 'fetch_webpage',
+                'input': {'url': 'https://example.com/b'},
+              },
+              {
+                'type': 'tool_use',
+                'id': 'call_02',
+                'name': 'web_search',
+                'input': {'query': 'Google latest news 2026'},
+              },
+            ],
+          },
+        ),
+        transcript: [
+          ChatEvent(
+            turnId: 5,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '继续整理 Google 最新新闻',
+          ),
+          ChatEvent(
+            turnId: 5,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: '抓取页面 A 完成',
+            payloadJson: const {
+              'toolName': 'fetch_webpage',
+              'summary': '抓取页面 A 完成',
+              'status': 'success',
+              'providerCallId': 'call_00',
+              'data': {'url': 'https://example.com/a'},
+            },
+          ),
+          ChatEvent(
+            turnId: 5,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.toolError,
+            role: MessageRole.system,
+            content: '抓取页面 B 失败',
+            payloadJson: const {
+              'toolName': 'fetch_webpage',
+              'summary': '抓取页面 B 失败',
+              'status': 'failure',
+              'errorMessage': 'network_timeout',
+              'providerCallId': 'call_01',
+            },
+          ),
+          ChatEvent(
+            turnId: 5,
+            groupId: 1,
+            sequence: 4,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: '联网搜索完成',
+            payloadJson: const {
+              'toolName': 'web_search',
+              'summary': '联网搜索完成',
+              'status': 'success',
+              'providerCallId': 'call_02',
+              'data': {'query': 'Google latest news 2026'},
+            },
+          ),
+        ],
+        steps: const [],
+        config: ChatConfig(systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(
+        llm.lastProviderContinuationItems,
+        [
+          {
+            'role': 'assistant',
+            'content': [
+              {
+                'type': 'thinking',
+                'thinking': '我要补充细节。',
+                'signature': 'sig_multi',
+              },
+              {
+                'type': 'tool_use',
+                'id': 'call_00',
+                'name': 'fetch_webpage',
+                'input': {'url': 'https://example.com/a'},
+              },
+              {
+                'type': 'tool_use',
+                'id': 'call_01',
+                'name': 'fetch_webpage',
+                'input': {'url': 'https://example.com/b'},
+              },
+              {
+                'type': 'tool_use',
+                'id': 'call_02',
+                'name': 'web_search',
+                'input': {'query': 'Google latest news 2026'},
+              },
+            ],
+          },
+          {
+            'role': 'user',
+            'content': [
+              {
+                'type': 'tool_result',
+                'tool_use_id': 'call_00',
+                'content':
+                    '{"status":"success","summary":"抓取页面 A 完成","data":{"url":"https://example.com/a"}}',
+              },
+              {
+                'type': 'tool_result',
+                'tool_use_id': 'call_01',
+                'content':
+                    '{"status":"failure","summary":"抓取页面 B 失败","error":"network_timeout"}',
+              },
+              {
+                'type': 'tool_result',
+                'tool_use_id': 'call_02',
+                'content':
+                    '{"status":"success","summary":"联网搜索完成","data":{"query":"Google latest news 2026"}}',
+              },
+            ],
+          },
+        ],
+      );
+    });
+
     test('planNextDecision parses native planner tool choice directly',
         () async {
       final llm = _NativeDecisionLLM(

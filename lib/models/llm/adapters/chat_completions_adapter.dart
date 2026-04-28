@@ -8,13 +8,10 @@ import '../api_protocol_resolver.dart';
 import '../llm_config.dart';
 import 'adapter_utils.dart';
 import 'api_style_adapter.dart';
-import 'historical_tool_transcript_state.dart';
 
 /// Adapter for the OpenAI-compatible Chat Completions protocol.
 class ChatCompletionsAdapter extends ApiStyleAdapter {
   const ChatCompletionsAdapter();
-
-  static const String _transcriptIdPrefix = 'call_ctx_';
 
   @override
   ApiStyle get style => ApiStyle.chatCompletions;
@@ -36,15 +33,11 @@ class ChatCompletionsAdapter extends ApiStyleAdapter {
   }) {
     final normalizedMessages = normalizeMessagesWithConfiguredSystemPrompt(
         messages, config.systemPrompt);
-    final transcriptState = HistoricalToolTranscriptState(_transcriptIdPrefix);
     return {
       'model': modelName,
       'messages': normalizedMessages
           .map(
-            (msg) => _buildMessage(
-              msg,
-              transcriptState: transcriptState,
-            ),
+            (msg) => _buildMessage(msg),
           )
           .toList(),
       'stream': stream,
@@ -147,21 +140,18 @@ class ChatCompletionsAdapter extends ApiStyleAdapter {
     return _extractMessageText(message.cast<String, dynamic>()) ?? '';
   }
 
-  Map<String, dynamic> _buildMessage(
-    ChatMessage message, {
-    required HistoricalToolTranscriptState transcriptState,
-  }) {
+  Map<String, dynamic> _buildMessage(ChatMessage message) {
     final contextType = modelContextTypeOf(message);
     if (contextType == assistantToolUseContextType) {
+      final providerCallId = providerCallIdOf(message);
       final toolName = toolNameOf(message);
-      if (toolName != null) {
-        final callId = transcriptState.register(toolName);
+      if (toolName != null && providerCallId != null) {
         return {
           'role': 'assistant',
           'content': '',
           'tool_calls': [
             {
-              'id': callId,
+              'id': providerCallId,
               'type': 'function',
               'function': {
                 'name': toolName,
@@ -173,13 +163,11 @@ class ChatCompletionsAdapter extends ApiStyleAdapter {
       }
     }
     if (contextType == userToolResultContextType) {
-      final invocation = transcriptState.consume(
-        preferredToolName: toolNameOf(message),
-      );
-      if (invocation != null) {
+      final providerCallId = providerCallIdOf(message);
+      if (providerCallId != null) {
         return {
           'role': 'tool',
-          'tool_call_id': invocation.id,
+          'tool_call_id': providerCallId,
           'content': message.text,
         };
       }

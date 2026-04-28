@@ -8,13 +8,10 @@ import '../api_protocol_resolver.dart';
 import '../llm_config.dart';
 import 'adapter_utils.dart';
 import 'api_style_adapter.dart';
-import 'historical_tool_transcript_state.dart';
 
 /// Adapter for the OpenAI Responses protocol.
 class ResponsesAdapter extends ApiStyleAdapter {
   const ResponsesAdapter();
-
-  static const String _transcriptIdPrefix = 'fc_ctx_';
   static const Map<String, dynamic> _reasoningConfig = {
     'effort': 'medium',
     'summary': 'auto',
@@ -40,15 +37,11 @@ class ResponsesAdapter extends ApiStyleAdapter {
   }) {
     final normalizedMessages = normalizeMessagesWithConfiguredSystemPrompt(
         messages, config.systemPrompt);
-    final transcriptState = HistoricalToolTranscriptState(_transcriptIdPrefix);
     return {
       'model': modelName,
       'input': normalizedMessages
           .map(
-            (msg) => _buildInputItem(
-              msg,
-              transcriptState: transcriptState,
-            ),
+            (msg) => _buildInputItem(msg),
           )
           .toList(),
       'reasoning': _reasoningConfig,
@@ -173,31 +166,26 @@ class ResponsesAdapter extends ApiStyleAdapter {
     return '';
   }
 
-  Map<String, dynamic> _buildInputItem(
-    ChatMessage message, {
-    required HistoricalToolTranscriptState transcriptState,
-  }) {
+  Map<String, dynamic> _buildInputItem(ChatMessage message) {
     final contextType = modelContextTypeOf(message);
     if (contextType == assistantToolUseContextType) {
+      final providerCallId = providerCallIdOf(message);
       final toolName = toolNameOf(message);
-      if (toolName != null) {
-        final callId = transcriptState.register(toolName);
+      if (toolName != null && providerCallId != null) {
         return {
           'type': 'function_call',
-          'call_id': callId,
+          'call_id': providerCallId,
           'name': toolName,
           'arguments': jsonEncode(toolArgumentsOf(message) ?? const {}),
         };
       }
     }
     if (contextType == userToolResultContextType) {
-      final invocation = transcriptState.consume(
-        preferredToolName: toolNameOf(message),
-      );
-      if (invocation != null) {
+      final providerCallId = providerCallIdOf(message);
+      if (providerCallId != null) {
         return {
           'type': 'function_call_output',
-          'call_id': invocation.id,
+          'call_id': providerCallId,
           'output': message.text,
         };
       }

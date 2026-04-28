@@ -145,6 +145,7 @@ class SessionContextProjector {
         return ModelContextItem.assistantToolUse(
           text: summary,
           toolName: toolName,
+          providerCallId: payload?['providerCallId']?.toString().trim(),
           arguments: payload?['arguments'] is Map
               ? Map<String, dynamic>.from(
                   payload!['arguments'] as Map<dynamic, dynamic>,
@@ -164,6 +165,7 @@ class SessionContextProjector {
         return ModelContextItem.userToolResult(
           text: content,
           toolName: payload?['toolName']?.toString(),
+          providerCallId: payload?['providerCallId']?.toString().trim(),
           timestamp: event.createdAt,
         );
       case ChatEventType.assistantReasoningDelta:
