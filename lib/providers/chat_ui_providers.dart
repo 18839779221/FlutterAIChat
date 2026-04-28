@@ -1,9 +1,9 @@
 import 'dart:async';
 
+import 'package:ai_chat/models/chat/chat_timeline_projection.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/session/context_window_snapshot.dart';
 import 'package:ai_chat/models/debug/debug_test_case.dart';
-import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
@@ -79,7 +79,8 @@ final contextWindowSnapshotProvider =
     systemPrompt: ref.watch(systemPromptProvider) ?? '',
     userSystemPrompt: ref.watch(systemPromptProvider) ?? '',
   );
-  return ref.watch(sessionContextInspectorServiceProvider)
+  return ref
+      .watch(sessionContextInspectorServiceProvider)
       .buildLatestWindowSnapshotForGroup(
         groupId: groupId,
         config: config,
@@ -106,71 +107,35 @@ class PendingToolConfirmation {
   final ToolInvocation invocation;
 }
 
+/// Single projection snapshot used by timeline widgets and waiting-state
+/// providers so they consume one consistent derived view.
+final chatTimelineProjectionProvider = Provider<ChatTimelineProjection>((ref) {
+  final groupId = ref.watch(currentGroupProvider)?.id;
+  final messages = ref.watch(messagesProvider);
+  return ref.watch(chatTimelineProjectionServiceProvider).build(
+        messages: messages,
+        groupId: groupId,
+      );
+});
+
 /// Returns the latest unresolved ask-user-question prompt so the timeline can
 /// render it as the active interactive card while older/resolved prompts stay
 /// compact.
 final activeAskUserQuestionMessageProvider = Provider<ChatMessage?>((ref) {
-  final messages = ref.watch(messagesProvider);
-  final resolvedTurnIds = <int>{};
-
-  for (final message in messages) {
-    if (message.contentType != MessageContentType.askUserQuestionResult) {
-      continue;
-    }
-    final turnId = message.payloadJson?['agentTurnId'];
-    if (turnId is int) {
-      resolvedTurnIds.add(turnId);
-    }
-  }
-
-  for (final message in messages.reversed) {
-    if (message.contentType != MessageContentType.askUserQuestionPrompt) {
-      continue;
-    }
-    final payload = message.payloadJson;
-    final turnId = payload?['agentTurnId'];
-    final status = payload?['status'];
-    if (turnId is! int || resolvedTurnIds.contains(turnId)) {
-      continue;
-    }
-    if (status is String && status.isNotEmpty && status != 'awaitingResponse') {
-      continue;
-    }
-    return message;
-  }
-
-  return null;
+  return ref.watch(chatTimelineProjectionProvider).activeAskUserQuestionMessage;
 });
 
 /// Returns the latest unresolved tool confirmation so the page can render a
 /// single bottom confirmation bar outside the timeline cards.
 final activePendingToolConfirmationProvider =
     Provider<PendingToolConfirmation?>((ref) {
-  final messages = ref.watch(messagesProvider);
-
-  for (final message in messages.reversed) {
-    final contentType = message.contentType;
-    if (contentType != MessageContentType.actionConfirmation &&
-        contentType != MessageContentType.toolInvocation) {
-      continue;
-    }
-
-    final payload = message.payloadJson;
-    if (payload == null) {
-      continue;
-    }
-
-    final invocation = ToolInvocation.fromJson(payload);
-    if (invocation.status != ToolInvocationStatus.awaitingConfirmation ||
-        !invocation.requiresConfirmation) {
-      continue;
-    }
-
-    return PendingToolConfirmation(
-      message: message,
-      invocation: invocation,
-    );
+  final projected =
+      ref.watch(chatTimelineProjectionProvider).pendingToolConfirmation;
+  if (projected == null) {
+    return null;
   }
-
-  return null;
+  return PendingToolConfirmation(
+    message: projected.message,
+    invocation: projected.invocation,
+  );
 });

@@ -51,12 +51,18 @@
 
 当前架构已经从“大一统 provider 文件”拆为更清晰的分层：
 
+相关长期架构文档：
+- [docs/architecture/2026-04-13-agent-loop-architecture-baseline.md](/Users/zyb_wl/flutterSpace/FlutterAIChat/docs/architecture/2026-04-13-agent-loop-architecture-baseline.md)
+- [docs/architecture/agent-loop-boundaries-and-decoupling.md](/Users/zyb_wl/flutterSpace/FlutterAIChat/docs/architecture/agent-loop-boundaries-and-decoupling.md)
+- [docs/architecture/session-context-management.md](/Users/zyb_wl/flutterSpace/FlutterAIChat/docs/architecture/session-context-management.md)
+
 ### UI 层
 - `lib/pages/`
 - `lib/widgets/`
 
 UI 只消费 Riverpod providers 和 controller 门面，不直接编排复杂业务。
 - 聊天时间线按稳定 timeline item / row 渲染，完成态 Markdown block 优先复用既有 row 身份，降低长列表滚动和流式更新中的轻微站位变化
+- waiting state / tool workflow / ask-user-question 的主消费入口正在收敛为 `chat_timeline_projection` 快照，而不是让多个 UI provider 分别扫描 `messages` 重建状态
 
 ### Provider 装配层
 - [lib/providers/chat_providers.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/providers/chat_providers.dart)
@@ -99,9 +105,16 @@ UI 只消费 Riverpod providers 和 controller 门面，不直接编排复杂业
 
 ### Service 层
 - [lib/services/chat_service.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/services/chat_service.dart)
+- `lib/services/chat_timeline_projection_service.dart`
 - `tool/runtime`、`trace` 等服务
 
 Service 层负责 LLM 通信、Session 上下文编排、工具编排与 trace 记录。
+
+补充边界约束：
+- `TurnHarness` 是唯一的 turn loop 主入口
+- provider/API 协议适配不属于 Agent Loop Core
+- UI 不应长期依赖扫描 `ChatMessage.payloadJson` 反推 workflow / waiting state，后续应逐步收敛为消费 turn ledger projection
+- `ChatTimelineProjectionService` 负责为时间线和 waiting-state provider 产出统一 projection snapshot，避免 UI 各处各自重建中间态
 
 ### Session 上下文层
 - `lib/services/session_context_service.dart`

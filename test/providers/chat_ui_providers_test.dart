@@ -30,7 +30,8 @@ void main() {
       expect(container.read(focusNodeProvider), isA<FocusNode>());
     });
 
-    test('activePendingToolConfirmationProvider returns latest unresolved confirmation',
+    test(
+        'activePendingToolConfirmationProvider returns latest unresolved confirmation',
         () {
       final container = ProviderContainer();
       addTearDown(container.dispose);
@@ -98,6 +99,68 @@ void main() {
       ]);
 
       expect(container.read(activePendingToolConfirmationProvider), isNull);
+    });
+
+    test('activeAskUserQuestionMessageProvider reads projection snapshot', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      container.read(messagesProvider.notifier).setMessages([
+        ChatMessage(
+          id: 11,
+          text: '旧问题',
+          role: MessageRole.assistant,
+          contentType: MessageContentType.askUserQuestionPrompt,
+          payloadJson: const {
+            'type': 'prompt',
+            'agentTurnId': 41,
+            'status': 'awaitingResponse',
+            'questions': [
+              {
+                'id': 'old_question',
+                'header': 'Old',
+                'question': '旧问题',
+                'options': [
+                  {'label': 'A', 'description': 'old'},
+                ],
+              },
+            ],
+          },
+        ),
+        ChatMessage(
+          id: 12,
+          text: '新问题',
+          role: MessageRole.assistant,
+          contentType: MessageContentType.askUserQuestionPrompt,
+          payloadJson: const {
+            'type': 'prompt',
+            'agentTurnId': 42,
+            'status': 'awaitingResponse',
+            'questions': [
+              {
+                'id': 'new_question',
+                'header': 'New',
+                'question': '新问题',
+                'options': [
+                  {'label': 'B', 'description': 'new'},
+                ],
+              },
+            ],
+          },
+        ),
+      ]);
+
+      final active = container.read(activeAskUserQuestionMessageProvider);
+
+      expect(active, isNotNull);
+      expect(active!.id, 12);
+      expect(
+        container
+            .read(chatTimelineProjectionProvider)
+            .activeAskUserQuestionMessage
+            ?.id,
+        12,
+      );
     });
   });
 }
