@@ -164,6 +164,15 @@ Service 层负责 LLM 通信、Session 上下文编排、工具编排与 trace �
 
 发送入口在 `ChatInput`，发送事务主编排在 `ChatSendCoordinator`，问题型交互由 `ChatInteractionCoordinator` 编排提交恢复，模型请求与工具预处理在 `ChatService`。
 
+为了提高 turn loop 回归效率，当前测试策略也在逐步收敛到一层“模拟环境集成测试”：
+
+- fake planner / fake tool call service
+- real `TurnHarness`
+- real `AgentEventProcessor`
+- real projection providers
+
+这层测试主要用于覆盖多轮 loop、等待态、resume、tool result 到 UI projection 的关键链路；真实环境测试则继续聚焦 provider 协议兼容、平台时序与真机问题。
+
 ### 主流程
 
 ```mermaid
