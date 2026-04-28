@@ -1008,6 +1008,113 @@ void main() {
       expect((await turnRepository.getTurn(turnId))!.status,
           ChatTurnStatus.completed);
     });
+
+    test('chat send flow projects visible failure for planner_no_terminal_decision',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final toolPolicyService = await _createToolPolicyService();
+      final planner = AgentPlannerService(
+        llm: _QueuedDecisionLLM([
+          const ModelTurnDecision(
+            toolCalls: [
+              ModelToolCall(
+                toolName: 'search_chat_history',
+                arguments: {'query': '数据库版本', 'maxResults': 2},
+                sequence: 0,
+              ),
+            ],
+            assistantMessage: null,
+            diagnosticCode: 'planner_action_call_tool',
+            providerState: {'response_id': 'resp_search_6'},
+            isTerminal: false,
+          ),
+          const ModelTurnDecision(
+            toolCalls: [],
+            assistantMessage: '我已经拿到结果了，开始整理最终答复。',
+            diagnosticCode: 'planner_needs_follow_up',
+            providerState: {'response_id': 'resp_followup_6'},
+            isTerminal: false,
+          ),
+        ]),
+        availableTools: [
+          _searchChatHistoryDefinition,
+        ],
+        toolPolicyService: toolPolicyService,
+      );
+      final toolCallService = _QueuedToolCallService(
+        chatStorage: databaseHelper,
+        definitions: {
+          'search_chat_history': _searchChatHistoryDefinition,
+        },
+        queuedResultsByTool: {
+          'search_chat_history': Queue.of([
+            const ToolPreparationResult(
+              toolInvocation: ToolInvocation(
+                toolName: 'search_chat_history',
+                arguments: {'query': '数据库版本', 'maxResults': 2},
+                status: ToolInvocationStatus.running,
+                summary: '正在执行工具：搜索历史记录',
+                requiresConfirmation: false,
+              ),
+              toolResult: ToolResult(
+                toolName: 'search_chat_history',
+                status: ToolExecutionStatus.success,
+                summary: '已执行：搜索历史记录',
+                data: {
+                  'query': '数据库版本',
+                  'matchCount': 1,
+                },
+              ),
+              additionalContextMessages: [],
+            ),
+          ]),
+        },
+      );
+      final harness = _createHarness(
+        databaseHelper: databaseHelper,
+        planner: planner,
+        toolCallService: toolCallService,
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId = await databaseHelper
+          .insertGroup(ChatGroup(title: 'projection group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'projection group');
+
+      await container.read(chatControllerProvider).sendMessage('先查数据库版本，再继续');
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+
+      final toolResultMessage = container
+          .read(messagesProvider)
+          .where((message) =>
+              message.contentType == MessageContentType.toolResult &&
+              message.text == '已执行：搜索历史记录')
+          .last;
+      expect(toolResultMessage.payloadJson?['data']?['query'], '数据库版本');
+
+      final failureMessage = container
+          .read(messagesProvider)
+          .where((message) =>
+              message.role == MessageRole.assistant &&
+              message.status == MessageStatus.failed)
+          .last;
+      expect(
+        failureMessage.text,
+        '这轮工具执行已经结束，但模型没有产出最终答复，所以我先停在这里。你可以让我基于当前结果继续总结，或换一种更聚焦的问法再试一次。',
+      );
+      expect(container.read(sendPhaseProvider), ChatSendPhase.idle);
+      expect(container.read(chatSendStateProvider).isGenerating, isFalse);
+
+      final turnRepository = ChatTurnRepository(databaseHelper);
+      final turns = await turnRepository.getTurnsByGroup(groupId);
+      expect(turns.single.status, ChatTurnStatus.failed);
+      expect(turns.single.errorMessage, 'planner_no_terminal_decision');
+    });
   });
 }
 
