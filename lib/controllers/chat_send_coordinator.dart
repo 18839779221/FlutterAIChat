@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
@@ -225,10 +226,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       groupId: currentGroupId,
       currentDate: runtimeMarkerPreparation.currentDate,
     );
-    final config = ChatConfig(
-      systemPrompt: _ref.read(systemPromptProvider) ?? '',
-      userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
-    );
+    final config = _buildChatConfig();
 
     final processor = AgentEventProcessor(
       ref: _ref,
@@ -262,19 +260,14 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         },
       ),
     );
-    final completion = Completer<void>();
-
-    final subscription = harness
-        .runTurn(
-      turn: persistedTurn,
-      config: config,
-    )
-        .asyncMap((event) async {
-      await processor.handle(event);
-    }).listen(
-      (_) {},
-      onError: (error, stackTrace) {
-        unawaited(processor.dispose());
+    Future<void> Function()? registeredCancelActiveSend;
+    await _runAgentEventStream(
+      stream: harness.runTurn(
+        turn: persistedTurn,
+        config: config,
+      ),
+      processor: processor,
+      onError: (error, stackTrace, completion) {
         traceRecorder.record(
           turnId: turnId,
           stage: ChatTraceStage.sendFailed,
@@ -297,49 +290,41 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
           completion.completeError(_HandledSendFailure(error), stackTrace);
         }
       },
-      onDone: () {
-        if (!completion.isCompleted) {
-          completion.complete();
+      onCompletionCreated: (completion) async {
+        Future<void> cancelActiveSend() async {
+          if (!completion.isCompleted) {
+            await turnRepository.markCancelled(
+              turnRecordId,
+              stopReason: 'cancelled_by_user',
+            );
+            await _projectCancelledTurnOutcome(
+              groupId: currentGroupId,
+              assistantMessageId: processor.assistantMessageId,
+            );
+            completion.complete();
+          }
+        }
+
+        registeredCancelActiveSend = cancelActiveSend;
+        _ref.read(activeSendCancellationProvider.notifier).state =
+            cancelActiveSend;
+      },
+      onSuccess: () async {
+        await _finalizeTurnOutcome(
+          groupId: currentGroupId,
+          turnId: turnRecordId,
+          processor: processor,
+        );
+      },
+      onFinally: () async {
+        if (identical(
+          _ref.read(activeSendCancellationProvider),
+          registeredCancelActiveSend,
+        )) {
+          _ref.read(activeSendCancellationProvider.notifier).state = null;
         }
       },
-      cancelOnError: true,
     );
-
-    _ref.read(streamSubscriptionProvider.notifier).state = subscription;
-    Future<void> cancelActiveSend() async {
-      if (!completion.isCompleted) {
-        await turnRepository.markCancelled(
-          turnRecordId,
-          stopReason: 'cancelled_by_user',
-        );
-        await _projectCancelledTurnOutcome(
-          groupId: currentGroupId,
-          assistantMessageId: processor.assistantMessageId,
-        );
-        completion.complete();
-      }
-    }
-
-    _ref.read(activeSendCancellationProvider.notifier).state = cancelActiveSend;
-    try {
-      await completion.future;
-      await _finalizeTurnOutcome(
-        groupId: currentGroupId,
-        turnId: turnRecordId,
-        processor: processor,
-      );
-    } finally {
-      await processor.dispose();
-      if (identical(_ref.read(streamSubscriptionProvider), subscription)) {
-        _ref.read(streamSubscriptionProvider.notifier).state = null;
-      }
-      if (identical(
-        _ref.read(activeSendCancellationProvider),
-        cancelActiveSend,
-      )) {
-        _ref.read(activeSendCancellationProvider.notifier).state = null;
-      }
-    }
   }
 
   Future<void> _appendVisibleSendFailureMessage({
@@ -359,6 +344,60 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     final messageId = await dbHelper.insertMessage(failureMessage, groupId);
     failureMessage.id = messageId;
     _ref.read(messagesProvider.notifier).addMessage(failureMessage);
+  }
+
+  Future<void> _runAgentEventStream({
+    required Stream<ChatEvent> stream,
+    required AgentEventProcessor processor,
+    required void Function(
+      Object error,
+      StackTrace stackTrace,
+      Completer<void> completion,
+    ) onError,
+    required Future<void> Function() onSuccess,
+    Future<void> Function(Completer<void> completion)? onCompletionCreated,
+    Future<void> Function()? onFinally,
+  }) async {
+    final completion = Completer<void>();
+    final subscription = stream.asyncMap((event) async {
+      await processor.handle(event);
+    }).listen(
+      (_) {},
+      onError: (error, stackTrace) {
+        unawaited(processor.dispose());
+        onError(error, stackTrace, completion);
+      },
+      onDone: () {
+        if (!completion.isCompleted) {
+          completion.complete();
+        }
+      },
+      cancelOnError: true,
+    );
+
+    _ref.read(streamSubscriptionProvider.notifier).state = subscription;
+    if (onCompletionCreated != null) {
+      await onCompletionCreated(completion);
+    }
+    try {
+      await completion.future;
+      await onSuccess();
+    } finally {
+      await processor.dispose();
+      if (identical(_ref.read(streamSubscriptionProvider), subscription)) {
+        _ref.read(streamSubscriptionProvider.notifier).state = null;
+      }
+      if (onFinally != null) {
+        await onFinally();
+      }
+    }
+  }
+
+  ChatConfig _buildChatConfig() {
+    return ChatConfig(
+      systemPrompt: _ref.read(systemPromptProvider) ?? '',
+      userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
+    );
   }
 
   Future<void> _finalizeTurnOutcome({
@@ -822,23 +861,15 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         },
       ),
     );
-    final completion = Completer<void>();
-    final subscription = harness
-        .resumeAfterQuestionAnswered(
-      turnId: turnId,
-      request: request,
-      response: response,
-      config: ChatConfig(
-        systemPrompt: _ref.read(systemPromptProvider) ?? '',
-        userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
+    await _runAgentEventStream(
+      stream: harness.resumeAfterQuestionAnswered(
+        turnId: turnId,
+        request: request,
+        response: response,
+        config: _buildChatConfig(),
       ),
-    )
-        .asyncMap((event) async {
-      await processor.handle(event);
-    }).listen(
-      (_) {},
-      onError: (error, stackTrace) {
-        unawaited(processor.dispose());
+      processor: processor,
+      onError: (error, stackTrace, completion) {
         _ref.read(chatSendStateProvider.notifier).update(
               isGenerating: false,
               phase: ChatSendPhase.idle,
@@ -847,33 +878,23 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
           completion.completeError(error, stackTrace);
         }
       },
-      onDone: () {
-        if (!completion.isCompleted) {
-          completion.complete();
+      onSuccess: () async {
+        await _finalizeTurnOutcome(
+          groupId: currentGroupId,
+          turnId: turnId,
+          processor: processor,
+        );
+      },
+      onFinally: () async {
+        final sendState = _ref.read(chatSendStateProvider);
+        if (!sendState.isGenerating &&
+            sendState.phase != ChatSendPhase.awaitingConfirmation) {
+          _ref
+              .read(chatSendStateProvider.notifier)
+              .setPhase(ChatSendPhase.idle);
         }
       },
-      cancelOnError: true,
     );
-
-    _ref.read(streamSubscriptionProvider.notifier).state = subscription;
-    try {
-      await completion.future;
-      await _finalizeTurnOutcome(
-        groupId: currentGroupId,
-        turnId: turnId,
-        processor: processor,
-      );
-    } finally {
-      await processor.dispose();
-      if (identical(_ref.read(streamSubscriptionProvider), subscription)) {
-        _ref.read(streamSubscriptionProvider.notifier).state = null;
-      }
-      final sendState = _ref.read(chatSendStateProvider);
-      if (!sendState.isGenerating &&
-          sendState.phase != ChatSendPhase.awaitingConfirmation) {
-        _ref.read(chatSendStateProvider.notifier).setPhase(ChatSendPhase.idle);
-      }
-    }
   }
 
   Future<void> _resumeAgentLoopConfirmation({
@@ -928,54 +949,34 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       ),
     );
 
-    final completion = Completer<void>();
-    final subscription = harness
-        .resumeAfterConfirmation(
-      turnId: turnId,
-      invocation: invocation,
-      config: ChatConfig(
-        systemPrompt: _ref.read(systemPromptProvider) ?? '',
-        userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
+    await _runAgentEventStream(
+      stream: harness.resumeAfterConfirmation(
+        turnId: turnId,
+        invocation: invocation,
+        config: _buildChatConfig(),
+        trustTool: trustTool,
       ),
-      trustTool: trustTool,
-    )
-        .asyncMap((event) async {
-      await processor.handle(event);
-    }).listen(
-      (_) {},
-      onError: (error, stackTrace) {
-        unawaited(processor.dispose());
+      processor: processor,
+      onError: (error, stackTrace, completion) {
         if (!completion.isCompleted) {
           completion.completeError(error, stackTrace);
         }
       },
-      onDone: () {
-        if (!completion.isCompleted) {
-          completion.complete();
-        }
+      onSuccess: () async {
+        await _finalizeTurnOutcome(
+          groupId: currentGroupId,
+          turnId: turnId,
+          processor: processor,
+        );
       },
-      cancelOnError: true,
+      onFinally: () async {
+        _ref.read(chatSendStateProvider.notifier).setPhase(
+              processor.hasPendingConfirmation
+                  ? ChatSendPhase.awaitingConfirmation
+                  : ChatSendPhase.idle,
+            );
+      },
     );
-
-    _ref.read(streamSubscriptionProvider.notifier).state = subscription;
-    try {
-      await completion.future;
-      await _finalizeTurnOutcome(
-        groupId: currentGroupId,
-        turnId: turnId,
-        processor: processor,
-      );
-    } finally {
-      await processor.dispose();
-      if (identical(_ref.read(streamSubscriptionProvider), subscription)) {
-        _ref.read(streamSubscriptionProvider.notifier).state = null;
-      }
-      _ref.read(chatSendStateProvider.notifier).setPhase(
-            processor.hasPendingConfirmation
-                ? ChatSendPhase.awaitingConfirmation
-                : ChatSendPhase.idle,
-          );
-    }
   }
 
   String _resolveTraceTurnId(
