@@ -468,6 +468,202 @@ void main() {
       expect((await turnRepository.getTurn(turnId))!.status,
           ChatTurnStatus.completed);
     });
+
+    test(
+        'resumed confirmation loop can surface a new pending confirmation in the same turn',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final toolPolicyService = await _createToolPolicyService();
+      final planner = AgentPlannerService(
+        llm: _QueuedDecisionLLM([
+          const ModelTurnDecision(
+            toolCalls: [
+              ModelToolCall(
+                toolName: 'search_chat_history',
+                arguments: {'query': '会议', 'maxResults': 2},
+                sequence: 0,
+              ),
+            ],
+            assistantMessage: null,
+            diagnosticCode: 'planner_action_call_tool',
+            providerState: {'response_id': 'resp_search_3'},
+            isTerminal: false,
+          ),
+          const ModelTurnDecision(
+            toolCalls: [
+              ModelToolCall(
+                toolName: 'create_reminder',
+                arguments: {'title': '准备会前材料'},
+                sequence: 0,
+              ),
+            ],
+            assistantMessage: null,
+            diagnosticCode: 'planner_action_call_tool',
+            providerState: {'response_id': 'resp_confirm_2'},
+            isTerminal: false,
+          ),
+          const ModelTurnDecision(
+            toolCalls: [
+              ModelToolCall(
+                toolName: 'create_calendar_event',
+                arguments: {
+                  'title': '项目例会',
+                  'startAt': '2026-04-29T10:00:00+08:00',
+                },
+                sequence: 0,
+              ),
+            ],
+            assistantMessage: null,
+            diagnosticCode: 'planner_action_call_tool',
+            providerState: {'response_id': 'resp_confirm_3'},
+            isTerminal: false,
+          ),
+        ]),
+        availableTools: [
+          _searchChatHistoryDefinition,
+          _createReminderDefinition,
+          _createCalendarEventDefinition,
+        ],
+        toolPolicyService: toolPolicyService,
+      );
+      final toolCallService = _QueuedToolCallService(
+        chatStorage: databaseHelper,
+        definitions: {
+          'search_chat_history': _searchChatHistoryDefinition,
+          'create_reminder': _createReminderDefinition,
+          'create_calendar_event': _createCalendarEventDefinition,
+        },
+        queuedResultsByTool: {
+          'search_chat_history': Queue.of([
+            const ToolPreparationResult(
+              toolInvocation: ToolInvocation(
+                toolName: 'search_chat_history',
+                arguments: {'query': '会议', 'maxResults': 2},
+                status: ToolInvocationStatus.running,
+                summary: '正在执行工具：搜索历史记录',
+                requiresConfirmation: false,
+              ),
+              toolResult: ToolResult(
+                toolName: 'search_chat_history',
+                status: ToolExecutionStatus.success,
+                summary: '已执行：搜索历史记录',
+                data: {
+                  'query': '会议',
+                  'matchCount': 1,
+                },
+              ),
+              additionalContextMessages: [],
+            ),
+          ]),
+          'create_reminder': Queue.of([
+            const ToolPreparationResult(
+              toolInvocation: ToolInvocation(
+                toolName: 'create_reminder',
+                arguments: {'title': '准备会前材料'},
+                status: ToolInvocationStatus.awaitingConfirmation,
+                summary: '请确认执行工具：创建提醒',
+                requiresConfirmation: true,
+              ),
+              toolResult: null,
+              additionalContextMessages: [],
+            ),
+            const ToolPreparationResult(
+              toolInvocation: ToolInvocation(
+                toolName: 'create_reminder',
+                arguments: {'title': '准备会前材料'},
+                status: ToolInvocationStatus.running,
+                summary: '正在执行工具：创建提醒',
+                requiresConfirmation: false,
+              ),
+              toolResult: ToolResult(
+                toolName: 'create_reminder',
+                status: ToolExecutionStatus.success,
+                summary: '已创建提醒：准备会前材料',
+              ),
+              additionalContextMessages: [],
+            ),
+          ]),
+          'create_calendar_event': Queue.of([
+            const ToolPreparationResult(
+              toolInvocation: ToolInvocation(
+                toolName: 'create_calendar_event',
+                arguments: {
+                  'title': '项目例会',
+                  'startAt': '2026-04-29T10:00:00+08:00',
+                },
+                status: ToolInvocationStatus.awaitingConfirmation,
+                summary: '请确认执行工具：创建日历事件',
+                requiresConfirmation: true,
+              ),
+              toolResult: null,
+              additionalContextMessages: [],
+            ),
+          ]),
+        },
+      );
+      final harness = _createHarness(
+        databaseHelper: databaseHelper,
+        planner: planner,
+        toolCallService: toolCallService,
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId = await databaseHelper
+          .insertGroup(ChatGroup(title: 'projection group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'projection group');
+
+      final turnRepository = ChatTurnRepository(databaseHelper);
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '先准备提醒，再看是否还需要建个日历事件。',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+
+      await _consumeEventStream(
+        container: container,
+        groupId: groupId,
+        traceTurnId: 'trace-followup-confirm',
+        agentTurnId: turnId,
+        stream: harness.runTurn(
+          turn: turn,
+          config: ChatConfig(systemPrompt: ''),
+        ),
+      );
+
+      final firstPending =
+          container.read(activePendingToolConfirmationProvider);
+      expect(firstPending, isNotNull);
+      expect(firstPending!.invocation.toolName, 'create_reminder');
+
+      await container.read(chatSendCoordinatorProvider).confirmToolInvocation(
+            firstPending.message,
+            trustTool: true,
+          );
+
+      final nextPending = container.read(activePendingToolConfirmationProvider);
+      expect(nextPending, isNotNull);
+      expect(nextPending!.invocation.toolName, 'create_calendar_event');
+      expect(container.read(sendPhaseProvider),
+          ChatSendPhase.awaitingConfirmation);
+      expect(
+        container
+            .read(messagesProvider)
+            .where((message) =>
+                message.contentType == MessageContentType.actionConfirmation)
+            .length,
+        1,
+      );
+      expect((await turnRepository.getTurn(turnId))!.status,
+          ChatTurnStatus.awaitingToolConfirmation);
+    });
   });
 }
 
@@ -495,6 +691,19 @@ const _createReminderDefinition = ToolDefinition(
       'title': ToolArgumentProperty.string(description: '提醒标题'),
     },
     required: ['title'],
+  ),
+);
+
+const _createCalendarEventDefinition = ToolDefinition(
+  name: 'create_calendar_event',
+  title: '创建日历事件',
+  descriptionForModel: '当用户明确要求创建日历事件时使用。',
+  argumentSchema: ToolArgumentSchema(
+    properties: {
+      'title': ToolArgumentProperty.string(description: '事件标题'),
+      'startAt': ToolArgumentProperty.string(description: '开始时间'),
+    },
+    required: ['title', 'startAt'],
   ),
 );
 
