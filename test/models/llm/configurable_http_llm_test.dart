@@ -643,6 +643,107 @@ void main() {
     });
 
     test(
+        'responses decision retries without previous_response_id when provider rejects it',
+        () async {
+      final requestBodies = <Map<String, dynamic>>[];
+      final client = _RecordingHttpClient(
+        handler: (request) {
+          final decoded = jsonDecode(request.body) as Map<String, dynamic>;
+          requestBodies.add(decoded);
+          if (requestBodies.length == 1) {
+            return http.Response(
+              jsonEncode({
+                'error': {
+                  'message':
+                      'previous_response_id is only supported on Responses WebSocket v2',
+                  'type': 'invalid_request_error',
+                },
+              }),
+              400,
+              headers: {'content-type': 'application/json'},
+              reasonPhrase: 'Bad Request',
+            );
+          }
+          return http.Response(
+            jsonEncode({
+              'id': 'resp_retry_ok',
+              'output': [
+                {
+                  'type': 'message',
+                  'content': [
+                    {
+                      'type': 'output_text',
+                      'text': 'schema_version=10',
+                    },
+                  ],
+                },
+              ],
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        },
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '继续', role: MessageRole.user),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [],
+        providerStyle: ChatTurnProviderStyle.openaiResponses,
+        providerState: const {'response_id': 'resp_prev'},
+        providerContinuationItems: const [
+          {
+            'type': 'assistant_tool_call',
+            'toolCallId': 'fc_1',
+            'toolName': 'search_chat_history',
+            'arguments': {'query': 'database schema drift'},
+          },
+          {
+            'type': 'tool_result',
+            'toolCallId': 'fc_1',
+            'toolName': 'search_chat_history',
+            'output': 'schema_version=10',
+          },
+        ],
+      );
+
+      expect(decision, isNotNull);
+      expect((decision!.assistantMessage ?? '').trim(), 'schema_version=10');
+      expect(requestBodies, hasLength(2));
+      expect(requestBodies.first['previous_response_id'], 'resp_prev');
+      expect(requestBodies.last['previous_response_id'], isNull);
+      expect(requestBodies.last['input'], [
+        {
+          'role': 'user',
+          'content': [
+            {
+              'type': 'input_text',
+              'text': '继续',
+            },
+          ],
+        },
+        {
+          'type': 'function_call',
+          'call_id': 'fc_1',
+          'name': 'search_chat_history',
+          'arguments': '{"query":"database schema drift"}',
+        },
+        {
+          'type': 'function_call_output',
+          'call_id': 'fc_1',
+          'output': 'schema_version=10',
+        },
+      ]);
+    });
+
+    test(
         'chat completions decision appends assistant tool call and tool result continuation items',
         () async {
       final client = _RecordingHttpClient(

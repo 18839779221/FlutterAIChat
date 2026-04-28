@@ -831,14 +831,22 @@ void main() {
         limits: const AgentLoopLimits(),
       );
 
-      expect(llm.lastProviderContinuationItems, hasLength(2));
+      expect(llm.lastProviderContinuationItems, hasLength(4));
       expect(
         llm.lastProviderContinuationItems.first,
-        containsPair('call_id', 'fc_1'),
+        containsPair('toolCallId', 'fc_1'),
+      );
+      expect(
+        llm.lastProviderContinuationItems[1],
+        containsPair('toolCallId', 'fc_1'),
+      );
+      expect(
+        llm.lastProviderContinuationItems[2],
+        containsPair('toolCallId', 'fc_2'),
       );
       expect(
         llm.lastProviderContinuationItems.last,
-        containsPair('call_id', 'fc_2'),
+        containsPair('toolCallId', 'fc_2'),
       );
     });
 

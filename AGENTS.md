@@ -68,10 +68,14 @@ fvm flutter test
 - First run the fast local contract suite:
   - `fvm flutter test test/models/llm/configurable_http_llm_test.dart`
 - Then run opt-in live provider contract tests against real upstream APIs:
+  - `bash scripts/run_live_llm_contract_tests.sh beehears-responses`
+  - `bash scripts/run_live_llm_contract_tests.sh minimax-openai-chat-completions minimax-anthropic`
   - `LIVE_LLM_PROVIDER_IDS=minimax-openai-chat-completions fvm flutter test --tags live-llm test/models/llm/configurable_http_llm_live_test.dart`
   - `LIVE_LLM_PROVIDER_IDS=minimax-anthropic fvm flutter test --tags live-llm test/models/llm/configurable_http_llm_live_test.dart`
 - Prefer validating at least one real provider for each still-supported API style you touched
   - current examples in local defaults include `responses`, `chat completions`, and `anthropic messages`
+- The live suite should cover both first-round planner parsing and tool-continuation round-trip compatibility
+  - do not treat a provider as verified if it only passes plain text / summary smoke paths
 - Keep live tests opt-in
   - do not make default `flutter test` depend on external network access or provider credentials
   - use `LIVE_LLM_PROVIDER_IDS` to explicitly select which providers to hit from `config/local_defaults.json`

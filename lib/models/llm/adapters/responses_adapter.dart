@@ -98,7 +98,11 @@ class ResponsesAdapter extends ApiStyleAdapter {
     }
     if (continuationItems.isNotEmpty) {
       final continuationInputItems =
-          _buildContinuationInputItems(continuationItems);
+          _buildContinuationInputItems(
+        continuationItems,
+        includeAssistantToolCalls:
+            previousResponseId == null || previousResponseId.isEmpty,
+      );
       final useContinuationOnly = previousResponseId != null &&
           previousResponseId.isNotEmpty &&
           continuationInputItems.isNotEmpty;
@@ -213,7 +217,9 @@ class ResponsesAdapter extends ApiStyleAdapter {
 
   List<Map<String, dynamic>> _buildContinuationInputItems(
     List<Map<String, dynamic>> continuationItems,
-  ) {
+    {
+    required bool includeAssistantToolCalls,
+  }) {
     final items = <Map<String, dynamic>>[];
     for (final item in continuationItems) {
       final type = item['type'];
@@ -230,6 +236,37 @@ class ResponsesAdapter extends ApiStyleAdapter {
               'text': content,
             },
           ],
+        });
+        continue;
+      }
+      if (type == 'assistant_tool_call') {
+        if (!includeAssistantToolCalls) {
+          continue;
+        }
+        final callId = normalizeText(item['toolCallId']);
+        final toolName = normalizeText(item['toolName']);
+        final arguments = item['arguments'];
+        if (callId == null || toolName == null || arguments is! Map) {
+          continue;
+        }
+        items.add({
+          'type': 'function_call',
+          'call_id': callId,
+          'name': toolName,
+          'arguments': jsonEncode(arguments),
+        });
+        continue;
+      }
+      if (type == 'tool_result') {
+        final callId = normalizeText(item['toolCallId']);
+        final output = normalizeText(item['output']);
+        if (callId == null || output == null) {
+          continue;
+        }
+        items.add({
+          'type': 'function_call_output',
+          'call_id': callId,
+          'output': output,
         });
         continue;
       }

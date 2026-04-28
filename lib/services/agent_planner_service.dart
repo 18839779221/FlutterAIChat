@@ -278,6 +278,7 @@ class AgentPlannerService {
     }
 
     final orderedCallIds = LinkedHashSet<String>();
+    final toolCalls = <String, Map<String, dynamic>>{};
     final outputsByCallId = <String, String>{};
     final interactionAnswersByCallId = <String, String>{};
 
@@ -291,6 +292,7 @@ class AgentPlannerService {
               (payload['providerResponseId'] ?? '').toString().trim();
           if (providerResponseId == responseId && providerCallId.isNotEmpty) {
             orderedCallIds.add(providerCallId);
+            toolCalls[providerCallId] = payload;
           }
           break;
         case ChatEventType.toolResult:
@@ -322,11 +324,22 @@ class AgentPlannerService {
         });
         continue;
       }
+      final toolCall = toolCalls[callId];
+      if (toolCall == null) {
+        continue;
+      }
+      items.add({
+        'type': 'assistant_tool_call',
+        'toolCallId': callId,
+        'toolName': toolCall['toolName'],
+        'arguments': toolCall['arguments'] ?? const <String, dynamic>{},
+      });
       final output = outputsByCallId[callId];
       if (output != null) {
         items.add({
-          'type': 'function_call_output',
-          'call_id': callId,
+          'type': 'tool_result',
+          'toolCallId': callId,
+          'toolName': toolCall['toolName'],
           'output': output,
         });
       }

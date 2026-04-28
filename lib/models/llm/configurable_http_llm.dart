@@ -229,7 +229,7 @@ class ConfigurableHttpLLM implements BaseLLM {
         providerStyle: providerStyle,
         providerState: providerState,
       );
-      final payload = adapter.buildPlannerPayload(
+      Map<String, dynamic> payload = adapter.buildPlannerPayload(
         messages: messages,
         config: config,
         modelName: modelName,
@@ -240,16 +240,45 @@ class ConfigurableHttpLLM implements BaseLLM {
         providerState: providerState,
       );
       Logger.i(_tag, 'native planner 请求体: ${jsonEncode(payload)}');
-      final response = await _performRetriableMainFlowRequest(
-        label: 'native_planner',
-        operation: () => _httpClient
-            .post(
-              _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
-              headers: adapter.buildHeaders(runtimeConfig),
-              body: jsonEncode(payload),
-            )
-            .timeout(_plannerRequestTimeout),
-      );
+      Future<http.Response> sendPlannerRequest(
+        Map<String, dynamic> requestPayload,
+      ) {
+        return _performRetriableMainFlowRequest(
+          label: 'native_planner',
+          operation: () => _httpClient
+              .post(
+                _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
+                headers: adapter.buildHeaders(runtimeConfig),
+                body: jsonEncode(requestPayload),
+              )
+              .timeout(_plannerRequestTimeout),
+        );
+      }
+
+      var response = await sendPlannerRequest(payload);
+      if (_shouldRetryResponsesWithoutPreviousResponseId(
+        apiStyle: apiStyle,
+        previousResponseId: previousResponseId,
+        response: response,
+        hasContinuationItems: providerContinuationItems.isNotEmpty,
+      )) {
+        Logger.w(
+          _tag,
+          'native planner provider rejected previous_response_id; retrying with stateless responses continuation',
+        );
+        payload = adapter.buildPlannerPayload(
+          messages: messages,
+          config: config,
+          modelName: modelName,
+          availableTools: availableTools,
+          parallelToolCalls: true,
+          previousResponseId: null,
+          continuationItems: providerContinuationItems,
+          providerState: providerState,
+        );
+        Logger.i(_tag, 'native planner fallback 请求体: ${jsonEncode(payload)}');
+        response = await sendPlannerRequest(payload);
+      }
 
       if (response.statusCode != 200) {
         final detail =
@@ -365,6 +394,25 @@ class ConfigurableHttpLLM implements BaseLLM {
       return null;
     }
     return trimmed;
+  }
+
+  bool _shouldRetryResponsesWithoutPreviousResponseId({
+    required ApiStyle apiStyle,
+    required String? previousResponseId,
+    required http.Response response,
+    required bool hasContinuationItems,
+  }) {
+    if (apiStyle != ApiStyle.responses ||
+        !hasContinuationItems ||
+        previousResponseId == null ||
+        previousResponseId.trim().isEmpty ||
+        response.statusCode != 400) {
+      return false;
+    }
+    final normalizedBody = response.body.toLowerCase();
+    return normalizedBody.contains('previous_response_id') &&
+        (normalizedBody.contains('not supported') ||
+            normalizedBody.contains('only supported'));
   }
 
   ModelTurnDecision? _parseTurnDecisionForStyle(
