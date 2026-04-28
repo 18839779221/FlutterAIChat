@@ -413,37 +413,43 @@ class AgentPlannerService {
         'role': 'assistant',
         'content': assistantContentBlocks,
       });
+      items.add({
+        'role': 'user',
+        'content': [
+          for (final callId in matchedCallIds)
+            {
+              'type': 'tool_result',
+              'tool_use_id': callId,
+              'content': toolResults[callId],
+            },
+        ],
+      });
+      return items;
     }
 
     for (final callId in matchedCallIds) {
-      if (assistantContentBlocks.isEmpty) {
-        final toolCall = toolCalls[callId];
-        if (toolCall == null) {
-          continue;
-        }
-        items.add({
-          'role': 'assistant',
-          'content': [
-            {
-              'type': 'tool_use',
-              'id': callId,
-              'name': toolCall['toolName'],
-              'input': toolCall['arguments'] ?? const <String, dynamic>{},
-            },
-          ],
-        });
-      }
-      final result = toolResults[callId];
-      if (result == null) {
+      final toolCall = toolCalls[callId];
+      if (toolCall == null) {
         continue;
       }
+      items.add({
+        'role': 'assistant',
+        'content': [
+          {
+            'type': 'tool_use',
+            'id': callId,
+            'name': toolCall['toolName'],
+            'input': toolCall['arguments'] ?? const <String, dynamic>{},
+          },
+        ],
+      });
       items.add({
         'role': 'user',
         'content': [
           {
             'type': 'tool_result',
             'tool_use_id': callId,
-            'content': result,
+            'content': toolResults[callId],
           },
         ],
       });

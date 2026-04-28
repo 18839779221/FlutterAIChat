@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
 import 'package:ai_chat/models/chat_event.dart';
@@ -219,6 +217,122 @@ void main() {
         contains('最近工作集：TurnHarness 还没接入'),
       );
       expect(plannerMessages.last.text, contains('TurnHarness 是主入口'));
+
+      await storage.deleteGroup(groupId);
+    });
+
+    test(
+        'excludes current turn tool loop transcript when provider continuation owns the active round',
+        () async {
+      final storage = DatabaseHelper(
+        databaseName: 'session_context_service_provider_continuation_filter_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(title: 'Session Context Continuation Filter'),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final eventRepository = ChatEventRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '继续查资料',
+          providerStyle: ChatTurnProviderStyle.anthropicMessages,
+          providerStateJson: const {
+            'message_id': 'msg_prev',
+            'content_blocks': [
+              {
+                'type': 'thinking',
+                'thinking': '我要继续沿着搜索结果往下看。',
+                'signature': 'sig_prev',
+              },
+              {
+                'type': 'tool_use',
+                'id': 'call_search_1',
+                'name': 'web_search',
+                'input': {'query': 'turn harness continuation'},
+              },
+            ],
+          },
+        ),
+      );
+
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetResolver: (_) => const SessionModelBudget(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw UnimplementedError(),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      );
+
+      final plannerMessages = await service.buildPlannerMessages(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: [
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '继续查资料',
+          ),
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 2,
+            eventType: ChatEventType.assistantPlannerMessage,
+            role: MessageRole.assistant,
+            content: '我先继续搜索相关资料。',
+          ),
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 3,
+            eventType: ChatEventType.assistantToolCall,
+            role: MessageRole.assistant,
+            content: '准备执行工具：联网搜索',
+            payloadJson: const {
+              'toolName': 'web_search',
+              'arguments': {'query': 'turn harness continuation'},
+              'providerCallId': 'call_search_1',
+              'summary': '准备执行工具：联网搜索',
+            },
+          ),
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 4,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: '已执行联网搜索',
+            payloadJson: const {
+              'toolName': 'web_search',
+              'summary': '已执行联网搜索',
+              'providerCallId': 'call_search_1',
+              'status': 'success',
+            },
+          ),
+        ],
+        config: ChatConfig(systemPrompt: '你是一个助手'),
+      );
+
+      final combined = plannerMessages.map((message) => message.text).join('\n');
+      expect(combined, contains('继续查资料'));
+      expect(combined, contains('我先继续搜索相关资料。'));
+      expect(combined, isNot(contains('准备执行工具：联网搜索')));
+      expect(combined, isNot(contains('已执行联网搜索')));
 
       await storage.deleteGroup(groupId);
     });

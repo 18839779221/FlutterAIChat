@@ -42,7 +42,7 @@ void main() {
       expect(input[1]['content'][0]['type'], 'output_text');
     });
 
-    test('emits function_call / function_call_output for tool transcript', () {
+    test('reuses providerCallId for tool transcript', () {
       final payload = adapter.buildChatPayload(
         messages: [
           ChatMessage(text: '写文件', role: MessageRole.user),
@@ -51,6 +51,7 @@ void main() {
             role: MessageRole.assistant,
             payloadJson: const {
               'modelContextType': 'assistantToolUse',
+              'providerCallId': 'fc_server_1',
               'toolName': 'write_file',
               'arguments': {'path': 'a.txt'},
             },
@@ -60,6 +61,7 @@ void main() {
             role: MessageRole.user,
             payloadJson: const {
               'modelContextType': 'userToolResult',
+              'providerCallId': 'fc_server_1',
               'toolName': 'write_file',
             },
           ),
@@ -71,14 +73,62 @@ void main() {
       final input = payload['input'] as List<dynamic>;
       expect(input[1], {
         'type': 'function_call',
-        'call_id': 'fc_ctx_1',
+        'call_id': 'fc_server_1',
         'name': 'write_file',
         'arguments': '{"path":"a.txt"}',
       });
       expect(input[2], {
         'type': 'function_call_output',
-        'call_id': 'fc_ctx_1',
+        'call_id': 'fc_server_1',
         'output': 'ok',
+      });
+    });
+
+    test('falls back to plain text items when providerCallId is missing', () {
+      final payload = adapter.buildChatPayload(
+        messages: [
+          ChatMessage(text: '写文件', role: MessageRole.user),
+          ChatMessage(
+            text: '[assistant tool_use] write_file path=a.txt',
+            role: MessageRole.assistant,
+            payloadJson: const {
+              'modelContextType': 'assistantToolUse',
+              'toolName': 'write_file',
+              'arguments': {'path': 'a.txt'},
+            },
+          ),
+          ChatMessage(
+            text: '[user tool_result] ok',
+            role: MessageRole.user,
+            payloadJson: const {
+              'modelContextType': 'userToolResult',
+              'toolName': 'write_file',
+            },
+          ),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'gpt-x',
+        stream: false,
+      );
+
+      final input = payload['input'] as List<dynamic>;
+      expect(input[1], {
+        'role': 'assistant',
+        'content': [
+          {
+            'type': 'output_text',
+            'text': '[assistant tool_use] write_file path=a.txt',
+          },
+        ],
+      });
+      expect(input[2], {
+        'role': 'user',
+        'content': [
+          {
+            'type': 'input_text',
+            'text': '[user tool_result] ok',
+          },
+        ],
       });
     });
   });

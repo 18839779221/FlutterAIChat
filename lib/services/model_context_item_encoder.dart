@@ -28,6 +28,7 @@ class ModelContextItemEncoder {
       payloadJson: {
         'modelContextType': item.type.name,
         if (item.toolName != null) 'toolName': item.toolName,
+        if (item.providerCallId != null) 'providerCallId': item.providerCallId,
         if (item.arguments != null) 'arguments': item.arguments,
       },
     );

@@ -6,13 +6,10 @@ import '../api_protocol_resolver.dart';
 import '../llm_config.dart';
 import 'adapter_utils.dart';
 import 'api_style_adapter.dart';
-import 'historical_tool_transcript_state.dart';
 
 /// Adapter for the Anthropic Messages protocol.
 class AnthropicMessagesAdapter extends ApiStyleAdapter {
   const AnthropicMessagesAdapter();
-
-  static const String _transcriptIdPrefix = 'toolu_ctx_';
 
   @override
   ApiStyle get style => ApiStyle.anthropicMessages;
@@ -153,8 +150,6 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
     }
 
     final normalizedMessages = <Map<String, dynamic>>[];
-    final transcriptState =
-        HistoricalToolTranscriptState(_transcriptIdPrefix);
     for (final message in messages) {
       final trimmedText = message.text.trim();
       if (trimmedText.isEmpty) {
@@ -165,10 +160,7 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
         continue;
       }
       normalizedMessages.add(
-        _buildMessage(
-          message,
-          transcriptState: transcriptState,
-        ),
+        _buildMessage(message),
       );
     }
 
@@ -187,21 +179,18 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
     };
   }
 
-  Map<String, dynamic> _buildMessage(
-    ChatMessage message, {
-    required HistoricalToolTranscriptState transcriptState,
-  }) {
+  Map<String, dynamic> _buildMessage(ChatMessage message) {
     final contextType = modelContextTypeOf(message);
     if (contextType == assistantToolUseContextType) {
+      final providerCallId = providerCallIdOf(message);
       final toolName = toolNameOf(message);
-      if (toolName != null) {
-        final toolUseId = transcriptState.register(toolName);
+      if (toolName != null && providerCallId != null) {
         return {
           'role': 'assistant',
           'content': [
             {
               'type': 'tool_use',
-              'id': toolUseId,
+              'id': providerCallId,
               'name': toolName,
               'input': toolArgumentsOf(message) ?? const {},
             },
@@ -210,16 +199,14 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
       }
     }
     if (contextType == userToolResultContextType) {
-      final invocation = transcriptState.consume(
-        preferredToolName: toolNameOf(message),
-      );
-      if (invocation != null) {
+      final providerCallId = providerCallIdOf(message);
+      if (providerCallId != null) {
         return {
           'role': 'user',
           'content': [
             {
               'type': 'tool_result',
-              'tool_use_id': invocation.id,
+              'tool_use_id': providerCallId,
               'content': message.text,
             },
           ],

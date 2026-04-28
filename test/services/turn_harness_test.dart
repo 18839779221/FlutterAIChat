@@ -2155,15 +2155,15 @@ void main() {
         ),
         turnVerifier: _AlwaysStopVerifier(),
         toolCallService: _SequencedToolCallService([
-          ToolPreparationResult(
-            toolInvocation: const ToolInvocation(
+          const ToolPreparationResult(
+            toolInvocation: ToolInvocation(
               toolName: 'search_chat_history',
               arguments: {'query': '数据库版本'},
               status: ToolInvocationStatus.running,
               summary: '正在执行工具：搜索历史',
               requiresConfirmation: false,
             ),
-            toolResult: const ToolResult(
+            toolResult: ToolResult(
               toolName: 'search_chat_history',
               status: ToolExecutionStatus.success,
               summary: '已执行：搜索历史记录',
@@ -2175,10 +2175,10 @@ void main() {
                 ],
               },
             ),
-            additionalContextMessages: const [],
+            additionalContextMessages: [],
           ),
-          ToolPreparationResult(
-            toolInvocation: const ToolInvocation(
+          const ToolPreparationResult(
+            toolInvocation: ToolInvocation(
               toolName: 'Write',
               arguments: {
                 'file_path': 'notes/version.md',
@@ -2188,7 +2188,7 @@ void main() {
               summary: '正在执行工具：写入文件',
               requiresConfirmation: false,
             ),
-            toolResult: const ToolResult(
+            toolResult: ToolResult(
               toolName: 'Write',
               status: ToolExecutionStatus.success,
               summary: '已写入文件：notes/version.md',
@@ -2196,7 +2196,7 @@ void main() {
                 'filePath': 'notes/version.md',
               },
             ),
-            additionalContextMessages: const [],
+            additionalContextMessages: [],
           ),
         ]),
         sessionContextService: SessionContextService(
@@ -3463,7 +3463,7 @@ class _AssertingLoopPlannerLLM implements BaseLLM {
         contains('已执行：搜索历史记录'),
       );
       expect(joinedText, contains('我先检索历史记录。'));
-      expect(joinedText, contains('已执行：搜索历史记录'));
+      expect(joinedText, isNot(contains('已执行：搜索历史记录')));
       return const ModelTurnDecision(
         toolCalls: [
           ModelToolCall(
@@ -3498,7 +3498,7 @@ class _AssertingLoopPlannerLLM implements BaseLLM {
       contains('已写入文件：notes/version.md'),
     );
     expect(joinedText, contains('我把确认结果写入文件。'));
-    expect(joinedText, contains('已写入文件：notes/version.md'));
+    expect(joinedText, isNot(contains('已写入文件：notes/version.md')));
     return const ModelTurnDecision(
       toolCalls: [],
       assistantMessage: '数据库版本已确认，并已记录到 notes/version.md。',
@@ -3598,7 +3598,7 @@ class _AssertingQuestionLoopPlannerLLM implements BaseLLM {
       providerContinuationItems.single['content'].toString(),
       contains('Storage: SQLite'),
     );
-    expect(joinedText, contains('Storage: SQLite'));
+    expect(joinedText, isNot(contains('Storage: SQLite')));
     return const ModelTurnDecision(
       toolCalls: [],
       assistantMessage: '建议采用 SQLite 作为当前方案。',
@@ -3679,12 +3679,6 @@ class _NeverStopVerifier extends TurnVerifier {
       reason: 'needs_more_work',
     );
   }
-}
-
-class _FakeChatService extends ChatService {
-  final List<String> chunks;
-
-  _FakeChatService({required this.chunks}) : super(llm: _NoopBaseLLM());
 }
 
 class _FakeToolCallService extends ToolCallService {

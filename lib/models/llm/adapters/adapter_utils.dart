@@ -86,6 +86,14 @@ String? toolNameOf(ChatMessage message) {
   return normalizeText(payload['toolName']);
 }
 
+String? providerCallIdOf(ChatMessage message) {
+  final payload = message.payloadJson;
+  if (payload == null) {
+    return null;
+  }
+  return normalizeText(payload['providerCallId']);
+}
+
 Map<String, dynamic>? toolArgumentsOf(ChatMessage message) {
   final payload = message.payloadJson;
   if (payload == null) {
