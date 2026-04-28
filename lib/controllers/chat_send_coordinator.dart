@@ -831,35 +831,13 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
           isGenerating: false,
           phase: ChatSendPhase.preparing,
         );
-    final processor = AgentEventProcessor(
-      ref: _ref,
+    final processor = _buildQuestionResumeProcessor(
       groupId: currentGroupId,
       traceTurnId: traceTurnId,
-      agentTurnId: turnId,
-      hooks: AgentEventHooks(
-        onUserInteractionResult: (event) async {
-          final resultMessage = message.copyWith(
-            text: event.content ?? message.text,
-            contentType: MessageContentType.askUserQuestionResult,
-            payloadJson: {
-              'type': 'result',
-              ...?message.payloadJson,
-              'submittedAnswers': response.toJson(),
-              'status': 'submitted',
-              traceTurnIdPayloadKey: traceTurnId,
-            },
-          );
-          _ref.read(messagesProvider.notifier).replaceMessage(resultMessage);
-          await dbHelper.updateStructuredMessage(
-            message.id!,
-            text: resultMessage.text,
-            status: resultMessage.status,
-            contentType: resultMessage.contentType,
-            payloadJson: jsonEncode(resultMessage.payloadJson),
-          );
-          return true;
-        },
-      ),
+      turnId: turnId,
+      sourceMessage: message,
+      response: response,
+      dbHelper: dbHelper,
     );
     await _runAgentEventStream(
       stream: harness.resumeAfterQuestionAnswered(
@@ -886,13 +864,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         );
       },
       onFinally: () async {
-        final sendState = _ref.read(chatSendStateProvider);
-        if (!sendState.isGenerating &&
-            sendState.phase != ChatSendPhase.awaitingConfirmation) {
-          _ref
-              .read(chatSendStateProvider.notifier)
-              .setPhase(ChatSendPhase.idle);
-        }
+        _setIdleUnlessAwaitingConfirmation();
       },
     );
   }
@@ -913,40 +885,14 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     }
 
     final dbHelper = _ref.read(databaseProvider);
-    var firstToolExecutionConsumed = false;
-
-    final processor = AgentEventProcessor(
-      ref: _ref,
+    final processor = _buildConfirmationResumeProcessor(
       groupId: currentGroupId,
       traceTurnId: traceTurnId,
-      agentTurnId: turnId,
-      hooks: AgentEventHooks(
-        transformFirstToolExecution: (event) async {
-          if (firstToolExecutionConsumed) {
-            return false;
-          }
-          firstToolExecutionConsumed = true;
-          final runningPayload = {
-            ...?event.payloadJson,
-            'agentTurnId': turnId,
-            traceTurnIdPayloadKey: traceTurnId,
-          };
-          final runningMessage = sourceMessage.copyWith(
-            text: event.content ?? invocation.summary,
-            contentType: MessageContentType.toolInvocation,
-            payloadJson: runningPayload,
-          );
-          _ref.read(messagesProvider.notifier).replaceMessage(runningMessage);
-          await dbHelper.updateStructuredMessage(
-            sourceMessageId,
-            text: runningMessage.text,
-            status: runningMessage.status,
-            contentType: runningMessage.contentType,
-            payloadJson: jsonEncode(runningPayload),
-          );
-          return true;
-        },
-      ),
+      turnId: turnId,
+      invocation: invocation,
+      sourceMessage: sourceMessage,
+      sourceMessageId: sourceMessageId,
+      dbHelper: dbHelper,
     );
 
     await _runAgentEventStream(
@@ -977,6 +923,99 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
             );
       },
     );
+  }
+
+  AgentEventProcessor _buildQuestionResumeProcessor({
+    required int groupId,
+    required String traceTurnId,
+    required int turnId,
+    required ChatMessage sourceMessage,
+    required AskUserQuestionResponse response,
+    required dynamic dbHelper,
+  }) {
+    return AgentEventProcessor(
+      ref: _ref,
+      groupId: groupId,
+      traceTurnId: traceTurnId,
+      agentTurnId: turnId,
+      hooks: AgentEventHooks(
+        onUserInteractionResult: (event) async {
+          final resultMessage = sourceMessage.copyWith(
+            text: event.content ?? sourceMessage.text,
+            contentType: MessageContentType.askUserQuestionResult,
+            payloadJson: {
+              'type': 'result',
+              ...?sourceMessage.payloadJson,
+              'submittedAnswers': response.toJson(),
+              'status': 'submitted',
+              traceTurnIdPayloadKey: traceTurnId,
+            },
+          );
+          _ref.read(messagesProvider.notifier).replaceMessage(resultMessage);
+          await dbHelper.updateStructuredMessage(
+            sourceMessage.id!,
+            text: resultMessage.text,
+            status: resultMessage.status,
+            contentType: resultMessage.contentType,
+            payloadJson: jsonEncode(resultMessage.payloadJson),
+          );
+          return true;
+        },
+      ),
+    );
+  }
+
+  AgentEventProcessor _buildConfirmationResumeProcessor({
+    required int groupId,
+    required String traceTurnId,
+    required int turnId,
+    required ToolInvocation invocation,
+    required ChatMessage sourceMessage,
+    required int sourceMessageId,
+    required dynamic dbHelper,
+  }) {
+    var firstToolExecutionConsumed = false;
+    return AgentEventProcessor(
+      ref: _ref,
+      groupId: groupId,
+      traceTurnId: traceTurnId,
+      agentTurnId: turnId,
+      hooks: AgentEventHooks(
+        transformFirstToolExecution: (event) async {
+          if (firstToolExecutionConsumed) {
+            return false;
+          }
+          firstToolExecutionConsumed = true;
+          final runningPayload = {
+            ...?event.payloadJson,
+            'agentTurnId': turnId,
+            traceTurnIdPayloadKey: traceTurnId,
+          };
+          final runningMessage = sourceMessage.copyWith(
+            text: event.content ?? invocation.summary,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: runningPayload,
+          );
+          _ref.read(messagesProvider.notifier).replaceMessage(runningMessage);
+          await dbHelper.updateStructuredMessage(
+            sourceMessageId,
+            text: runningMessage.text,
+            status: runningMessage.status,
+            contentType: runningMessage.contentType,
+            payloadJson: jsonEncode(runningPayload),
+          );
+          return true;
+        },
+      ),
+    );
+  }
+
+  void _setIdleUnlessAwaitingConfirmation() {
+    final sendState = _ref.read(chatSendStateProvider);
+    if (!sendState.isGenerating &&
+        sendState.phase != ChatSendPhase.awaitingConfirmation) {
+      _ref.read(chatSendStateProvider.notifier).setPhase(ChatSendPhase.idle);
+    }
   }
 
   String _resolveTraceTurnId(
