@@ -22,6 +22,14 @@ import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
 import 'package:ai_chat/repositories/session_context_snapshot_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_step_repository.dart';
+import 'package:ai_chat/services/file_tools/file_tool_budget_service.dart';
+import 'package:ai_chat/services/file_tools/file_tool_discovery_service.dart';
+import 'package:ai_chat/services/file_tools/file_tool_host_adapters.dart';
+import 'package:ai_chat/services/file_tools/file_tool_path_policy.dart';
+import 'package:ai_chat/services/file_tools/file_tool_read_formatter.dart';
+import 'package:ai_chat/services/file_tools/file_tool_root_service.dart';
+import 'package:ai_chat/services/file_tools/file_tool_session_guard.dart';
+import 'package:ai_chat/services/file_tools/file_tool_write_service.dart';
 import 'package:ai_chat/providers/chat_ui_providers.dart';
 import 'package:ai_chat/services/agent_planner_service.dart';
 import 'package:ai_chat/services/chat_service.dart';
@@ -42,6 +50,7 @@ import 'package:ai_chat/tools/adapters/tool_host_adapters.dart';
 import 'package:ai_chat/tools/default_tool_runtime_registry.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -57,6 +66,7 @@ class ChatSendLiveTestHarness {
   final AppSettingsRepository settingsRepository;
   final String databasePath;
   final ChatSendLiveFixtureBuilder fixtureBuilder;
+  final Directory workspaceRoot;
   final List<Directory> _workspaceRoots;
 
   ChatSendLiveTestHarness._({
@@ -65,6 +75,7 @@ class ChatSendLiveTestHarness {
     required this.settingsRepository,
     required this.databasePath,
     required this.fixtureBuilder,
+    required this.workspaceRoot,
     required List<Directory> workspaceRoots,
   }) : _workspaceRoots = workspaceRoots;
 
@@ -133,7 +144,12 @@ class ChatSendLiveTestHarness {
       LLMType.configurable,
       settingsRepository: settingsRepository,
     );
-    final fileToolAdapters = null;
+    final fixtureBuilder = ChatSendLiveFixtureBuilder();
+    final workspaceRoot = await fixtureBuilder.createWorkspaceRoot(
+      scenarioId: 'tool_sandbox',
+    );
+    final fileToolAdapters =
+        await _buildTestFileToolHostAdapters(workspaceRoot);
     final toolExecutor = ToolExecutor(
       chatStorage: databaseHelper,
       webSearcher: ({
@@ -239,8 +255,9 @@ class ChatSendLiveTestHarness {
       databaseHelper: databaseHelper,
       settingsRepository: settingsRepository,
       databasePath: databaseName,
-      fixtureBuilder: ChatSendLiveFixtureBuilder(),
-      workspaceRoots: <Directory>[],
+      fixtureBuilder: fixtureBuilder,
+      workspaceRoot: workspaceRoot,
+      workspaceRoots: <Directory>[workspaceRoot],
     );
   }
 
@@ -310,12 +327,11 @@ class ChatSendLiveTestHarness {
     required String scenarioId,
     Map<String, String> files = const {},
   }) async {
-    final workspace = await fixtureBuilder.createWorkspace(
-      scenarioId: scenarioId,
+    await fixtureBuilder.populateWorkspace(
+      root: workspaceRoot,
       files: files,
     );
-    _workspaceRoots.add(workspace);
-    return workspace;
+    return workspaceRoot;
   }
 
   Future<void> runScenario(ScenarioCase scenario) async {
@@ -326,6 +342,10 @@ class ChatSendLiveTestHarness {
     return container.read(activeAskUserQuestionMessageProvider);
   }
 
+  PendingToolConfirmation? activePendingToolConfirmation() {
+    return container.read(activePendingToolConfirmationProvider);
+  }
+
   Future<void> submitQuestionAnswers({
     required ChatMessage message,
     required AskUserQuestionResponse response,
@@ -334,6 +354,24 @@ class ChatSendLiveTestHarness {
           message,
           response: response,
         );
+  }
+
+  Future<void> confirmToolInvocation({
+    required ChatMessage message,
+    bool trustTool = true,
+  }) async {
+    await container.read(chatSendCoordinatorProvider).confirmToolInvocation(
+          message,
+          trustTool: trustTool,
+        );
+  }
+
+  bool workspaceFileExists(String relativePath) {
+    return File(path.join(workspaceRoot.path, relativePath)).existsSync();
+  }
+
+  Future<String> readWorkspaceFile(String relativePath) {
+    return File(path.join(workspaceRoot.path, relativePath)).readAsString();
   }
 
   Future<void> dispose() async {
@@ -358,6 +396,40 @@ class ChatSendLiveTestHarness {
       title: 'Headless Live Test',
     );
   }
+}
+
+Future<FileToolHostAdapters> _buildTestFileToolHostAdapters(
+  Directory workspaceRoot,
+) async {
+  final rootService = FileToolRootService(rootDirectory: workspaceRoot);
+  await rootService.ensureReady();
+  await rootService.resolveDirectory('memories').create(recursive: true);
+  await rootService.resolveDirectory('artifacts').create(recursive: true);
+  await rootService.resolveDirectory('tmp').create(recursive: true);
+
+  final pathPolicy = FileToolPathPolicy(rootService: rootService);
+  final sessionGuard = FileToolSessionGuard();
+  const budgetService = FileToolBudgetService();
+  const readFormatter = FileToolReadFormatter();
+  final discoveryService = FileToolDiscoveryService(
+    rootService: rootService,
+    pathPolicy: pathPolicy,
+    budgetService: budgetService,
+  );
+  final writeService = FileToolWriteService(
+    rootService: rootService,
+    sessionGuard: sessionGuard,
+  );
+
+  return FileToolHostAdapters(
+    rootService: rootService,
+    pathPolicy: pathPolicy,
+    sessionGuard: sessionGuard,
+    budgetService: budgetService,
+    readFormatter: readFormatter,
+    discoveryService: discoveryService,
+    writeService: writeService,
+  );
 }
 
 LlmLocalDefaults? _loadLocalDefaultsFromFile() {

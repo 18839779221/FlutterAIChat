@@ -21,6 +21,12 @@
 - 已新增并跑通 `ask_user_resume` 真实 live scenario：
   - `assistantQuestionPrompt -> submitQuestionAnswers() -> userInteractionResult -> finalAnswer`
   - 已验证 prompt 卡会在恢复后被 result 卡原位替换，断言需区分 waiting/resumed 两个快照
+- 已新增并跑通 `mixed_success_failure` 真实 live scenario：
+  - 覆盖同一 turn 内 `toolResult + toolError + finalAnswer` 的闭环
+  - 已验证失败工具事件与持久化 step 会保留对应 `providerCallId`
+- 已新增并跑通 `file_ops_real_workspace` 真实 live scenario：
+  - 基于真实 workspace sandbox 执行 `LS / Read / Grep / Write`
+  - 已验证 `awaitingToolConfirmation -> confirm -> resume -> file persisted -> finalAnswer`
 - 已从 `main/origin/main` 合入并发事件写库修复：
   - `57cfdaa8 fix: serialize chat event appends per turn to prevent sequence collision`
 - 已确认一个关键 live 结论：
@@ -58,14 +64,15 @@
 
 ## 当前进行中的任务
 
-- `Task 7` 扩充下一批高风险场景
+- `Task 7` 扩充下一批高风险场景：Anthropic style 已完成首批闭环
 
 下一优先级建议：
 
-- `mixed_success_failure`
-  - 验证真实 provider 在某个工具失败后，turn 是否还能继续/收敛，且 providerCallId 链不丢
-- `file_ops_real_workspace`
-  - 验证更接近真实工作区的 `Read/Write/Edit/LS/Grep/Glob` 调用与落库
+- 将同一批场景扩展到 `responses` / `chat completions` style 入口
+  - 保持同一 scenario 可复用，不按 provider 复制 case
+  - 继续以链路状态、ledger 完整性、resume/continuation 闭环为主断言
+- 视 style 实际表现补充少量增量场景
+  - 仅在真实 provider 暴露出该 style 特有断点时新增，不预先堆复杂 fake 规则
 
 ## 当前插入的子任务
 

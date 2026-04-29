@@ -10,6 +10,8 @@ import 'chat_send_live_assertions.dart';
 import 'chat_send_live_scenario.dart';
 import 'chat_send_live_test_harness.dart';
 import 'scenarios/ask_user_resume_scenario.dart';
+import 'scenarios/file_ops_real_workspace_scenario.dart';
+import 'scenarios/mixed_success_failure_scenario.dart';
 import 'scenarios/news_multi_tool_scenario.dart';
 
 void main() {
@@ -177,6 +179,96 @@ void main() {
         ],
       );
       expectAskUserContinuationCoverage(waitingState, resumedState);
+      await harness.dispose();
+    },
+    tags: const ['live-headless-agent'],
+  );
+
+  test(
+    'mixed success failure scenario persists both toolResult and toolError states',
+    () async {
+      final harness = await ChatSendLiveTestHarness.bootstrap(
+        providerId: 'deepseek-anthropic',
+      );
+      await harness.runScenario(buildMixedSuccessFailureScenario());
+      final state = await harness.snapshotState();
+      expectNoPlannerRequestFailure(state);
+      expectEventTypes(
+        state,
+        includes: const [
+          ChatEventType.toolResult,
+          ChatEventType.toolError,
+          ChatEventType.finalAnswer,
+        ],
+      );
+      expectToolCallContinuationCoverage(
+        state,
+        toolName: 'web_search',
+        minimumDistinctCallCount: 1,
+      );
+      expectAnyToolErrorWithProviderCallId(state, toolName: 'Read');
+      await harness.dispose();
+    },
+    tags: const ['live-headless-agent'],
+  );
+
+  test(
+    'real workspace file scenario uses persisted file tools and resumes after write confirmation',
+    () async {
+      final harness = await ChatSendLiveTestHarness.bootstrap(
+        providerId: 'deepseek-anthropic',
+      );
+      await harness.prepareWorkspaceFixture(
+        scenarioId: 'file_ops_real_workspace',
+        files: const {
+          'docs/spec.md':
+              '# Release Spec\n\nTODO: confirm Android rollout window.\n',
+          'docs/notes.md': 'Background notes only.\n',
+        },
+      );
+
+      await harness.runScenario(buildRealWorkspaceFileOpsScenario());
+      final waitingState = await harness.snapshotState();
+      expectTurnState(
+        waitingState,
+        expectedStatus: ChatTurnStatus.awaitingToolConfirmation,
+      );
+      expectEventTypes(
+        waitingState,
+        includes: const [
+          ChatEventType.toolResult,
+          ChatEventType.assistantToolConfirmation,
+        ],
+      );
+
+      final pendingConfirmation = harness.activePendingToolConfirmation();
+      expect(pendingConfirmation, isNotNull);
+
+      await harness.confirmToolInvocation(
+        message: pendingConfirmation!.message,
+        trustTool: true,
+      );
+
+      final resumedState = await harness.snapshotState();
+      expectNoPlannerRequestFailure(resumedState);
+      expectTurnState(
+        resumedState,
+        expectedStatus: ChatTurnStatus.completed,
+      );
+      expectEventTypes(
+        resumedState,
+        includes: const [
+          ChatEventType.assistantToolConfirmation,
+          ChatEventType.toolExecutionStarted,
+          ChatEventType.toolResult,
+          ChatEventType.finalAnswer,
+        ],
+      );
+      expect(harness.workspaceFileExists('artifacts/summary.md'), isTrue);
+      expect(
+        await harness.readWorkspaceFile('artifacts/summary.md'),
+        contains('TODO'),
+      );
       await harness.dispose();
     },
     tags: const ['live-headless-agent'],
