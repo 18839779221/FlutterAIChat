@@ -604,7 +604,7 @@ class DatabaseHelper implements ChatStorage {
       return await db.insert(
         'chat_events',
         event.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace,
+        conflictAlgorithm: ConflictAlgorithm.abort,
       );
     } catch (e) {
       Logger.e(_tag, '插入 event 失败', e);
