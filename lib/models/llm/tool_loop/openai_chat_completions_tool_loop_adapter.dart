@@ -7,6 +7,10 @@ class OpenAIChatCompletionsToolLoopAdapter {
   const OpenAIChatCompletionsToolLoopAdapter();
 
   ModelTurnDecision? parseDecision(Map<String, dynamic> payload) {
+    final providerState = <String, dynamic>{
+      if (payload['id'] is String && (payload['id'] as String).trim().isNotEmpty)
+        'response_id': payload['id'],
+    };
     final choices = payload['choices'];
     if (choices is! List || choices.isEmpty) {
       return null;
@@ -40,7 +44,7 @@ class OpenAIChatCompletionsToolLoopAdapter {
       toolCalls: toolCalls,
       assistantMessage: content,
       visibleReasoning: visibleReasoning,
-      providerState: const {},
+      providerState: providerState,
       isTerminal: toolCalls.isEmpty,
     );
   }
