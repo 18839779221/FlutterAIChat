@@ -287,6 +287,7 @@ void main() {
       final client = _RecordingHttpClient(
         handler: (request) => http.Response(
           jsonEncode({
+            'id': 'chatcmpl_123',
             'choices': [
               {
                 'message': {
@@ -341,7 +342,7 @@ void main() {
         ChatTurnProviderStyle.openaiChatCompletions,
       );
       expect(decision.modelName, 'gpt-5.4');
-      expect(decision.providerState, isEmpty);
+      expect(decision.providerState, containsPair('response_id', 'chatcmpl_123'));
       expect(decision.toolCalls.single.providerCallId, 'call_1');
     });
 
