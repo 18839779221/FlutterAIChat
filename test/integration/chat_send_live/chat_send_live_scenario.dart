@@ -1,12 +1,11 @@
 import 'package:ai_chat/models/chat_turn.dart';
 
 class ProviderMatrixTarget {
-  final String providerId;
+  /// Protocol style expected for this matrix target.
   final ChatTurnProviderStyle style;
   final bool enabledByDefault;
 
   const ProviderMatrixTarget({
-    required this.providerId,
     required this.style,
     this.enabledByDefault = true,
   });

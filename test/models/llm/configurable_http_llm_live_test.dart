@@ -15,6 +15,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../test_utils/local_test_provider_selector.dart';
+
 void main() {
   final selectedProviderIds = _readSelectedProviderIds();
   final liveDefaults = _tryLoadLocalDefaults();
@@ -242,8 +244,10 @@ void main() {
 
 const String _missingProviderSelectionMessage =
     'Live LLM tests are opt-in. Set LIVE_LLM_PROVIDER_IDS to one or more '
-    'provider ids from config/local_defaults.json, for example: '
-    'LIVE_LLM_PROVIDER_IDS=beehears-responses,minimax-anthropic';
+    'provider ids, and optionally set LIVE_LLM_LOCAL_DEFAULTS_PATH when the '
+    'current workspace does not contain your local defaults file. Example: '
+    'LIVE_LLM_LOCAL_DEFAULTS_PATH=/abs/path/config/local_defaults.json '
+    'LIVE_LLM_PROVIDER_IDS=minimax-openai,minimax-anthropic';
 
 Set<String> _readSelectedProviderIds() {
   final raw = Platform.environment['LIVE_LLM_PROVIDER_IDS'] ?? '';
@@ -255,15 +259,9 @@ Set<String> _readSelectedProviderIds() {
 }
 
 LlmLocalDefaults? _tryLoadLocalDefaults() {
-  final file = File('config/local_defaults.json');
-  if (!file.existsSync()) {
-    return null;
-  }
-  final decoded = jsonDecode(file.readAsStringSync());
-  if (decoded is! Map<String, dynamic>) {
-    return null;
-  }
-  return LlmLocalDefaults.fromJson(decoded);
+  return loadInjectedLocalDefaults(
+    fallbackRelativePaths: const ['config/local_defaults.json'],
+  );
 }
 
 Future<ConfigurableHttpLLM> _buildLiveLlm(LlmProviderConfig provider) async {
@@ -304,7 +302,7 @@ class _PreviousResponseIdProbeResult {
 Future<_PreviousResponseIdProbeResult> _probePreviousResponseIdSupport({
   required LlmProviderConfig provider,
 }) async {
-  final resolver = const ApiProtocolResolver();
+  const resolver = ApiProtocolResolver();
   final uri = resolver.buildRequestUri(provider.baseUrl, ApiStyle.responses);
   final client = http.Client();
 

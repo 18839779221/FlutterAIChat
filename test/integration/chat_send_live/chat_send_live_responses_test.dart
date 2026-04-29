@@ -15,7 +15,7 @@ void main() {
     'responses sendMessage creates a real turn and persists user message',
     () async {
       final harness = await ChatSendLiveTestHarness.bootstrap(
-        providerId: 'beehears-responses',
+        providerStyle: ChatTurnProviderStyle.openaiResponses,
       );
       await harness.sendUserMessage(
         '直接回复 OK，不要调用任何工具，也不要输出其他内容。',
@@ -33,7 +33,7 @@ void main() {
     'responses news multi-tool scenario preserves continuation state',
     () async {
       final harness = await ChatSendLiveTestHarness.bootstrap(
-        providerId: 'beehears-responses',
+        providerStyle: ChatTurnProviderStyle.openaiResponses,
       );
       await harness.runScenario(buildNewsMultiToolScenario());
       final state = await harness.snapshotState();
@@ -57,7 +57,7 @@ void main() {
     'responses mixed success failure scenario persists both toolResult and toolError states',
     () async {
       final harness = await ChatSendLiveTestHarness.bootstrap(
-        providerId: 'beehears-responses',
+        providerStyle: ChatTurnProviderStyle.openaiResponses,
       );
       await harness.runScenario(buildMixedSuccessFailureScenario());
       final state = await harness.snapshotState();

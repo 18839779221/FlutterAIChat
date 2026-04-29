@@ -13,7 +13,6 @@ ScenarioCase buildAskUserResumeScenario() {
         '等我回答后，不要再次提问，不要调用其他工具，只用一句中文确认我的选择并结束当前 turn。',
     providerTargets: [
       ProviderMatrixTarget(
-        providerId: 'deepseek-anthropic',
         style: ChatTurnProviderStyle.anthropicMessages,
       ),
     ],

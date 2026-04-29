@@ -14,7 +14,6 @@ ScenarioCase buildRealWorkspaceFileOpsScenario() {
         '6. 确认后不要再调用其他工具，只用一句中文说明已经写入总结并结束。',
     providerTargets: [
       ProviderMatrixTarget(
-        providerId: 'deepseek-anthropic',
         style: ChatTurnProviderStyle.anthropicMessages,
       ),
     ],

@@ -1,7 +1,5 @@
-import 'dart:convert';
 import 'dart:io';
 
-import 'package:ai_chat/controllers/chat_send_coordinator.dart';
 import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/chat_event.dart';
@@ -11,15 +9,10 @@ import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/llm_factory.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
-import 'package:ai_chat/models/tool/tool_result.dart';
-import 'package:ai_chat/providers/chat_collection_providers.dart';
-import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
-import 'package:ai_chat/providers/chat_ui_providers.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
-import 'package:ai_chat/repositories/llm_local_defaults.dart';
 import 'package:ai_chat/repositories/session_context_snapshot_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_step_repository.dart';
 import 'package:ai_chat/services/file_tools/file_tool_budget_service.dart';
@@ -30,7 +23,6 @@ import 'package:ai_chat/services/file_tools/file_tool_read_formatter.dart';
 import 'package:ai_chat/services/file_tools/file_tool_root_service.dart';
 import 'package:ai_chat/services/file_tools/file_tool_session_guard.dart';
 import 'package:ai_chat/services/file_tools/file_tool_write_service.dart';
-import 'package:ai_chat/providers/chat_ui_providers.dart';
 import 'package:ai_chat/services/agent_planner_service.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
@@ -57,6 +49,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'chat_send_live_assertions.dart';
 import 'chat_send_live_fixture_builder.dart';
 import 'chat_send_live_scenario.dart';
+import '../../test_utils/local_test_provider_selector.dart';
 
 int _chatSendLiveDatabaseCounter = 0;
 
@@ -81,13 +74,14 @@ class ChatSendLiveTestHarness {
 
   static Future<ChatSendLiveTestHarness> bootstrap({
     String? providerId,
+    ChatTurnProviderStyle? providerStyle,
   }) async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
     WidgetsFlutterBinding.ensureInitialized();
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
-    final localDefaults = _loadLocalDefaultsFromFile();
+    final localDefaults = loadInjectedLocalDefaults();
     final settingsRepository = AppSettingsRepository(
       preferences,
       localDefaultsLoader: () async => localDefaults,
@@ -123,14 +117,31 @@ class ChatSendLiveTestHarness {
         );
       }
     }
+    LlmProviderConfig? selectedProvider;
+    String? selectionReason;
     if (providerId != null) {
       final provider = await settingsRepository.getProviderById(providerId);
       if (provider == null) {
         throw StateError('Unknown provider id: $providerId');
       }
+      selectedProvider = provider;
+      selectionReason = 'selected from explicit provider id';
+    } else if (providerStyle != null && localDefaults != null) {
+      final selection = selectHeadlessLiveProvider(
+        defaults: localDefaults,
+        style: providerStyle,
+      );
+      selectedProvider = selection.provider;
+      selectionReason = selection.selectionReason;
+    }
+    if (selectedProvider != null) {
       await settingsRepository.selectProviderAndModel(
-        providerId: provider.id,
-        modelId: provider.models.first.id,
+        providerId: selectedProvider.id,
+        modelId: selectedProvider.models.first.id,
+      );
+      debugPrint(
+        'Headless live provider selected: ${selectedProvider.id}'
+        '${selectionReason == null ? '' : ' ($selectionReason)'}',
       );
     }
 
@@ -432,26 +443,4 @@ Future<FileToolHostAdapters> _buildTestFileToolHostAdapters(
     discoveryService: discoveryService,
     writeService: writeService,
   );
-}
-
-LlmLocalDefaults? _loadLocalDefaultsFromFile() {
-  final candidates = [
-    File('config/local_defaults.json'),
-    File('../../config/local_defaults.json'),
-  ];
-  File? file;
-  for (final candidate in candidates) {
-    if (candidate.existsSync()) {
-      file = candidate;
-      break;
-    }
-  }
-  if (file == null) {
-    return null;
-  }
-  final decoded = jsonDecode(file.readAsStringSync());
-  if (decoded is! Map) {
-    return null;
-  }
-  return LlmLocalDefaults.fromJson(Map<String, dynamic>.from(decoded));
 }

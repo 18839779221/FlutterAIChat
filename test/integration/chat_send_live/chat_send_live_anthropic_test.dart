@@ -31,7 +31,7 @@ void main() {
     'sendMessage creates a real turn and persists user message',
     () async {
       final harness = await ChatSendLiveTestHarness.bootstrap(
-        providerId: 'deepseek-anthropic',
+        providerStyle: ChatTurnProviderStyle.anthropicMessages,
       );
       await harness.sendUserMessage(
         '直接回复 OK，不要调用任何工具，也不要输出其他内容。',
@@ -52,11 +52,9 @@ void main() {
       userMessage: '帮我搜索并整理 Google 最新新闻',
       providerTargets: [
         ProviderMatrixTarget(
-          providerId: 'deepseek-anthropic',
           style: ChatTurnProviderStyle.anthropicMessages,
         ),
         ProviderMatrixTarget(
-          providerId: 'beehears-responses',
           style: ChatTurnProviderStyle.openaiResponses,
         ),
       ],
@@ -85,7 +83,7 @@ void main() {
     'assertion helpers inspect persisted turn ledger state',
     () async {
       final harness = await ChatSendLiveTestHarness.bootstrap(
-        providerId: 'deepseek-anthropic',
+        providerStyle: ChatTurnProviderStyle.anthropicMessages,
       );
       await harness.sendUserMessage(
         '直接回复 TEST_OK，不要调用任何工具，也不要输出其他内容。',
@@ -111,7 +109,7 @@ void main() {
     'news multi-tool scenario preserves anthropic multi-tool continuation state',
     () async {
       final harness = await ChatSendLiveTestHarness.bootstrap(
-        providerId: 'deepseek-anthropic',
+        providerStyle: ChatTurnProviderStyle.anthropicMessages,
       );
       await harness.runScenario(buildNewsMultiToolScenario());
       final state = await harness.snapshotState();
@@ -131,7 +129,7 @@ void main() {
     'ask-user scenario resumes the same anthropic turn after structured answers',
     () async {
       final harness = await ChatSendLiveTestHarness.bootstrap(
-        providerId: 'deepseek-anthropic',
+        providerStyle: ChatTurnProviderStyle.anthropicMessages,
       );
       await harness.runScenario(buildAskUserResumeScenario());
 
@@ -188,7 +186,7 @@ void main() {
     'mixed success failure scenario persists both toolResult and toolError states',
     () async {
       final harness = await ChatSendLiveTestHarness.bootstrap(
-        providerId: 'deepseek-anthropic',
+        providerStyle: ChatTurnProviderStyle.anthropicMessages,
       );
       await harness.runScenario(buildMixedSuccessFailureScenario());
       final state = await harness.snapshotState();
@@ -216,7 +214,7 @@ void main() {
     'real workspace file scenario uses persisted file tools and resumes after write confirmation',
     () async {
       final harness = await ChatSendLiveTestHarness.bootstrap(
-        providerId: 'deepseek-anthropic',
+        providerStyle: ChatTurnProviderStyle.anthropicMessages,
       );
       await harness.prepareWorkspaceFixture(
         scenarioId: 'file_ops_real_workspace',
