@@ -14,15 +14,12 @@ ScenarioCase buildNewsMultiToolScenario() {
         '5. 不要跳过第二次工具调用，也不要只做一次工具调用。',
     providerTargets: [
       ProviderMatrixTarget(
-        providerId: 'deepseek-anthropic',
         style: ChatTurnProviderStyle.anthropicMessages,
       ),
       ProviderMatrixTarget(
-        providerId: 'beehears-responses',
         style: ChatTurnProviderStyle.openaiResponses,
       ),
       ProviderMatrixTarget(
-        providerId: 'minimax-openai-chat-completions',
         style: ChatTurnProviderStyle.openaiChatCompletions,
       ),
     ],

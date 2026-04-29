@@ -14,7 +14,7 @@ void main() {
     'chat completions sendMessage creates a real turn and persists user message',
     () async {
       final harness = await ChatSendLiveTestHarness.bootstrap(
-        providerId: 'minimax-openai-chat-completions',
+        providerStyle: ChatTurnProviderStyle.openaiChatCompletions,
       );
       await harness.sendUserMessage(
         '直接回复 OK，不要调用任何工具，也不要输出其他内容。',
@@ -32,7 +32,7 @@ void main() {
     'chat completions news multi-tool scenario preserves continuation state',
     () async {
       final harness = await ChatSendLiveTestHarness.bootstrap(
-        providerId: 'minimax-openai-chat-completions',
+        providerStyle: ChatTurnProviderStyle.openaiChatCompletions,
       );
       await harness.runScenario(buildNewsMultiToolScenario());
       final state = await harness.snapshotState();

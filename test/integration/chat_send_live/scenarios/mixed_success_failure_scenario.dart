@@ -12,7 +12,6 @@ ScenarioCase buildMixedSuccessFailureScenario() {
         '4. 基于已成功的 web_search 结果和这次 Read 失败事实，用中文简短说明“搜索成功、读取失败”，然后结束。',
     providerTargets: [
       ProviderMatrixTarget(
-        providerId: 'deepseek-anthropic',
         style: ChatTurnProviderStyle.anthropicMessages,
       ),
     ],
