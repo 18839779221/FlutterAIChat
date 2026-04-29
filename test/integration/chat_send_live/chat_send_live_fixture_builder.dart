@@ -16,11 +16,18 @@ class ChatSendLiveFixtureBuilder {
     Map<String, String> files = const {},
   }) async {
     final root = await createWorkspaceRoot(scenarioId: scenarioId);
+    await populateWorkspace(root: root, files: files);
+    return root;
+  }
+
+  Future<void> populateWorkspace({
+    required Directory root,
+    Map<String, String> files = const {},
+  }) async {
     for (final entry in files.entries) {
       final file = File(path.join(root.path, entry.key));
       await file.parent.create(recursive: true);
       await file.writeAsString(entry.value);
     }
-    return root;
   }
 }

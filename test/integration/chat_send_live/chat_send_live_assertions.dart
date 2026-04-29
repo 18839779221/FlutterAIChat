@@ -383,3 +383,45 @@ void expectToolCallContinuationCoverage(
         'Expected $toolName tool calls to retain providerResponseId values.',
   );
 }
+
+void expectAnyToolErrorWithProviderCallId(
+  ChatSendLiveStateSnapshot state, {
+  String? toolName,
+}) {
+  final toolErrorEvent = state.events.lastWhere(
+    (event) {
+      if (event.eventType != ChatEventType.toolError) {
+        return false;
+      }
+      if (toolName == null) {
+        return true;
+      }
+      return event.payloadJson?['toolName'] == toolName;
+    },
+    orElse: () => throw TestFailure(
+      toolName == null
+          ? 'Expected at least one toolError event.'
+          : 'Expected at least one toolError event for $toolName.',
+    ),
+  );
+
+  final providerCallId =
+      (toolErrorEvent.payloadJson?['providerCallId'] ?? '').toString().trim();
+  expect(
+    providerCallId,
+    isNotEmpty,
+    reason: 'Expected toolError event to retain providerCallId.',
+  );
+
+  final persistedStep = state.steps.firstWhere(
+    (step) => step.providerCallId == providerCallId,
+    orElse: () => throw TestFailure(
+      'Expected persisted step for failed providerCallId $providerCallId.',
+    ),
+  );
+  expect(
+    persistedStep.status,
+    ChatTurnStepStatus.failed,
+    reason: 'Expected failed step to remain marked as failed.',
+  );
+}
