@@ -68,10 +68,12 @@ fvm flutter test
 - First run the fast local contract suite:
   - `fvm flutter test test/models/llm/configurable_http_llm_test.dart`
 - Then run opt-in live provider contract tests against real upstream APIs:
-  - `bash scripts/run_live_llm_contract_tests.sh beehears-responses`
-  - `bash scripts/run_live_llm_contract_tests.sh minimax-openai-chat-completions minimax-anthropic`
-  - `LIVE_LLM_PROVIDER_IDS=minimax-openai-chat-completions fvm flutter test --tags live-llm test/models/llm/configurable_http_llm_live_test.dart`
+  - `bash scripts/run_live_llm_contract_tests.sh minimax-openai`
+  - `bash scripts/run_live_llm_contract_tests.sh minimax-openai minimax-anthropic`
+  - `LIVE_LLM_PROVIDER_IDS=minimax-openai fvm flutter test --tags live-llm test/models/llm/configurable_http_llm_live_test.dart`
   - `LIVE_LLM_PROVIDER_IDS=minimax-anthropic fvm flutter test --tags live-llm test/models/llm/configurable_http_llm_live_test.dart`
+  - if the current workspace does not contain your local defaults file, inject it explicitly:
+    `LIVE_LLM_LOCAL_DEFAULTS_PATH=/abs/path/config/local_defaults.json ...`
 - Prefer validating at least one real provider for each still-supported API style you touched
   - current examples in local defaults include `responses`, `chat completions`, and `anthropic messages`
 - The live suite should cover both first-round planner parsing and tool-continuation round-trip compatibility
@@ -79,6 +81,12 @@ fvm flutter test
 - Keep live tests opt-in
   - do not make default `flutter test` depend on external network access or provider credentials
   - use `LIVE_LLM_PROVIDER_IDS` to explicitly select which providers to hit from `config/local_defaults.json`
+  - when an AI agent is running tests, default preference is to use `minimax` / `deepseek` provider entries and their configured base URLs when available
+  - for headless live integration tests, prefer environment-variable injection over editing test source:
+    `HEADLESS_LIVE_PROVIDER_CHAT_COMPLETIONS`
+    `HEADLESS_LIVE_PROVIDER_ANTHROPIC`
+    `HEADLESS_LIVE_PROVIDER_RESPONSES`
+    `LIVE_LLM_LOCAL_DEFAULTS_PATH`
 - Treat live-test failures as first-class signal
   - mocked tests passing does not prove real provider compatibility
   - handshake, timeout, undocumented validation, and real response-shape issues must be investigated rather than waived away

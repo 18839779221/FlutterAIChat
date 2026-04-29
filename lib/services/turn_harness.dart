@@ -377,7 +377,8 @@ class TurnHarness {
           );
 
         DecisionToolExecutionSummary? executionSummary;
-        final sharedStepId = _stepRepository == null
+        final sharedStepId = _stepRepository == null ||
+                decision.toolCalls.length != 1
             ? null
             : await _stepRepository!.createStep(
                 ChatTurnStep(
