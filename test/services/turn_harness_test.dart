@@ -11,6 +11,7 @@ import 'package:ai_chat/models/tool/tool_argument_property.dart';
 import 'package:ai_chat/models/tool/tool_argument_schema.dart';
 import 'package:ai_chat/models/agent/stop_verification_result.dart';
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
+import 'package:ai_chat/models/artifact/artifact_record.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -4412,6 +4413,30 @@ class _NoopBaseLLM implements BaseLLM {
 }
 
 class _NoopChatStorage implements ChatStorage {
+  @override
+  Future<int> insertOrReplaceArtifactRecord(ArtifactRecord record) async => 1;
+
+  @override
+  Future<ArtifactRecord?> getArtifactRecord({
+    required int groupId,
+    required String artifactId,
+  }) async =>
+      null;
+
+  @override
+  Future<ArtifactRecord?> getArtifactRecordByPath({
+    required int groupId,
+    required String sourcePath,
+  }) async =>
+      null;
+
+  @override
+  Future<List<ArtifactRecord>> listArtifactRecordsForGroup(int groupId) async =>
+      const [];
+
+  @override
+  Future<void> updateArtifactRecord(ArtifactRecord record) async {}
+
   @override
   Future<void> deleteGroup(int groupId) => throw UnimplementedError();
 

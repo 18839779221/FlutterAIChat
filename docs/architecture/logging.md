@@ -222,6 +222,15 @@ File log 是开发期排障的主入口。
 - `tool.awaiting_confirmation`
 - `interaction.awaiting_user`
 
+artifact / visualizer 相关日志建议沿用同一分类，不新增第二套日志体系：
+
+- `tool.start` / `tool.done` / `tool.failed`
+  - 适用于 `create_artifact`
+- `runtime`
+  - 适用于 artifact 文件保存、source 读取失败、registry 重建等基础设施日志
+- `trace`
+  - 适用于时间线 projection 阶段的 artifact refresh / stale 诊断
+
 ### interaction 锚点
 
 发生用户交互挂起与恢复时至少应有：

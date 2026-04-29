@@ -217,6 +217,13 @@ The app uses **flutter_riverpod** with a split provider/controller architecture:
   - allow custom tool cards to read `ToolWorkflowStep.details` and `ToolResult.data` directly when richer explanation is needed
   - keep `ToolWorkflowCard` and other generic cards as fallback renderers for tools without dedicated UI
   - keep confirmation controls outside tool-specific timeline cards when possible; prefer a shared bottom confirmation surface over embedding action buttons into every tool card
+- Inline artifact / visualizer work should remain a small local capability:
+  - `create_artifact` is the only tool that explicitly understands artifact semantics
+  - `Write` / `Edit` must remain generic file tools; do not add artifact-specific arguments or return fields to them
+  - artifact/file linking should stay in registry / resolver / timeline projection / renderer layers, not in `TurnHarness`, `ToolOrchestratorService`, or planner keyword heuristics
+  - same-turn edits to the same artifact should refresh one inline card as part of the answer body
+  - cross-turn edits should render a new card in the new turn while older cards remain visible and show a stale/updated hint
+  - app restart, group switch, and group reload must invalidate artifact runtime cache and rebuild from persistent truth instead of relying on in-memory linkage
 
 When adding a feature, prefer extending an existing bounded controller or creating a new narrow controller instead of growing `ChatController` back into a god object.
 

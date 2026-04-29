@@ -78,7 +78,10 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     cancelActiveStream();
     _ref.read(activeSendCancellationProvider.notifier).state =
         requestPreparingCancellation;
-    _ref.read(chatSendStateProvider.notifier).setPhase(ChatSendPhase.preparing);
+    _ref.read(chatSendStateProvider.notifier).update(
+          phase: ChatSendPhase.preparing,
+          clearStatusText: true,
+        );
     final traceRecorder = _ref.read(traceRecorderProvider);
     final turnId = traceRecorder.newTurnId();
     traceRecorder.record(
@@ -829,6 +832,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     _ref.read(chatSendStateProvider.notifier).update(
           isGenerating: false,
           phase: ChatSendPhase.preparing,
+          clearStatusText: true,
         );
     final processor = _buildQuestionResumeProcessor(
       groupId: currentGroupId,
@@ -982,6 +986,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     required Stream<ChatEvent> stream,
     Future<void> Function()? onFinally,
   }) async {
+    _ref.read(chatSendStateProvider.notifier).setStatusText(null);
     await _runAgentEventStream(
       stream: stream,
       processor: processor,
@@ -1020,15 +1025,20 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     final sendState = _ref.read(chatSendStateProvider);
     if (!sendState.isGenerating &&
         sendState.phase != ChatSendPhase.awaitingConfirmation) {
-      _ref.read(chatSendStateProvider.notifier).setPhase(ChatSendPhase.idle);
+      _ref.read(chatSendStateProvider.notifier).update(
+            phase: ChatSendPhase.idle,
+            clearStatusText: true,
+          );
     }
   }
 
   void _settleSendPhaseFromProcessor(AgentEventProcessor processor) {
-    _ref.read(chatSendStateProvider.notifier).setPhase(
-          processor.hasPendingConfirmation
-              ? ChatSendPhase.awaitingConfirmation
-              : ChatSendPhase.idle,
+    final phase = processor.hasPendingConfirmation
+        ? ChatSendPhase.awaitingConfirmation
+        : ChatSendPhase.idle;
+    _ref.read(chatSendStateProvider.notifier).update(
+          phase: phase,
+          clearStatusText: phase == ChatSendPhase.idle,
         );
   }
 

@@ -2,6 +2,7 @@ import '../services/tool_executor.dart';
 import 'core/tool_runtime_registry.dart';
 import 'handlers/ask_user_question_tool_handler.dart';
 import 'handlers/create_calendar_event_tool_handler.dart';
+import 'handlers/create_artifact_tool_handler.dart';
 import 'handlers/create_reminder_tool_handler.dart';
 import 'handlers/edit_tool_handler.dart';
 import 'handlers/fetch_webpage_tool_handler.dart';
@@ -18,9 +19,11 @@ import 'handlers/write_tool_handler.dart';
 /// host adapters exposed by [ToolExecutor].
 ToolRuntimeRegistry buildDefaultToolRuntimeRegistry({
   required ToolExecutor toolExecutor,
+  CreateArtifactToolHandler? createArtifactHandler,
 }) {
   return ToolRuntimeRegistry(
     handlers: [
+      if (createArtifactHandler != null) createArtifactHandler,
       AskUserQuestionToolHandler(),
       SearchChatHistoryToolHandler(
         searcher: ({

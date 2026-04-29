@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/agent/chat_turn_step.dart';
+import '../models/artifact/artifact_record.dart';
 import '../models/chat_group.dart';
 import '../models/chat_event.dart';
 import '../models/chat_message.dart';
@@ -21,6 +22,7 @@ class WebChatStorage implements ChatStorage {
   static const String _sessionContextSnapshotsKey =
       'web.session_context_snapshots';
   static const String _sessionRuntimeMarkersKey = 'web.session_runtime_markers';
+  static const String _artifactRegistryKey = 'web.artifact_registry';
   static const String _turnsKey = 'web.chat_turns';
   static const String _turnStepsKey = 'web.chat_turn_steps';
 
@@ -110,6 +112,7 @@ class WebChatStorage implements ChatStorage {
     final messages = await _readMessages();
     final snapshots = await _readSessionContextSnapshots();
     final runtimeMarkers = await _readSessionRuntimeMarkers();
+    final artifacts = await _readArtifactRegistry();
     final turns = await _readTurns();
     final turnSteps = await _readTurnSteps();
     await _writeEvents(
@@ -125,6 +128,9 @@ class WebChatStorage implements ChatStorage {
       runtimeMarkers
           .where((marker) => marker['group_id'] != groupId)
           .toList(),
+    );
+    await _writeArtifactRegistry(
+      artifacts.where((artifact) => artifact['group_id'] != groupId).toList(),
     );
     await _writeTurns(
         turns.where((turn) => turn['group_id'] != groupId).toList());
@@ -229,6 +235,91 @@ class WebChatStorage implements ChatStorage {
       return step.toMap();
     }).toList();
     await _writeTurnSteps(updated);
+  }
+
+  @override
+  Future<int> insertOrReplaceArtifactRecord(ArtifactRecord record) async {
+    final artifacts = await _readArtifactRegistry();
+    final existingIndex = artifacts.indexWhere(
+      (item) =>
+          item['group_id'] == record.groupId &&
+          item['artifact_id'] == record.artifactId,
+    );
+    if (existingIndex != -1) {
+      final existingId = artifacts[existingIndex]['id'] as int?;
+      artifacts[existingIndex] = {
+        ...record.toMap(),
+        'id': existingId ?? record.id ?? _nextId(artifacts.map((e) => e['id'] as int?)),
+      };
+      await _writeArtifactRegistry(artifacts);
+      return artifacts[existingIndex]['id'] as int;
+    }
+
+    final nextId = _nextId(artifacts.map((item) => item['id'] as int?));
+    artifacts.add({
+      ...record.toMap(),
+      'id': nextId,
+    });
+    await _writeArtifactRegistry(artifacts);
+    return nextId;
+  }
+
+  @override
+  Future<ArtifactRecord?> getArtifactRecord({
+    required int groupId,
+    required String artifactId,
+  }) async {
+    final artifacts = await _readArtifactRegistry();
+    final matches = artifacts.where(
+      (item) => item['group_id'] == groupId && item['artifact_id'] == artifactId,
+    );
+    if (matches.isEmpty) {
+      return null;
+    }
+    return ArtifactRecord.fromMap(matches.first);
+  }
+
+  @override
+  Future<ArtifactRecord?> getArtifactRecordByPath({
+    required int groupId,
+    required String sourcePath,
+  }) async {
+    final artifacts = await _readArtifactRegistry();
+    final matches = artifacts.where(
+      (item) => item['group_id'] == groupId && item['source_path'] == sourcePath,
+    );
+    if (matches.isEmpty) {
+      return null;
+    }
+    return ArtifactRecord.fromMap(matches.first);
+  }
+
+  @override
+  Future<List<ArtifactRecord>> listArtifactRecordsForGroup(int groupId) async {
+    final artifacts = await _readArtifactRegistry();
+    final filtered =
+        artifacts.where((item) => item['group_id'] == groupId).toList()
+          ..sort((a, b) {
+            final createdComparison =
+                (a['created_at'] as int).compareTo(b['created_at'] as int);
+            if (createdComparison != 0) {
+              return createdComparison;
+            }
+            return (a['id'] as int).compareTo(b['id'] as int);
+          });
+    return filtered.map(ArtifactRecord.fromMap).toList(growable: false);
+  }
+
+  @override
+  Future<void> updateArtifactRecord(ArtifactRecord record) async {
+    final artifacts = await _readArtifactRegistry();
+    final updated = artifacts.map((storedArtifact) {
+      if (storedArtifact['id'] != record.id) {
+        return storedArtifact;
+      }
+      return record.toMap();
+    }).toList();
+    await _writeArtifactRegistry(updated);
   }
 
   @override
@@ -566,6 +657,22 @@ class WebChatStorage implements ChatStorage {
         .toList();
   }
 
+  Future<List<Map<String, dynamic>>> _readArtifactRegistry() async {
+    final raw = _preferences.getString(_artifactRegistryKey);
+    if (raw == null || raw.isEmpty) {
+      return [];
+    }
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) {
+      Logger.w(_tag, 'Invalid stored artifact registry payload');
+      return [];
+    }
+    return decoded
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+  }
+
   Future<void> _writeSessionContextSnapshots(
     List<Map<String, dynamic>> snapshots,
   ) async {
@@ -581,6 +688,15 @@ class WebChatStorage implements ChatStorage {
     await _preferences.setString(
       _sessionRuntimeMarkersKey,
       jsonEncode(markers),
+    );
+  }
+
+  Future<void> _writeArtifactRegistry(
+    List<Map<String, dynamic>> artifacts,
+  ) async {
+    await _preferences.setString(
+      _artifactRegistryKey,
+      jsonEncode(artifacts),
     );
   }
 

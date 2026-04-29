@@ -15,22 +15,30 @@ class ChatSendState {
   /// Whether the assistant is actively generating a streamed response.
   final bool isGenerating;
 
+  /// Optional transient user-facing progress text for the active send.
+  final String? statusText;
+
   const ChatSendState({
     required this.phase,
     required this.isGenerating,
+    this.statusText,
   });
 
   const ChatSendState.idle()
       : phase = ChatSendPhase.idle,
-        isGenerating = false;
+        isGenerating = false,
+        statusText = null;
 
   ChatSendState copyWith({
     ChatSendPhase? phase,
     bool? isGenerating,
+    String? statusText,
+    bool clearStatusText = false,
   }) {
     return ChatSendState(
       phase: phase ?? this.phase,
       isGenerating: isGenerating ?? this.isGenerating,
+      statusText: clearStatusText ? null : (statusText ?? this.statusText),
     );
   }
 }
@@ -39,20 +47,34 @@ class ChatSendStateNotifier extends StateNotifier<ChatSendState> {
   ChatSendStateNotifier() : super(const ChatSendState.idle());
 
   void setPhase(ChatSendPhase phase) {
-    state = state.copyWith(phase: phase);
+    state = state.copyWith(
+      phase: phase,
+      clearStatusText: phase == ChatSendPhase.idle,
+    );
   }
 
   void setGenerating(bool isGenerating) {
     state = state.copyWith(isGenerating: isGenerating);
   }
 
+  void setStatusText(String? statusText) {
+    state = state.copyWith(
+      statusText: statusText,
+      clearStatusText: statusText == null,
+    );
+  }
+
   void update({
     ChatSendPhase? phase,
     bool? isGenerating,
+    String? statusText,
+    bool clearStatusText = false,
   }) {
     state = state.copyWith(
       phase: phase,
       isGenerating: isGenerating,
+      statusText: statusText,
+      clearStatusText: clearStatusText,
     );
   }
 }

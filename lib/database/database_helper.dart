@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/agent/chat_turn_step.dart';
+import '../models/artifact/artifact_record.dart';
 import '../models/chat_event.dart';
 import '../models/chat_message.dart';
 import '../models/response/message_content_type.dart';
@@ -44,7 +45,7 @@ class DatabaseHelper implements ChatStorage {
 
       return await openDatabase(
         path,
-        version: 11,
+        version: 12,
         onCreate: (Database db, int version) async {
           Logger.i(_tag, '创建数据库表...');
           // 创建分组表
@@ -76,6 +77,7 @@ class DatabaseHelper implements ChatStorage {
             )
           ''');
           await _createAgentLoopTables(db);
+          await _createArtifactRegistryTable(db);
           await _createSessionContextSnapshotTable(db);
           await _createSessionRuntimeMarkerTable(db);
           Logger.i(_tag, '数据库表创建成功');
@@ -227,6 +229,9 @@ class DatabaseHelper implements ChatStorage {
           if (oldVersion < 11) {
             await _createSessionRuntimeMarkerTable(db);
           }
+          if (oldVersion < 12) {
+            await _createArtifactRegistryTable(db);
+          }
         },
       );
     } catch (e, stackTrace) {
@@ -327,6 +332,31 @@ class DatabaseHelper implements ChatStorage {
     await db.execute('''
       CREATE INDEX IF NOT EXISTS idx_session_context_snapshots_group_id_updated_at
       ON session_context_snapshots(group_id, updated_at DESC)
+    ''');
+  }
+
+  Future<void> _createArtifactRegistryTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS artifact_registry (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id INTEGER NOT NULL,
+        artifact_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        type TEXT NOT NULL,
+        source_path TEXT NOT NULL,
+        origin_turn_id INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        last_updated_at INTEGER NOT NULL,
+        FOREIGN KEY (group_id) REFERENCES chat_groups (id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute('''
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_registry_group_id_artifact_id
+      ON artifact_registry(group_id, artifact_id)
+    ''');
+    await db.execute('''
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_registry_group_id_source_path
+      ON artifact_registry(group_id, source_path)
     ''');
   }
 
@@ -593,6 +623,100 @@ class DatabaseHelper implements ChatStorage {
       );
     } catch (e) {
       Logger.e(_tag, '更新 turn step 失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<int> insertOrReplaceArtifactRecord(ArtifactRecord record) async {
+    try {
+      final db = await database;
+      return await db.insert(
+        'artifact_registry',
+        record.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (e) {
+      Logger.e(_tag, '插入 artifact registry 失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<ArtifactRecord?> getArtifactRecord({
+    required int groupId,
+    required String artifactId,
+  }) async {
+    try {
+      final db = await database;
+      final maps = await db.query(
+        'artifact_registry',
+        where: 'group_id = ? AND artifact_id = ?',
+        whereArgs: [groupId, artifactId],
+        limit: 1,
+      );
+      if (maps.isEmpty) {
+        return null;
+      }
+      return ArtifactRecord.fromMap(maps.first);
+    } catch (e) {
+      Logger.e(_tag, '获取 artifact registry 失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<ArtifactRecord?> getArtifactRecordByPath({
+    required int groupId,
+    required String sourcePath,
+  }) async {
+    try {
+      final db = await database;
+      final maps = await db.query(
+        'artifact_registry',
+        where: 'group_id = ? AND source_path = ?',
+        whereArgs: [groupId, sourcePath],
+        limit: 1,
+      );
+      if (maps.isEmpty) {
+        return null;
+      }
+      return ArtifactRecord.fromMap(maps.first);
+    } catch (e) {
+      Logger.e(_tag, '按路径获取 artifact registry 失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<List<ArtifactRecord>> listArtifactRecordsForGroup(int groupId) async {
+    try {
+      final db = await database;
+      final maps = await db.query(
+        'artifact_registry',
+        where: 'group_id = ?',
+        whereArgs: [groupId],
+        orderBy: 'created_at ASC, id ASC',
+      );
+      return maps.map(ArtifactRecord.fromMap).toList(growable: false);
+    } catch (e) {
+      Logger.e(_tag, '列出 artifact registry 失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> updateArtifactRecord(ArtifactRecord record) async {
+    try {
+      final db = await database;
+      await db.update(
+        'artifact_registry',
+        record.toMap(),
+        where: 'id = ?',
+        whereArgs: [record.id],
+      );
+    } catch (e) {
+      Logger.e(_tag, '更新 artifact registry 失败', e);
       rethrow;
     }
   }

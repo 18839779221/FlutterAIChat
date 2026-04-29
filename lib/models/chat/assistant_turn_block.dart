@@ -1,5 +1,6 @@
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
+import 'package:ai_chat/models/artifact/artifact_turn_projection.dart';
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 
@@ -8,6 +9,7 @@ enum AssistantTurnBlockType {
   analysis,
   toolWorkflow,
   toolResultSummary,
+  artifact,
   structuredOutput,
   finalResponse,
 }
@@ -53,6 +55,9 @@ class AssistantTurnBlock {
   /// Typed tool result projection for result rendering.
   final ToolResult? toolResult;
 
+  /// Typed artifact projection for inline artifact rendering.
+  final ArtifactTurnProjection? artifactProjection;
+
   /// Typed ask-user-question request projection for active prompt rendering.
   final AskUserQuestionRequest? askUserQuestionRequest;
 
@@ -73,6 +78,7 @@ class AssistantTurnBlock {
     this.payload,
     this.workflowSteps,
     this.toolResult,
+    this.artifactProjection,
     this.askUserQuestionRequest,
     this.askUserQuestionResponse,
   });
@@ -91,6 +97,7 @@ class AssistantTurnBlock {
     Map<String, dynamic>? payload,
     List<ToolWorkflowStep>? workflowSteps,
     ToolResult? toolResult,
+    ArtifactTurnProjection? artifactProjection,
     AskUserQuestionRequest? askUserQuestionRequest,
     AskUserQuestionResponse? askUserQuestionResponse,
   }) {
@@ -108,6 +115,7 @@ class AssistantTurnBlock {
       payload: payload ?? this.payload,
       workflowSteps: workflowSteps ?? this.workflowSteps,
       toolResult: toolResult ?? this.toolResult,
+      artifactProjection: artifactProjection ?? this.artifactProjection,
       askUserQuestionRequest:
           askUserQuestionRequest ?? this.askUserQuestionRequest,
       askUserQuestionResponse:

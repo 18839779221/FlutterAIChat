@@ -111,7 +111,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     });
 
     final messages = ref.watch(messagesProvider);
-    final sendPhase = ref.watch(sendPhaseProvider);
+    final sendState = ref.watch(chatSendStateProvider);
+    final sendPhase = sendState.phase;
     final timelineProjection = ref.watch(chatTimelineProjectionProvider);
     final hasMoreMessages = ref.watch(hasMoreMessagesProvider);
     final spacing = Theme.of(context).extension<AppSpacing>()!;
@@ -122,6 +123,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       messages,
       sendPhase,
       timelineProjection.assistantBlocks,
+      sendState.statusText,
     );
     final itemCount = timelineItems.length + (hasMoreMessages ? 1 : 0);
     final currentGroupId = ref.read(currentGroupProvider)?.id;
@@ -194,6 +196,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     List<ChatMessage> messages,
     ChatSendPhase sendPhase,
     List<AssistantTurnBlock> projectedAssistantBlocks,
+    String? sendStatusText,
   ) {
     if (messages.isEmpty) {
       return const [];
@@ -203,7 +206,11 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final sortedMessages = [...messages]..sort(compareChatMessagesForTimeline);
     final runningTail = ref
         .read(latestMessageRunningStatusResolverProvider)
-        .resolve(messages: sortedMessages, sendPhase: sendPhase);
+        .resolve(
+          messages: sortedMessages,
+          sendPhase: sendPhase,
+          statusTextOverride: sendStatusText,
+        );
 
     final items = <ChatTimelineItem>[];
     var cursor = 0;

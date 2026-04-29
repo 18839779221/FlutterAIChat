@@ -1,4 +1,5 @@
 import '../models/agent/chat_turn_step.dart';
+import '../models/artifact/artifact_record.dart';
 import '../models/chat_group.dart';
 import '../models/chat_event.dart';
 import '../models/chat_message.dart';
@@ -25,6 +26,18 @@ abstract class ChatStorage {
   Future<ChatTurnStep?> getTurnStep(int id);
   Future<List<ChatTurnStep>> getTurnSteps(int turnId);
   Future<void> updateTurnStep(ChatTurnStep step);
+
+  Future<int> insertOrReplaceArtifactRecord(ArtifactRecord record);
+  Future<ArtifactRecord?> getArtifactRecord({
+    required int groupId,
+    required String artifactId,
+  });
+  Future<ArtifactRecord?> getArtifactRecordByPath({
+    required int groupId,
+    required String sourcePath,
+  });
+  Future<List<ArtifactRecord>> listArtifactRecordsForGroup(int groupId);
+  Future<void> updateArtifactRecord(ArtifactRecord record);
 
   Future<int> insertEvent(ChatEvent event);
   Future<int> getNextEventSequence(int turnId);

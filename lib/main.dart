@@ -1,4 +1,8 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:ai_chat/constants/route_constant.dart';
+import 'package:ai_chat/repositories/artifact_repository.dart';
 import 'package:ai_chat/pages/test_page.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
@@ -10,6 +14,7 @@ import 'package:ai_chat/storage/chat_storage_factory.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'pages/chat_page.dart';
 import 'pages/settings_page.dart';
@@ -32,8 +37,10 @@ import 'services/session_context_projector.dart';
 import 'services/session_context_service.dart';
 import 'services/session_summary_service.dart';
 import 'services/session_token_budget_service.dart';
+import 'services/artifact/artifact_file_storage_service.dart';
 import 'tools/adapters/tool_host_adapters.dart';
 import 'tools/default_tool_runtime_registry.dart';
+import 'tools/handlers/create_artifact_tool_handler.dart';
 import 'theme/app_theme.dart';
 
 void main() async {
@@ -56,6 +63,19 @@ void main() async {
     );
     final modelBudgetRegistry = ModelBudgetRegistry();
     final fileToolAdapters = await buildDefaultFileToolHostAdapters();
+    final appSupportDirectory = await getApplicationSupportDirectory();
+    final artifactFileStorageService = ArtifactFileStorageService(
+      rootDirectory: Directory(
+        '${appSupportDirectory.path}/inline_artifacts',
+      ),
+    );
+    await artifactFileStorageService.ensureReady();
+    final artifactRepository = ArtifactRepository(storage);
+    final createArtifactHandler = CreateArtifactToolHandler(
+      artifactRepository: artifactRepository,
+      fileStorageService: artifactFileStorageService,
+    );
+    late final ProviderContainer container;
     final tavilyWebSearcher = buildTavilyWebSearcher();
     final toolExecutor = ToolExecutor(
       chatStorage: storage,
@@ -97,6 +117,7 @@ void main() async {
     );
     final runtimeRegistry = buildDefaultToolRuntimeRegistry(
       toolExecutor: toolExecutor,
+      createArtifactHandler: createArtifactHandler,
     );
     final toolPolicyService = ToolPolicyService(
       repository: settingsRepository,
@@ -133,6 +154,14 @@ void main() async {
         availableTools: runtimeRegistry.getDefinitionsForPlatform(
           _resolveRuntimePlatform(),
         ),
+        onPlannerRetryScheduled: (progress) {
+          final reason = progress.error is TimeoutException
+              ? '请求超时'
+              : '请求失败';
+          container.read(chatSendStateProvider.notifier).setStatusText(
+                '$reason，正在重试 ${progress.attempt}/${progress.maxAttempts}',
+              );
+        },
       ),
       turnRepository: turnRepository,
       turnStepRepository: turnStepRepository,
@@ -146,11 +175,13 @@ void main() async {
     );
 
     // 创建一个自定义的ProviderContainer来添加覆盖
-    final container = ProviderContainer(
+    container = ProviderContainer(
       overrides: [
         // 覆盖聊天服务工厂提供者
         appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
         databaseProvider.overrideWithValue(storage),
+        artifactFileStorageServiceProvider
+            .overrideWithValue(artifactFileStorageService),
         traceRecorderProvider.overrideWithValue(traceRecorder),
         chatServiceFactoryProvider.overrideWithValue(chatService),
         turnHarnessProvider.overrideWithValue(turnHarness),

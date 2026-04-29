@@ -10,6 +10,7 @@ import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/chat_block_builder.dart';
 import 'package:ai_chat/services/tool_card_presentation_mapper.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/artifact_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/latest_message_running_status_tail.dart';
 import 'package:ai_chat/widgets/chat_blocks/streaming_response_block.dart';
@@ -188,6 +189,16 @@ class ChatTimelineRow extends ConsumerWidget {
           block: block,
           sourceMessage: sourceMessage,
           toolUiRegistry: toolUiRegistry,
+        );
+        break;
+      case AssistantTurnBlockType.artifact:
+        blockWidget = GestureDetector(
+          onLongPress: sourceMessage == null
+              ? null
+              : () => onLongPressMessage(sourceMessage),
+          child: ArtifactBlock(
+            projection: block.artifactProjection,
+          ),
         );
         break;
     }
