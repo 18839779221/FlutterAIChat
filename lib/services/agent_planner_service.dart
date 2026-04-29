@@ -1,4 +1,3 @@
-import 'dart:collection';
 import 'dart:convert';
 
 import '../models/agent/agent_loop_limits.dart';
@@ -29,6 +28,7 @@ class AgentPlannerService {
   final PlannerToolExposureService _toolExposureService;
   final ToolPolicyService? _toolPolicyService;
   final PromptBuilderService _promptBuilder;
+  final void Function(LlmRetryProgress progress)? _onPlannerRetryScheduled;
 
   AgentPlannerService({
     required BaseLLM llm,
@@ -36,12 +36,14 @@ class AgentPlannerService {
     PlannerToolExposureService? toolExposureService,
     ToolPolicyService? toolPolicyService,
     PromptBuilderService? promptBuilder,
+    void Function(LlmRetryProgress progress)? onPlannerRetryScheduled,
   })  : _llm = llm,
         _availableTools = availableTools,
         _toolExposureService =
             toolExposureService ?? PlannerToolExposureService(),
         _toolPolicyService = toolPolicyService,
-        _promptBuilder = promptBuilder ?? const PromptBuilderService();
+        _promptBuilder = promptBuilder ?? const PromptBuilderService(),
+        _onPlannerRetryScheduled = onPlannerRetryScheduled;
 
   Future<ModelTurnDecision?> planNextDecision({
     required ChatTurn turn,
@@ -91,6 +93,7 @@ class AgentPlannerService {
         providerStyle: turn.providerStyle,
         providerState: turn.providerStateJson,
         providerContinuationItems: continuationItems,
+        onRetryScheduled: _onPlannerRetryScheduled,
       );
       if (decision != null) {
         return _sanitizeDecision(
@@ -277,7 +280,7 @@ class AgentPlannerService {
       return const [];
     }
 
-    final orderedCallIds = LinkedHashSet<String>();
+    final orderedCallIds = <String>{};
     final toolCalls = <String, Map<String, dynamic>>{};
     final outputsByCallId = <String, String>{};
     final interactionAnswersByCallId = <String, String>{};
@@ -364,7 +367,7 @@ class AgentPlannerService {
             .toList(growable: false)
         : const <Map<String, dynamic>>[];
 
-    final orderedCallIds = LinkedHashSet<String>();
+    final orderedCallIds = <String>{};
     for (final block in assistantContentBlocks) {
       if (block['type'] != 'tool_use') {
         continue;
@@ -377,11 +380,13 @@ class AgentPlannerService {
 
     final toolCalls = <String, Map<String, dynamic>>{};
     final toolResults = <String, String>{};
+    final interactionAnswers = <String, String>{};
     for (final event in transcript) {
       final payload = event.payloadJson ?? const <String, dynamic>{};
       final providerCallId = (payload['providerCallId'] ?? '').toString().trim();
       switch (event.eventType) {
         case ChatEventType.assistantToolCall:
+        case ChatEventType.assistantQuestionPrompt:
           final providerResponseId =
               (payload['providerResponseId'] ?? '').toString().trim();
           if (providerResponseId == messageId && providerCallId.isNotEmpty) {
@@ -395,14 +400,21 @@ class AgentPlannerService {
             toolResults[providerCallId] = _encodeProviderEventOutput(event: event);
           }
           break;
+        case ChatEventType.userInteractionResult:
+          if (providerCallId.isNotEmpty &&
+              (event.content ?? '').trim().isNotEmpty) {
+            interactionAnswers[providerCallId] = event.content!.trim();
+          }
+          break;
         default:
           break;
       }
     }
 
-    final matchedCallIds = orderedCallIds
-        .where((callId) => toolResults.containsKey(callId))
-        .toList(growable: false);
+    final matchedCallIds = orderedCallIds.where((callId) {
+      return toolResults.containsKey(callId) ||
+          interactionAnswers.containsKey(callId);
+    }).toList(growable: false);
     if (matchedCallIds.isEmpty) {
       return const [];
     }
@@ -417,11 +429,18 @@ class AgentPlannerService {
         'role': 'user',
         'content': [
           for (final callId in matchedCallIds)
-            {
-              'type': 'tool_result',
-              'tool_use_id': callId,
-              'content': toolResults[callId],
-            },
+            if (interactionAnswers.containsKey(callId))
+              {
+                'type': 'tool_result',
+                'tool_use_id': callId,
+                'content': interactionAnswers[callId],
+              }
+            else
+              {
+                'type': 'tool_result',
+                'tool_use_id': callId,
+                'content': toolResults[callId],
+              },
         ],
       });
       return items;
@@ -439,18 +458,25 @@ class AgentPlannerService {
             'type': 'tool_use',
             'id': callId,
             'name': toolCall['toolName'],
-            'input': toolCall['arguments'] ?? const <String, dynamic>{},
+            'input': _resolveProviderToolInput(toolCall),
           },
         ],
       });
       items.add({
         'role': 'user',
         'content': [
-          {
-            'type': 'tool_result',
-            'tool_use_id': callId,
-            'content': toolResults[callId],
-          },
+          if (interactionAnswers.containsKey(callId))
+            {
+              'type': 'tool_result',
+              'tool_use_id': callId,
+              'content': interactionAnswers[callId],
+            }
+          else
+            {
+              'type': 'tool_result',
+              'tool_use_id': callId,
+              'content': toolResults[callId],
+            },
         ],
       });
     }
@@ -505,7 +531,7 @@ class AgentPlannerService {
         'type': 'assistant_tool_call',
         'toolCallId': entry.key,
         'toolName': entry.value['toolName'],
-        'arguments': entry.value['arguments'] ?? const <String, dynamic>{},
+        'arguments': _resolveProviderToolInput(entry.value),
       });
       final result = toolResults[entry.key];
       if (result != null) {
@@ -518,6 +544,22 @@ class AgentPlannerService {
       }
     }
     return items;
+  }
+
+  Map<String, dynamic> _resolveProviderToolInput(
+    Map<String, dynamic> payload,
+  ) {
+    final arguments = payload['arguments'];
+    if (arguments is Map) {
+      return Map<String, dynamic>.from(arguments);
+    }
+    final questions = payload['questions'];
+    if (questions is List) {
+      return {
+        'questions': questions,
+      };
+    }
+    return {};
   }
 
   String _encodeProviderEventOutput({

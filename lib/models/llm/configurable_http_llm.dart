@@ -217,6 +217,7 @@ class ConfigurableHttpLLM implements BaseLLM {
     ChatTurnProviderStyle? providerStyle,
     Map<String, dynamic>? providerState,
     List<Map<String, dynamic>> providerContinuationItems = const [],
+    void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     try {
       final runtimeConfig = await _settingsRepository.getLlmConfig();
@@ -245,6 +246,7 @@ class ConfigurableHttpLLM implements BaseLLM {
       ) {
         return _performRetriableMainFlowRequest(
           label: 'native_planner',
+          onRetryScheduled: onRetryScheduled,
           operation: () => _httpClient
               .post(
                 _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
@@ -517,6 +519,7 @@ class ConfigurableHttpLLM implements BaseLLM {
   Future<T> _performRetriableMainFlowRequest<T>({
     required String label,
     required Future<T> Function() operation,
+    void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     Object? lastError;
     StackTrace? lastStackTrace;
@@ -545,6 +548,15 @@ class ConfigurableHttpLLM implements BaseLLM {
         Logger.w(
           _tag,
           'main flow request retry scheduled label=$label attempt=$attempt/$_mainFlowNetworkRetryAttempts delayMs=${delay.inMilliseconds} reason=${_previewBody(error.toString())}',
+        );
+        onRetryScheduled?.call(
+          LlmRetryProgress(
+            label: label,
+            attempt: attempt,
+            maxAttempts: _mainFlowNetworkRetryAttempts,
+            delay: delay,
+            error: error,
+          ),
         );
         await Future<void>.delayed(delay);
       }

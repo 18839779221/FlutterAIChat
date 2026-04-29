@@ -1,5 +1,6 @@
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
+import 'package:ai_chat/models/artifact/artifact_record.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
@@ -247,6 +248,32 @@ class _FakeChatStorage implements ChatStorage {
   final List<ChatMessage> messages;
 
   const _FakeChatStorage({required this.messages});
+
+  @override
+  Future<int> insertOrReplaceArtifactRecord(ArtifactRecord record) =>
+      throw UnimplementedError();
+
+  @override
+  Future<ArtifactRecord?> getArtifactRecord({
+    required int groupId,
+    required String artifactId,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<ArtifactRecord?> getArtifactRecordByPath({
+    required int groupId,
+    required String sourcePath,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<List<ArtifactRecord>> listArtifactRecordsForGroup(int groupId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> updateArtifactRecord(ArtifactRecord record) =>
+      throw UnimplementedError();
 
   @override
   Future<List<ChatMessage>> getMessagesByGroup(int groupId) async => messages;

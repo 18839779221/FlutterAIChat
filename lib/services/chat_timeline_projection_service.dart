@@ -3,6 +3,7 @@ import 'package:ai_chat/models/chat/chat_timeline_projection.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
+import 'package:ai_chat/services/artifact/artifact_turn_resolver.dart';
 import 'package:ai_chat/services/chat_block_builder.dart';
 
 /// Builds one consistent projection snapshot for timeline rendering and
@@ -10,9 +11,12 @@ import 'package:ai_chat/services/chat_block_builder.dart';
 class ChatTimelineProjectionService {
   ChatTimelineProjectionService({
     ChatBlockBuilder? blockBuilder,
-  }) : _blockBuilder = blockBuilder ?? ChatBlockBuilder();
+    ArtifactTurnResolver? artifactTurnResolver,
+  })  : _blockBuilder = blockBuilder ?? ChatBlockBuilder(),
+        _artifactTurnResolver = artifactTurnResolver;
 
   final ChatBlockBuilder _blockBuilder;
+  final ArtifactTurnResolver? _artifactTurnResolver;
 
   ChatTimelineProjection build({
     required List<ChatMessage> messages,
@@ -22,11 +26,93 @@ class ChatTimelineProjectionService {
       messages: messages,
       groupId: groupId,
     );
+    final artifactBlocks = _buildArtifactBlocks(
+      messages: messages,
+      groupId: groupId,
+    );
     return ChatTimelineProjection(
       activeAskUserQuestionMessage: _findActiveAskUserQuestion(messages),
       pendingToolConfirmation: _findPendingConfirmation(messages),
-      assistantBlocks: blocks,
+      assistantBlocks: _mergeBlocks(
+        baseBlocks: blocks,
+        artifactBlocks: artifactBlocks,
+      ),
     );
+  }
+
+  List<AssistantTurnBlock> _buildArtifactBlocks({
+    required List<ChatMessage> messages,
+    required int? groupId,
+  }) {
+    final resolver = _artifactTurnResolver;
+    if (resolver == null) {
+      return const <AssistantTurnBlock>[];
+    }
+    final projections = resolver.resolve(messages: messages, groupId: groupId);
+    return projections.map((projection) {
+      return AssistantTurnBlock(
+        id: '${projection.turnId}-artifact-${projection.artifactId}',
+        turnId: projection.turnId,
+        type: AssistantTurnBlockType.artifact,
+        sequence: 100000,
+        createdAt: projection.createdAt,
+        updatedAt: projection.updatedAt,
+        title: projection.title,
+        text: projection.isStale ? '已在后续回复中更新' : projection.source,
+        payload: {
+          'sourceMessageId': projection.sourceMessageId,
+          'artifactId': projection.artifactId,
+          'type': projection.type.name,
+          'sourcePath': projection.sourcePath,
+          'isStale': projection.isStale,
+          if (projection.source != null) 'source': projection.source,
+        },
+        artifactProjection: projection,
+      );
+    }).toList(growable: false);
+  }
+
+  List<AssistantTurnBlock> _mergeBlocks({
+    required List<AssistantTurnBlock> baseBlocks,
+    required List<AssistantTurnBlock> artifactBlocks,
+  }) {
+    if (artifactBlocks.isEmpty) {
+      return baseBlocks;
+    }
+
+    final blocksByTurn = <String, List<AssistantTurnBlock>>{};
+    for (final block in baseBlocks) {
+      blocksByTurn.putIfAbsent(block.turnId, () => []).add(block);
+    }
+    for (final artifactBlock in artifactBlocks) {
+      final turnBlocks =
+          blocksByTurn.putIfAbsent(artifactBlock.turnId, () => <AssistantTurnBlock>[]);
+      final finalResponseIndex = turnBlocks.indexWhere(
+        (block) => block.type == AssistantTurnBlockType.finalResponse,
+      );
+      if (finalResponseIndex == -1) {
+        turnBlocks.add(artifactBlock);
+      } else {
+        turnBlocks.insert(finalResponseIndex, artifactBlock);
+      }
+    }
+
+    final merged = <AssistantTurnBlock>[];
+    final seenTurnOrder = <String>[];
+    for (final block in baseBlocks) {
+      if (!seenTurnOrder.contains(block.turnId)) {
+        seenTurnOrder.add(block.turnId);
+      }
+    }
+    for (final artifactBlock in artifactBlocks) {
+      if (!seenTurnOrder.contains(artifactBlock.turnId)) {
+        seenTurnOrder.add(artifactBlock.turnId);
+      }
+    }
+    for (final turnId in seenTurnOrder) {
+      merged.addAll(blocksByTurn[turnId] ?? const <AssistantTurnBlock>[]);
+    }
+    return merged;
   }
 
   ChatMessage? _findActiveAskUserQuestion(List<ChatMessage> messages) {

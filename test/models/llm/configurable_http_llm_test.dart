@@ -5,6 +5,7 @@ import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
+import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/llm/configurable_http_llm.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/models/llm/llm_provider_model.dart';
@@ -110,8 +111,9 @@ void main() {
       expect(decision, isNull);
     });
 
-    test('retries planner request on timeout before succeeding', () async {
+    test('reports planner retry progress on timeout', () async {
       var attempts = 0;
+      final progressEvents = <LlmRetryProgress>[];
       final client = _RecordingHttpClient(
         handler: (request) {
           attempts += 1;
@@ -146,11 +148,46 @@ void main() {
         ],
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
+        onRetryScheduled: progressEvents.add,
       );
 
       expect(attempts, 3);
       expect(decision, isNotNull);
       expect(decision!.assistantMessage, '重试后成功。');
+      expect(progressEvents, hasLength(2));
+      expect(progressEvents.first.attempt, 1);
+      expect(progressEvents.first.maxAttempts, 3);
+      expect(progressEvents.last.attempt, 2);
+    });
+
+    test('does not emit planner retry progress after final timeout', () async {
+      var attempts = 0;
+      final progressEvents = <LlmRetryProgress>[];
+      final client = _RecordingHttpClient(
+        handler: (request) {
+          attempts += 1;
+          throw TimeoutException('planner timeout');
+        },
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+        mainFlowNetworkRetryAttempts: 3,
+      );
+
+      await expectLater(
+        () => llm.planTurnDecision(
+          messages: [
+            ChatMessage(text: '继续', role: MessageRole.user),
+          ],
+          config: ChatConfig(systemPrompt: ''),
+          availableTools: const [],
+          onRetryScheduled: progressEvents.add,
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+      expect(attempts, 3);
+      expect(progressEvents, hasLength(2));
     });
 
     test('chat completions decision keeps assistant text when tool calls exist',

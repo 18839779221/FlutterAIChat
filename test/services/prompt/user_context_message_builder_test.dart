@@ -11,6 +11,9 @@ void main() {
         snapshot: const RuntimeUserContextSnapshot(
           currentDateText: "Today's date is 2026-04-24.",
           agentsMdText: 'Project instructions here.',
+          additionalSections: [
+            '# runtimePlatform\nCurrent runtime platform: Android phone app.'
+          ],
         ),
       );
 
@@ -18,6 +21,7 @@ void main() {
       expect(message.text, contains('<system-reminder>'));
       expect(message.text, contains('# currentDate'));
       expect(message.text, contains('# agentsMd'));
+      expect(message.text, contains('# runtimePlatform'));
     });
 
     test('omits empty sections from reminder body', () {

@@ -1,5 +1,10 @@
+import 'dart:io';
+
+import 'package:ai_chat/models/artifact/artifact_type.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/services/artifact/artifact_file_storage_service.dart';
+import 'package:ai_chat/services/artifact/artifact_turn_resolver.dart';
 import 'package:ai_chat/services/chat_timeline_projection_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -129,6 +134,65 @@ void main() {
         projection.assistantBlocks.single.toolResult?.data['matchCount'],
         1,
       );
+    });
+
+    test('projects artifact block into assistant timeline snapshot', () async {
+      final tempDirectory = await Directory.systemTemp.createTemp(
+        'timeline-artifact-',
+      );
+      final fileStorageService =
+          ArtifactFileStorageService(rootDirectory: tempDirectory);
+      await fileStorageService.saveArtifactSource(
+        groupId: 7,
+        artifactId: 'portfolio-pie',
+        title: '投资组合饼图',
+        type: ArtifactType.html,
+        source: '<div>artifact body</div>',
+      );
+      final service = ChatTimelineProjectionService(
+        artifactTurnResolver: ArtifactTurnResolver(
+          fileStorageService: fileStorageService,
+        ),
+      );
+
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我画个图',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 31,
+            text: '已创建 artifact：portfolio-pie',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolResult,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 1),
+            payloadJson: const {
+              'toolName': 'create_artifact',
+              'status': 'success',
+              'summary': '已创建 artifact：portfolio-pie',
+              'data': {
+                'artifactId': 'portfolio-pie',
+                'title': '投资组合饼图',
+                'type': 'html',
+                'sourcePath': 'artifacts/7/portfolio-pie.html',
+              },
+            },
+          ),
+        ],
+      );
+
+      expect(
+        projection.assistantBlocks.any(
+          (block) => block.type.name == 'artifact',
+        ),
+        isTrue,
+      );
+
+      await tempDirectory.delete(recursive: true);
     });
   });
 }

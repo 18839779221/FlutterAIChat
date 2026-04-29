@@ -67,6 +67,7 @@ Session 代表“同一个会话容器下的完整连续上下文对话”。
 
 - 当前代码实现已经保留 `assistantToolCall` 对应的 tool use 结构语义
 - 文档中若出现“tool call 一律过滤”的旧描述，以当前实现为准，不再适用
+- `create_artifact` 与后续 `Write/Edit` 仍按真实 tool transcript 进入上下文；当前架构不为 artifact 额外注入 summary-style 派生回传
 
 ### ToolResult 文本约定
 
@@ -100,6 +101,11 @@ Session 代表“同一个会话容器下的完整连续上下文对话”。
   - 若 `summary` 已经包含真实相对路径，`toolResultText` 可以与 `summary` 相同
 - 失败时：
   - 若 `summary` 不含真实路径，而模型继续决策又需要它，可在 `toolResultText` 中补一次真实路径
+
+artifact 相关补充：
+
+- `create_artifact` 的 `toolResultText` 可以包含稳定 `sourcePath`，用于让模型后续优先通过 `Read/Edit/Write` 修改同一个 artifact 文件
+- Session 上下文层不为 artifact 额外生成“摘要回投”文本；继续编辑所需的语义应尽量由真实 transcript 与稳定路径表达
 
 ### SessionTokenBudgetService
 

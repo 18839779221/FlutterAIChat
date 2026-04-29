@@ -18,6 +18,9 @@
 
 ### Tool Call 与结构化输出
 - 支持工具决策、确认执行、执行结果展示、失败回退
+- 支持 `create_artifact` inline artifact 工具，可在回答中插入 HTML/SVG 可视化块，作为图表、精致表格、计算器和交互解释页面等回答增强内容
+- artifact 首次创建后会返回稳定 `sourcePath`；后续模型优先通过已有 `Read/Edit/Write` 持续编辑同一个文件，而不是每次重发完整源码
+- 同一 turn 内对同一 artifact 文件的后续 `Edit/Write` 会原位刷新同一张 artifact 卡片；跨 turn 再次编辑则在新 turn 中显示新卡片，旧卡片保留并标记为已在后续回复中更新
 - tool use UI 支持“工具专属 renderer + 通用兜底卡片”双轨渲染；`Write`、`Edit`、`web_search`、`fetch_webpage` 已接入专属卡片
 - `fetch_webpage` 会读取指定公共网页，并按 `url + prompt` 生成网页处理结果；卡片默认展示站点、prompt 与结果预览，原始摘录退居详情区
 - 工具确认交互已从时间线卡片内移出，改为聊天页底部统一确认区；时间线卡片只负责展示“准备做什么 / 做了什么”
@@ -74,6 +77,7 @@ UI 只消费 Riverpod providers 和 controller 门面，不直接编排复杂业
 
 `chat_providers.dart` 现在主要负责 controller/provider 装配与 re-export，业务逻辑已拆出。
 - tool use 渲染通过 `toolUiRendererRegistryProvider` 分发：命中专属 renderer 时优先展示定制卡片，未命中时回退到默认通用卡片
+- inline artifact 通过时间线 projection 接入，而不是把 artifact 语义扩散到所有工具或全局 UI 状态机
 
 ### Controller 层
 - [lib/controllers/chat_controller.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_controller.dart)
@@ -106,6 +110,7 @@ UI 只消费 Riverpod providers 和 controller 门面，不直接编排复杂业
 ### Service 层
 - [lib/services/chat_service.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/services/chat_service.dart)
 - `lib/services/chat_timeline_projection_service.dart`
+- `lib/services/artifact/`
 - `tool/runtime`、`trace` 等服务
 
 Service 层负责 LLM 通信、Session 上下文编排、工具编排与 trace 记录。
@@ -115,6 +120,7 @@ Service 层负责 LLM 通信、Session 上下文编排、工具编排与 trace �
 - provider/API 协议适配不属于 Agent Loop Core
 - UI 不应长期依赖扫描 `ChatMessage.payloadJson` 反推 workflow / waiting state，后续应逐步收敛为消费 turn ledger projection
 - `ChatTimelineProjectionService` 负责为时间线和 waiting-state provider 产出统一 projection snapshot，避免 UI 各处各自重建中间态
+- artifact 的刷新/过期语义也通过 projection 层处理：重启或切换 group 后，会基于持久化消息、artifact registry 和当前文件内容重建，不依赖上次运行时内存
 
 ### Session 上下文层
 - `lib/services/session_context_service.dart`

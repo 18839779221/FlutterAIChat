@@ -1706,6 +1706,105 @@ void main() {
     });
 
     test(
+        'planNextDecision builds anthropic ask-user continuation from interaction result transcript',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: '继续处理',
+          providerState: {'message_id': 'msg_next'},
+          isTerminal: true,
+        ),
+      );
+      final service = AgentPlannerService(llm: llm);
+
+      await service.planNextDecision(
+        turn: ChatTurn(
+          id: 33,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '你创建了吗',
+          providerStyle: ChatTurnProviderStyle.anthropicMessages,
+          providerStateJson: const {
+            'message_id': '06418bf486e1aa2f9804b3dbc093eab2',
+          },
+        ),
+        transcript: [
+          ChatEvent(
+            turnId: 33,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '帮我制作一个精美的HTML介绍中国各地美食从夯到拉的排序',
+          ),
+          ChatEvent(
+            turnId: 33,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.assistantQuestionPrompt,
+            role: MessageRole.assistant,
+            content: '您想要按什么顺序排列美食？',
+            payloadJson: const {
+              'toolName': 'ask_user_question',
+              'questions': [
+                {'id': 'sort_method', 'question': '您想要按什么顺序排列美食？'},
+              ],
+              'providerCallId': 'call_function_ujx5ah3p2ec4_1',
+              'providerResponseId': '06418bf486e1aa2f9804b3dbc093eab2',
+            },
+          ),
+          ChatEvent(
+            turnId: 33,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.userInteractionResult,
+            role: MessageRole.system,
+            content: 'User answered AskUserQuestion:\n- 排序方式: 按地区（由南到北）',
+            payloadJson: const {
+              'answersByQuestionId': {'sort_method': '按地区（由南到北）'},
+              'providerCallId': 'call_function_ujx5ah3p2ec4_1',
+            },
+          ),
+        ],
+        steps: const [],
+        config: ChatConfig(systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(
+        llm.lastProviderContinuationItems,
+        [
+          {
+            'role': 'assistant',
+            'content': [
+              {
+                'type': 'tool_use',
+                'id': 'call_function_ujx5ah3p2ec4_1',
+                'name': 'ask_user_question',
+                'input': {
+                  'questions': [
+                    {'id': 'sort_method', 'question': '您想要按什么顺序排列美食？'},
+                  ],
+                },
+              },
+            ],
+          },
+          {
+            'role': 'user',
+            'content': [
+              {
+                'type': 'tool_result',
+                'tool_use_id': 'call_function_ujx5ah3p2ec4_1',
+                'content': 'User answered AskUserQuestion:\n- 排序方式: 按地区（由南到北）',
+              },
+            ],
+          },
+        ],
+      );
+    });
+
+    test(
         'planNextDecision appends anthropic tool_result from transcript when provider content blocks already contain tool_use',
         () async {
       final llm = _NativeDecisionLLM(

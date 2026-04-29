@@ -2,6 +2,7 @@ import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
+import 'package:ai_chat/models/artifact/artifact_record.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -89,6 +90,30 @@ class _NoopBaseLLM extends BaseLLM {
 }
 
 class _NoopChatStorage implements ChatStorage {
+  @override
+  Future<int> insertOrReplaceArtifactRecord(ArtifactRecord record) async => 1;
+
+  @override
+  Future<ArtifactRecord?> getArtifactRecord({
+    required int groupId,
+    required String artifactId,
+  }) async =>
+      null;
+
+  @override
+  Future<ArtifactRecord?> getArtifactRecordByPath({
+    required int groupId,
+    required String sourcePath,
+  }) async =>
+      null;
+
+  @override
+  Future<List<ArtifactRecord>> listArtifactRecordsForGroup(int groupId) async =>
+      const [];
+
+  @override
+  Future<void> updateArtifactRecord(ArtifactRecord record) async {}
+
   @override
   Future<void> deleteGroup(int groupId) async {}
 

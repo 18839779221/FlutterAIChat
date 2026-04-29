@@ -280,6 +280,39 @@ void main() {
       expect(find.text('正在规划下一步'), findsOneWidget);
     });
 
+    testWidgets('preparing phase uses transient retry status text when present',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: 'OpenAI 最近有什么新闻？',
+            role: MessageRole.user,
+            contentType: MessageContentType.plainText,
+          ),
+          _buildMessage(
+            text: '准备执行工具',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const ToolInvocation(
+              toolName: 'web_search',
+              arguments: {'query': 'OpenAI latest news'},
+              status: ToolInvocationStatus.proposed,
+              summary: '准备执行工具：联网搜索',
+              requiresConfirmation: false,
+            ).toJson(),
+          ),
+        ],
+        sendPhase: ChatSendPhase.preparing,
+        sendStatusText: '请求超时，正在重试 1/5',
+      );
+
+      expect(find.byKey(const ValueKey('latest-message-running-tail')),
+          findsOneWidget);
+      expect(find.text('请求超时，正在重试 1/5'), findsOneWidget);
+      expect(find.text('正在规划下一步'), findsNothing);
+    });
+
     testWidgets('tool result renders as collapsed summary row', (tester) async {
       await _pumpMessageList(
         tester,
@@ -1032,6 +1065,7 @@ Future<void> _pumpMessageList(
   FocusNode? focusNode,
   ToolUiRendererRegistry? registry,
   ChatSendPhase sendPhase = ChatSendPhase.idle,
+  String? sendStatusText,
 }) async {
   final container = ProviderContainer(
     overrides: [
@@ -1091,6 +1125,7 @@ Future<void> _pumpMessageList(
           ..update(
             phase: sendPhase,
             isGenerating: sendPhase == ChatSendPhase.streamingResponse,
+            statusText: sendStatusText,
           ),
       ),
       if (registry != null)

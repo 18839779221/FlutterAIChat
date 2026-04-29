@@ -1,4 +1,6 @@
 import 'package:ai_chat/repositories/app_settings_repository.dart';
+import 'package:ai_chat/services/artifact/artifact_file_storage_service.dart';
+import 'package:ai_chat/services/artifact/artifact_turn_resolver.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_timeline_projection_service.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
@@ -39,8 +41,16 @@ final latestMessageRunningStatusResolverProvider =
 
 final chatTimelineProjectionServiceProvider =
     Provider<ChatTimelineProjectionService>((ref) {
-  return ChatTimelineProjectionService();
+  final artifactFileStorage = ref.watch(artifactFileStorageServiceProvider);
+  return ChatTimelineProjectionService(
+    artifactTurnResolver: artifactFileStorage == null
+        ? null
+        : ArtifactTurnResolver(fileStorageService: artifactFileStorage),
+  );
 });
+
+final artifactFileStorageServiceProvider =
+    Provider<ArtifactFileStorageService?>((ref) => null);
 
 // 聊天服务提供者
 final chatServiceProvider = Provider<ChatService>((ref) {

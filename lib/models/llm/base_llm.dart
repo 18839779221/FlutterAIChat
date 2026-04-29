@@ -5,6 +5,22 @@ import '../agent/planner_tool_option.dart';
 import '../chat_message.dart';
 import '../chat_turn.dart';
 
+class LlmRetryProgress {
+  final String label;
+  final int attempt;
+  final int maxAttempts;
+  final Duration delay;
+  final Object error;
+
+  const LlmRetryProgress({
+    required this.label,
+    required this.attempt,
+    required this.maxAttempts,
+    required this.delay,
+    required this.error,
+  });
+}
+
 abstract class BaseLLM {
   /// 模型名称
   String getModelName(ChatConfig config);
@@ -31,6 +47,7 @@ abstract class BaseLLM {
     ChatTurnProviderStyle? providerStyle,
     Map<String, dynamic>? providerState,
     List<Map<String, dynamic>> providerContinuationItems = const [],
+    void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     return null;
   }

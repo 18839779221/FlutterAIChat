@@ -24,6 +24,7 @@ class LatestMessageRunningStatusResolver {
   LatestMessageRunningStatusPresentation? resolve({
     required List<ChatMessage> messages,
     required ChatSendPhase sendPhase,
+    String? statusTextOverride,
   }) {
     if (sendPhase == ChatSendPhase.idle || messages.isEmpty) {
       return null;
@@ -38,16 +39,28 @@ class LatestMessageRunningStatusResolver {
       case ChatSendPhase.idle:
         return null;
       case ChatSendPhase.preparing:
+        final override = statusTextOverride?.trim();
+        if (override != null && override.isNotEmpty) {
+          return LatestMessageRunningStatusPresentation(text: override);
+        }
         return LatestMessageRunningStatusPresentation(
           text: _hasAssistantOutput(currentTurnMessages)
               ? '正在规划下一步'
               : '正在请求模型',
         );
       case ChatSendPhase.awaitingConfirmation:
+        final override = statusTextOverride?.trim();
+        if (override != null && override.isNotEmpty) {
+          return LatestMessageRunningStatusPresentation(text: override);
+        }
         return const LatestMessageRunningStatusPresentation(
           text: '等待工具确认',
         );
       case ChatSendPhase.executingTool:
+        final override = statusTextOverride?.trim();
+        if (override != null && override.isNotEmpty) {
+          return LatestMessageRunningStatusPresentation(text: override);
+        }
         final executingToolText = _resolveExecutingToolText(currentTurnMessages);
         return LatestMessageRunningStatusPresentation(
           text: executingToolText ??
@@ -56,6 +69,10 @@ class LatestMessageRunningStatusResolver {
                   : '正在等待结果'),
         );
       case ChatSendPhase.streamingResponse:
+        final override = statusTextOverride?.trim();
+        if (override != null && override.isNotEmpty) {
+          return LatestMessageRunningStatusPresentation(text: override);
+        }
         return const LatestMessageRunningStatusPresentation(
           text: '正在生成回复',
         );
