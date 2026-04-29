@@ -3237,7 +3237,15 @@ void main() {
       );
 
       final persistedSteps = await stepRepository.listSteps(turnId);
-      expect(persistedSteps, hasLength(1));
+      expect(persistedSteps, hasLength(3));
+      expect(
+        persistedSteps.map((step) => step.providerCallId).toList(growable: false),
+        ['call_1', 'call_2', 'call_3'],
+      );
+      expect(
+        persistedSteps.map((step) => step.toolName).toList(growable: false),
+        ['search_chat_history', 'Write', 'create_reminder'],
+      );
       expect(
         toolResults
             .map((event) => event.payloadJson?['providerCallId'])
