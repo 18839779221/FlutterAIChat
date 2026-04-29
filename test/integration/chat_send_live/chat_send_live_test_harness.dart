@@ -135,7 +135,9 @@ class ChatSendLiveTestHarness {
     }
 
     _chatSendLiveDatabaseCounter += 1;
-    final databaseName = 'chat_send_live_$_chatSendLiveDatabaseCounter.db';
+    final databaseName =
+        'chat_send_live_${DateTime.now().microsecondsSinceEpoch}_'
+        '$_chatSendLiveDatabaseCounter.db';
     final databaseHelper = DatabaseHelper(databaseName: databaseName);
     await databaseHelper.testDatabaseConnection();
 
