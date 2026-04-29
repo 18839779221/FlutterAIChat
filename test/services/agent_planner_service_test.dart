@@ -1989,6 +1989,234 @@ void main() {
       );
     });
 
+    test(
+        'planNextDecision includes every anthropic tool result when one assistant message issued five tool calls',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: '继续处理',
+          providerState: {'message_id': 'msg_next'},
+          isTerminal: true,
+        ),
+      );
+      final service = AgentPlannerService(llm: llm);
+
+      await service.planNextDecision(
+        turn: ChatTurn(
+          id: 6,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '继续整理 Google 最新新闻',
+          providerStyle: ChatTurnProviderStyle.anthropicMessages,
+          providerStateJson: const {
+            'message_id': 'msg_prev_five',
+            'content_blocks': [
+              {
+                'type': 'thinking',
+                'thinking': '我要补充细节。',
+                'signature': 'sig_five',
+              },
+              {
+                'type': 'tool_use',
+                'id': 'call_00',
+                'name': 'fetch_webpage',
+                'input': {'url': 'https://example.com/a'},
+              },
+              {
+                'type': 'tool_use',
+                'id': 'call_01',
+                'name': 'fetch_webpage',
+                'input': {'url': 'https://example.com/b'},
+              },
+              {
+                'type': 'tool_use',
+                'id': 'call_02',
+                'name': 'fetch_webpage',
+                'input': {'url': 'https://example.com/c'},
+              },
+              {
+                'type': 'tool_use',
+                'id': 'call_03',
+                'name': 'fetch_webpage',
+                'input': {'url': 'https://example.com/d'},
+              },
+              {
+                'type': 'tool_use',
+                'id': 'call_04',
+                'name': 'fetch_webpage',
+                'input': {'url': 'https://example.com/e'},
+              },
+            ],
+          },
+        ),
+        transcript: [
+          ChatEvent(
+            turnId: 6,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '继续整理 Google 最新新闻',
+          ),
+          ChatEvent(
+            turnId: 6,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.toolError,
+            role: MessageRole.system,
+            content: '页面 A 失败',
+            payloadJson: const {
+              'toolName': 'fetch_webpage',
+              'summary': '页面 A 失败',
+              'errorMessage': 'network_error',
+              'providerCallId': 'call_00',
+            },
+          ),
+          ChatEvent(
+            turnId: 6,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: '页面 B 完成',
+            payloadJson: const {
+              'toolName': 'fetch_webpage',
+              'summary': '页面 B 完成',
+              'providerCallId': 'call_01',
+              'data': {'url': 'https://example.com/b'},
+            },
+          ),
+          ChatEvent(
+            turnId: 6,
+            groupId: 1,
+            sequence: 4,
+            eventType: ChatEventType.toolError,
+            role: MessageRole.system,
+            content: '页面 C 失败',
+            payloadJson: const {
+              'toolName': 'fetch_webpage',
+              'summary': '页面 C 失败',
+              'errorMessage': 'timeout',
+              'providerCallId': 'call_02',
+            },
+          ),
+          ChatEvent(
+            turnId: 6,
+            groupId: 1,
+            sequence: 5,
+            eventType: ChatEventType.toolError,
+            role: MessageRole.system,
+            content: '页面 D 失败',
+            payloadJson: const {
+              'toolName': 'fetch_webpage',
+              'summary': '页面 D 失败',
+              'errorMessage': 'network_error',
+              'providerCallId': 'call_03',
+            },
+          ),
+          ChatEvent(
+            turnId: 6,
+            groupId: 1,
+            sequence: 6,
+            eventType: ChatEventType.toolError,
+            role: MessageRole.system,
+            content: '页面 E 失败',
+            payloadJson: const {
+              'toolName': 'fetch_webpage',
+              'summary': '页面 E 失败',
+              'errorMessage': 'network_error',
+              'providerCallId': 'call_04',
+            },
+          ),
+        ],
+        steps: const [],
+        config: ChatConfig(systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(
+        llm.lastProviderContinuationItems,
+        [
+          {
+            'role': 'assistant',
+            'content': [
+              {
+                'type': 'thinking',
+                'thinking': '我要补充细节。',
+                'signature': 'sig_five',
+              },
+              {
+                'type': 'tool_use',
+                'id': 'call_00',
+                'name': 'fetch_webpage',
+                'input': {'url': 'https://example.com/a'},
+              },
+              {
+                'type': 'tool_use',
+                'id': 'call_01',
+                'name': 'fetch_webpage',
+                'input': {'url': 'https://example.com/b'},
+              },
+              {
+                'type': 'tool_use',
+                'id': 'call_02',
+                'name': 'fetch_webpage',
+                'input': {'url': 'https://example.com/c'},
+              },
+              {
+                'type': 'tool_use',
+                'id': 'call_03',
+                'name': 'fetch_webpage',
+                'input': {'url': 'https://example.com/d'},
+              },
+              {
+                'type': 'tool_use',
+                'id': 'call_04',
+                'name': 'fetch_webpage',
+                'input': {'url': 'https://example.com/e'},
+              },
+            ],
+          },
+          {
+            'role': 'user',
+            'content': [
+              {
+                'type': 'tool_result',
+                'tool_use_id': 'call_00',
+                'content':
+                    '{"status":"failure","summary":"页面 A 失败","error":"network_error"}',
+              },
+              {
+                'type': 'tool_result',
+                'tool_use_id': 'call_01',
+                'content':
+                    '{"status":"success","summary":"页面 B 完成","data":{"url":"https://example.com/b"}}',
+              },
+              {
+                'type': 'tool_result',
+                'tool_use_id': 'call_02',
+                'content':
+                    '{"status":"failure","summary":"页面 C 失败","error":"timeout"}',
+              },
+              {
+                'type': 'tool_result',
+                'tool_use_id': 'call_03',
+                'content':
+                    '{"status":"failure","summary":"页面 D 失败","error":"network_error"}',
+              },
+              {
+                'type': 'tool_result',
+                'tool_use_id': 'call_04',
+                'content':
+                    '{"status":"failure","summary":"页面 E 失败","error":"network_error"}',
+              },
+            ],
+          },
+        ],
+      );
+    });
+
     test('planNextDecision parses native planner tool choice directly',
         () async {
       final llm = _NativeDecisionLLM(
