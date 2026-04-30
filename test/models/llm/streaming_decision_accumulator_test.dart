@@ -102,6 +102,15 @@ void main() {
       );
 
       expect(accumulator.buildDecision(), isNull);
+      expect(
+        accumulator.debugSnapshot(),
+        containsPair('assistantTextLength', 0),
+      );
+      final toolDrafts =
+          accumulator.debugSnapshot()['toolDrafts'] as List<dynamic>;
+      expect(toolDrafts, hasLength(1));
+      expect(toolDrafts.first, containsPair('isCompleted', true));
+      expect(toolDrafts.first, containsPair('rawArgumentsLength', 8));
     });
 
     test('finalizes chat-completions style tool call on stream completion', () {

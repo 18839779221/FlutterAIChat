@@ -119,6 +119,44 @@ void main() {
         isTrue,
       );
     });
+
+    test('preserves whitespace in anthropic planner input_json_delta chunks',
+        () async {
+      const parser = ApiStreamParser();
+      final response = http.StreamedResponse(
+        Stream<List<int>>.fromIterable([
+          utf8.encode(
+            'event: content_block_start\n'
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"create_artifact"}}\n\n'
+            'event: content_block_delta\n'
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\n  \\"source\\": \\"<div>\\n"}}\n\n'
+            'event: content_block_delta\n'
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"    <span>ok</span>\\n  </div>\\"\\n}"}}\n\n'
+            'event: content_block_stop\n'
+            'data: {"type":"content_block_stop","index":0}\n\n'
+            'data: [DONE]\n',
+          ),
+        ]),
+        200,
+      );
+
+      final chunks = await parser
+          .parsePlannerChunks(response, ApiStyle.anthropicMessages)
+          .toList();
+      final argumentText = chunks
+          .where(
+            (chunk) =>
+                chunk.type == StreamingPlannerChunkType.toolCallArgumentsDelta &&
+                chunk.providerCallId == 'toolu_1',
+          )
+          .map((chunk) => chunk.argumentsTextDelta)
+          .join();
+
+      expect(
+        argumentText,
+        '{\n  "source": "<div>\n    <span>ok</span>\n  </div>"\n}',
+      );
+    });
   });
 
   group('ApiStreamParser chat completions planner', () {

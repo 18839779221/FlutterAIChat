@@ -355,17 +355,15 @@ class ApiStreamParser {
             continue;
           }
           if (deltaType == 'input_json_delta') {
-            final partialJson = _normalizeText(
-              delta['partial_json'] ?? delta['text'],
-            );
-            if (partialJson == null || index == null) {
+            final rawPartialJson = delta['partial_json'] ?? delta['text'];
+            if (rawPartialJson is! String || index == null) {
               continue;
             }
             final meta = blockMetaByIndex[index];
             yield StreamingPlannerChunk.toolCallArgumentsDelta(
               providerCallId: _normalizeText(meta?['providerCallId']),
               toolName: _normalizeText(meta?['toolName']),
-              argumentsTextDelta: partialJson,
+              argumentsTextDelta: rawPartialJson,
               providerMetadata: meta?['providerMetadata'] is Map<String, dynamic>
                   ? Map<String, dynamic>.from(
                       meta!['providerMetadata'] as Map<String, dynamic>,

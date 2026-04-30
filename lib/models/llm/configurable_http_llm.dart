@@ -318,7 +318,7 @@ class ConfigurableHttpLLM implements BaseLLM {
         if (streamedDecision == null) {
           Logger.w(
             _tag,
-            'native planner streaming parsed null decision',
+            'native planner streaming parsed null decision. summary=${_summarizeStreamingPlannerAttempt(streamedResult.debugSnapshot)}',
           );
           return null;
         }
@@ -541,6 +541,7 @@ class ConfigurableHttpLLM implements BaseLLM {
 
     return _StreamingPlannerAttemptResult.completed(
       accumulator.buildDecision(),
+      debugSnapshot: accumulator.debugSnapshot(),
     );
   }
 
@@ -826,6 +827,30 @@ class ConfigurableHttpLLM implements BaseLLM {
     return 'keys=${payload.keys.join(',')}';
   }
 
+  String _summarizeStreamingPlannerAttempt(Map<String, dynamic>? snapshot) {
+    if (snapshot == null || snapshot.isEmpty) {
+      return 'no_snapshot';
+    }
+    final toolDrafts = snapshot['toolDrafts'];
+    final toolDraftSummary = toolDrafts is List
+        ? toolDrafts
+            .whereType<Map>()
+            .map(
+              (draft) =>
+                  '#${draft['sequence']}'
+                  ':name=${draft['toolName'] ?? '-'}'
+                  ':id=${draft['providerCallId'] ?? '-'}'
+                  ':done=${draft['isCompleted'] == true}'
+                  ':argsLen=${draft['rawArgumentsLength'] ?? 0}',
+            )
+            .join('|')
+        : '';
+    return 'assistantLen=${snapshot['assistantTextLength'] ?? 0} '
+        'reasoningLen=${snapshot['reasoningLength'] ?? 0} '
+        'providerKeys=${snapshot['providerStateKeys'] ?? const []} '
+        'toolDrafts=${toolDraftSummary.isEmpty ? '[]' : '[$toolDraftSummary]'}';
+  }
+
   Future<T> _performRetriableMainFlowRequest<T>({
     required String label,
     required Future<T> Function() operation,
@@ -927,14 +952,18 @@ class ConfigurableHttpLLM implements BaseLLM {
 }
 
 class _StreamingPlannerAttemptResult {
-  const _StreamingPlannerAttemptResult.completed(this.decision)
-      : retryWithoutPreviousResponseId = false;
+  const _StreamingPlannerAttemptResult.completed(
+    this.decision, {
+    this.debugSnapshot,
+  }) : retryWithoutPreviousResponseId = false;
 
   const _StreamingPlannerAttemptResult.retryWithoutPreviousResponseId()
       : decision = null,
+        debugSnapshot = null,
         retryWithoutPreviousResponseId = true;
 
   final ModelTurnDecision? decision;
+  final Map<String, dynamic>? debugSnapshot;
   final bool retryWithoutPreviousResponseId;
 }
 
