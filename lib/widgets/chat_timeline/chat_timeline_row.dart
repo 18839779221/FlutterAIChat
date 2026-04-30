@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
+import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/chat/tool_card_presentation_variant.dart';
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -8,6 +9,7 @@ import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/chat_block_builder.dart';
+import 'package:ai_chat/services/tool_presentation_block_projector.dart';
 import 'package:ai_chat/services/tool_card_presentation_mapper.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/artifact_block.dart';
@@ -31,6 +33,8 @@ import 'chat_timeline_item.dart';
 /// Renders a single stable timeline row.
 class ChatTimelineRow extends ConsumerWidget {
   static const Duration _minRunningVisibleDuration = Duration(seconds: 5);
+  static const ToolPresentationBlockProjector _previewToolBlockProjector =
+      ToolPresentationBlockProjector();
 
   final ChatTimelineItem item;
   final ChatBlockBuilder blockBuilder;
@@ -375,9 +379,38 @@ class ChatTimelineRow extends ConsumerWidget {
       return null;
     }
 
-    final previewBlocks = blockBuilder.buildAssistantBlocks(
-      messages: prefixMessages,
-      groupId: currentGroupId ?? ref.read(currentGroupProvider)?.id,
+    final previewEvents = prefixMessages
+        .where((message) => message.contentType == MessageContentType.toolInvocation)
+        .map((message) {
+          final payload = message.payloadJson ?? const <String, dynamic>{};
+          final stepId = payload['stepId'];
+          final providerCallId = (payload['providerCallId'] ?? '')
+              .toString()
+              .trim();
+          return ToolPresentationEvent(
+            toolName: (payload['toolName'] ?? '').toString(),
+            phase: ToolPresentationEventPhase.running,
+            turnId: turnId,
+            stepId: stepId == null ? null : '$turnId-step-$stepId',
+            providerCallId:
+                providerCallId.isEmpty ? null : providerCallId,
+            sourceContentType: MessageContentType.toolInvocation,
+            sourceMessageId: message.id,
+            timestamp: message.timestamp,
+            data: {
+              ...payload,
+              'arguments': payload['arguments'] is Map
+                  ? Map<String, dynamic>.from(payload['arguments'] as Map)
+                  : const <String, dynamic>{},
+              'summary': payload['summary'] ?? message.text,
+              'requiresConfirmation':
+                  payload['requiresConfirmation'] == true,
+            },
+          );
+        })
+        .toList(growable: false);
+    final previewBlocks = _previewToolBlockProjector.project(
+      events: previewEvents,
     );
     for (var index = previewBlocks.length - 1; index >= 0; index -= 1) {
       final block = previewBlocks[index];

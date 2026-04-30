@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/response/message_content_type.dart';
+import 'package:ai_chat/models/tool/tool_invocation.dart';
+import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/chat_block_builder.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
@@ -228,7 +231,14 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
         }
 
         final isLatestTurn = nextCursor >= sortedMessages.length;
-        final hasAssistantOutput = segment.length > 1;
+        final blocks = _blocksForSegment(
+          sourceMessages: segment,
+          projectedAssistantBlocks: projectedAssistantBlocks,
+          groupId: currentGroup?.id,
+          fallbackUserIndex:
+              items.where((item) => item.userMessage != null).length,
+        );
+        final hasAssistantOutput = blocks.isNotEmpty;
         items.add(
           ChatTimelineItem(
             stableKey: _buildUserItemKey(current),
@@ -240,14 +250,6 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
                     ? runningTail.text
                     : null,
           ),
-        );
-
-        final blocks = _blocksForSegment(
-          sourceMessages: segment,
-          projectedAssistantBlocks: projectedAssistantBlocks,
-          groupId: currentGroup?.id,
-          fallbackUserIndex:
-              items.where((item) => item.userMessage != null).length,
         );
         items.addAll(
           _buildAssistantItems(
@@ -261,9 +263,11 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
         continue;
       }
 
-      final orphanBlocks = _blockBuilder.buildAssistantBlocks(
-        messages: [current],
+      final orphanBlocks = _blocksForOrphanAssistantMessage(
+        sourceMessage: current,
+        projectedAssistantBlocks: projectedAssistantBlocks,
         groupId: currentGroup?.id,
+        fallbackAssistantIndex: cursor + 1,
       );
       items.addAll(
         _buildAssistantItems(
@@ -277,6 +281,40 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     }
 
     return items;
+  }
+
+  List<AssistantTurnBlock> _blocksForOrphanAssistantMessage({
+    required ChatMessage sourceMessage,
+    required List<AssistantTurnBlock> projectedAssistantBlocks,
+    required int? groupId,
+    required int fallbackAssistantIndex,
+  }) {
+    final projectedBySourceMessage = projectedAssistantBlocks
+        .where(
+          (block) => block.payload?['sourceMessageId'] == sourceMessage.id,
+        )
+        .toList(growable: false);
+    if (projectedBySourceMessage.isNotEmpty) {
+      return projectedBySourceMessage;
+    }
+
+    final turnId =
+        '${groupId ?? 0}_${sourceMessage.id ?? 'user_$fallbackAssistantIndex'}';
+    final projected = projectedAssistantBlocks
+        .where((block) => block.turnId == turnId)
+        .toList(growable: false);
+    if (projected.isNotEmpty) {
+      return projected;
+    }
+
+    if (_isProjectionOwnedMessage(sourceMessage)) {
+      return const <AssistantTurnBlock>[];
+    }
+
+    return _blockBuilder.buildAssistantBlocks(
+      messages: [sourceMessage],
+      groupId: groupId,
+    );
   }
 
   List<ChatTimelineItem> _buildAssistantItems({
@@ -329,10 +367,53 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       return blocks;
     }
 
+    if (sourceMessages.any(_isProjectionOwnedMessage)) {
+      return const <AssistantTurnBlock>[];
+    }
+
     return _blockBuilder.buildAssistantBlocks(
       messages: sourceMessages,
       groupId: groupId,
     );
+  }
+
+  bool _isProjectionOwnedMessage(ChatMessage message) {
+    switch (message.contentType) {
+      case MessageContentType.toolInvocation:
+      case MessageContentType.actionConfirmation:
+        return _canProjectToolInvocation(message.payloadJson);
+      case MessageContentType.toolResult:
+        return _canProjectToolResult(message.payloadJson);
+      case MessageContentType.askUserQuestionPrompt:
+      case MessageContentType.askUserQuestionResult:
+        return true;
+      case MessageContentType.plainText:
+        return false;
+    }
+  }
+
+  bool _canProjectToolInvocation(Map<String, dynamic>? payload) {
+    if (payload == null) {
+      return false;
+    }
+    try {
+      ToolInvocation.fromJson(payload);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool _canProjectToolResult(Map<String, dynamic>? payload) {
+    if (payload == null) {
+      return false;
+    }
+    try {
+      final result = ToolResult.fromJson(payload);
+      return result.toolName.trim().isNotEmpty;
+    } catch (_) {
+      return false;
+    }
   }
 
   String _buildUserItemKey(ChatMessage message) {

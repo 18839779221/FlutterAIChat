@@ -1,4 +1,6 @@
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
+import 'package:ai_chat/models/chat/tool_phase_visibility.dart';
+import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/debug/debug_test_case.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
@@ -734,6 +736,84 @@ void main() {
       expect(find.byType(ToolWorkflowCard), findsNothing);
     });
 
+    testWidgets('renderer phase visibility can hide proposed workflow blocks', (
+      tester,
+    ) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: 'Custom invocation',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const ToolInvocation(
+              toolName: 'Write',
+              arguments: {'file_path': 'docs/plan.md'},
+              status: ToolInvocationStatus.proposed,
+              summary: '准备写入 docs/plan.md',
+              requiresConfirmation: false,
+            ).toJson(),
+          ),
+        ],
+        registry: const ToolUiRendererRegistry(
+          renderers: [_FakeHideProposedWorkflowRenderer()],
+        ),
+      );
+
+      expect(find.text('custom workflow renderer'), findsNothing);
+      expect(find.byType(ToolWorkflowCard), findsNothing);
+    });
+
+    testWidgets('write proposed phase stays hidden with real renderer', (
+      tester,
+    ) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '准备写入 docs/plan.md',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const ToolInvocation(
+              toolName: 'Write',
+              arguments: {'file_path': 'docs/plan.md'},
+              status: ToolInvocationStatus.proposed,
+              summary: '准备写入 docs/plan.md',
+              requiresConfirmation: false,
+            ).toJson(),
+          ),
+        ],
+      );
+
+      expect(find.byType(ToolWorkflowCard), findsNothing);
+      expect(find.text('准备写入 docs/plan.md'), findsNothing);
+    });
+
+    testWidgets('web search proposed phase stays hidden with real renderer', (
+      tester,
+    ) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '准备搜索 OpenAI 最新消息',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const ToolInvocation(
+              toolName: 'web_search',
+              arguments: {'query': 'latest openai'},
+              status: ToolInvocationStatus.proposed,
+              summary: '准备搜索 OpenAI 最新消息',
+              requiresConfirmation: false,
+            ).toJson(),
+          ),
+        ],
+      );
+
+      expect(find.byType(ToolWorkflowCard), findsNothing);
+      expect(find.text('准备搜索 OpenAI 最新消息'), findsNothing);
+    });
+
     testWidgets('ask user question prompt renders compact placeholder card',
         (tester) async {
       await _pumpMessageList(
@@ -1191,7 +1271,7 @@ ChatMessage _buildMessage({
   );
 }
 
-class _FakeWriteWorkflowRenderer implements ToolUiRenderer {
+class _FakeWriteWorkflowRenderer extends ToolUiRenderer {
   const _FakeWriteWorkflowRenderer();
 
   @override
@@ -1219,4 +1299,45 @@ class _FakeWriteWorkflowRenderer implements ToolUiRenderer {
 
   @override
   bool supportsWorkflowStep(String toolName) => toolName == 'Write';
+}
+
+class _FakeHideProposedWorkflowRenderer extends ToolUiRenderer {
+  const _FakeHideProposedWorkflowRenderer();
+
+  @override
+  Widget? buildResult(
+    BuildContext context, {
+    required ToolResult result,
+    required ChatMessage? sourceMessage,
+  }) {
+    return null;
+  }
+
+  @override
+  Widget? buildWorkflowStep(
+    BuildContext context, {
+    required List<ToolWorkflowStep> steps,
+    required ChatMessage? sourceMessage,
+    required bool isExpanded,
+    required VoidCallback? onTap,
+  }) {
+    return const Text('custom workflow renderer');
+  }
+
+  @override
+  bool supportsResult(String toolName) => false;
+
+  @override
+  bool supportsWorkflowStep(String toolName) => toolName == 'Write';
+
+  @override
+  ToolPhaseVisibility visibilityForPhase(
+    String toolName,
+    ToolPresentationEventPhase phase,
+  ) {
+    if (toolName == 'Write' && phase == ToolPresentationEventPhase.proposed) {
+      return ToolPhaseVisibility.hidden;
+    }
+    return ToolPhaseVisibility.visible;
+  }
 }

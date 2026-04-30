@@ -1,4 +1,5 @@
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
+import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 
@@ -9,6 +10,7 @@ class ChatTimelineProjection {
     this.activeAskUserQuestionMessage,
     this.pendingToolConfirmation,
     this.assistantBlocks = const <AssistantTurnBlock>[],
+    this.toolPresentationEvents = const <ToolPresentationEvent>[],
   });
 
   /// Latest unresolved ask-user-question prompt, when present.
@@ -19,6 +21,9 @@ class ChatTimelineProjection {
 
   /// Current assistant blocks built for the visible timeline snapshot.
   final List<AssistantTurnBlock> assistantBlocks;
+
+  /// Standardized tool phase events for pluggable presentation consumers.
+  final List<ToolPresentationEvent> toolPresentationEvents;
 }
 
 /// Stable pending-confirmation projection exposed outside provider-specific

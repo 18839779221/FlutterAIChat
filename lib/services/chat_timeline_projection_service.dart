@@ -1,10 +1,13 @@
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat/chat_timeline_projection.dart';
+import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
+import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/services/artifact/artifact_turn_resolver.dart';
 import 'package:ai_chat/services/chat_block_builder.dart';
+import 'package:ai_chat/services/tool_presentation_block_projector.dart';
 
 /// Builds one consistent projection snapshot for timeline rendering and
 /// waiting-state providers so consumers do not independently rescan messages.
@@ -12,19 +15,30 @@ class ChatTimelineProjectionService {
   ChatTimelineProjectionService({
     ChatBlockBuilder? blockBuilder,
     ArtifactTurnResolver? artifactTurnResolver,
+    ToolPresentationBlockProjector? toolBlockProjector,
   })  : _blockBuilder = blockBuilder ?? ChatBlockBuilder(),
-        _artifactTurnResolver = artifactTurnResolver;
+        _artifactTurnResolver = artifactTurnResolver,
+        _toolBlockProjector =
+            toolBlockProjector ?? const ToolPresentationBlockProjector();
 
   final ChatBlockBuilder _blockBuilder;
   final ArtifactTurnResolver? _artifactTurnResolver;
+  final ToolPresentationBlockProjector _toolBlockProjector;
 
   ChatTimelineProjection build({
     required List<ChatMessage> messages,
     int? groupId,
   }) {
-    final blocks = _blockBuilder.buildAssistantBlocks(
+    final toolPresentationEvents = _buildToolPresentationEvents(
       messages: messages,
       groupId: groupId,
+    );
+    final blocks = _buildNonToolBlocks(
+      messages: messages,
+      groupId: groupId,
+    );
+    final toolBlocks = _toolBlockProjector.project(
+      events: toolPresentationEvents,
     );
     final artifactBlocks = _buildArtifactBlocks(
       messages: messages,
@@ -34,10 +48,130 @@ class ChatTimelineProjectionService {
       activeAskUserQuestionMessage: _findActiveAskUserQuestion(messages),
       pendingToolConfirmation: _findPendingConfirmation(messages),
       assistantBlocks: _mergeBlocks(
-        baseBlocks: blocks,
+        baseBlocks: [
+          ...blocks,
+          ...toolBlocks,
+        ],
         artifactBlocks: artifactBlocks,
       ),
+      toolPresentationEvents: toolPresentationEvents,
     );
+  }
+
+  List<AssistantTurnBlock> _buildNonToolBlocks({
+    required List<ChatMessage> messages,
+    required int? groupId,
+  }) {
+    final nonToolMessages = messages.where(_belongsToNonToolBlockProjection).toList(
+          growable: false,
+        );
+    return _blockBuilder
+        .buildAssistantBlocks(
+          messages: nonToolMessages,
+          groupId: groupId,
+        )
+        .toList(growable: false);
+  }
+
+  List<ToolPresentationEvent> _buildToolPresentationEvents({
+    required List<ChatMessage> messages,
+    required int? groupId,
+  }) {
+    final sortedMessages = [...messages]..sort(compareChatMessagesForTimeline);
+    final events = <ToolPresentationEvent>[];
+    String? currentTurnId;
+    var fallbackUserIndex = 0;
+
+    for (final message in sortedMessages) {
+      if (message.isUser) {
+        fallbackUserIndex += 1;
+        currentTurnId = _buildTurnId(
+          groupId: groupId,
+          messageId: message.id,
+          fallbackIndex: fallbackUserIndex,
+        );
+        continue;
+      }
+
+      currentTurnId ??= _buildTurnId(
+        groupId: groupId,
+        messageId: message.id,
+        fallbackIndex: fallbackUserIndex + 1,
+      );
+
+      switch (message.contentType) {
+        case MessageContentType.toolInvocation:
+        case MessageContentType.actionConfirmation:
+          final invocation = ToolInvocation.fromJson(message.payloadJson ?? const {});
+          events.add(
+            ToolPresentationEvent(
+              toolName: invocation.toolName,
+              phase: _mapInvocationPhase(invocation.status),
+              turnId: currentTurnId,
+              stepId: _resolveStepId(
+                turnId: currentTurnId,
+                payload: message.payloadJson,
+              ),
+              providerCallId: _readProviderCallId(message.payloadJson),
+              sourceContentType: message.contentType,
+              sourceMessageId: message.id,
+              timestamp: message.timestamp,
+              data: {
+                ...?message.payloadJson,
+                'arguments': invocation.arguments,
+                'summary': invocation.summary,
+                'requiresConfirmation': invocation.requiresConfirmation,
+              },
+            ),
+          );
+          break;
+        case MessageContentType.toolResult:
+          final result = ToolResult.fromJson(message.payloadJson ?? const {});
+          if (result.toolName.trim().isEmpty) {
+            break;
+          }
+          events.add(
+            ToolPresentationEvent(
+              toolName: result.toolName,
+              phase: ToolPresentationEventPhase.result,
+              turnId: currentTurnId,
+              stepId: _resolveStepId(
+                turnId: currentTurnId,
+                payload: message.payloadJson,
+              ),
+              providerCallId: _readProviderCallId(message.payloadJson),
+              sourceContentType: message.contentType,
+              sourceMessageId: message.id,
+              timestamp: message.timestamp,
+              data: {
+                ...?message.payloadJson,
+                'summary': result.summary,
+                'data': result.data,
+              },
+            ),
+          );
+          break;
+        case MessageContentType.plainText:
+        case MessageContentType.askUserQuestionPrompt:
+        case MessageContentType.askUserQuestionResult:
+          break;
+      }
+    }
+
+    return events;
+  }
+
+  bool _belongsToNonToolBlockProjection(ChatMessage message) {
+    switch (message.contentType) {
+      case MessageContentType.toolInvocation:
+      case MessageContentType.toolResult:
+      case MessageContentType.actionConfirmation:
+        return false;
+      case MessageContentType.plainText:
+      case MessageContentType.askUserQuestionPrompt:
+      case MessageContentType.askUserQuestionResult:
+        return true;
+    }
   }
 
   List<AssistantTurnBlock> _buildArtifactBlocks({
@@ -177,5 +311,51 @@ class ChatTimelineProjectionService {
     }
 
     return null;
+  }
+
+  ToolPresentationEventPhase _mapInvocationPhase(
+    ToolInvocationStatus status,
+  ) {
+    switch (status) {
+      case ToolInvocationStatus.proposed:
+        return ToolPresentationEventPhase.proposed;
+      case ToolInvocationStatus.awaitingConfirmation:
+        return ToolPresentationEventPhase.awaitingConfirmation;
+      case ToolInvocationStatus.running:
+        return ToolPresentationEventPhase.running;
+      case ToolInvocationStatus.cancelled:
+        return ToolPresentationEventPhase.result;
+    }
+  }
+
+  String _buildTurnId({
+    required int? groupId,
+    required int? messageId,
+    required int fallbackIndex,
+  }) {
+    return '${groupId ?? 0}_${messageId ?? 'user_$fallbackIndex'}';
+  }
+
+  String? _resolveStepId({
+    required String turnId,
+    required Map<String, dynamic>? payload,
+  }) {
+    final rawStepId = payload?['stepId'];
+    if (rawStepId is int) {
+      return '$turnId-step-$rawStepId';
+    }
+    if (rawStepId is String && rawStepId.trim().isNotEmpty) {
+      return '$turnId-step-${rawStepId.trim()}';
+    }
+    return null;
+  }
+
+  String? _readProviderCallId(Map<String, dynamic>? payload) {
+    final raw = payload?['providerCallId'];
+    if (raw is! String) {
+      return null;
+    }
+    final trimmed = raw.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 }

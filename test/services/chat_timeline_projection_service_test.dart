@@ -1,11 +1,16 @@
 import 'dart:io';
 
 import 'package:ai_chat/models/artifact/artifact_type.dart';
+import 'package:ai_chat/models/chat/assistant_turn_block.dart';
+import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/services/artifact/artifact_file_storage_service.dart';
 import 'package:ai_chat/services/artifact/artifact_turn_resolver.dart';
 import 'package:ai_chat/services/chat_timeline_projection_service.dart';
+import 'package:ai_chat/services/tool_presentation_block_projector.dart';
+import 'package:ai_chat/services/tool_ui_renderer_registry.dart';
+import 'package:ai_chat/widgets/tool_renderers/create_artifact_tool_renderer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -100,7 +105,18 @@ void main() {
 
       expect(projection.assistantBlocks, isNotEmpty);
       expect(projection.pendingToolConfirmation?.message.id, 11);
-      expect(projection.assistantBlocks.single.type.name, 'toolWorkflow');
+      expect(
+        projection.assistantBlocks.where(
+          (block) => block.type == AssistantTurnBlockType.toolWorkflow,
+        ),
+        hasLength(1),
+      );
+      expect(
+        projection.assistantBlocks.where(
+          (block) => block.type == AssistantTurnBlockType.analysis,
+        ),
+        isEmpty,
+      );
     });
 
     test(
@@ -129,11 +145,87 @@ void main() {
         ],
       );
 
-      expect(projection.assistantBlocks.single.toolResult, isNotNull);
+      final resultBlocks = projection.assistantBlocks
+          .where((block) => block.type == AssistantTurnBlockType.toolResultSummary)
+          .toList(growable: false);
+      expect(resultBlocks, hasLength(1));
+      expect(resultBlocks.single.toolResult, isNotNull);
       expect(
-        projection.assistantBlocks.single.toolResult?.data['matchCount'],
+        resultBlocks.single.toolResult?.data['matchCount'],
         1,
       );
+      expect(
+        projection.assistantBlocks.where(
+          (block) => block.type == AssistantTurnBlockType.analysis,
+        ),
+        isEmpty,
+      );
+    });
+
+    test('builds standardized presentation events from invocation and result',
+        () {
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我改文件',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 31,
+            text: '准备写入文件',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 1),
+            payloadJson: const {
+              'toolName': 'Write',
+              'arguments': {'file_path': 'lib/main.dart'},
+              'status': 'proposed',
+              'summary': '准备写入文件',
+              'requiresConfirmation': false,
+              'stepId': 9,
+              'providerCallId': 'call_1',
+            },
+          ),
+          ChatMessage(
+            id: 32,
+            text: '已写入文件',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolResult,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 2),
+            payloadJson: const {
+              'toolName': 'Write',
+              'status': 'success',
+              'summary': '已写入文件',
+              'data': {
+                'filePath': 'lib/main.dart',
+              },
+              'stepId': 9,
+              'providerCallId': 'call_1',
+            },
+          ),
+        ],
+      );
+
+      expect(projection.toolPresentationEvents, hasLength(2));
+
+      final invocationEvent = projection.toolPresentationEvents.first;
+      expect(invocationEvent.toolName, 'Write');
+      expect(invocationEvent.phase, ToolPresentationEventPhase.proposed);
+      expect(invocationEvent.turnId, '7_30');
+      expect(invocationEvent.stepId, '7_30-step-9');
+      expect(invocationEvent.providerCallId, 'call_1');
+      expect(
+        invocationEvent.data['arguments'],
+        containsPair('file_path', 'lib/main.dart'),
+      );
+
+      final resultEvent = projection.toolPresentationEvents.last;
+      expect(resultEvent.phase, ToolPresentationEventPhase.result);
+      expect(resultEvent.sourceContentType, MessageContentType.toolResult);
+      expect(resultEvent.data['data'], containsPair('filePath', 'lib/main.dart'));
     });
 
     test('projects artifact block into assistant timeline snapshot', () async {
@@ -190,6 +282,97 @@ void main() {
           (block) => block.type.name == 'artifact',
         ),
         isTrue,
+      );
+
+      await tempDirectory.delete(recursive: true);
+    });
+
+    test(
+        'create artifact renderer can hide tool phases while keeping artifact projection',
+        () async {
+      final tempDirectory = await Directory.systemTemp.createTemp(
+        'timeline-artifact-hidden-',
+      );
+      final fileStorageService =
+          ArtifactFileStorageService(rootDirectory: tempDirectory);
+      await fileStorageService.saveArtifactSource(
+        groupId: 7,
+        artifactId: 'portfolio-pie',
+        title: '投资组合饼图',
+        type: ArtifactType.html,
+        source: '<div>artifact body</div>',
+      );
+      final service = ChatTimelineProjectionService(
+        artifactTurnResolver: ArtifactTurnResolver(
+          fileStorageService: fileStorageService,
+        ),
+        toolBlockProjector: const ToolPresentationBlockProjector(
+          registry: ToolUiRendererRegistry(
+            renderers: [CreateArtifactToolUiRenderer()],
+          ),
+        ),
+      );
+
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我画个图',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 31,
+            text: '准备创建 artifact',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 1),
+            payloadJson: const {
+              'toolName': 'create_artifact',
+              'arguments': {
+                'id': 'portfolio-pie',
+                'type': 'html',
+              },
+              'status': 'proposed',
+              'summary': '准备创建 artifact',
+              'requiresConfirmation': false,
+            },
+          ),
+          ChatMessage(
+            id: 32,
+            text: '已创建 artifact：portfolio-pie',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolResult,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 2),
+            payloadJson: const {
+              'toolName': 'create_artifact',
+              'status': 'success',
+              'summary': '已创建 artifact：portfolio-pie',
+              'data': {
+                'artifactId': 'portfolio-pie',
+                'title': '投资组合饼图',
+                'type': 'html',
+                'sourcePath': 'artifacts/7/portfolio-pie.html',
+              },
+            },
+          ),
+        ],
+      );
+
+      expect(
+        projection.assistantBlocks.where(
+          (block) =>
+              block.type == AssistantTurnBlockType.toolWorkflow ||
+              block.type == AssistantTurnBlockType.toolResultSummary,
+        ),
+        isEmpty,
+      );
+      expect(
+        projection.assistantBlocks.where(
+          (block) => block.type == AssistantTurnBlockType.artifact,
+        ),
+        hasLength(1),
       );
 
       await tempDirectory.delete(recursive: true);

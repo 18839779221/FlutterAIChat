@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
 
+import '../models/chat/tool_phase_visibility.dart';
+import '../models/chat/tool_presentation_event.dart';
 import '../models/chat/tool_workflow_step.dart';
 import '../models/chat_message.dart';
 import '../models/tool/tool_result.dart';
@@ -14,6 +16,15 @@ abstract class ToolUiRenderer {
 
   /// Whether this renderer owns final-result presentation for [toolName].
   bool supportsResult(String toolName);
+
+  /// Whether this renderer wants the given phase to remain visible in the
+  /// default timeline projection.
+  ToolPhaseVisibility visibilityForPhase(
+    String toolName,
+    ToolPresentationEventPhase phase,
+  ) {
+    return ToolPhaseVisibility.visible;
+  }
 
   /// Builds a custom workflow widget. Return null to let the default card
   /// handle rendering.
@@ -73,5 +84,27 @@ class ToolUiRendererRegistry {
       }
     }
     return null;
+  }
+
+  ToolPhaseVisibility visibilityForPhase(
+    String toolName,
+    ToolPresentationEventPhase phase,
+  ) {
+    final normalized = toolName.trim();
+    if (normalized.isEmpty) {
+      return ToolPhaseVisibility.visible;
+    }
+    for (final renderer in renderers) {
+      final supportsTool = renderer.supportsWorkflowStep(normalized) ||
+          renderer.supportsResult(normalized);
+      if (!supportsTool) {
+        continue;
+      }
+      final visibility = renderer.visibilityForPhase(normalized, phase);
+      if (visibility == ToolPhaseVisibility.hidden) {
+        return ToolPhaseVisibility.hidden;
+      }
+    }
+    return ToolPhaseVisibility.visible;
   }
 }
