@@ -1,6 +1,7 @@
 import '../../agent/planner_tool_choice.dart';
 import '../../agent/planner_tool_option.dart';
 import '../../chat_message.dart';
+import '../llm_request_options.dart';
 import '../../../services/chat_service.dart';
 import '../api_protocol_resolver.dart';
 import '../llm_config.dart';
@@ -22,6 +23,7 @@ abstract class ApiStyleAdapter {
     required ChatConfig config,
     required String modelName,
     required bool stream,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
   });
 
   /// Build the structured-planner payload used by `planTurnDecision`.
@@ -31,6 +33,7 @@ abstract class ApiStyleAdapter {
     required String modelName,
     required List<PlannerToolOption> availableTools,
     required bool parallelToolCalls,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
     String? previousResponseId,
     List<Map<String, dynamic>> continuationItems = const [],
     Map<String, dynamic>? providerState,

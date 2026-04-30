@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../../agent/planner_tool_choice.dart';
 import '../../agent/planner_tool_option.dart';
 import '../../chat_message.dart';
+import '../llm_request_options.dart';
 import '../../../services/chat_service.dart';
 import '../api_protocol_resolver.dart';
 import '../llm_config.dart';
@@ -34,6 +35,7 @@ class ResponsesAdapter extends ApiStyleAdapter {
     required ChatConfig config,
     required String modelName,
     required bool stream,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
   }) {
     final normalizedMessages = normalizeMessagesWithConfiguredSystemPrompt(
         messages, config.systemPrompt);
@@ -57,6 +59,7 @@ class ResponsesAdapter extends ApiStyleAdapter {
     required String modelName,
     required List<PlannerToolOption> availableTools,
     required bool parallelToolCalls,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
     String? previousResponseId,
     List<Map<String, dynamic>> continuationItems = const [],
     Map<String, dynamic>? providerState,
@@ -66,6 +69,7 @@ class ResponsesAdapter extends ApiStyleAdapter {
       config: config,
       modelName: modelName,
       stream: false,
+      requestOptions: requestOptions,
     );
     // Responses tool-loop continuation relies on previous_response_id, so the
     // planner response must remain server-addressable instead of being forced
