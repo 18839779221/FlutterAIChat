@@ -455,9 +455,23 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
             child: const Text('复制'),
             onPressed: () {
               Clipboard.setData(ClipboardData(text: message.text));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已复制到剪贴板')),
-              );
+              final spacing = Theme.of(context).extension<AppSpacing>()!;
+              final messenger = ScaffoldMessenger.of(this.context);
+              messenger
+                ..hideCurrentSnackBar()
+                ..showSnackBar(
+                  SnackBar(
+                    content: const Text('已复制到剪贴板'),
+                    behavior: SnackBarBehavior.floating,
+                    margin: EdgeInsets.fromLTRB(
+                      spacing.lg,
+                      0,
+                      spacing.lg,
+                      spacing.xl * 6.2,
+                    ),
+                    duration: const Duration(milliseconds: 1400),
+                  ),
+                );
               Navigator.pop(context);
             },
           ),
