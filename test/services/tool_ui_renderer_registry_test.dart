@@ -1,3 +1,5 @@
+import 'package:ai_chat/models/chat/tool_phase_visibility.dart';
+import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
@@ -19,6 +21,20 @@ void main() {
       );
 
       expect(registry.findResultRenderer('Write'), isA<_FakeWriteRenderer>());
+    });
+
+    test('returns hidden when renderer hides a phase for its tool', () {
+      const registry = ToolUiRendererRegistry(
+        renderers: [_FakeWriteRenderer()],
+      );
+
+      expect(
+        registry.visibilityForPhase(
+          'Write',
+          ToolPresentationEventPhase.proposed,
+        ),
+        ToolPhaseVisibility.hidden,
+      );
     });
   });
 }
@@ -51,4 +67,15 @@ class _FakeWriteRenderer implements ToolUiRenderer {
 
   @override
   bool supportsWorkflowStep(String toolName) => toolName == 'Write';
+
+  @override
+  ToolPhaseVisibility visibilityForPhase(
+    String toolName,
+    ToolPresentationEventPhase phase,
+  ) {
+    if (toolName == 'Write' && phase == ToolPresentationEventPhase.proposed) {
+      return ToolPhaseVisibility.hidden;
+    }
+    return ToolPhaseVisibility.visible;
+  }
 }

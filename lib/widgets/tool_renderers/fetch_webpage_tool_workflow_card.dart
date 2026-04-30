@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../models/chat/tool_phase_visibility.dart';
+import '../../models/chat/tool_presentation_event.dart';
 import '../../models/chat/tool_workflow_step.dart';
 import '../../models/chat_message.dart';
 import '../../models/tool/tool_result.dart';
@@ -84,4 +86,16 @@ class FetchWebpageToolUiRenderer extends ToolUiRenderer {
   @override
   bool supportsWorkflowStep(String toolName) =>
       toolName.trim() == 'fetch_webpage';
+
+  @override
+  ToolPhaseVisibility visibilityForPhase(
+    String toolName,
+    ToolPresentationEventPhase phase,
+  ) {
+    if (toolName.trim() == 'fetch_webpage' &&
+        phase == ToolPresentationEventPhase.proposed) {
+      return ToolPhaseVisibility.hidden;
+    }
+    return ToolPhaseVisibility.visible;
+  }
 }
