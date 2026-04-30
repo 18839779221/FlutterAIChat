@@ -3390,6 +3390,7 @@ class _QueuedNativeDecisionLLM implements BaseLLM {
     ChatTurnProviderStyle? providerStyle,
     Map<String, dynamic>? providerState,
     List<Map<String, dynamic>> providerContinuationItems = const [],
+    void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     if (decisions.isEmpty) {
       throw StateError('No more queued native decisions');
@@ -3427,6 +3428,7 @@ class _AssertingLoopPlannerLLM implements BaseLLM {
     ChatTurnProviderStyle? providerStyle,
     Map<String, dynamic>? providerState,
     List<Map<String, dynamic>> providerContinuationItems = const [],
+    void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     planCalls += 1;
     final joinedText = messages.map((message) => message.text).join('\n');
@@ -3548,6 +3550,7 @@ class _AssertingQuestionLoopPlannerLLM implements BaseLLM {
     ChatTurnProviderStyle? providerStyle,
     Map<String, dynamic>? providerState,
     List<Map<String, dynamic>> providerContinuationItems = const [],
+    void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     planCalls += 1;
     final joinedText = messages.map((message) => message.text).join('\n');
@@ -4397,6 +4400,7 @@ class _NoopBaseLLM implements BaseLLM {
     ChatTurnProviderStyle? providerStyle,
     Map<String, dynamic>? providerState,
     List<Map<String, dynamic>> providerContinuationItems = const [],
+    void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async =>
       null;
 

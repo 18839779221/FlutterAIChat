@@ -26,6 +26,8 @@ import 'api_stream_parser.dart';
 import 'base_llm.dart';
 import 'llm_config.dart';
 import 'llm_request_options.dart';
+import 'streaming_decision_accumulator.dart';
+import 'streaming_planner_chunk.dart';
 import 'tool_loop/anthropic_messages_tool_loop_adapter.dart';
 import 'tool_loop/openai_chat_completions_tool_loop_adapter.dart';
 import 'tool_loop/openai_responses_tool_loop_adapter.dart';
@@ -34,6 +36,8 @@ class ConfigurableHttpLLM implements BaseLLM {
   static const String _tag = 'ConfigurableHttpLLM';
   static const Duration _defaultRequestTimeout = Duration(seconds: 60);
   static const Duration _defaultPlannerRequestTimeout = Duration(seconds: 60);
+  static const Duration _defaultPlannerStreamOverallTimeout =
+      Duration(minutes: 3);
   static const int _defaultMainFlowNetworkRetryAttempts = 5;
 
   static const Map<ApiStyle, ApiStyleAdapter> _defaultAdapters = {
@@ -48,6 +52,8 @@ class ConfigurableHttpLLM implements BaseLLM {
   final http.Client _httpClient;
   final Duration _requestTimeout;
   final Duration _plannerRequestTimeout;
+  final Duration _plannerStreamIdleTimeout;
+  final Duration _plannerStreamOverallTimeout;
   final int _mainFlowNetworkRetryAttempts;
   final Map<ApiStyle, ApiStyleAdapter> _adapters;
   final OpenAIChatCompletionsToolLoopAdapter _chatCompletionsToolLoopAdapter;
@@ -55,6 +61,7 @@ class ConfigurableHttpLLM implements BaseLLM {
   final AnthropicMessagesToolLoopAdapter _anthropicMessagesToolLoopAdapter;
   final PromptBuilderService _promptBuilder;
   final ModelBudgetRegistry _modelBudgetRegistry;
+  final Duration Function(int attempt) _retryDelayBuilder;
 
   ConfigurableHttpLLM({
     required AppSettingsRepository settingsRepository,
@@ -63,6 +70,8 @@ class ConfigurableHttpLLM implements BaseLLM {
     http.Client? httpClient,
     Duration? requestTimeout,
     Duration? plannerRequestTimeout,
+    Duration? plannerStreamIdleTimeout,
+    Duration? plannerStreamOverallTimeout,
     int mainFlowNetworkRetryAttempts = _defaultMainFlowNetworkRetryAttempts,
     Map<ApiStyle, ApiStyleAdapter>? adapters,
     OpenAIChatCompletionsToolLoopAdapter? chatCompletionsToolLoopAdapter,
@@ -70,6 +79,7 @@ class ConfigurableHttpLLM implements BaseLLM {
     AnthropicMessagesToolLoopAdapter? anthropicMessagesToolLoopAdapter,
     PromptBuilderService? promptBuilder,
     ModelBudgetRegistry? modelBudgetRegistry,
+    Duration Function(int attempt)? retryDelayBuilder,
   })  : _settingsRepository = settingsRepository,
         _protocolResolver = protocolResolver ?? const ApiProtocolResolver(),
         _streamParser = streamParser ?? const ApiStreamParser(),
@@ -77,6 +87,17 @@ class ConfigurableHttpLLM implements BaseLLM {
         _requestTimeout = requestTimeout ?? _defaultRequestTimeout,
         _plannerRequestTimeout =
             plannerRequestTimeout ?? _defaultPlannerRequestTimeout,
+        _plannerStreamIdleTimeout =
+            plannerStreamIdleTimeout ??
+                plannerRequestTimeout ??
+                _defaultPlannerRequestTimeout,
+        _plannerStreamOverallTimeout =
+            plannerStreamOverallTimeout ??
+                _resolveDefaultPlannerStreamOverallTimeout(
+                  plannerStreamIdleTimeout ??
+                      plannerRequestTimeout ??
+                      _defaultPlannerRequestTimeout,
+                ),
         _mainFlowNetworkRetryAttempts = mainFlowNetworkRetryAttempts,
         _adapters = adapters ?? _defaultAdapters,
         _chatCompletionsToolLoopAdapter = chatCompletionsToolLoopAdapter ??
@@ -86,7 +107,8 @@ class ConfigurableHttpLLM implements BaseLLM {
         _anthropicMessagesToolLoopAdapter = anthropicMessagesToolLoopAdapter ??
             const AnthropicMessagesToolLoopAdapter(),
         _promptBuilder = promptBuilder ?? const PromptBuilderService(),
-        _modelBudgetRegistry = modelBudgetRegistry ?? ModelBudgetRegistry() {
+        _modelBudgetRegistry = modelBudgetRegistry ?? ModelBudgetRegistry(),
+        _retryDelayBuilder = retryDelayBuilder ?? _defaultRetryDelayForAttempt {
     assert(mainFlowNetworkRetryAttempts >= 1);
   }
 
@@ -253,6 +275,58 @@ class ConfigurableHttpLLM implements BaseLLM {
         providerState: providerState,
       );
       Logger.i(_tag, 'native planner 请求体: ${jsonEncode(payload)}');
+      if (_shouldUseStreamingPlanner(apiStyle)) {
+        var streamedResult = await _planTurnDecisionStreaming(
+          runtimeConfig: runtimeConfig,
+          apiStyle: apiStyle,
+          adapter: adapter,
+          payload: payload,
+          modelName: modelName,
+          previousResponseId: previousResponseId,
+          hasContinuationItems: providerContinuationItems.isNotEmpty,
+          onRetryScheduled: onRetryScheduled,
+        );
+        if (streamedResult.retryWithoutPreviousResponseId) {
+          Logger.w(
+            _tag,
+            'native planner streaming rejected previous_response_id; retrying with stateless responses continuation',
+          );
+          payload = adapter.buildPlannerPayload(
+            messages: messages,
+            config: config,
+            modelName: modelName,
+            availableTools: availableTools,
+            parallelToolCalls: true,
+            requestOptions: requestOptions,
+            previousResponseId: null,
+            continuationItems: providerContinuationItems,
+            providerState: providerState,
+          );
+          Logger.i(_tag, 'native planner streaming fallback 请求体: ${jsonEncode(payload)}');
+          streamedResult = await _planTurnDecisionStreaming(
+            runtimeConfig: runtimeConfig,
+            apiStyle: apiStyle,
+            adapter: adapter,
+            payload: payload,
+            modelName: modelName,
+            previousResponseId: null,
+            hasContinuationItems: providerContinuationItems.isNotEmpty,
+            onRetryScheduled: onRetryScheduled,
+          );
+        }
+        final streamedDecision = streamedResult.decision;
+        if (streamedDecision == null) {
+          Logger.w(
+            _tag,
+            'native planner streaming parsed null decision',
+          );
+          return null;
+        }
+        return streamedDecision.copyWith(
+          providerStyle: _toProviderStyle(apiStyle),
+          modelName: modelName,
+        );
+      }
       Future<http.Response> sendPlannerRequest(
         Map<String, dynamic> requestPayload,
       ) {
@@ -353,6 +427,150 @@ class ConfigurableHttpLLM implements BaseLLM {
       Logger.e(_tag, 'native planner stack trace', stackTrace);
       rethrow;
     }
+  }
+
+  bool _shouldUseStreamingPlanner(ApiStyle apiStyle) {
+    switch (apiStyle) {
+      case ApiStyle.anthropicMessages:
+      case ApiStyle.chatCompletions:
+      case ApiStyle.responses:
+        return true;
+    }
+  }
+
+  Future<_StreamingPlannerAttemptResult> _planTurnDecisionStreaming({
+    required LLMConfig runtimeConfig,
+    required ApiStyle apiStyle,
+    required ApiStyleAdapter adapter,
+    required Map<String, dynamic> payload,
+    required String modelName,
+    required String? previousResponseId,
+    required bool hasContinuationItems,
+    void Function(LlmRetryProgress progress)? onRetryScheduled,
+  }) async {
+    final streamingPayload = <String, dynamic>{
+      ...payload,
+      'stream': true,
+    };
+    Logger.i(
+      _tag,
+      'native planner streaming 请求体: ${jsonEncode(streamingPayload)}',
+    );
+    return _performRetriableMainFlowRequest(
+      label: 'native_planner',
+      onRetryScheduled: onRetryScheduled,
+      operation: () => _runStreamingPlannerAttempt(
+        runtimeConfig: runtimeConfig,
+        apiStyle: apiStyle,
+        adapter: adapter,
+        streamingPayload: streamingPayload,
+        previousResponseId: previousResponseId,
+        hasContinuationItems: hasContinuationItems,
+      ),
+    );
+  }
+
+  Future<_StreamingPlannerAttemptResult> _runStreamingPlannerAttempt({
+    required LLMConfig runtimeConfig,
+    required ApiStyle apiStyle,
+    required ApiStyleAdapter adapter,
+    required Map<String, dynamic> streamingPayload,
+    required String? previousResponseId,
+    required bool hasContinuationItems,
+  }) async {
+    final streamedResponse = await _httpClient
+        .send(
+          http.Request(
+            'POST',
+            _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
+          )
+            ..headers.addAll(adapter.buildHeaders(runtimeConfig))
+            ..body = jsonEncode(streamingPayload),
+        )
+        .timeout(_plannerStreamIdleTimeout);
+
+    if (streamedResponse.statusCode != 200) {
+      final responseText = await streamedResponse.stream
+          .bytesToString()
+          .timeout(_plannerStreamIdleTimeout);
+      if (_shouldRetryResponsesWithoutPreviousResponseIdForStream(
+        apiStyle: apiStyle,
+        previousResponseId: previousResponseId,
+        statusCode: streamedResponse.statusCode,
+        responseText: responseText,
+        hasContinuationItems: hasContinuationItems,
+      )) {
+        return const _StreamingPlannerAttemptResult.retryWithoutPreviousResponseId();
+      }
+      final detail =
+          'HTTP ${streamedResponse.statusCode} ${streamedResponse.reasonPhrase ?? '-'} ${_previewBody(responseText)}';
+      Logger.w(
+        _tag,
+        'native planner streaming unsupported status=${streamedResponse.statusCode} reason=${streamedResponse.reasonPhrase ?? '-'} body=${_previewBody(responseText)}',
+      );
+      throw Exception(detail);
+    }
+
+    final contentType = streamedResponse.headers['content-type'] ?? '';
+    final normalizedContentType = contentType.toLowerCase();
+    if (!normalizedContentType.contains('text/event-stream')) {
+      final responseText = await streamedResponse.stream
+          .bytesToString()
+          .timeout(_plannerStreamIdleTimeout);
+      Logger.i(
+        _tag,
+        'native planner streaming fallback 响应体: $responseText',
+      );
+      if (responseText.trim().isEmpty) {
+        return const _StreamingPlannerAttemptResult.completed(null);
+      }
+      final decoded = jsonDecode(responseText);
+      if (decoded is! Map<String, dynamic>) {
+        return const _StreamingPlannerAttemptResult.completed(null);
+      }
+      return _StreamingPlannerAttemptResult.completed(
+        _parseTurnDecisionForStyle(apiStyle, decoded),
+      );
+    }
+
+    final accumulator = StreamingDecisionAccumulator();
+    await _consumePlannerStreamWithTimeouts(
+      stream: _streamParser.parsePlannerChunks(streamedResponse, apiStyle),
+      accumulator: accumulator,
+    );
+
+    return _StreamingPlannerAttemptResult.completed(
+      accumulator.buildDecision(),
+    );
+  }
+
+  Future<void> _consumePlannerStreamWithTimeouts({
+    required Stream<StreamingPlannerChunk> stream,
+    required StreamingDecisionAccumulator accumulator,
+  }) {
+    return (() async {
+      await for (final chunk in stream.timeout(
+        _plannerStreamIdleTimeout,
+        onTimeout: (sink) {
+          sink.addError(
+            TimeoutException(
+              'planner stream idle timeout after '
+              '${_plannerStreamIdleTimeout.inMilliseconds}ms',
+            ),
+          );
+        },
+      )) {
+        accumulator.consume(chunk);
+      }
+    }()).timeout(
+      _plannerStreamOverallTimeout,
+      onTimeout: () {
+        throw TimeoutException(
+          'planner stream overall timeout after '
+          '${_plannerStreamOverallTimeout.inMilliseconds}ms',
+        );
+      },
+    );
   }
 
   void _validateRuntimeConfig(LLMConfig config) {
@@ -474,6 +692,26 @@ class ConfigurableHttpLLM implements BaseLLM {
       return false;
     }
     final normalizedBody = response.body.toLowerCase();
+    return normalizedBody.contains('previous_response_id') &&
+        (normalizedBody.contains('not supported') ||
+            normalizedBody.contains('only supported'));
+  }
+
+  bool _shouldRetryResponsesWithoutPreviousResponseIdForStream({
+    required ApiStyle apiStyle,
+    required String? previousResponseId,
+    required int statusCode,
+    required String responseText,
+    required bool hasContinuationItems,
+  }) {
+    if (apiStyle != ApiStyle.responses ||
+        !hasContinuationItems ||
+        previousResponseId == null ||
+        previousResponseId.trim().isEmpty ||
+        statusCode != 400) {
+      return false;
+    }
+    final normalizedBody = responseText.toLowerCase();
     return normalizedBody.contains('previous_response_id') &&
         (normalizedBody.contains('not supported') ||
             normalizedBody.contains('only supported'));
@@ -616,7 +854,7 @@ class ConfigurableHttpLLM implements BaseLLM {
           Error.throwWithStackTrace(error, stackTrace);
         }
 
-        final delay = _retryDelayForAttempt(attempt);
+        final delay = _retryDelayBuilder(attempt);
         Logger.w(
           _tag,
           'main flow request retry scheduled label=$label attempt=$attempt/$_mainFlowNetworkRetryAttempts delayMs=${delay.inMilliseconds} reason=${_previewBody(error.toString())}',
@@ -666,7 +904,7 @@ class ConfigurableHttpLLM implements BaseLLM {
         normalized.contains('timed out');
   }
 
-  Duration _retryDelayForAttempt(int attempt) {
+  static Duration _defaultRetryDelayForAttempt(int attempt) {
     final backoffSeconds = switch (attempt) {
       1 => 1,
       2 => 2,
@@ -676,6 +914,28 @@ class ConfigurableHttpLLM implements BaseLLM {
     };
     return Duration(seconds: backoffSeconds);
   }
+
+  static Duration _resolveDefaultPlannerStreamOverallTimeout(
+    Duration idleTimeout,
+  ) {
+    final tripled = Duration(milliseconds: idleTimeout.inMilliseconds * 3);
+    if (tripled > _defaultPlannerStreamOverallTimeout) {
+      return tripled;
+    }
+    return _defaultPlannerStreamOverallTimeout;
+  }
+}
+
+class _StreamingPlannerAttemptResult {
+  const _StreamingPlannerAttemptResult.completed(this.decision)
+      : retryWithoutPreviousResponseId = false;
+
+  const _StreamingPlannerAttemptResult.retryWithoutPreviousResponseId()
+      : decision = null,
+        retryWithoutPreviousResponseId = true;
+
+  final ModelTurnDecision? decision;
+  final bool retryWithoutPreviousResponseId;
 }
 
 enum LlmRequestPurpose {

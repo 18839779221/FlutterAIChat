@@ -2424,6 +2424,7 @@ class _NativeDecisionLLM implements BaseLLM {
     ChatTurnProviderStyle? providerStyle,
     Map<String, dynamic>? providerState,
     List<Map<String, dynamic>> providerContinuationItems = const [],
+    void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     lastMessages = List<ChatMessage>.from(messages);
     lastConfig = config;
@@ -2467,6 +2468,7 @@ class _NativeNullPlannerLLM implements BaseLLM {
     ChatTurnProviderStyle? providerStyle,
     Map<String, dynamic>? providerState,
     List<Map<String, dynamic>> providerContinuationItems = const [],
+    void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     nativeAttempts += 1;
     return null;
@@ -2502,6 +2504,7 @@ class _ThrowingNativePlannerLLM implements BaseLLM {
     ChatTurnProviderStyle? providerStyle,
     Map<String, dynamic>? providerState,
     List<Map<String, dynamic>> providerContinuationItems = const [],
+    void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     nativeAttempts += 1;
     throw Exception('native planner unavailable');

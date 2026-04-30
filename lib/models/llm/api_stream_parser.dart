@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../../utils/logger.dart';
 import 'api_protocol_resolver.dart';
+import 'streaming_planner_chunk.dart';
 
 class ApiStreamParser {
   static const String _tag = 'ApiStreamParser';
@@ -18,6 +19,20 @@ class ApiStreamParser {
         return _parseChatCompletionsStream(response);
       case ApiStyle.anthropicMessages:
         return _parseAnthropicMessagesStream(response);
+    }
+  }
+
+  Stream<StreamingPlannerChunk> parsePlannerChunks(
+    http.StreamedResponse response,
+    ApiStyle style,
+  ) {
+    switch (style) {
+      case ApiStyle.responses:
+        return _parseResponsesPlannerChunks(response);
+      case ApiStyle.chatCompletions:
+        return _parseChatCompletionsPlannerChunks(response);
+      case ApiStyle.anthropicMessages:
+        return _parseAnthropicPlannerChunks(response);
     }
   }
 
@@ -68,6 +83,10 @@ class ApiStreamParser {
       if (!line.startsWith('data: ')) {
         continue;
       }
+      if (line.contains('[DONE]')) {
+        Logger.i(_tag, 'Responses planner 流式响应完成');
+        continue;
+      }
 
       try {
         final data = jsonDecode(line.substring(6));
@@ -106,6 +125,108 @@ class ApiStreamParser {
         Logger.e(_tag, 'Responses JSON解析错误: $e');
       }
     }
+  }
+
+  Stream<StreamingPlannerChunk> _parseResponsesPlannerChunks(
+    http.StreamedResponse response,
+  ) async* {
+    final emittedReasoningChunks = <String>{};
+
+    await for (final line in response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
+      if (!line.startsWith('data: ')) {
+        continue;
+      }
+      if (line.contains('[DONE]')) {
+        Logger.i(_tag, 'Responses planner 流式响应完成');
+        continue;
+      }
+
+      try {
+        final data = jsonDecode(line.substring(6));
+        if (data is! Map<String, dynamic>) {
+          continue;
+        }
+        final type = data['type'];
+        final delta = data['delta'];
+
+        if (type == 'response.output_text.delta' &&
+            delta is String &&
+            delta.isNotEmpty) {
+          yield StreamingPlannerChunk.contentDelta(
+            delta,
+            providerMetadata: _providerStateFromResponsesItem(data),
+          );
+          continue;
+        }
+
+        if ((type == 'response.reasoning.delta' ||
+                type == 'response.reasoning_summary_text.delta') &&
+            delta is String &&
+            delta.isNotEmpty) {
+          yield StreamingPlannerChunk.reasoningDelta(
+            delta,
+            providerMetadata: _providerStateFromResponsesItem(data),
+          );
+          continue;
+        }
+
+        if (type == 'response.output_item.added') {
+          final item = data['item'];
+          if (item is! Map<String, dynamic>) {
+            continue;
+          }
+          if (item['type'] == 'function_call') {
+            yield StreamingPlannerChunk.toolCallStarted(
+              providerCallId: _normalizeText(item['call_id'] ?? item['id']),
+              toolName: _normalizeText(item['name']),
+              providerMetadata: _providerStateFromResponsesItem(data),
+            );
+            continue;
+          }
+          final reasoningChunks = _extractReasoningSummaries(item);
+          for (final chunk in reasoningChunks) {
+            final dedupeKey = '${item['id'] ?? ''}:$chunk';
+            if (emittedReasoningChunks.add(dedupeKey)) {
+              yield StreamingPlannerChunk.reasoningDelta(
+                chunk,
+                providerMetadata: _providerStateFromResponsesItem(data),
+              );
+            }
+          }
+          continue;
+        }
+
+        if (type == 'response.function_call_arguments.delta' &&
+            delta is String &&
+            delta.isNotEmpty) {
+          yield StreamingPlannerChunk.toolCallArgumentsDelta(
+            providerCallId: _normalizeText(
+              data['call_id'] ?? data['item_id'] ?? data['id'],
+            ),
+            toolName: _normalizeText(data['name']),
+            argumentsTextDelta: delta,
+            providerMetadata: _providerStateFromResponsesItem(data),
+          );
+          continue;
+        }
+
+        if (type == 'response.function_call_arguments.done') {
+          yield StreamingPlannerChunk.toolCallCompleted(
+            providerCallId: _normalizeText(
+              data['call_id'] ?? data['item_id'] ?? data['id'],
+            ),
+            toolName: _normalizeText(data['name']),
+            providerMetadata: _providerStateFromResponsesItem(data),
+          );
+          continue;
+        }
+      } catch (e) {
+        Logger.e(_tag, 'Responses planner JSON解析错误: $e');
+      }
+    }
+    yield const StreamingPlannerChunk.streamCompleted();
   }
 
   Stream<String> _parseAnthropicMessagesStream(
@@ -161,6 +282,231 @@ class ApiStreamParser {
     }
   }
 
+  Stream<StreamingPlannerChunk> _parseAnthropicPlannerChunks(
+    http.StreamedResponse response,
+  ) async* {
+    final blockMetaByIndex = <String, Map<String, dynamic>>{};
+
+    await for (final line in response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
+      if (!line.startsWith('data: ')) {
+        continue;
+      }
+      if (line.contains('[DONE]')) {
+        Logger.i(_tag, 'Anthropic planner 流式响应完成');
+        continue;
+      }
+
+      try {
+        final data = jsonDecode(line.substring(6));
+        if (data is! Map<String, dynamic>) {
+          continue;
+        }
+        final type = data['type'];
+        if (type == 'content_block_start') {
+          final contentBlock = data['content_block'];
+          final index = data['index']?.toString();
+          if (contentBlock is Map<String, dynamic> && index != null) {
+            final meta = <String, dynamic>{
+              if (_normalizeText(data['message']?['id']) != null)
+                'message_id': _normalizeText(data['message']?['id']),
+              if (_normalizeText(data['message_id']) != null)
+                'message_id': _normalizeText(data['message_id']),
+            };
+            final providerCallId = _normalizeText(contentBlock['id']);
+            final toolName = _normalizeText(contentBlock['name']);
+            blockMetaByIndex[index] = {
+              'providerCallId': providerCallId,
+              'toolName': toolName,
+              'providerMetadata': meta,
+            };
+            if (contentBlock['type'] == 'tool_use') {
+              yield StreamingPlannerChunk.toolCallStarted(
+                providerCallId: providerCallId,
+                toolName: toolName,
+                providerMetadata: meta,
+              );
+            }
+          }
+          continue;
+        }
+
+        if (type == 'content_block_delta') {
+          final delta = data['delta'];
+          if (delta is! Map<String, dynamic>) {
+            continue;
+          }
+          final deltaType = delta['type'];
+          final index = data['index']?.toString();
+          if (deltaType == 'text_delta') {
+            final text = _normalizeText(delta['text']);
+            if (text != null) {
+              yield StreamingPlannerChunk.contentDelta(text);
+            }
+            continue;
+          }
+          if (deltaType == 'thinking_delta' ||
+              deltaType == 'redacted_thinking_delta') {
+            final thinking = _extractAnthropicTextDelta(delta);
+            if (thinking != null) {
+              yield StreamingPlannerChunk.reasoningDelta(thinking);
+            }
+            continue;
+          }
+          if (deltaType == 'input_json_delta') {
+            final partialJson = _normalizeText(
+              delta['partial_json'] ?? delta['text'],
+            );
+            if (partialJson == null || index == null) {
+              continue;
+            }
+            final meta = blockMetaByIndex[index];
+            yield StreamingPlannerChunk.toolCallArgumentsDelta(
+              providerCallId: _normalizeText(meta?['providerCallId']),
+              toolName: _normalizeText(meta?['toolName']),
+              argumentsTextDelta: partialJson,
+              providerMetadata: meta?['providerMetadata'] is Map<String, dynamic>
+                  ? Map<String, dynamic>.from(
+                      meta!['providerMetadata'] as Map<String, dynamic>,
+                    )
+                  : null,
+            );
+            continue;
+          }
+          continue;
+        }
+
+        if (type == 'content_block_stop') {
+          final index = data['index']?.toString();
+          if (index == null) {
+            continue;
+          }
+          final meta = blockMetaByIndex[index];
+          if (meta == null) {
+            continue;
+          }
+          if (_normalizeText(meta['providerCallId']) != null ||
+              _normalizeText(meta['toolName']) != null) {
+            yield StreamingPlannerChunk.toolCallCompleted(
+              providerCallId: _normalizeText(meta['providerCallId']),
+              toolName: _normalizeText(meta['toolName']),
+              providerMetadata: meta['providerMetadata'] is Map<String, dynamic>
+                  ? Map<String, dynamic>.from(
+                      meta['providerMetadata'] as Map<String, dynamic>,
+                    )
+                  : null,
+            );
+          }
+          continue;
+        }
+
+        if (type == 'message_delta') {
+          final delta = data['delta'];
+          if (delta is! Map<String, dynamic>) {
+            continue;
+          }
+          final thinking = _extractAnthropicTextDelta(delta);
+          if (thinking != null) {
+            yield StreamingPlannerChunk.reasoningDelta(thinking);
+          }
+        }
+      } catch (e) {
+        Logger.e(_tag, 'Anthropic planner JSON解析错误: $e');
+      }
+    }
+    yield const StreamingPlannerChunk.streamCompleted();
+  }
+
+  Stream<StreamingPlannerChunk> _parseChatCompletionsPlannerChunks(
+    http.StreamedResponse response,
+  ) async* {
+    await for (final line in response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
+      if (!line.startsWith('data: ')) {
+        continue;
+      }
+
+      if (line.contains('[DONE]')) {
+        Logger.i(_tag, 'Chat Completions planner 流式响应完成');
+        continue;
+      }
+
+      try {
+        final data = jsonDecode(line.substring(6));
+        if (data is! Map<String, dynamic>) {
+          continue;
+        }
+        final choices = data['choices'];
+        if (choices is! List || choices.isEmpty) {
+          continue;
+        }
+        final firstChoice = choices.first;
+        if (firstChoice is! Map) {
+          continue;
+        }
+        final delta = firstChoice['delta'];
+        if (delta is! Map) {
+          continue;
+        }
+
+        final content = _normalizeText(delta['content']);
+        if (content != null) {
+          yield StreamingPlannerChunk.contentDelta(
+            content,
+            providerMetadata: _providerStateFromChatCompletions(data),
+          );
+        }
+        final reasoning = _normalizeText(
+          delta['reasoning_content'] ?? delta['reasoning'] ?? delta['thinking'],
+        );
+        if (reasoning != null) {
+          yield StreamingPlannerChunk.reasoningDelta(
+            reasoning,
+            providerMetadata: _providerStateFromChatCompletions(data),
+          );
+        }
+
+        final toolCalls = delta['tool_calls'];
+        if (toolCalls is! List) {
+          continue;
+        }
+        for (final toolCall in toolCalls) {
+          if (toolCall is! Map) {
+            continue;
+          }
+          final function = toolCall['function'];
+          final providerCallId = _normalizeText(toolCall['id']);
+          String? toolName;
+          String? argumentsDelta;
+          if (function is Map) {
+            toolName = _normalizeText(function['name']);
+            argumentsDelta = _normalizeText(function['arguments']);
+          }
+          if (providerCallId != null || toolName != null) {
+            yield StreamingPlannerChunk.toolCallStarted(
+              providerCallId: providerCallId,
+              toolName: toolName,
+              providerMetadata: _providerStateFromChatCompletions(data),
+            );
+          }
+          if (argumentsDelta != null) {
+            yield StreamingPlannerChunk.toolCallArgumentsDelta(
+              providerCallId: providerCallId,
+              toolName: toolName,
+              argumentsTextDelta: argumentsDelta,
+              providerMetadata: _providerStateFromChatCompletions(data),
+            );
+          }
+        }
+      } catch (e) {
+        Logger.e(_tag, 'Chat Completions planner JSON解析错误: $e');
+      }
+    }
+    yield const StreamingPlannerChunk.streamCompleted();
+  }
+
   String? _extractAnthropicTextDelta(Map<String, dynamic> delta) {
     final deltaType = delta['type'];
     if (deltaType == 'text_delta') {
@@ -199,6 +545,35 @@ class ApiStreamParser {
       }
     }
     return chunks;
+  }
+
+  Map<String, dynamic>? _providerStateFromResponsesItem(
+    Map<String, dynamic> data,
+  ) {
+    final responseId = _normalizeText(
+      data['response']?['id'] ?? data['response_id'] ?? data['id'],
+    );
+    if (responseId == null) {
+      return null;
+    }
+    return {'response_id': responseId};
+  }
+
+  Map<String, dynamic>? _providerStateFromChatCompletions(
+    Map<String, dynamic> data,
+  ) {
+    final responseId = _normalizeText(data['id']);
+    if (responseId == null) {
+      return null;
+    }
+    return {'response_id': responseId};
+  }
+
+  String? _normalizeText(dynamic value) {
+    if (value is! String) {
+      return null;
+    }
+    return value.isEmpty ? null : value;
   }
 }
 
