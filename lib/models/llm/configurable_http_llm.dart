@@ -9,11 +9,13 @@ import 'package:ai_chat/services/prompt/prompt_stage.dart';
 import 'package:http/http.dart' as http;
 
 import '../../repositories/app_settings_repository.dart';
+import '../../services/model_budget_registry.dart';
 import '../../utils/logger.dart';
 import '../agent/model_turn_decision.dart';
 import '../agent/planner_tool_option.dart';
 import '../chat_message.dart';
 import '../chat_turn.dart';
+import '../session/model_budget_profile.dart';
 import '../../services/session_summary_service.dart';
 import 'adapters/anthropic_messages_adapter.dart';
 import 'adapters/api_style_adapter.dart';
@@ -23,6 +25,7 @@ import 'api_protocol_resolver.dart';
 import 'api_stream_parser.dart';
 import 'base_llm.dart';
 import 'llm_config.dart';
+import 'llm_request_options.dart';
 import 'tool_loop/anthropic_messages_tool_loop_adapter.dart';
 import 'tool_loop/openai_chat_completions_tool_loop_adapter.dart';
 import 'tool_loop/openai_responses_tool_loop_adapter.dart';
@@ -51,6 +54,7 @@ class ConfigurableHttpLLM implements BaseLLM {
   final OpenAIResponsesToolLoopAdapter _responsesToolLoopAdapter;
   final AnthropicMessagesToolLoopAdapter _anthropicMessagesToolLoopAdapter;
   final PromptBuilderService _promptBuilder;
+  final ModelBudgetRegistry _modelBudgetRegistry;
 
   ConfigurableHttpLLM({
     required AppSettingsRepository settingsRepository,
@@ -65,6 +69,7 @@ class ConfigurableHttpLLM implements BaseLLM {
     OpenAIResponsesToolLoopAdapter? responsesToolLoopAdapter,
     AnthropicMessagesToolLoopAdapter? anthropicMessagesToolLoopAdapter,
     PromptBuilderService? promptBuilder,
+    ModelBudgetRegistry? modelBudgetRegistry,
   })  : _settingsRepository = settingsRepository,
         _protocolResolver = protocolResolver ?? const ApiProtocolResolver(),
         _streamParser = streamParser ?? const ApiStreamParser(),
@@ -80,7 +85,8 @@ class ConfigurableHttpLLM implements BaseLLM {
             responsesToolLoopAdapter ?? const OpenAIResponsesToolLoopAdapter(),
         _anthropicMessagesToolLoopAdapter = anthropicMessagesToolLoopAdapter ??
             const AnthropicMessagesToolLoopAdapter(),
-        _promptBuilder = promptBuilder ?? const PromptBuilderService() {
+        _promptBuilder = promptBuilder ?? const PromptBuilderService(),
+        _modelBudgetRegistry = modelBudgetRegistry ?? ModelBudgetRegistry() {
     assert(mainFlowNetworkRetryAttempts >= 1);
   }
 
@@ -225,6 +231,11 @@ class ConfigurableHttpLLM implements BaseLLM {
       final apiStyle = _protocolResolver.resolveStyle(runtimeConfig.apiUrl);
       final adapter = _adapterFor(apiStyle);
       final modelName = _resolveModelName(runtimeConfig, config);
+      final requestOptions = _requestOptionsFor(
+        modelName: modelName,
+        purpose: LlmRequestPurpose.planner,
+        apiStyle: apiStyle,
+      );
       final previousResponseId = _resolvePreviousResponseId(
         apiStyle: apiStyle,
         providerStyle: providerStyle,
@@ -236,6 +247,7 @@ class ConfigurableHttpLLM implements BaseLLM {
         modelName: modelName,
         availableTools: availableTools,
         parallelToolCalls: true,
+        requestOptions: requestOptions,
         previousResponseId: previousResponseId,
         continuationItems: providerContinuationItems,
         providerState: providerState,
@@ -274,6 +286,7 @@ class ConfigurableHttpLLM implements BaseLLM {
           modelName: modelName,
           availableTools: availableTools,
           parallelToolCalls: true,
+          requestOptions: requestOptions,
           previousResponseId: null,
           continuationItems: providerContinuationItems,
           providerState: providerState,
@@ -366,6 +379,55 @@ class ConfigurableHttpLLM implements BaseLLM {
     return configuredModel;
   }
 
+  LlmRequestOptions _requestOptionsFor({
+    required String modelName,
+    required LlmRequestPurpose purpose,
+    required ApiStyle apiStyle,
+  }) {
+    final profile = _modelBudgetRegistry.resolve(modelName);
+    return LlmRequestOptions(
+      maxOutputTokens: _resolveMaxOutputTokens(
+        profile: profile,
+        purpose: purpose,
+      ),
+      allowReasoning: _allowReasoningFor(
+        apiStyle: apiStyle,
+        purpose: purpose,
+      ),
+    );
+  }
+
+  int _resolveMaxOutputTokens({
+    required ModelBudgetProfile profile,
+    required LlmRequestPurpose purpose,
+  }) {
+    switch (purpose) {
+      case LlmRequestPurpose.planner:
+        return profile.reservedOutputTokens;
+      case LlmRequestPurpose.summary:
+      case LlmRequestPurpose.webpageProcessing:
+      case LlmRequestPurpose.sideTask:
+        return profile.reservedOutputTokens + profile.reasoningReserveTokens;
+    }
+  }
+
+  bool _allowReasoningFor({
+    required ApiStyle apiStyle,
+    required LlmRequestPurpose purpose,
+  }) {
+    if (apiStyle != ApiStyle.anthropicMessages) {
+      return true;
+    }
+    switch (purpose) {
+      case LlmRequestPurpose.planner:
+        return false;
+      case LlmRequestPurpose.summary:
+      case LlmRequestPurpose.webpageProcessing:
+      case LlmRequestPurpose.sideTask:
+        return true;
+    }
+  }
+
   ChatTurnProviderStyle _toProviderStyle(ApiStyle apiStyle) {
     switch (apiStyle) {
       case ApiStyle.responses:
@@ -442,12 +504,22 @@ class ConfigurableHttpLLM implements BaseLLM {
     final apiStyle = _protocolResolver.resolveStyle(runtimeConfig.apiUrl);
     final adapter = _adapterFor(apiStyle);
     final modelName = _resolveModelName(runtimeConfig, config);
+    final requestOptions = _requestOptionsFor(
+      modelName: modelName,
+      purpose: switch (requestLabel) {
+        'side_summary' => LlmRequestPurpose.summary,
+        'side_webpage' => LlmRequestPurpose.webpageProcessing,
+        _ => LlmRequestPurpose.sideTask,
+      },
+      apiStyle: apiStyle,
+    );
     final payload = adapter.buildPlannerPayload(
       messages: messages,
       config: config,
       modelName: modelName,
       availableTools: const [],
       parallelToolCalls: false,
+      requestOptions: requestOptions,
     );
     Logger.i(_tag, '$requestLabel 请求体: ${jsonEncode(payload)}');
     final response = await _performRetriableMainFlowRequest(
@@ -604,4 +676,11 @@ class ConfigurableHttpLLM implements BaseLLM {
     };
     return Duration(seconds: backoffSeconds);
   }
+}
+
+enum LlmRequestPurpose {
+  planner,
+  summary,
+  webpageProcessing,
+  sideTask,
 }

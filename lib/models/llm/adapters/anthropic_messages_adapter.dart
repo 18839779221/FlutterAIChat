@@ -1,6 +1,7 @@
 import '../../agent/planner_tool_choice.dart';
 import '../../agent/planner_tool_option.dart';
 import '../../chat_message.dart';
+import '../llm_request_options.dart';
 import '../../../services/chat_service.dart';
 import '../api_protocol_resolver.dart';
 import '../llm_config.dart';
@@ -29,6 +30,7 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
     required ChatConfig config,
     required String modelName,
     required bool stream,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
   }) {
     return _buildMessagesPayload(
       messages: messages,
@@ -36,6 +38,7 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
       modelName: modelName,
       stream: stream,
       continuationItems: const [],
+      requestOptions: requestOptions,
     );
   }
 
@@ -46,6 +49,7 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
     required String modelName,
     required List<PlannerToolOption> availableTools,
     required bool parallelToolCalls,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
     String? previousResponseId,
     List<Map<String, dynamic>> continuationItems = const [],
     Map<String, dynamic>? providerState,
@@ -60,6 +64,7 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
       modelName: modelName,
       stream: false,
       continuationItems: normalizedContinuationItems,
+      requestOptions: requestOptions,
     );
     final tools = availableTools
         .map(
@@ -142,6 +147,7 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
     required String modelName,
     required bool stream,
     required List<Map<String, dynamic>> continuationItems,
+    required LlmRequestOptions requestOptions,
   }) {
     final systemSegments = <String>[];
     final configuredSystemPrompt = config.systemPrompt.trim();
@@ -175,7 +181,10 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
       if (systemSegments.isNotEmpty) 'system': systemSegments.join('\n\n'),
       'messages': normalizedMessages,
       'stream': stream,
-      'max_tokens': 4096,
+      if (requestOptions.maxOutputTokens != null)
+        'max_tokens': requestOptions.maxOutputTokens,
+      if (!requestOptions.allowReasoning)
+        'thinking': const {'type': 'disabled'},
     };
   }
 
