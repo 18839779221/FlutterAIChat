@@ -210,10 +210,6 @@ class ChatTimelineProjectionService {
     required List<AssistantTurnBlock> baseBlocks,
     required List<AssistantTurnBlock> artifactBlocks,
   }) {
-    if (artifactBlocks.isEmpty) {
-      return baseBlocks;
-    }
-
     final blocksByTurn = <String, List<AssistantTurnBlock>>{};
     for (final block in baseBlocks) {
       blocksByTurn.putIfAbsent(block.turnId, () => []).add(block);
@@ -244,9 +240,51 @@ class ChatTimelineProjectionService {
       }
     }
     for (final turnId in seenTurnOrder) {
-      merged.addAll(blocksByTurn[turnId] ?? const <AssistantTurnBlock>[]);
+      final turnBlocks = [...?blocksByTurn[turnId]];
+      turnBlocks.sort(_compareTurnBlocks);
+      merged.addAll(turnBlocks);
     }
     return merged;
+  }
+
+  int _compareTurnBlocks(
+    AssistantTurnBlock left,
+    AssistantTurnBlock right,
+  ) {
+    final timeOrder = left.createdAt.compareTo(right.createdAt);
+    if (timeOrder != 0) {
+      return timeOrder;
+    }
+
+    final sequenceOrder = left.sequence.compareTo(right.sequence);
+    if (sequenceOrder != 0) {
+      return sequenceOrder;
+    }
+
+    final typeOrder =
+        _turnBlockTypePriority(left.type).compareTo(_turnBlockTypePriority(right.type));
+    if (typeOrder != 0) {
+      return typeOrder;
+    }
+
+    return left.id.compareTo(right.id);
+  }
+
+  int _turnBlockTypePriority(AssistantTurnBlockType type) {
+    switch (type) {
+      case AssistantTurnBlockType.analysis:
+        return 0;
+      case AssistantTurnBlockType.toolWorkflow:
+        return 1;
+      case AssistantTurnBlockType.toolResultSummary:
+        return 2;
+      case AssistantTurnBlockType.artifact:
+        return 3;
+      case AssistantTurnBlockType.structuredOutput:
+        return 4;
+      case AssistantTurnBlockType.finalResponse:
+        return 5;
+    }
   }
 
   ChatMessage? _findActiveAskUserQuestion(List<ChatMessage> messages) {
