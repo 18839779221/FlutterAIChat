@@ -1,11 +1,20 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 const double _minArtifactPreviewHeight = 180;
 const double _maxArtifactPreviewHeight = 720;
 const double _defaultArtifactPreviewHeight = 260;
 const String _artifactHeightChannelName = 'ArtifactHeight';
+
+final Set<Factory<OneSequenceGestureRecognizer>>
+    artifactPreviewGestureRecognizers =
+    <Factory<OneSequenceGestureRecognizer>>{
+  Factory<VerticalDragGestureRecognizer>(
+    () => VerticalDragGestureRecognizer(),
+  ),
+};
 
 double clampArtifactPreviewHeight(double rawHeight) {
   if (!rawHeight.isFinite) {
@@ -219,7 +228,12 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         curve: Curves.easeOut,
         height: _previewHeight,
         color: Colors.transparent,
-        child: WebViewWidget(controller: _controller!),
+        child: RepaintBoundary(
+          child: WebViewWidget(
+            controller: _controller!,
+            gestureRecognizers: artifactPreviewGestureRecognizers,
+          ),
+        ),
       ),
     );
   }
@@ -246,6 +260,8 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
       constraints: const BoxConstraints(maxHeight: 260),
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
       child: SingleChildScrollView(
+        primary: false,
+        physics: const ClampingScrollPhysics(),
         child: SelectableText(
           source,
           style: theme.textTheme.bodySmall?.copyWith(

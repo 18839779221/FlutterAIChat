@@ -1,6 +1,7 @@
 import 'package:ai_chat/models/artifact/artifact_turn_projection.dart';
 import 'package:ai_chat/pages/artifact_detail_page.dart';
 import 'package:ai_chat/widgets/chat_blocks/artifact_preview_surface.dart';
+import 'package:ai_chat/widgets/chat_timeline/stable_artifact_block.dart';
 import 'package:flutter/material.dart';
 
 /// Lightweight inline artifact card.
@@ -30,12 +31,25 @@ class ArtifactBlock extends StatelessWidget {
       },
       child: Padding(
         padding: const EdgeInsets.only(bottom: 10),
-        child: ArtifactPreviewSurface(
-          source: artifact.source,
-          isStale: artifact.isStale,
-          sourcePath: artifact.sourcePath,
+        child: StableArtifactBlock(
+          cacheKey: _buildArtifactCacheKey(artifact),
+          builder: (_) => ArtifactPreviewSurface(
+            source: artifact.source,
+            isStale: artifact.isStale,
+            sourcePath: artifact.sourcePath,
+          ),
         ),
       ),
     );
+  }
+
+  String _buildArtifactCacheKey(ArtifactTurnProjection artifact) {
+    return [
+      artifact.artifactId,
+      artifact.sourcePath,
+      artifact.isStale ? 'stale' : 'fresh',
+      artifact.updatedAt.microsecondsSinceEpoch.toString(),
+      artifact.source?.hashCode.toString() ?? 'no-source',
+    ].join(':');
   }
 }

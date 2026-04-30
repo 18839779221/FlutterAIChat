@@ -1,4 +1,5 @@
 import 'package:ai_chat/widgets/chat_blocks/artifact_preview_surface.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -33,5 +34,14 @@ void main() {
     expect(clampArtifactPreviewHeight(80), 180);
     expect(clampArtifactPreviewHeight(320), 320);
     expect(clampArtifactPreviewHeight(2000), 720);
+  });
+
+  test('registers vertical drag recognizer for nested artifact preview scroll', () {
+    expect(
+      artifactPreviewGestureRecognizers.any(
+        (factory) => factory.type == VerticalDragGestureRecognizer,
+      ),
+      isTrue,
+    );
   });
 }
