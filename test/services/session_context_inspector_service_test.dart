@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
@@ -321,6 +319,7 @@ class _FakeBaseLlm implements BaseLLM {
     ChatTurnProviderStyle? providerStyle,
     Map<String, dynamic>? providerState,
     List<Map<String, dynamic>> providerContinuationItems = const [],
+    void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     return null;
   }
@@ -331,9 +330,6 @@ class _FakeBaseLlm implements BaseLLM {
     required String prompt,
   }) async =>
       '';
-
-  @override
-  Future<String> summarizeChat(List<ChatMessage> messages) async => '';
 
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async => '';

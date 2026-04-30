@@ -111,6 +111,640 @@ void main() {
       expect(decision, isNull);
     });
 
+    test('anthropic streaming planner assembles completed tool call decision',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          'event: content_block_start\n'
+          'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"write_file"}}\n\n'
+          'event: content_block_delta\n'
+          'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"path\\":\\"a.txt\\","}}\n\n'
+          'event: content_block_delta\n'
+          'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\\"content\\":\\"hello\\"}"}}\n\n'
+          'event: content_block_stop\n'
+          'data: {"type":"content_block_stop","index":0}\n\n'
+          'data: [DONE]\n',
+          200,
+          headers: {'content-type': 'text/event-stream'},
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/anthropic/v1/messages',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '请写文件', role: MessageRole.user),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [
+          PlannerToolOption(
+            name: 'write_file',
+            description: '写文件',
+            inputSchema: {
+              'type': 'object',
+              'properties': {
+                'path': {'type': 'string'},
+                'content': {'type': 'string'},
+              },
+              'required': ['path', 'content'],
+            },
+          ),
+        ],
+      );
+
+      expect(client.lastRequestBody?['stream'], isTrue);
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, hasLength(1));
+      expect(decision.toolCalls.single.providerCallId, 'toolu_1');
+      expect(decision.toolCalls.single.toolName, 'write_file');
+      expect(
+        decision.toolCalls.single.arguments,
+        {
+          'path': 'a.txt',
+          'content': 'hello',
+        },
+      );
+      expect(decision.providerStyle, ChatTurnProviderStyle.anthropicMessages);
+      expect(decision.modelName, 'gpt-5.4');
+      expect(decision.isTerminal, isFalse);
+    });
+
+    test('anthropic streaming planner returns null on incomplete tool args',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          'event: content_block_start\n'
+          'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"write_file"}}\n\n'
+          'event: content_block_delta\n'
+          'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"path\\":"}}\n\n'
+          'event: content_block_stop\n'
+          'data: {"type":"content_block_stop","index":0}\n\n'
+          'data: [DONE]\n',
+          200,
+          headers: {'content-type': 'text/event-stream'},
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/anthropic/v1/messages',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '请写文件', role: MessageRole.user),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [
+          PlannerToolOption(
+            name: 'write_file',
+            description: '写文件',
+            inputSchema: {
+              'type': 'object',
+              'properties': {
+                'path': {'type': 'string'},
+              },
+              'required': ['path'],
+            },
+          ),
+        ],
+      );
+
+      expect(client.lastRequestBody?['stream'], isTrue);
+      expect(decision, isNull);
+    });
+
+    test('anthropic streaming planner assembles terminal assistant decision',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.StreamedResponse(
+          Stream<List<int>>.fromIterable([
+            utf8.encode(
+              'event: content_block_delta\n'
+              'data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"先分析"}}\n\n',
+            ),
+            utf8.encode(
+              'event: content_block_delta\n'
+              'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"最终"}}\n\n',
+            ),
+            utf8.encode(
+              'event: content_block_delta\n'
+              'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"答案"}}\n\n',
+            ),
+            utf8.encode('data: [DONE]\n'),
+          ]),
+          200,
+          headers: {'content-type': 'text/event-stream; charset=utf-8'},
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/anthropic/v1/messages',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '直接回答', role: MessageRole.user),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [],
+      );
+
+      expect(client.lastRequestBody?['stream'], isTrue);
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, isEmpty);
+      expect(decision.assistantMessage, '最终答案');
+      expect(decision.visibleReasoning, '先分析');
+      expect(decision.isTerminal, isTrue);
+    });
+
+    test(
+        'chat completions streaming planner assembles completed tool call decision',
+        () async {
+      final firstChunk = jsonEncode({
+        'id': 'chatcmpl_stream',
+        'choices': [
+          {
+            'delta': {
+              'tool_calls': [
+                {
+                  'id': 'call_1',
+                  'type': 'function',
+                  'function': {
+                    'name': 'search_chat_history',
+                    'arguments': '{"query":"数据',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
+      final secondChunk = jsonEncode({
+        'id': 'chatcmpl_stream',
+        'choices': [
+          {
+            'delta': {
+              'tool_calls': [
+                {
+                  'id': 'call_1',
+                  'type': 'function',
+                  'function': {
+                    'arguments': '库版本"}',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
+      final client = _RecordingHttpClient(
+        handler: (request) => http.StreamedResponse(
+          Stream<List<int>>.fromIterable([
+            utf8.encode('data: $firstChunk\n\n'),
+            utf8.encode('data: $secondChunk\n\n'),
+            utf8.encode('data: [DONE]\n'),
+          ]),
+          200,
+          headers: {'content-type': 'text/event-stream; charset=utf-8'},
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '查数据库版本', role: MessageRole.user),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [
+          PlannerToolOption(
+            name: 'search_chat_history',
+            description: '搜索聊天历史',
+            inputSchema: {
+              'type': 'object',
+              'properties': {
+                'query': {'type': 'string'},
+              },
+              'required': ['query'],
+            },
+          ),
+        ],
+      );
+
+      expect(client.lastRequestBody?['stream'], isTrue);
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, hasLength(1));
+      expect(decision.toolCalls.single.providerCallId, 'call_1');
+      expect(decision.toolCalls.single.toolName, 'search_chat_history');
+      expect(
+        decision.toolCalls.single.arguments,
+        {
+          'query': '数据库版本',
+        },
+      );
+      expect(
+        decision.providerStyle,
+        ChatTurnProviderStyle.openaiChatCompletions,
+      );
+      expect(decision.modelName, 'gpt-5.4');
+      expect(decision.isTerminal, isFalse);
+    });
+
+    test('responses streaming planner assembles completed tool call decision',
+        () async {
+      final addedChunk = jsonEncode({
+        'type': 'response.output_item.added',
+        'response': {'id': 'resp_stream'},
+        'item': {
+          'type': 'function_call',
+          'call_id': 'fc_1',
+          'name': 'web_search',
+        },
+      });
+      final firstArgsChunk = jsonEncode({
+        'type': 'response.function_call_arguments.delta',
+        'response': {'id': 'resp_stream'},
+        'call_id': 'fc_1',
+        'name': 'web_search',
+        'delta': '{"query":"OpenAI',
+      });
+      final secondArgsChunk = jsonEncode({
+        'type': 'response.function_call_arguments.delta',
+        'response': {'id': 'resp_stream'},
+        'call_id': 'fc_1',
+        'name': 'web_search',
+        'delta': ' 最新发布"}',
+      });
+      final doneChunk = jsonEncode({
+        'type': 'response.function_call_arguments.done',
+        'response': {'id': 'resp_stream'},
+        'call_id': 'fc_1',
+        'name': 'web_search',
+      });
+      final client = _RecordingHttpClient(
+        handler: (request) => http.StreamedResponse(
+          Stream<List<int>>.fromIterable([
+            utf8.encode('data: $addedChunk\n\n'),
+            utf8.encode('data: $firstArgsChunk\n\n'),
+            utf8.encode('data: $secondArgsChunk\n\n'),
+            utf8.encode('data: $doneChunk\n\n'),
+            utf8.encode('data: [DONE]\n'),
+          ]),
+          200,
+          headers: {'content-type': 'text/event-stream; charset=utf-8'},
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '帮我查 OpenAI 最新发布', role: MessageRole.user),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [
+          PlannerToolOption(
+            name: 'web_search',
+            description: '联网搜索',
+            inputSchema: {
+              'type': 'object',
+              'properties': {
+                'query': {'type': 'string'},
+              },
+              'required': ['query'],
+            },
+          ),
+        ],
+      );
+
+      expect(client.lastRequestBody?['stream'], isTrue);
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, hasLength(1));
+      expect(decision.toolCalls.single.providerCallId, 'fc_1');
+      expect(decision.toolCalls.single.toolName, 'web_search');
+      expect(
+        decision.toolCalls.single.arguments,
+        {
+          'query': 'OpenAI 最新发布',
+        },
+      );
+      expect(decision.providerStyle, ChatTurnProviderStyle.openaiResponses);
+      expect(decision.modelName, 'gpt-5.4');
+      expect(decision.providerState, containsPair('response_id', 'resp_stream'));
+      expect(decision.isTerminal, isFalse);
+    });
+
+    test(
+        'chat completions streaming planner assembles terminal assistant decision',
+        () async {
+      final firstChunk = jsonEncode({
+        'id': 'chatcmpl_stream',
+        'choices': [
+          {
+            'delta': {
+              'reasoning_content': '先分析',
+              'content': '最终',
+            },
+          },
+        ],
+      });
+      final secondChunk = jsonEncode({
+        'id': 'chatcmpl_stream',
+        'choices': [
+          {
+            'delta': {
+              'content': '答案',
+            },
+          },
+        ],
+      });
+      final client = _RecordingHttpClient(
+        handler: (request) => http.StreamedResponse(
+          Stream<List<int>>.fromIterable([
+            utf8.encode('data: $firstChunk\n\n'),
+            utf8.encode('data: $secondChunk\n\n'),
+            utf8.encode('data: [DONE]\n'),
+          ]),
+          200,
+          headers: {'content-type': 'text/event-stream; charset=utf-8'},
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '直接回答', role: MessageRole.user),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [],
+      );
+
+      expect(client.lastRequestBody?['stream'], isTrue);
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, isEmpty);
+      expect(decision.assistantMessage, '最终答案');
+      expect(decision.visibleReasoning, '先分析');
+      expect(decision.isTerminal, isTrue);
+    });
+
+    test('chat completions streaming planner returns null on empty stream',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.StreamedResponse(
+          Stream<List<int>>.fromIterable([
+            utf8.encode('data: [DONE]\n'),
+          ]),
+          200,
+          headers: {'content-type': 'text/event-stream; charset=utf-8'},
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '继续', role: MessageRole.user),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [],
+      );
+
+      expect(client.lastRequestBody?['stream'], isTrue);
+      expect(decision, isNull);
+    });
+
+    test('responses streaming planner assembles terminal assistant decision',
+        () async {
+      final firstChunk = jsonEncode({
+        'type': 'response.reasoning.delta',
+        'response': {'id': 'resp_stream'},
+        'delta': '先分析',
+      });
+      final secondChunk = jsonEncode({
+        'type': 'response.output_text.delta',
+        'response': {'id': 'resp_stream'},
+        'delta': '最终',
+      });
+      final thirdChunk = jsonEncode({
+        'type': 'response.output_text.delta',
+        'response': {'id': 'resp_stream'},
+        'delta': '答案',
+      });
+      final client = _RecordingHttpClient(
+        handler: (request) => http.StreamedResponse(
+          Stream<List<int>>.fromIterable([
+            utf8.encode('data: $firstChunk\n\n'),
+            utf8.encode('data: $secondChunk\n\n'),
+            utf8.encode('data: $thirdChunk\n\n'),
+            utf8.encode('data: [DONE]\n'),
+          ]),
+          200,
+          headers: {'content-type': 'text/event-stream; charset=utf-8'},
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '直接回答', role: MessageRole.user),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [],
+      );
+
+      expect(client.lastRequestBody?['stream'], isTrue);
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, isEmpty);
+      expect(decision.assistantMessage, '最终答案');
+      expect(decision.visibleReasoning, '先分析');
+      expect(decision.providerState, containsPair('response_id', 'resp_stream'));
+      expect(decision.isTerminal, isTrue);
+    });
+
+    test('responses streaming planner returns null on empty stream', () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.StreamedResponse(
+          Stream<List<int>>.fromIterable([
+            utf8.encode('data: [DONE]\n'),
+          ]),
+          200,
+          headers: {'content-type': 'text/event-stream; charset=utf-8'},
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '继续', role: MessageRole.user),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [],
+      );
+
+      expect(client.lastRequestBody?['stream'], isTrue);
+      expect(decision, isNull);
+    });
+
+    test(
+        'streaming planner does not idle-timeout while chunks keep arriving',
+        () async {
+      final firstChunk = jsonEncode({
+        'id': 'chatcmpl_stream',
+        'choices': [
+          {
+            'delta': {
+              'content': '最',
+            },
+          },
+        ],
+      });
+      final secondChunk = jsonEncode({
+        'id': 'chatcmpl_stream',
+        'choices': [
+          {
+            'delta': {
+              'content': '终答案',
+            },
+          },
+        ],
+      });
+      final client = _RecordingHttpClient(
+        handler: (request) => http.StreamedResponse(
+          (() async* {
+            yield utf8.encode('data: $firstChunk\n\n');
+            await Future<void>.delayed(const Duration(milliseconds: 10));
+            yield utf8.encode('data: $secondChunk\n\n');
+            await Future<void>.delayed(const Duration(milliseconds: 10));
+            yield utf8.encode('data: [DONE]\n');
+          })(),
+          200,
+          headers: {'content-type': 'text/event-stream; charset=utf-8'},
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+        plannerStreamIdleTimeout: const Duration(milliseconds: 50),
+        plannerStreamOverallTimeout: const Duration(milliseconds: 200),
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '直接回答', role: MessageRole.user),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [],
+      );
+
+      expect(decision, isNotNull);
+      expect(decision!.assistantMessage, '最终答案');
+      expect(decision.isTerminal, isTrue);
+    });
+
+    test('streaming planner fails on idle timeout without new chunks',
+        () async {
+      final firstChunk = jsonEncode({
+        'id': 'chatcmpl_stream',
+        'choices': [
+          {
+            'delta': {
+              'content': '最',
+            },
+          },
+        ],
+      });
+      final client = _RecordingHttpClient(
+        handler: (request) => http.StreamedResponse(
+          (() async* {
+            yield utf8.encode('data: $firstChunk\n\n');
+            await Future<void>.delayed(const Duration(milliseconds: 80));
+            yield utf8.encode('data: [DONE]\n');
+          })(),
+          200,
+          headers: {'content-type': 'text/event-stream; charset=utf-8'},
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+        plannerStreamIdleTimeout: const Duration(milliseconds: 20),
+        plannerStreamOverallTimeout: const Duration(milliseconds: 200),
+        mainFlowNetworkRetryAttempts: 1,
+      );
+
+      await expectLater(
+        () => llm.planTurnDecision(
+          messages: [
+            ChatMessage(text: '直接回答', role: MessageRole.user),
+          ],
+          config: ChatConfig(systemPrompt: ''),
+          availableTools: const [],
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+    });
+
+    test('streaming planner fails on overall timeout despite incoming chunks',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.StreamedResponse(
+          (() async* {
+            for (var index = 0; index < 10; index += 1) {
+              final chunk = jsonEncode({
+                'id': 'chatcmpl_stream',
+                'choices': [
+                  {
+                    'delta': {
+                      'content': 'a',
+                    },
+                  },
+                ],
+              });
+              yield utf8.encode('data: $chunk\n\n');
+              await Future<void>.delayed(const Duration(milliseconds: 10));
+            }
+          })(),
+          200,
+          headers: {'content-type': 'text/event-stream; charset=utf-8'},
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+        plannerStreamIdleTimeout: const Duration(milliseconds: 50),
+        plannerStreamOverallTimeout: const Duration(milliseconds: 30),
+        mainFlowNetworkRetryAttempts: 1,
+      );
+
+      await expectLater(
+        () => llm.planTurnDecision(
+          messages: [
+            ChatMessage(text: '直接回答', role: MessageRole.user),
+          ],
+          config: ChatConfig(systemPrompt: ''),
+          availableTools: const [],
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+    });
+
     test('reports planner retry progress on timeout', () async {
       var attempts = 0;
       final progressEvents = <LlmRetryProgress>[];
@@ -140,6 +774,7 @@ void main() {
         baseUrl: 'https://planner.example/v1/chat/completions',
         httpClient: client,
         mainFlowNetworkRetryAttempts: 3,
+        retryDelayBuilder: (_) => Duration.zero,
       );
 
       final decision = await llm.planTurnDecision(
@@ -172,7 +807,9 @@ void main() {
       final llm = await _buildLlm(
         baseUrl: 'https://planner.example/v1/chat/completions',
         httpClient: client,
+        plannerRequestTimeout: const Duration(milliseconds: 10),
         mainFlowNetworkRetryAttempts: 3,
+        retryDelayBuilder: (_) => Duration.zero,
       );
 
       await expectLater(
@@ -1539,9 +2176,12 @@ Future<ConfigurableHttpLLM> _buildLlm({
   required String baseUrl,
   http.Client? httpClient,
   Duration? plannerRequestTimeout,
+  Duration? plannerStreamIdleTimeout,
+  Duration? plannerStreamOverallTimeout,
   int mainFlowNetworkRetryAttempts = 5,
   String apiKey = 'test-key',
   String modelId = 'gpt-5.4',
+  Duration Function(int attempt)? retryDelayBuilder,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
@@ -1567,16 +2207,19 @@ Future<ConfigurableHttpLLM> _buildLlm({
     settingsRepository: repository,
     httpClient: httpClient,
     plannerRequestTimeout: plannerRequestTimeout,
+    plannerStreamIdleTimeout: plannerStreamIdleTimeout,
+    plannerStreamOverallTimeout: plannerStreamOverallTimeout,
     mainFlowNetworkRetryAttempts: mainFlowNetworkRetryAttempts,
+    retryDelayBuilder: retryDelayBuilder,
   );
 }
 
 class _RecordingHttpClient extends http.BaseClient {
   _RecordingHttpClient({
-    required FutureOr<http.Response> Function(http.Request request) handler,
+    required FutureOr<Object> Function(http.Request request) handler,
   }) : _handler = handler;
 
-  final FutureOr<http.Response> Function(http.Request request) _handler;
+  final FutureOr<Object> Function(http.Request request) _handler;
 
   http.Request? lastRequest;
   Map<String, dynamic>? lastRequestBody;
@@ -1593,12 +2236,27 @@ class _RecordingHttpClient extends http.BaseClient {
     }
 
     final response = await _handler(recordedRequest);
-    return http.StreamedResponse(
-      Stream<List<int>>.value(response.bodyBytes),
-      response.statusCode,
-      headers: response.headers,
-      reasonPhrase: response.reasonPhrase,
-      request: request,
-    );
+    if (response is http.StreamedResponse) {
+      return http.StreamedResponse(
+        response.stream,
+        response.statusCode,
+        contentLength: response.contentLength,
+        request: request,
+        headers: response.headers,
+        isRedirect: response.isRedirect,
+        persistentConnection: response.persistentConnection,
+        reasonPhrase: response.reasonPhrase,
+      );
+    }
+    if (response is http.Response) {
+      return http.StreamedResponse(
+        Stream<List<int>>.value(response.bodyBytes),
+        response.statusCode,
+        headers: response.headers,
+        reasonPhrase: response.reasonPhrase,
+        request: request,
+      );
+    }
+    throw StateError('Unsupported test response type: ${response.runtimeType}');
   }
 }
