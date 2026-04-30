@@ -71,6 +71,11 @@ final featuredDebugTestCasesProvider = Provider<List<DebugTestCase>>((ref) {
 final contextWindowSnapshotProvider =
     FutureProvider<ContextWindowSnapshot?>((ref) async {
   final group = ref.watch(currentGroupProvider);
+  // Recompute the inspector snapshot whenever the visible conversation
+  // timeline changes. Without this dependency, a newly created group can
+  // cache an initial null snapshot forever because the group id stays stable
+  // after later turns/events are persisted.
+  ref.watch(messagesProvider);
   final groupId = group?.id;
   if (groupId == null) {
     return null;
