@@ -243,8 +243,6 @@ class ToolPresentationBlockProjector {
     if (toolName.isEmpty) {
       return false;
     }
-    final shouldReplaceWorkflow = _shouldReplaceWorkflowWithResult(toolName);
-
     for (var index = blocks.length - 1; index >= 0; index -= 1) {
       final candidate = blocks[index];
       if (candidate.turnId != block.turnId) {
@@ -296,8 +294,7 @@ class ToolPresentationBlockProjector {
       final sameToolStepCount = candidateSteps
           .where((step) => (step['toolName'] ?? '').toString() == toolName)
           .length;
-      final shouldReplaceCurrentWorkflow =
-          shouldReplaceWorkflow && sameToolStepCount <= 1;
+      final shouldReplaceCurrentWorkflow = sameToolStepCount <= 1;
 
       if (shouldReplaceCurrentWorkflow) {
         blocks[index] = block.copyWith(
@@ -339,16 +336,6 @@ class ToolPresentationBlockProjector {
             .map((item) => Map<String, dynamic>.from(item))
             .toList() ??
         const <Map<String, dynamic>>[];
-  }
-
-  bool _shouldReplaceWorkflowWithResult(String toolName) {
-    switch (toolName.trim()) {
-      case 'web_search':
-      case 'fetch_webpage':
-        return true;
-      default:
-        return false;
-    }
   }
 
   int _resolveToolResultStepIndex({

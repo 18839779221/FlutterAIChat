@@ -79,7 +79,7 @@ void main() {
       expect(blocks.single.payload?['steps'][0]['providerCallId'], 'call_1');
     });
 
-    test('merges result into the matching workflow block', () {
+    test('result replaces the matching workflow block by default', () {
       final blocks = projector.project(
         events: [
           ToolPresentationEvent(
@@ -111,10 +111,10 @@ void main() {
       );
 
       expect(blocks, hasLength(1));
-      expect(blocks.single.type, AssistantTurnBlockType.toolWorkflow);
-      expect(blocks.single.status, 'completed');
-      expect(blocks.single.payload?['steps'][0]['summary'], '已创建提醒：开会');
-      expect(blocks.single.payload?['steps'][0]['details']['title'], '开会');
+      expect(blocks.single.type, AssistantTurnBlockType.toolResultSummary);
+      expect(blocks.single.status, 'success');
+      expect(blocks.single.text, '已创建提醒：开会');
+      expect(blocks.single.payload?['data']['title'], '开会');
     });
 
     test('keeps parallel steps separate and matches result by provider call id',
@@ -174,6 +174,8 @@ void main() {
       final runningBlock = blocks.firstWhere(
         (block) => block.type == AssistantTurnBlockType.toolWorkflow,
       );
+      expect(blocks.first, resultBlock);
+      expect(blocks.last, runningBlock);
       expect(resultBlock.payload?['data']['url'], 'https://a.example.com');
       expect(runningBlock.payload?['steps'][0]['providerCallId'], 'call_b');
     });
