@@ -518,6 +518,7 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
       summary: '正在执行工具：$toolDisplayName',
       requiresConfirmation: false,
       stepId: stepId,
+      providerCallId: toolCall.providerCallId,
     );
     final controller = StreamController<ChatEvent>();
     unawaited(() async {

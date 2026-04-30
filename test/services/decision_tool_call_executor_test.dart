@@ -249,6 +249,86 @@ void main() {
       );
     });
 
+    test('preserves provider call id from proposed to running and result',
+        () async {
+      final turnRepository = _InMemoryChatTurnRepository();
+      final stepRepository = _InMemoryChatTurnStepRepository();
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          id: 22,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '检查 provider call id 贯穿',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+      final toolCallService = _TrackingToolCallService(
+        definitionsByName: {
+          'Read': const ToolDefinition(
+            name: 'Read',
+            title: '读取文件',
+            isConcurrencySafe: true,
+          ),
+        },
+        handlersByKey: {
+          'alpha.txt': () => _delayedSuccess('Read', 'alpha.txt'),
+        },
+      );
+      final executor = DefaultDecisionToolCallExecutor(
+        turnRepository: turnRepository,
+        stepRepository: stepRepository,
+        eventRepository: eventRepository,
+        toolCallService: toolCallService,
+        limits: const AgentLoopLimits(),
+        maxConcurrentExecutions: 1,
+      );
+
+      await executor
+          .executeDecisionToolCalls(
+            turn: turn,
+            decision: const ModelTurnDecision(
+              toolCalls: [
+                ModelToolCall(
+                  providerCallId: 'call_alpha',
+                  toolName: 'Read',
+                  arguments: {'file_path': 'alpha.txt'},
+                  sequence: 1,
+                ),
+              ],
+              assistantMessage: null,
+              providerState: {'response_id': 'resp_provider_call_chain'},
+              isTerminal: false,
+            ),
+            config: ChatConfig(systemPrompt: ''),
+            consecutiveFailures: 0,
+          )
+          .toList();
+
+      final proposedEvents = eventRepository.events
+          .where((event) => event.eventType == ChatEventType.assistantToolCall)
+          .toList(growable: false);
+      final runningEvents = eventRepository.events
+          .where((event) => event.eventType == ChatEventType.toolExecutionStarted)
+          .toList(growable: false);
+      final toolResultEvents = eventRepository.events
+          .where((event) => event.eventType == ChatEventType.toolResult)
+          .toList(growable: false);
+
+      expect(proposedEvents, hasLength(1));
+      expect(runningEvents, hasLength(1));
+      expect(
+        proposedEvents.single.payloadJson?['providerCallId'],
+        'call_alpha',
+      );
+      expect(
+        runningEvents.single.payloadJson?['providerCallId'],
+        'call_alpha',
+      );
+      expect(toolResultEvents, hasLength(1));
+      expect(toolResultEvents.single.payloadJson?['providerCallId'], 'call_alpha');
+    });
+
     test('emits tool execution started once even when service reports pre-start',
         () async {
       final turnRepository = _InMemoryChatTurnRepository();

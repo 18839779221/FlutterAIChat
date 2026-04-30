@@ -28,6 +28,10 @@ class ToolInvocation {
   /// confirmation.
   final int? stepId;
 
+  /// Provider-native tool call id used to correlate proposed/running/result
+  /// events for one logical tool step across transcript and continuation.
+  final String? providerCallId;
+
   const ToolInvocation({
     required this.toolName,
     required this.arguments,
@@ -36,6 +40,7 @@ class ToolInvocation {
     required this.requiresConfirmation,
     this.decisionReason,
     this.stepId,
+    this.providerCallId,
   });
 
   factory ToolInvocation.fromJson(Map<String, dynamic> json) {
@@ -67,6 +72,7 @@ class ToolInvocation {
       requiresConfirmation: json['requiresConfirmation'] as bool? ?? false,
       decisionReason: json['decisionReason'] as String?,
       stepId: json['stepId'] as int?,
+      providerCallId: (json['providerCallId'] as String?)?.trim(),
     );
   }
 
@@ -79,6 +85,8 @@ class ToolInvocation {
       'requiresConfirmation': requiresConfirmation,
       if (decisionReason != null) 'decisionReason': decisionReason,
       if (stepId != null) 'stepId': stepId,
+      if ((providerCallId ?? '').trim().isNotEmpty)
+        'providerCallId': providerCallId!.trim(),
     };
   }
 
@@ -90,6 +98,7 @@ class ToolInvocation {
     bool? requiresConfirmation,
     String? decisionReason,
     int? stepId,
+    String? providerCallId,
   }) {
     return ToolInvocation(
       toolName: toolName ?? this.toolName,
@@ -99,6 +108,7 @@ class ToolInvocation {
       requiresConfirmation: requiresConfirmation ?? this.requiresConfirmation,
       decisionReason: decisionReason ?? this.decisionReason,
       stepId: stepId ?? this.stepId,
+      providerCallId: providerCallId ?? this.providerCallId,
     );
   }
 }
