@@ -791,6 +791,7 @@ class _NoopBaseLLM implements BaseLLM {
     ChatTurnProviderStyle? providerStyle,
     Map<String, dynamic>? providerState,
     List<Map<String, dynamic>> providerContinuationItems = const [],
+    void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async =>
       null;
 

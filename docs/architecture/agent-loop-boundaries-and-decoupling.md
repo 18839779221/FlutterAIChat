@@ -96,6 +96,8 @@ Core 不应该直接承担：
 - 不同 provider 的能力边界声明
 - tool call / continuation / reasoning 等 provider 特定协议兼容
 - provider 返回结果解析成统一的 `ModelTurnDecision` 或统一中间结果
+- provider 流式增量在适配层内部的规范化、组装与收敛
+- provider 请求超时、流空闲超时、整体流式尝试超时等传输级控制
 
 典型内容包括：
 
@@ -107,6 +109,13 @@ Core 不应该直接承担：
 
 - Core 关心的是“决策契约”，不是“HTTP 长什么样”
 - provider 可以替换，但 `TurnHarness` 不应因此改变主状态机
+- 即使 provider 以流式方式返回增量，Core 也只应看到收敛后的统一决策，而不是 provider 原始 chunk
+
+进一步约束：
+
+- planner 的流式 tool call 组装默认只停留在 `Model Gateway / Provider Adapter`
+- 若未来某些上层场景需要消费流式中间态，也应先定义独立的上层契约，而不是让 Core 直接理解某家 provider 的 chunk 语义
+- `idle timeout` 与 `overall timeout` 属于传输执行策略，不应上抬为 turn loop 语义
 
 进一步地，`API style` 与 `provider capability` 也必须视为两层不同概念：
 
