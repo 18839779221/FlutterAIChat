@@ -96,6 +96,27 @@ class StreamingDecisionAccumulator {
     );
   }
 
+  /// Returns a compact debug snapshot for logging when stream assembly fails.
+  Map<String, dynamic> debugSnapshot() {
+    return {
+      'assistantTextLength': _assistantTextBuffer.length,
+      'reasoningLength': _reasoningBuffer.length,
+      'providerStateKeys': _providerState.keys.toList(growable: false),
+      'toolDrafts': _toolCallDrafts
+          .map(
+            (draft) => {
+              'sequence': draft.sequence,
+              'providerCallId': draft.providerCallId,
+              'toolName': draft.toolName,
+              'isCompleted': draft.isCompleted,
+              'rawArgumentsLength': draft.rawArgumentsLength,
+              'canFinalizeOnStreamCompleted': draft.canFinalizeOnStreamCompleted,
+            },
+          )
+          .toList(growable: false),
+    };
+  }
+
   _ToolCallDraft _resolveDraft(StreamingPlannerChunk chunk) {
     final providerCallId = _normalizeText(chunk.providerCallId);
     if (providerCallId != null) {
@@ -151,6 +172,8 @@ class _ToolCallDraft {
   String? toolName;
   bool isCompleted = false;
   final StringBuffer _rawArgumentsBuffer = StringBuffer();
+
+  int get rawArgumentsLength => _rawArgumentsBuffer.length;
 
   bool get canFinalizeOnStreamCompleted =>
       toolName != null || providerCallId != null || _rawArgumentsBuffer.isNotEmpty;
