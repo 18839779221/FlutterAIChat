@@ -206,6 +206,14 @@ The app uses **flutter_riverpod** with a split provider/controller architecture:
 - Legacy JSON planner compatibility has been removed; do not add fallback planner formats back in
 - Do not re-inject raw `additionalContextMessages` / search hit details verbatim into the next planner or final-answer prompt; persist tool outcomes into turn-step ledger summaries and feed the model with compact structured summaries instead
 - A single provider decision may contain both assistant text and tool calls; do not force a tool-or-text-only split
+- Provider streaming for planner/tool-call assembly must remain an LLM-adapter-internal capability:
+  - `ConfigurableHttpLLM` / parser / accumulator may consume streaming deltas internally
+  - upper layers must still consume one final `ModelTurnDecision`
+  - do not make `TurnHarness`、`AgentPlannerService`、projection providers, or widgets depend on planner mid-stream delta events unless the architecture is explicitly revised
+- Streaming planner timeout policy should distinguish `idle timeout` from `overall timeout`:
+  - idle timeout means no provider delta arrives for a sustained period
+  - overall timeout is a coarse upper bound for one streaming attempt
+  - do not regress to a single "whole request must fully close within one fixed timeout" rule for streaming planner paths
 - Persist intermediate assistant text emitted before tool execution as `assistantPlannerMessage` so transcript, UI projection, and step ledger stay aligned
 - Treat `AskUserQuestion` as an interaction-style tool:
   - do not route it through `ToolOrchestratorService.executeToolInvocation()`

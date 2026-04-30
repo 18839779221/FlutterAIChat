@@ -2,6 +2,7 @@ import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/llm/adapters/anthropic_messages_adapter.dart';
 import 'package:ai_chat/models/llm/llm_config.dart';
+import 'package:ai_chat/models/llm/llm_request_options.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -29,10 +30,11 @@ void main() {
         config: ChatConfig(systemPrompt: 'top'),
         modelName: 'claude',
         stream: true,
+        requestOptions: const LlmRequestOptions(maxOutputTokens: 12000),
       );
 
       expect(payload['system'], 'top\n\nignored-inline');
-      expect(payload['max_tokens'], 4096);
+      expect(payload['max_tokens'], 12000);
       final messages = payload['messages'] as List<dynamic>;
       expect(messages.length, 1);
       expect(messages[0]['role'], 'user');

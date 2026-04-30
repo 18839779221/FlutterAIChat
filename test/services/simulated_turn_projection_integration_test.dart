@@ -21,7 +21,6 @@ import 'package:ai_chat/models/tool/tool_argument_property.dart';
 import 'package:ai_chat/models/tool/tool_argument_schema.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
-import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
@@ -1268,6 +1267,7 @@ class _QueuedDecisionLLM extends BaseLLM {
     ChatTurnProviderStyle? providerStyle,
     Map<String, dynamic>? providerState,
     List<Map<String, dynamic>> providerContinuationItems = const [],
+    void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     if (_decisions.isEmpty) {
       throw StateError('No queued decisions left');

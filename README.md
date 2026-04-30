@@ -35,6 +35,8 @@
 - 同一个模型决策可同时包含 assistant 文本和多个 tool call，不再强制“工具调用”和“文本回复”二选一
 - turn 内多次 tool use 会持久化到 `chat_turn_steps`，后续决策统一消费 ledger summary，而不是把原始工具明细全文回填给模型
 - 中间态 assistant 文本会以 `assistantPlannerMessage` 事件落库，便于在工具执行前保留模型可见解释
+- provider-native planner 在 `ConfigurableHttpLLM` 内部可使用 streaming 做 tool-call / assistant decision 收敛，但上层仍只消费最终 `ModelTurnDecision`，不会直接感知 planner 中途 delta
+- 流式 planner 超时策略已区分 `idle timeout` 与 `overall timeout`：持续收到增量时不会仅因等待最终闭合而过早失败，但单次流式尝试仍有总上限兜底
 - Prompt 统一通过 `lib/services/prompt/` 下的 catalog / builder 组装，按 `base prompt`、`stage delta`、`runtime sections`、`user context messages`、`session context messages` 五类心智模型管理
 - 核心 prompt 同时维护英文版与中文版，默认使用英文版
 - `summary` 与标题生成等轻量调用走轻量 prompt，不复用完整主对话 prompt
