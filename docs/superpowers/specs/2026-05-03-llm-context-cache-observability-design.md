@@ -297,7 +297,26 @@ class LlmRequestTelemetry {
 
 ## 日志设计
 
-遵守 `docs/architecture/logging.md`，所有正式观测走 `Logger.trace`。
+本轮日志必须纳入 `docs/architecture/logging.md` 定义的现有日志与 Trace 架构。
+
+具体约束：
+
+- `docs/architecture/logging.md` 仍是日志、trace、临时调试日志的唯一规范来源；
+- 缓存观测属于 File Log 的 trace 类排障信息，不进入 Transcript；
+- 不新增 `cache.log`、`llm.log`、`metrics.log` 等平行日志文件；
+- 不新增绕开 `Logger` 的观测工具；
+- 不把缓存 telemetry 写入 `chat_events` 当作用户可见时间线；
+- 不把缓存 telemetry 写入 `chat_turn` / `chat_turn_step` 当作恢复状态真相；
+- 原生平台继续写入 `logs/app.log`，Web 继续只输出控制台；
+- 若实现过程中发现需要调整日志规范，应更新 `docs/architecture/logging.md`，不要在本设计文档复制维护第二套规则。
+
+缓存观测的职责边界：
+
+- Transcript：不记录缓存命中、payload 字节数、首 chunk 延迟等内部诊断信息；
+- Ledger：仅保留 provider runtime state 和 turn/step 恢复所需结构，不把 cache usage 作为恢复依赖；
+- File Log：记录 LLM 请求时序、usage、cache hit/miss 观测、prefix risk 等排障信息。
+
+所有正式观测走 `Logger.trace`。如果某条缓存诊断只是短期实验插桩，必须走 `Logger.temp` 并带 `reason`，后续要么清理，要么升级为正式 trace。
 
 新增锚点：
 
@@ -305,6 +324,8 @@ class LlmRequestTelemetry {
 - `llm.first_chunk`
 - `llm.request.done`
 - `llm.request.failed`
+
+这些锚点补充 `logging.md` 中“LLM 请求开始、首 token、完成、失败”的语义，不替代已有 `turn.start`、`planner.start`、`planner.done` 等锚点。
 
 推荐字段：
 
@@ -325,6 +346,8 @@ class LlmRequestTelemetry {
 - `cacheWriteInputTokens`
 - `cacheMissInputTokens`
 - `attempt`
+
+字段策略遵守 `logging.md`：锚点日志带必要关联字段，跟随日志不强制重复全量上下文。后续如果需要把推荐字段提升为项目通用规范，应只在 `docs/architecture/logging.md` 中维护。
 
 日志不记录完整 prompt，不记录 API key，不记录完整 payload。
 
