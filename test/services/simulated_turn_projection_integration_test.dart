@@ -1114,6 +1114,197 @@ void main() {
       expect(turns.single.status, ChatTurnStatus.failed);
       expect(turns.single.errorMessage, 'planner_no_terminal_decision');
     });
+
+    test('tool-use visible reasoning lands in waiting timeline projection',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final toolPolicyService = await _createToolPolicyService();
+      final planner = AgentPlannerService(
+        llm: _QueuedDecisionLLM([
+          const ModelTurnDecision(
+            toolCalls: [
+              ModelToolCall(
+                toolName: 'create_reminder',
+                arguments: {'title': '交周报'},
+                sequence: 0,
+              ),
+            ],
+            assistantMessage: '我先整理提醒参数。',
+            visibleReasoning: '先确认这一步需要用户授权，再进入工具执行。',
+            diagnosticCode: 'planner_action_call_tool',
+            providerState: {'response_id': 'resp_reasoning_tool'},
+            isTerminal: false,
+          ),
+        ]),
+        availableTools: [
+          _createReminderDefinition,
+        ],
+        toolPolicyService: toolPolicyService,
+      );
+      final toolCallService = _QueuedToolCallService(
+        chatStorage: databaseHelper,
+        definitions: {
+          'create_reminder': _createReminderDefinition,
+        },
+        queuedResultsByTool: {
+          'create_reminder': Queue.of([
+            const ToolPreparationResult(
+              toolInvocation: ToolInvocation(
+                toolName: 'create_reminder',
+                arguments: {'title': '交周报'},
+                status: ToolInvocationStatus.awaitingConfirmation,
+                summary: '请确认执行工具：创建提醒',
+                requiresConfirmation: true,
+              ),
+              toolResult: null,
+              additionalContextMessages: [],
+            ),
+          ]),
+        },
+      );
+      final harness = _createHarness(
+        databaseHelper: databaseHelper,
+        planner: planner,
+        toolCallService: toolCallService,
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId = await databaseHelper
+          .insertGroup(ChatGroup(title: 'projection group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'projection group');
+
+      final turnRepository = ChatTurnRepository(databaseHelper);
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '先查一下再总结。',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+
+      await _consumeEventStream(
+        container: container,
+        groupId: groupId,
+        traceTurnId: 'trace-visible-reasoning',
+        agentTurnId: turnId,
+        stream: harness.runTurn(
+          turn: turn,
+          config: ChatConfig(systemPrompt: ''),
+        ),
+      );
+
+      final assistantMessages = container
+          .read(messagesProvider)
+          .where((message) => message.role == MessageRole.assistant)
+          .toList(growable: false);
+      expect(
+        assistantMessages.any(
+          (message) =>
+              message.reasoningContent ==
+                  '先确认这一步需要用户授权，再进入工具执行。' &&
+              message.payloadJson?['reasoningScope'] == 'tool_use',
+        ),
+        isTrue,
+      );
+
+      final projection = container.read(chatTimelineProjectionProvider);
+      expect(
+        projection.assistantBlocks.any(
+          (block) =>
+              block.type == AssistantTurnBlockType.analysis &&
+              block.reasoningText ==
+                  '先确认这一步需要用户授权，再进入工具执行。' &&
+              block.payload?['reasoningScope'] == 'tool_use',
+        ),
+        isTrue,
+      );
+      expect(
+        container.read(activePendingToolConfirmationProvider),
+        isNotNull,
+      );
+      expect((await turnRepository.getTurn(turnId))!.status,
+          ChatTurnStatus.awaitingToolConfirmation);
+    });
+
+    test('final-answer visible reasoning lands in final timeline block',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final toolPolicyService = await _createToolPolicyService();
+      final planner = AgentPlannerService(
+        llm: _QueuedDecisionLLM([
+          const ModelTurnDecision(
+            toolCalls: [],
+            assistantMessage: '根据已有记录，这是整理后的最终答复。',
+            visibleReasoning: '资料已经足够，可以直接汇总。',
+            diagnosticCode: 'planner_action_respond',
+            providerState: {'response_id': 'resp_reasoning_final'},
+            isTerminal: true,
+          ),
+        ]),
+        availableTools: const [],
+        toolPolicyService: toolPolicyService,
+      );
+      final toolCallService = _QueuedToolCallService(
+        chatStorage: databaseHelper,
+        definitions: const {},
+        queuedResultsByTool: const {},
+      );
+      final harness = _createHarness(
+        databaseHelper: databaseHelper,
+        planner: planner,
+        toolCallService: toolCallService,
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId = await databaseHelper
+          .insertGroup(ChatGroup(title: 'projection group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'projection group');
+
+      final turnRepository = ChatTurnRepository(databaseHelper);
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '直接总结一下。',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+
+      await _consumeEventStream(
+        container: container,
+        groupId: groupId,
+        traceTurnId: 'trace-visible-final-reasoning',
+        agentTurnId: turnId,
+        stream: harness.runTurn(
+          turn: turn,
+          config: ChatConfig(systemPrompt: ''),
+        ),
+      );
+
+      final projection = container.read(chatTimelineProjectionProvider);
+      expect(
+        projection.assistantBlocks.any(
+          (block) =>
+              block.type == AssistantTurnBlockType.finalResponse &&
+              block.reasoningText == '资料已经足够，可以直接汇总。' &&
+              block.text == '根据已有记录，这是整理后的最终答复。',
+        ),
+        isTrue,
+      );
+      expect((await turnRepository.getTurn(turnId))!.status,
+          ChatTurnStatus.completed);
+    });
   });
 }
 
