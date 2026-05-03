@@ -17,14 +17,14 @@ class StreamingDecisionAccumulator {
     switch (chunk.type) {
       case StreamingPlannerChunkType.contentDelta:
         _mergeProviderState(chunk.providerMetadata);
-        final content = _normalizeText(chunk.content);
+        final content = _nonEmptyText(chunk.content);
         if (content != null) {
           _assistantTextBuffer.write(content);
         }
         return;
       case StreamingPlannerChunkType.reasoningDelta:
         _mergeProviderState(chunk.providerMetadata);
-        final content = _normalizeText(chunk.content);
+        final content = _nonEmptyText(chunk.content);
         if (content != null) {
           _reasoningBuffer.write(content);
         }
@@ -159,6 +159,13 @@ class StreamingDecisionAccumulator {
     }
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : value;
+  }
+
+  String? _nonEmptyText(String? value) {
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return value;
   }
 }
 

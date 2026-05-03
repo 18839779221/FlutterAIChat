@@ -98,7 +98,7 @@ class OpenAIResponsesToolLoopAdapter {
         if (normalizedPart['type'] != 'output_text') {
           continue;
         }
-        final text = _normalizeText(normalizedPart['text']);
+        final text = _nonBlankText(normalizedPart['text']);
         if (text != null) {
           buffer.write(text);
         }
@@ -174,5 +174,12 @@ class OpenAIResponsesToolLoopAdapter {
       return null;
     }
     return trimmed;
+  }
+
+  String? _nonBlankText(dynamic value) {
+    if (value is! String) {
+      return null;
+    }
+    return value.trim().isEmpty ? null : value;
   }
 }

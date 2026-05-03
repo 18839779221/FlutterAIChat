@@ -92,7 +92,7 @@ class AnthropicMessagesToolLoopAdapter {
     if (type != 'text') {
       return null;
     }
-    return _normalizeText(item['text']);
+    return _nonBlankText(item['text']);
   }
 
   String? _normalizeText(dynamic value) {
@@ -104,5 +104,12 @@ class AnthropicMessagesToolLoopAdapter {
       return null;
     }
     return trimmed;
+  }
+
+  String? _nonBlankText(dynamic value) {
+    if (value is! String) {
+      return null;
+    }
+    return value.trim().isEmpty ? null : value;
   }
 }
