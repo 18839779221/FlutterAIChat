@@ -85,7 +85,7 @@ class OpenAIChatCompletionsToolLoopAdapter {
   _ContentParts _extractContentParts(dynamic content) {
     final textBuffer = StringBuffer();
     final reasoningBuffer = StringBuffer();
-    final inlineText = _normalizeText(content);
+    final inlineText = _nonBlankText(content);
     if (inlineText != null) {
       final extracted = _extractThinkEnvelope(inlineText);
       if (extracted.reasoning != null) {
@@ -106,7 +106,7 @@ class OpenAIChatCompletionsToolLoopAdapter {
         }
         final normalizedItem = item.cast<String, dynamic>();
         final text =
-            _normalizeText(normalizedItem['text'] ?? normalizedItem['content']);
+            _nonBlankText(normalizedItem['text'] ?? normalizedItem['content']);
         if (text != null) {
           final extracted = _extractThinkEnvelope(text);
           if (extracted.reasoning != null) {
@@ -148,6 +148,13 @@ class OpenAIChatCompletionsToolLoopAdapter {
       return null;
     }
     return trimmed;
+  }
+
+  String? _nonBlankText(dynamic value) {
+    if (value is! String) {
+      return null;
+    }
+    return value.trim().isEmpty ? null : value;
   }
 
   String? _joinReasoningParts(List<dynamic> values) {

@@ -29,6 +29,37 @@ void main() {
       expect(decision.isTerminal, isTrue);
     });
 
+    test('preserves whitespace-only deltas inside assistant markdown', () {
+      final accumulator = StreamingDecisionAccumulator();
+
+      accumulator.consume(
+        const StreamingPlannerChunk.contentDelta('# 标题'),
+      );
+      accumulator.consume(
+        const StreamingPlannerChunk.contentDelta('\n\n'),
+      );
+      accumulator.consume(
+        const StreamingPlannerChunk.contentDelta('```dart'),
+      );
+      accumulator.consume(
+        const StreamingPlannerChunk.contentDelta('\n'),
+      );
+      accumulator.consume(
+        const StreamingPlannerChunk.contentDelta('ListView.builder();'),
+      );
+      accumulator.consume(
+        const StreamingPlannerChunk.streamCompleted(),
+      );
+
+      final decision = accumulator.buildDecision();
+
+      expect(decision, isNotNull);
+      expect(
+        decision!.assistantMessage,
+        '# 标题\n\n```dart\nListView.builder();',
+      );
+    });
+
     test('aggregates completed tool call arguments by provider call id', () {
       final accumulator = StreamingDecisionAccumulator();
 

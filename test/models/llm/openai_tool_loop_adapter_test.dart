@@ -143,6 +143,32 @@ void main() {
       expect(decision.isTerminal, isTrue);
     });
 
+    test('preserves markdown whitespace across split content parts', () {
+      const adapter = OpenAIChatCompletionsToolLoopAdapter();
+
+      final decision = adapter.parseDecision({
+        'choices': [
+          {
+            'message': {
+              'role': 'assistant',
+              'content': [
+                {'type': 'text', 'text': '# 标题\n\n'},
+                {'type': 'text', 'text': '正文段落。\n\n'},
+                {'type': 'text', 'text': '```dart\n'},
+                {'type': 'text', 'text': 'ListView.builder();\n```'},
+              ],
+            },
+          },
+        ],
+      });
+
+      expect(decision, isNotNull);
+      expect(
+        decision!.assistantMessage,
+        '# 标题\n\n正文段落。\n\n```dart\nListView.builder();\n```',
+      );
+    });
+
     test('extracts inline think tag from terminal assistant message', () {
       const adapter = OpenAIChatCompletionsToolLoopAdapter();
 
@@ -311,6 +337,30 @@ void main() {
       expect(decision.providerState, containsPair('response_id', 'resp_456'));
     });
 
+    test('preserves markdown whitespace across split output text parts', () {
+      const adapter = OpenAIResponsesToolLoopAdapter();
+
+      final decision = adapter.parseDecision({
+        'id': 'resp_markdown_parts',
+        'output': [
+          {
+            'type': 'message',
+            'content': [
+              {'type': 'output_text', 'text': '# 标题\n\n'},
+              {'type': 'output_text', 'text': '1. 第一项\n'},
+              {'type': 'output_text', 'text': '2. 第二项'},
+            ],
+          },
+        ],
+      });
+
+      expect(decision, isNotNull);
+      expect(
+        decision!.assistantMessage,
+        '# 标题\n\n1. 第一项\n2. 第二项',
+      );
+    });
+
     test('preserves response_id when payload exposes a reusable response id',
         () {
       const adapter = OpenAIResponsesToolLoopAdapter();
@@ -376,6 +426,25 @@ void main() {
       expect(decision!.visibleReasoning, '我已经有足够信息，可以总结。');
       expect(decision.assistantMessage, '最终回答。');
       expect(decision.isTerminal, isTrue);
+    });
+
+    test('preserves markdown whitespace across split text blocks', () {
+      const adapter = AnthropicMessagesToolLoopAdapter();
+
+      final decision = adapter.parseDecision({
+        'id': 'msg_markdown_parts',
+        'content': [
+          {'type': 'text', 'text': '## 方案\n\n'},
+          {'type': 'text', 'text': '- 外层滚动\n'},
+          {'type': 'text', 'text': '- 内层固定高度'},
+        ],
+      });
+
+      expect(decision, isNotNull);
+      expect(
+        decision!.assistantMessage,
+        '## 方案\n\n- 外层滚动\n- 内层固定高度',
+      );
     });
   });
 }
