@@ -62,9 +62,11 @@ class ChatTimelineProjectionService {
     required List<ChatMessage> messages,
     required int? groupId,
   }) {
-    final nonToolMessages = messages.where(_belongsToNonToolBlockProjection).toList(
-          growable: false,
-        );
+    final nonToolMessages = messages
+        .where(
+          (message) => message.isUser || _belongsToNonToolBlockProjection(message),
+        )
+        .toList(growable: false);
     return _blockBuilder
         .buildAssistantBlocks(
           messages: nonToolMessages,

@@ -575,6 +575,55 @@ void main() {
       expect(llm.lastMessages.single.text, contains('帮我确认数据库版本'));
     });
 
+    test('planNextDecision preserves visible reasoning on tool decisions',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [
+            ModelToolCall(
+              toolName: 'search_chat_history',
+              arguments: {'query': '数据库版本'},
+              sequence: 0,
+            ),
+          ],
+          assistantMessage: '我先查一下记录。',
+          visibleReasoning: '先检查历史结果，再决定是否继续搜索。',
+          providerState: {'response_id': 'resp_reasoning'},
+          isTerminal: false,
+        ),
+      );
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: await _createToolPolicyService(),
+        availableTools: const [
+          ToolDefinition(
+            name: 'search_chat_history',
+            title: '搜索聊天记录',
+            descriptionForModel: '当用户要求从历史记录找结论时使用。',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'query': ToolArgumentProperty.string(description: '查询词'),
+              },
+              required: ['query'],
+            ),
+          ),
+        ],
+      );
+
+      final decision = await service.planNextDecision(
+        turn: _turn(),
+        transcript: [_userEvent()],
+        steps: const [],
+        config: ChatConfig(systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, hasLength(1));
+      expect(decision.visibleReasoning, '先检查历史结果，再决定是否继续搜索。');
+      expect(decision.assistantMessage, '我先查一下记录。');
+    });
+
     test('planNextDecision forwards turn runtime provider state to llm',
         () async {
       final llm = _NativeDecisionLLM(

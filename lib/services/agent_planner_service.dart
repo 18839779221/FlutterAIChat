@@ -183,6 +183,7 @@ class AgentPlannerService {
         return ModelTurnDecision(
           toolCalls: const [],
           assistantMessage: decision.assistantMessage,
+          visibleReasoning: decision.visibleReasoning,
           diagnosticCode: decision.diagnosticCode,
           providerState: decision.providerState,
           providerStyle: decision.providerStyle,
@@ -202,6 +203,7 @@ class AgentPlannerService {
     return ModelTurnDecision(
       toolCalls: filteredCalls,
       assistantMessage: decision.assistantMessage,
+      visibleReasoning: decision.visibleReasoning,
       diagnosticCode: decision.diagnosticCode,
       providerState: decision.providerState,
       providerStyle: decision.providerStyle,
