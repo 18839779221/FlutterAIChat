@@ -1,6 +1,8 @@
 import '../../agent/planner_tool_choice.dart';
 import '../../agent/planner_tool_option.dart';
 import '../../chat_message.dart';
+import '../llm_cache_request_options.dart';
+import '../llm_cache_strategy.dart';
 import '../llm_request_options.dart';
 import '../../../services/chat_service.dart';
 import '../api_protocol_resolver.dart';
@@ -79,6 +81,7 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
       payload['tools'] = tools;
       payload['tool_choice'] = {'type': 'auto'};
     }
+    _applyCacheHints(payload, requestOptions.cache);
     return payload;
   }
 
@@ -231,6 +234,31 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
         },
       ],
     };
+  }
+
+  void _applyCacheHints(
+    Map<String, dynamic> payload,
+    LlmCacheRequestOptions cache,
+  ) {
+    if (cache.strategy != LlmCacheStrategy.providerHints) {
+      return;
+    }
+    if (!cache.markStableSystemPrefix) {
+      return;
+    }
+
+    final systemValue = payload['system'];
+    if (systemValue is! String || systemValue.trim().isEmpty) {
+      return;
+    }
+
+    payload['system'] = [
+      {
+        'type': 'text',
+        'text': systemValue,
+        'cache_control': {'type': 'ephemeral'},
+      },
+    ];
   }
 
   List<Map<String, dynamic>> _normalizeContinuationItems({

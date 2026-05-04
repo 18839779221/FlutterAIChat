@@ -13,6 +13,7 @@ import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/session_summary_service.dart';
+import 'package:ai_chat/utils/logger.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -165,6 +166,20 @@ void main() {
           'path': 'a.txt',
           'content': 'hello',
         },
+      );
+      expect(
+        decision.providerState['content_blocks'],
+        [
+          {
+            'type': 'tool_use',
+            'id': 'toolu_1',
+            'name': 'write_file',
+            'input': {
+              'path': 'a.txt',
+              'content': 'hello',
+            },
+          },
+        ],
       );
       expect(decision.providerStyle, ChatTurnProviderStyle.anthropicMessages);
       expect(decision.modelName, 'gpt-5.4');
@@ -438,6 +453,115 @@ void main() {
       expect(decision.modelName, 'gpt-5.4');
       expect(decision.providerState, containsPair('response_id', 'resp_stream'));
       expect(decision.isTerminal, isFalse);
+    });
+
+    test('records trace events for non-stream planner requests', () async {
+      final collected = <Map<String, dynamic>>[];
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'role': 'assistant',
+                  'content': '直接回答',
+                },
+              },
+            ],
+            'usage': {
+              'prompt_tokens': 12,
+              'completion_tokens': 4,
+              'prompt_tokens_details': {'cached_tokens': 8},
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+        traceEmitter: (tag, message, {level = LogLevel.info, data}) {
+          collected.add({
+            'tag': tag,
+            'message': message,
+            'level': level.name,
+            if (data != null) 'data': data,
+          });
+        },
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '直接回答', role: MessageRole.user),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [],
+      );
+
+      expect(decision, isNotNull);
+      final done = collected.lastWhere(
+        (entry) => entry['message'] == 'llm.request.done',
+      );
+      expect(done['data'], containsPair('cachedInputTokens', 8));
+    });
+
+    test('records trace events for streaming planner requests', () async {
+      final firstChunk = jsonEncode({
+        'id': 'chatcmpl_stream',
+        'choices': [
+          {
+            'delta': {
+              'content': '最',
+            },
+          },
+        ],
+      });
+      final collected = <Map<String, dynamic>>[];
+      final client = _RecordingHttpClient(
+        handler: (request) => http.StreamedResponse(
+          Stream<List<int>>.fromIterable([
+            utf8.encode('data: $firstChunk\n\n'),
+            utf8.encode('data: [DONE]\n'),
+          ]),
+          200,
+          headers: {'content-type': 'text/event-stream; charset=utf-8'},
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+        traceEmitter: (tag, message, {level = LogLevel.info, data}) {
+          collected.add({
+            'tag': tag,
+            'message': message,
+            'level': level.name,
+            if (data != null) 'data': data,
+          });
+        },
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '直接回答', role: MessageRole.user),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [],
+      );
+
+      expect(decision, isNotNull);
+      expect(
+        collected.where((entry) => entry['message'] == 'llm.request.start'),
+        isNotEmpty,
+      );
+      expect(
+        collected.where((entry) => entry['message'] == 'llm.first_chunk'),
+        isNotEmpty,
+      );
+      expect(
+        collected.where((entry) => entry['message'] == 'llm.request.done'),
+        isNotEmpty,
+      );
     });
 
     test(
@@ -2181,6 +2305,12 @@ Future<ConfigurableHttpLLM> _buildLlm({
   int mainFlowNetworkRetryAttempts = 5,
   String apiKey = 'test-key',
   String modelId = 'gpt-5.4',
+  void Function(
+    String tag,
+    String message, {
+    LogLevel level,
+    Map<String, dynamic>? data,
+  })? traceEmitter,
   Duration Function(int attempt)? retryDelayBuilder,
 }) async {
   SharedPreferences.setMockInitialValues({});
@@ -2210,6 +2340,7 @@ Future<ConfigurableHttpLLM> _buildLlm({
     plannerStreamIdleTimeout: plannerStreamIdleTimeout,
     plannerStreamOverallTimeout: plannerStreamOverallTimeout,
     mainFlowNetworkRetryAttempts: mainFlowNetworkRetryAttempts,
+    traceEmitter: traceEmitter,
     retryDelayBuilder: retryDelayBuilder,
   );
 }
