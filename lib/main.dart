@@ -162,6 +162,11 @@ void main() async {
                 '$reason，正在重试 ${progress.attempt}/${progress.maxAttempts}',
               );
         },
+        onPlannerRuntimeStream: (entries) {
+          container
+              .read(runtimeToolCallFeedProvider.notifier)
+              .publish(entries);
+        },
       ),
       turnRepository: turnRepository,
       turnStepRepository: turnStepRepository,

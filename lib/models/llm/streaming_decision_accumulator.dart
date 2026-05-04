@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../agent/model_tool_call.dart';
+import '../chat/runtime_stream_entry.dart';
 import '../agent/model_turn_decision.dart';
 
 import 'streaming_planner_chunk.dart';
@@ -125,6 +126,64 @@ class StreamingDecisionAccumulator {
     };
   }
 
+  List<RuntimeStreamEntry> runtimeSnapshots({
+    required String turnId,
+    DateTime? now,
+  }) {
+    final timestamp = now ?? DateTime.now();
+    final snapshots = <RuntimeStreamEntry>[];
+    final assistantText = _assistantTextBuffer.toString();
+    if (assistantText.isNotEmpty) {
+      snapshots.add(
+        RuntimeStreamEntry(
+          turnId: turnId,
+          entryId: '$turnId-assistant-text',
+          kind: RuntimeStreamEntryKind.assistantText,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          text: assistantText,
+        ),
+      );
+    }
+
+    final reasoningText = _reasoningBuffer.toString();
+    if (reasoningText.isNotEmpty) {
+      snapshots.add(
+        RuntimeStreamEntry(
+          turnId: turnId,
+          entryId: '$turnId-reasoning',
+          kind: RuntimeStreamEntryKind.reasoning,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          text: reasoningText,
+        ),
+      );
+    }
+
+    for (final draft in _toolCallDrafts) {
+      if (draft.rawArgumentsLength == 0) {
+        continue;
+      }
+      snapshots.add(
+        RuntimeStreamEntry(
+          turnId: turnId,
+          entryId: draft.runtimeEntryId(turnId),
+          kind: RuntimeStreamEntryKind.toolCallArguments,
+          providerCallId: draft.providerCallId,
+          toolName: draft.toolName,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          text: draft.rawArgumentsText,
+          payload: {
+            'sequence': draft.sequence,
+            'isCompleted': draft.isCompleted,
+          },
+        ),
+      );
+    }
+    return snapshots;
+  }
+
   _ToolCallDraft _resolveDraft(StreamingPlannerChunk chunk) {
     final providerCallId = _normalizeText(chunk.providerCallId);
     if (providerCallId != null) {
@@ -233,6 +292,7 @@ class _ToolCallDraft {
   final StringBuffer _rawArgumentsBuffer = StringBuffer();
 
   int get rawArgumentsLength => _rawArgumentsBuffer.length;
+  String get rawArgumentsText => _rawArgumentsBuffer.toString();
 
   bool get canFinalizeOnStreamCompleted =>
       toolName != null || providerCallId != null || _rawArgumentsBuffer.isNotEmpty;
@@ -258,6 +318,14 @@ class _ToolCallDraft {
   }) {
     mergeStarted(providerCallId: providerCallId, toolName: toolName);
     isCompleted = true;
+  }
+
+  String runtimeEntryId(String turnId) {
+    final normalizedProviderCallId = providerCallId?.trim();
+    if (normalizedProviderCallId != null && normalizedProviderCallId.isNotEmpty) {
+      return '$turnId-tool-$normalizedProviderCallId';
+    }
+    return '$turnId-tool-$sequence';
   }
 
   Map<String, dynamic>? parseArguments() {

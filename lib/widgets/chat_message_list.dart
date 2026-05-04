@@ -1,12 +1,15 @@
 import 'dart:async';
 
+import 'package:ai_chat/models/artifact/artifact_turn_projection.dart';
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
+import 'package:ai_chat/services/artifact/runtime_artifact_preview_parser.dart';
 import 'package:ai_chat/services/chat_block_builder.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/widgets/chat_empty_state.dart';
@@ -27,6 +30,8 @@ class ChatMessageList extends ConsumerStatefulWidget {
 
 class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   final ChatBlockBuilder _blockBuilder = ChatBlockBuilder();
+  final RuntimeArtifactPreviewParser _runtimeArtifactPreviewParser =
+      const RuntimeArtifactPreviewParser();
   static const double _anchorThreshold = 100;
   bool _isLoadingOlderHistory = false;
   late final ScrollController _scrollController;
@@ -117,6 +122,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final sendState = ref.watch(chatSendStateProvider);
     final sendPhase = sendState.phase;
     final timelineProjection = ref.watch(chatTimelineProjectionProvider);
+    final runtimeToolCallFeed = ref.watch(runtimeToolCallFeedProvider);
     final hasMoreMessages = ref.watch(hasMoreMessagesProvider);
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final textController = ref.read(textControllerProvider);
@@ -125,7 +131,10 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final timelineItems = _buildTimelineItems(
       messages,
       sendPhase,
-      timelineProjection.assistantBlocks,
+      _mergeRuntimeArtifactBlocks(
+        projectedAssistantBlocks: timelineProjection.assistantBlocks,
+        runtimeToolCallFeed: runtimeToolCallFeed,
+      ),
       sendState.statusText,
     );
     final itemCount = timelineItems.length + (hasMoreMessages ? 1 : 0);
@@ -375,6 +384,81 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       messages: sourceMessages,
       groupId: groupId,
     );
+  }
+
+  List<AssistantTurnBlock> _mergeRuntimeArtifactBlocks({
+    required List<AssistantTurnBlock> projectedAssistantBlocks,
+    required List<RuntimeStreamEntry> runtimeToolCallFeed,
+  }) {
+    if (runtimeToolCallFeed.isEmpty) {
+      return projectedAssistantBlocks;
+    }
+
+    final runtimeArtifactBlocks = <AssistantTurnBlock>[];
+    for (final entry in runtimeToolCallFeed) {
+      final preview = _runtimeArtifactPreviewParser.parse(entry);
+      if (preview == null) {
+        continue;
+      }
+      final alreadyResolved = projectedAssistantBlocks.any(
+        (block) =>
+            block.type == AssistantTurnBlockType.artifact &&
+            block.turnId == preview.turnId,
+      );
+      if (alreadyResolved) {
+        continue;
+      }
+      runtimeArtifactBlocks.add(
+        AssistantTurnBlock(
+          id: preview.entryId,
+          turnId: preview.turnId,
+          type: AssistantTurnBlockType.artifact,
+          sequence: 99998,
+          createdAt: preview.createdAt,
+          updatedAt: preview.updatedAt,
+          title: preview.title,
+          text: preview.source,
+          payload: const {
+            'isRuntimePreview': true,
+          },
+          artifactProjection: ArtifactTurnProjection(
+            artifactId: preview.artifactId,
+            turnId: preview.turnId,
+            title: preview.title,
+            type: preview.type,
+            sourcePath: preview.sourcePath,
+            source: preview.source,
+            isStale: false,
+            createdAt: preview.createdAt,
+            updatedAt: preview.updatedAt,
+          ),
+        ),
+      );
+    }
+    if (runtimeArtifactBlocks.isEmpty) {
+      return projectedAssistantBlocks;
+    }
+
+    final merged = <AssistantTurnBlock>[
+      ...projectedAssistantBlocks,
+      ...runtimeArtifactBlocks,
+    ];
+    merged.sort((left, right) {
+      final turnOrder = left.turnId.compareTo(right.turnId);
+      if (turnOrder != 0) {
+        return turnOrder;
+      }
+      final createdAtOrder = left.createdAt.compareTo(right.createdAt);
+      if (createdAtOrder != 0) {
+        return createdAtOrder;
+      }
+      final sequenceOrder = left.sequence.compareTo(right.sequence);
+      if (sequenceOrder != 0) {
+        return sequenceOrder;
+      }
+      return left.id.compareTo(right.id);
+    });
+    return merged;
   }
 
   bool _isProjectionOwnedMessage(ChatMessage message) {

@@ -1,5 +1,6 @@
 import 'package:ai_chat/models/llm/streaming_decision_accumulator.dart';
 import 'package:ai_chat/models/llm/streaming_planner_chunk.dart';
+import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -105,6 +106,35 @@ void main() {
         },
       );
       expect(decision.isTerminal, isFalse);
+    });
+
+    test('exposes runtime snapshot for streaming tool call arguments', () {
+      final accumulator = StreamingDecisionAccumulator();
+
+      accumulator.consume(
+        const StreamingPlannerChunk.toolCallStarted(
+          providerCallId: 'toolu_1',
+          toolName: 'create_artifact',
+        ),
+      );
+      accumulator.consume(
+        const StreamingPlannerChunk.toolCallArgumentsDelta(
+          providerCallId: 'toolu_1',
+          toolName: 'create_artifact',
+          argumentsTextDelta: '{"source":"<div>Hello',
+        ),
+      );
+
+      final snapshots = accumulator.runtimeSnapshots(
+        turnId: '7_runtime',
+        now: DateTime(2026, 5, 5, 10),
+      );
+
+      expect(snapshots, hasLength(1));
+      expect(snapshots.single.kind, RuntimeStreamEntryKind.toolCallArguments);
+      expect(snapshots.single.providerCallId, 'toolu_1');
+      expect(snapshots.single.toolName, 'create_artifact');
+      expect(snapshots.single.text, contains('<div>Hello'));
     });
 
     test('returns null when completed tool call arguments stay invalid', () {

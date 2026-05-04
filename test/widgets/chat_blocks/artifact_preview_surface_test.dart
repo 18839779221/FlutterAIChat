@@ -25,6 +25,8 @@ void main() {
     final document = buildArtifactPreviewDocument('<div style="height: 480px"></div>');
 
     expect(document, contains('__artifactHeight__'));
+    expect(document, contains('__artifactLockScroll__'));
+    expect(document, contains("overflow = 'hidden'"));
     expect(document, contains('ResizeObserver'));
     expect(document, contains('scrollHeight'));
   });
