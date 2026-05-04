@@ -294,15 +294,14 @@ WebpageFetcher buildDefaultWebpageFetcher({
           'resultPreview': _buildResultPreview(normalizedProcessedContent),
           'rawExcerpt': _buildRawExcerpt(content),
           'finalUrl': url,
+          'message': _buildFetchWebpageContextText(
+            url: url,
+            prompt: prompt,
+            processedContent: normalizedProcessedContent,
+          ),
           if (extractedTitle != null && extractedTitle.trim().isNotEmpty)
             'title': extractedTitle.trim(),
         },
-        toolResultText: normalizedProcessedContent,
-        contextText: _buildFetchWebpageContextText(
-          url: url,
-          prompt: prompt,
-          processedContent: normalizedProcessedContent,
-        ),
       );
     } catch (error) {
       return ToolResult(

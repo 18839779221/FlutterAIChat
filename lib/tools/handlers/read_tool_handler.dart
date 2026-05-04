@@ -111,10 +111,10 @@ class ReadToolHandler implements ToolHandler {
         toolName: 'Read',
         status: ToolExecutionStatus.failure,
         summary: 'Read failed: file not found',
-        toolResultText:
-            'Read failed: file not found\n实际文件路径：${resolution.relativePath}',
         data: {
           'filePath': resolution.relativePath,
+          'message':
+              'Read failed: file not found\n实际文件路径：${resolution.relativePath}',
         },
         errorMessage: 'file_not_found',
       );
@@ -169,9 +169,9 @@ class ReadToolHandler implements ToolHandler {
       toolName: 'Read',
       status: ToolExecutionStatus.success,
       summary: '已读取文件：${resolution.relativePath}',
-      toolResultText: '已读取文件：${resolution.relativePath}',
       data: {
         'filePath': resolution.relativePath,
+        'message': '已读取文件：${resolution.relativePath}',
         ...formatted.toJson(),
         'fileVersion': version.toJson(),
       },

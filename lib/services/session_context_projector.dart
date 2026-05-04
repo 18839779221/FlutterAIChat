@@ -3,13 +3,18 @@ import '../models/chat_message.dart';
 import '../models/context/model_context_item.dart';
 import '../models/tool/tool_result.dart';
 import 'model_context_item_encoder.dart';
+import 'tool_result_context_projector.dart';
 
 class SessionContextProjector {
   SessionContextProjector({
     ModelContextItemEncoder? contextItemEncoder,
-  }) : _contextItemEncoder = contextItemEncoder ?? const ModelContextItemEncoder();
+    ToolResultContextProjector? toolResultContextProjector,
+  })  : _contextItemEncoder = contextItemEncoder ?? const ModelContextItemEncoder(),
+        _toolResultContextProjector =
+            toolResultContextProjector ?? const ToolResultContextProjector();
 
   final ModelContextItemEncoder _contextItemEncoder;
+  final ToolResultContextProjector _toolResultContextProjector;
 
   List<ChatMessage> projectMessagesToContext(
     List<ChatMessage> messages,
@@ -157,8 +162,11 @@ class SessionContextProjector {
       case ChatEventType.toolError:
         final payload = event.payloadJson;
         final content = payload == null
-            ? event.content?.trim() ?? ''
-            : ToolResult.fromJson(payload).resolvedContextText.trim();
+            ? ''
+            : (_toolResultContextProjector
+                    .projectToContextText(ToolResult.fromJson(payload))
+                    ?.trim() ??
+                '');
         if (content.isEmpty) {
           return null;
         }

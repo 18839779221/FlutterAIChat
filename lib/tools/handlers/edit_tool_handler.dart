@@ -137,8 +137,8 @@ class EditToolHandler implements ToolHandler {
         toolName: 'Edit',
         status: ToolExecutionStatus.success,
         summary: '已编辑文件：${resolution.relativePath}',
-        toolResultText: '已编辑文件：${resolution.relativePath}',
         data: {
+          'message': '已编辑文件：${resolution.relativePath}',
           ...outcome.toJson(),
         },
       );
@@ -147,10 +147,10 @@ class EditToolHandler implements ToolHandler {
         toolName: 'Edit',
         status: ToolExecutionStatus.failure,
         summary: '编辑文件失败：文件未读取或状态已过期',
-        toolResultText:
-            '编辑文件失败：文件未读取或状态已过期\n实际文件路径：${resolution.relativePath}',
         data: {
           'filePath': resolution.relativePath,
+          'message':
+              '编辑文件失败：文件未读取或状态已过期\n实际文件路径：${resolution.relativePath}',
         },
         errorMessage: error.code,
       );
@@ -159,9 +159,9 @@ class EditToolHandler implements ToolHandler {
         toolName: 'Edit',
         status: ToolExecutionStatus.failure,
         summary: '编辑文件失败',
-        toolResultText: '编辑文件失败\n实际文件路径：${resolution.relativePath}',
         data: {
           'filePath': resolution.relativePath,
+          'message': '编辑文件失败\n实际文件路径：${resolution.relativePath}',
         },
         errorMessage: error.code,
       );

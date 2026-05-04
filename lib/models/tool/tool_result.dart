@@ -3,6 +3,9 @@ enum ToolExecutionStatus {
   failure,
 }
 
+/// Tool results carry one compact UI summary plus structured result data.
+/// Planner-visible semantics must be projected from `data` via transcript
+/// replay instead of reading summary text directly.
 class ToolResult {
   /// Stable runtime tool name, used for UI rendering, analytics, and
   /// downstream routing decisions after execution completes.
@@ -13,18 +16,8 @@ class ToolResult {
   final ToolExecutionStatus status;
 
   /// Compact user-facing summary shown in the transcript timeline and cards.
-  /// This should stay concise even when richer structured payload is present.
+  /// This field is only for UI/presentation surfaces.
   final String summary;
-
-  /// Optional tool-authored plain text for later model consumption.
-  /// Use this when the next planner/model round needs a clearer textual result
-  /// than [summary], while keeping the transcript itself compact.
-  final String? toolResultText;
-
-  /// Optional tool-authored context text for future model turns.
-  /// When provided, this takes precedence over [toolResultText] so individual
-  /// tools can trim or normalize large outputs before they re-enter context.
-  final String? contextText;
 
   /// Structured tool payload for machine consumption, such as file metadata,
   /// search hits, identifiers, or other typed execution details.
@@ -46,45 +39,12 @@ class ToolResult {
     required this.toolName,
     required this.status,
     String? summary,
-    this.toolResultText,
-    this.contextText,
     Map<String, dynamic>? data,
     this.executionPolicy,
     this.toolAccess,
     this.errorMessage,
-    String? displayText,
-    Map<String, dynamic>? payload,
-  })  : summary = summary ?? displayText ?? '',
-        data = data ?? payload ?? const {};
-
-  String get displayText => summary;
-
-  Map<String, dynamic> get payload => data;
-
-  /// Returns the normalized tool-authored result text when provided.
-  /// Empty strings are treated as absent to keep downstream consumers simple.
-  String? get resolvedToolResultText {
-    final trimmed = toolResultText?.trim();
-    if (trimmed == null || trimmed.isEmpty) {
-      return null;
-    }
-    return trimmed;
-  }
-
-  /// Returns the effective text that should re-enter planner/session context.
-  /// Defaults to passthrough behavior so tools are unchanged unless they
-  /// explicitly provide a transformed [contextText].
-  String get resolvedContextText {
-    final normalizedContextText = contextText?.trim();
-    if (normalizedContextText != null && normalizedContextText.isNotEmpty) {
-      return normalizedContextText;
-    }
-    final normalizedToolResultText = resolvedToolResultText;
-    if (normalizedToolResultText != null) {
-      return normalizedToolResultText;
-    }
-    return summary.trim();
-  }
+  })  : summary = summary ?? '',
+        data = data ?? const {};
 
   /// Whether this result belongs to an external-action tool family.
   bool get isOutcomeTool {
@@ -148,8 +108,6 @@ class ToolResult {
       'toolName': toolName,
       'status': status.name,
       'summary': summary,
-      if (resolvedToolResultText != null) 'toolResultText': resolvedToolResultText,
-      if (contextText?.trim().isNotEmpty == true) 'contextText': contextText!.trim(),
       'data': data,
       if (resolvedExecutionPolicy != null && toolAccess == null)
         'executionPolicy': resolvedExecutionPolicy,
@@ -169,19 +127,12 @@ class ToolResult {
       status: matchedStatus.isEmpty
           ? ToolExecutionStatus.success
           : matchedStatus.first,
-      summary: (json['summary'] ?? json['displayText']) as String? ?? '',
-      toolResultText: json['toolResultText'] as String?,
-      contextText: json['contextText'] as String?,
+      summary: json['summary'] as String? ?? '',
       data: json['data'] is Map<String, dynamic>
           ? json['data'] as Map<String, dynamic>
           : json['data'] is Map
               ? Map<String, dynamic>.from(json['data'] as Map<dynamic, dynamic>)
-              : json['payload'] is Map<String, dynamic>
-                  ? json['payload'] as Map<String, dynamic>
-                  : json['payload'] is Map
-                      ? Map<String, dynamic>.from(
-                          json['payload'] as Map<dynamic, dynamic>)
-                      : const {},
+              : const {},
       executionPolicy: json['executionPolicy'] as String? ??
           (json['toolAccess'] is Map
               ? (Map<String, dynamic>.from(json['toolAccess']

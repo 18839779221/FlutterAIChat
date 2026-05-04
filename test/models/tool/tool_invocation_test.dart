@@ -43,6 +43,7 @@ void main() {
         summary: '已读取网页',
         data: {
           'url': 'https://example.com',
+          'message': '网页处理结果：example.com 首页概览',
         },
         executionPolicy: 'auto_run',
         toolAccess: {
@@ -60,6 +61,7 @@ void main() {
       expect(decoded.status, ToolExecutionStatus.success);
       expect(decoded.summary, '已读取网页');
       expect(decoded.data, containsPair('url', 'https://example.com'));
+      expect(decoded.data, containsPair('message', '网页处理结果：example.com 首页概览'));
       expect(decoded.executionPolicy, 'auto_run');
       expect(decoded.toolAccess, containsPair('executionPolicy', 'auto_run'));
       expect(decoded.errorMessage, isNull);
@@ -87,16 +89,44 @@ void main() {
       );
     });
 
-    test('prefers contextText over toolResultText when resolving context text', () {
+    test('serializes summary and data without legacy fields', () {
+      const result = ToolResult(
+        toolName: 'web_search',
+        status: ToolExecutionStatus.success,
+        summary: '已执行联网搜索',
+        data: {
+          'query': 'OpenAI latest docs',
+          'results': [
+            {
+              'title': 'OpenAI 发布新文档',
+              'url': 'https://platform.openai.com',
+            },
+          ],
+        },
+      );
+
+      final json = result.toJson();
+
+      expect(json['summary'], '已执行联网搜索');
+      expect((json['data'] as Map<String, dynamic>)['query'], 'OpenAI latest docs');
+      expect(json.containsKey('toolResultText'), isFalse);
+      expect(json.containsKey('contextText'), isFalse);
+      expect(json.containsKey('uiSummaryText'), isFalse);
+    });
+
+    test('does not expose planner-facing text helper on ToolResult', () {
       const result = ToolResult(
         toolName: 'Read',
         status: ToolExecutionStatus.success,
         summary: '已读取文件：demo.md',
-        toolResultText: '完整文件内容',
-        contextText: '裁剪后的文件内容',
+        data: {
+          'filePath': 'demo.md',
+          'message': '裁剪后的文件内容',
+        },
       );
 
-      expect(result.resolvedContextText, '裁剪后的文件内容');
+      expect(result.summary, '已读取文件：demo.md');
+      expect(result.data, containsPair('message', '裁剪后的文件内容'));
     });
   });
 

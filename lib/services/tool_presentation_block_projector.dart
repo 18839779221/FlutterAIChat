@@ -220,12 +220,12 @@ class ToolPresentationBlockProjector {
       title: latestStep['title']?.toString() ?? block.title,
       text: latestStep['summary']?.toString() ?? block.text,
       payload: {
-        ...?previous.payload,
-        ...?block.payload,
-        'sourceMessageId': block.payload?['sourceMessageId'] ??
-            previous.payload?['sourceMessageId'],
-        'steps': mergedSteps,
-      },
+          ...?previous.payload,
+          ...?block.payload,
+          'sourceMessageId': block.payload?['sourceMessageId'] ??
+              previous.payload?['sourceMessageId'],
+          'steps': mergedSteps,
+        },
       workflowSteps: mergedSteps.map(_stepFromJson).toList(growable: false),
     );
   }

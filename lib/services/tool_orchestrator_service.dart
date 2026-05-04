@@ -81,7 +81,6 @@ class ToolOrchestratorService {
         ),
         toolAccess: toolAccess,
         toolResult: null,
-        additionalContextMessages: const [],
         executionStarted: false,
       );
     }
@@ -110,7 +109,6 @@ class ToolOrchestratorService {
         ),
         toolAccess: toolAccess,
         toolResult: failureResult,
-        additionalContextMessages: const [],
         executionStarted: false,
       );
     }
@@ -129,6 +127,8 @@ class ToolOrchestratorService {
           errorMessage: normalizedArguments.errorCode ?? 'invalid_arguments',
           data: {
             'reason': normalizedArguments.errorCode ?? 'invalid_arguments',
+            if (normalizedArguments.errorContextText?.trim().isNotEmpty == true)
+              'detail': normalizedArguments.errorContextText!.trim(),
           },
         ),
         toolAccess,
@@ -156,7 +156,6 @@ class ToolOrchestratorService {
         ),
         toolAccess: toolAccess,
         toolResult: failureResult,
-        additionalContextMessages: const [],
         executionStarted: false,
       );
     }
@@ -204,30 +203,10 @@ class ToolOrchestratorService {
         'resultStatus': toolResult.status.name,
       },
     );
-    final contextMessages = runtimeHandler.buildContextMessages(
-      result: toolResult,
-      context: executionContext,
-    );
-    _recordTrace(
-      turnId: turnId,
-      stage: ChatTraceStage.toolContextBuilt,
-      status: ChatTraceStatus.success,
-      summary: '工具上下文构建完成',
-      data: {
-        'toolName': invocation.toolName,
-        'contextLength': contextMessages
-            .map((message) => message.text)
-            .join('\n')
-            .trim()
-            .length,
-      },
-    );
-
     return ToolPreparationResult(
       toolInvocation: runningInvocation,
       toolAccess: toolAccess,
       toolResult: toolResult,
-      additionalContextMessages: contextMessages,
       executionStarted: onExecutionStarted != null,
     );
   }

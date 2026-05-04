@@ -167,8 +167,10 @@ class CreateArtifactToolHandler implements ToolHandler {
       toolName: 'create_artifact',
       status: ToolExecutionStatus.success,
       summary: '已创建 artifact：$artifactId',
-      toolResultText: '已创建 artifact：$artifactId\nsourcePath：${created.sourcePath}',
-      data: created.toJson(),
+      data: {
+        ...created.toJson(),
+        'message': '已创建 artifact：$artifactId\nsourcePath：${created.sourcePath}',
+      },
     );
   }
 

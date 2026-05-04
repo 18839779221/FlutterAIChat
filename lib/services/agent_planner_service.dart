@@ -17,6 +17,7 @@ import 'planner_tool_exposure_service.dart';
 import 'prompt/prompt_builder_service.dart';
 import 'prompt/prompt_locale.dart';
 import 'tool_policy_service.dart';
+import 'tool_result_context_projector.dart';
 import '../utils/logger.dart';
 import 'prompt/prompt_stage.dart';
 
@@ -34,6 +35,7 @@ class AgentPlannerService {
   final PlannerToolExposureService _toolExposureService;
   final ToolPolicyService? _toolPolicyService;
   final PromptBuilderService _promptBuilder;
+  final ToolResultContextProjector _toolResultContextProjector;
   final void Function(LlmRetryProgress progress)? _onPlannerRetryScheduled;
 
   AgentPlannerService({
@@ -42,6 +44,7 @@ class AgentPlannerService {
     PlannerToolExposureService? toolExposureService,
     ToolPolicyService? toolPolicyService,
     PromptBuilderService? promptBuilder,
+    ToolResultContextProjector? toolResultContextProjector,
     void Function(LlmRetryProgress progress)? onPlannerRetryScheduled,
   })  : _llm = llm,
         _availableTools = availableTools,
@@ -49,6 +52,8 @@ class AgentPlannerService {
             toolExposureService ?? PlannerToolExposureService(),
         _toolPolicyService = toolPolicyService,
         _promptBuilder = promptBuilder ?? const PromptBuilderService(),
+        _toolResultContextProjector =
+            toolResultContextProjector ?? const ToolResultContextProjector(),
         _onPlannerRetryScheduled = onPlannerRetryScheduled;
 
   Future<ModelTurnDecision?> planNextDecision({
@@ -337,7 +342,8 @@ class AgentPlannerService {
     if (payload == null) {
       return null;
     }
-    return ToolResult.fromJson(payload).resolvedToolResultText;
+    final result = ToolResult.fromJson(payload);
+    return _toolResultContextProjector.projectToContextText(result);
   }
 
   MessageRole? _projectPlannerRole(ChatEvent event) {
