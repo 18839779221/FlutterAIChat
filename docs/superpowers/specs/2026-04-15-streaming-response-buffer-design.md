@@ -114,7 +114,7 @@ final flush on finish / cancel / error
 1. 首次 delta 到来时创建 assistant placeholder message
 2. 为该 message 创建一个 `AssistantStreamOutputBuffer`
 3. 后续每个 delta 仅调用 `buffer.onDelta(chunk)`
-4. `finalAnswer` 到来时先 `buffer.finish()`，再标记消息 `completed`
+4. `finalAnswer` 到来时先 `buffer.finish()`，然后删除 placeholder，并落一条新的 completed 最终回答消息
 5. 错误、中断、取消时也调用最终 flush，再切换状态
 
 这样可以把“消费节奏控制”从 coordinator 的业务流程中剥离出来。

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:ai_chat/models/chat/chat_timeline_projection.dart';
+import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/session/context_window_snapshot.dart';
 import 'package:ai_chat/models/debug/debug_test_case.dart';
@@ -100,6 +101,10 @@ final streamSubscriptionProvider =
 final activeSendCancellationProvider =
     StateProvider<Future<void> Function()?>((ref) => null);
 
+/// Runtime-only assistant draft that belongs to the active turn/stage.
+final runtimeAssistantDraftProvider =
+    StateProvider<RuntimeAssistantDraft?>((ref) => null);
+
 /// Pair of the message that currently owns the confirmation step and the
 /// parsed invocation payload used by the bottom confirmation bar.
 class PendingToolConfirmation {
@@ -117,9 +122,11 @@ class PendingToolConfirmation {
 final chatTimelineProjectionProvider = Provider<ChatTimelineProjection>((ref) {
   final groupId = ref.watch(currentGroupProvider)?.id;
   final messages = ref.watch(messagesProvider);
+  final runtimeDraft = ref.watch(runtimeAssistantDraftProvider);
   return ref.watch(chatTimelineProjectionServiceProvider).build(
         messages: messages,
         groupId: groupId,
+        runtimeDraft: runtimeDraft,
       );
 });
 

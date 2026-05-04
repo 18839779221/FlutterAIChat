@@ -147,8 +147,8 @@ processor 内部按 `ChatEvent.eventType` 分发：
   - `onDelta(event.content ?? '')`
   - `phase = streamingResponse`
 - `finalAnswer`：
-  - 有 placeholder 则 finalize buffer + updateStatus completed
-  - 无 placeholder 则 insert 一条 completed
+  - 若存在 placeholder，先 finalize buffer 并移除该 placeholder
+  - 始终 insert 一条新的 completed 最终回答消息
   - dispose buffer
   - `phase = idle`
   - 调用 `onFinalAnswer` hook（用于 trace + scheduleAutoSummary）

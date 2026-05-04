@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
+import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -17,6 +18,7 @@ import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/services/agent_planner_service.dart';
 import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/services/chat_timeline_projection_service.dart';
 import 'package:ai_chat/services/turn_harness.dart';
 import 'package:ai_chat/services/turn_verifier.dart';
 import 'package:ai_chat/services/tool_call_service.dart';
@@ -99,6 +101,173 @@ void main() {
           .lastWhere((message) => message.role == MessageRole.assistant);
       expect(persistedAssistant.text, '你好，世界');
       expect(persistedAssistant.status, MessageStatus.completed);
+    });
+
+    test('final answer stays after tool-use blocks in the projected timeline',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.assistantReasoningDelta,
+            role: MessageRole.assistant,
+            content: '先分析是否需要外部信息。',
+            payloadJson: const {'scope': 'general'},
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.toolExecutionStarted,
+            role: MessageRole.assistant,
+            content: '正在执行工具',
+            payloadJson: const {
+              'toolName': 'web_search',
+              'arguments': {'query': 'FlutterAIChat'},
+              'status': 'running',
+              'summary': '正在执行工具',
+              'requiresConfirmation': false,
+              'stepId': 1,
+            },
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: '已获得搜索结果',
+            payloadJson: const {
+              'toolName': 'web_search',
+              'status': 'success',
+              'summary': '已获得搜索结果',
+              'data': {'items': []},
+              'stepId': 1,
+            },
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 4,
+            eventType: ChatEventType.finalAnswer,
+            role: MessageRole.assistant,
+            content: '这是最终回答。',
+          ),
+        ],
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      await container.read(chatSendCoordinatorProvider).sendMessage(
+            '帮我查一下',
+            scheduleAutoSummary: () {},
+            cancelActiveStream:
+                container.read(chatControllerProvider).cancelStreamSubscription,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      final projection = ChatTimelineProjectionService().build(
+        groupId: groupId,
+        messages: container.read(messagesProvider),
+      );
+      final finalResponseIndex = projection.assistantBlocks.indexWhere(
+        (block) =>
+            block.type == AssistantTurnBlockType.finalResponse &&
+            block.text == '这是最终回答。',
+      );
+      final toolResultIndex = projection.assistantBlocks.indexWhere(
+        (block) => block.type == AssistantTurnBlockType.toolResultSummary,
+      );
+
+      expect(finalResponseIndex, greaterThan(toolResultIndex));
+      expect(
+        container
+            .read(messagesProvider)
+            .where((message) => message.role == MessageRole.assistant)
+            .where((message) => message.contentType == MessageContentType.plainText),
+        hasLength(1),
+      );
+    });
+
+    test(
+        'reasoning delta does not create an early final-answer placeholder before final answer stage',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.assistantReasoningDelta,
+            role: MessageRole.assistant,
+            content: '先整理思路。',
+            payloadJson: const {'scope': 'general'},
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.finalAnswer,
+            role: MessageRole.assistant,
+            content: '这是最终回答。',
+          ),
+        ],
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      await container.read(chatSendCoordinatorProvider).sendMessage(
+            '开始回答',
+            scheduleAutoSummary: () {},
+            cancelActiveStream:
+                container.read(chatControllerProvider).cancelStreamSubscription,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      final assistantMessages = container
+          .read(messagesProvider)
+          .where((message) => message.role == MessageRole.assistant)
+          .toList(growable: false);
+      expect(assistantMessages, hasLength(1));
+      expect(assistantMessages.single.text, '这是最终回答。');
+      expect(assistantMessages.single.status, MessageStatus.completed);
+      expect(assistantMessages.single.reasoningContent, '先整理思路。');
+
+      final projection = ChatTimelineProjectionService().build(
+        groupId: groupId,
+        messages: container.read(messagesProvider),
+      );
+      expect(
+        projection.assistantBlocks.any(
+          (block) =>
+              block.type == AssistantTurnBlockType.finalResponse &&
+              block.text == '这是最终回答。' &&
+              block.reasoningText == '先整理思路。',
+        ),
+        isTrue,
+      );
     });
 
     test('keeps interrupted status when interrupted assistant later fails',

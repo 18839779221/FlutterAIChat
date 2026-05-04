@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:ai_chat/models/artifact/artifact_type.dart';
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
+import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -226,6 +227,39 @@ void main() {
       expect(resultEvent.phase, ToolPresentationEventPhase.result);
       expect(resultEvent.sourceContentType, MessageContentType.toolResult);
       expect(resultEvent.data['data'], containsPair('filePath', 'lib/main.dart'));
+    });
+
+    test('appends runtime reasoning draft as analysis block', () {
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我回答',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+        ],
+        runtimeDraft: RuntimeAssistantDraft(
+          turnId: '7_30',
+          draftId: '7_30-reasoning-draft',
+          blockType: AssistantTurnBlockType.analysis,
+          createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+          updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+          reasoningText: '先整理答案结构。',
+          payload: const {'reasoningScope': 'general'},
+        ),
+      );
+
+      expect(
+        projection.assistantBlocks.any(
+          (block) =>
+              block.type == AssistantTurnBlockType.analysis &&
+              block.reasoningText == '先整理答案结构。' &&
+              block.payload?['reasoningScope'] == 'general',
+        ),
+        isTrue,
+      );
     });
 
     test('projects artifact block into assistant timeline snapshot', () async {

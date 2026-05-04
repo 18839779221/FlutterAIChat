@@ -1,12 +1,15 @@
 import 'dart:async';
 
 import 'package:ai_chat/models/chat_event.dart';
+import 'package:ai_chat/models/chat/assistant_turn_block.dart';
+import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/providers/chat_send_state_providers.dart';
+import 'package:ai_chat/providers/chat_ui_providers.dart';
 import 'package:ai_chat/services/assistant_stream_output_buffer.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -65,6 +68,7 @@ class AgentEventProcessor {
   final int? _agentTurnId;
   final AgentEventHooks _hooks;
 
+  _AssistantDraftStage? _assistantDraftStage;
   int? _assistantMessageId;
   ChatMessage? _assistantMessage;
   AssistantStreamOutputBuffer? _assistantStreamBuffer;
@@ -316,11 +320,15 @@ class AgentEventProcessor {
     required ChatStorage dbHelper,
     required ChatEvent event,
   }) async {
+    _ensureAssistantDraftStage(_AssistantDraftStage.response);
     if (_assistantMessageId == null) {
       final placeholder = ChatMessage(
         text: '',
         role: MessageRole.assistant,
         status: MessageStatus.generating,
+        payloadJson: _withIdentity(const {
+          'draftStage': 'response',
+        }),
       );
       _assistantMessageId =
           await dbHelper.insertMessage(placeholder, _groupId);
@@ -346,32 +354,71 @@ class AgentEventProcessor {
     required ChatStorage dbHelper,
     required ChatEvent event,
   }) async {
-    if (_assistantMessageId == null) {
-      final placeholder = ChatMessage(
-        text: '',
-        role: MessageRole.assistant,
-        status: MessageStatus.generating,
-        payloadJson: _withIdentity({
-          if (event.payloadJson?['scope'] != null)
-            'reasoningScope': event.payloadJson!['scope'],
-        }),
-      );
-      _assistantMessageId = await dbHelper.insertMessage(placeholder, _groupId);
-      placeholder.id = _assistantMessageId;
-      _assistantMessage = placeholder;
-      _ref.read(messagesProvider.notifier).addMessage(placeholder);
-    }
-    final activeId = _assistantMessageId!;
-    final activeMessage = _assistantMessage!;
     final content = event.content ?? '';
-    _ref.read(messagesProvider.notifier).appendReasoningToMessage(
-          activeId,
-          content,
-        );
-    await dbHelper.updateMessageReasoning(
-      activeId,
-      activeMessage.reasoningContent,
-    );
+    if (content.isEmpty) {
+      return;
+    }
+
+    _assistantDraftStage ??= _AssistantDraftStage.reasoning;
+
+    if (_assistantDraftStage == _AssistantDraftStage.response &&
+        _assistantMessageId != null) {
+      final activeId = _assistantMessageId!;
+      final activeMessage = _assistantMessage!;
+      _ref.read(messagesProvider.notifier).appendReasoningToMessage(
+            activeId,
+            content,
+          );
+      await dbHelper.updateMessageReasoning(
+        activeId,
+        activeMessage.reasoningContent,
+      );
+      return;
+    }
+
+    if (_assistantDraftStage != _AssistantDraftStage.reasoning) {
+      _assistantDraftStage = _AssistantDraftStage.reasoning;
+    }
+
+    if (_assistantMessageId != null) {
+      final id = _assistantMessageId!;
+      _ref.read(messagesProvider.notifier).deleteMessageById(id);
+      await dbHelper.deleteMessage(id);
+      _assistantMessageId = null;
+      _assistantMessage = null;
+      await _assistantStreamBuffer?.cancel();
+      _assistantStreamBuffer?.dispose();
+      _assistantStreamBuffer = null;
+    }
+
+    final draft = _ref.read(runtimeAssistantDraftProvider);
+    final now = DateTime.now();
+    final nextPayload = _withIdentity({
+      'draftStage': 'reasoning',
+      if (event.payloadJson?['scope'] != null)
+        'reasoningScope': event.payloadJson!['scope'],
+    });
+    if (draft == null || draft.turnId != _runtimeTurnId()) {
+      _ref.read(runtimeAssistantDraftProvider.notifier).state =
+          RuntimeAssistantDraft(
+        turnId: _runtimeTurnId(),
+        draftId: '${_runtimeTurnId()}-reasoning-draft',
+        blockType: AssistantTurnBlockType.analysis,
+        createdAt: now,
+        updatedAt: now,
+        reasoningText: content,
+        payload: nextPayload,
+      );
+    } else {
+      _ref.read(runtimeAssistantDraftProvider.notifier).state = draft.copyWith(
+        updatedAt: now,
+        reasoningText: '${draft.reasoningText ?? ''}$content',
+        payload: {
+          ...?draft.payload,
+          ...nextPayload,
+        },
+      );
+    }
   }
 
   Future<void> _onFinalAnswer({
@@ -379,37 +426,68 @@ class AgentEventProcessor {
     required ChatEvent event,
   }) async {
     _receivedFinalAnswer = true;
-    if (_assistantMessageId == null) {
-      final message = ChatMessage(
-        text: event.content ?? '',
-        role: MessageRole.assistant,
-        status: MessageStatus.completed,
-      );
-      _assistantMessageId = await dbHelper.insertMessage(message, _groupId);
-      message.id = _assistantMessageId;
-      _assistantMessage = message;
-      _ref.read(messagesProvider.notifier).addMessage(message);
-    } else {
-      final id = _assistantMessageId!;
-      await _finalizeAssistantText(
-        buffer: _assistantStreamBuffer,
-        messageId: id,
-        message: _assistantMessage,
-        dbHelper: dbHelper,
-        fallbackText: event.content ?? _assistantMessage?.text ?? '',
-        explicitText: event.content,
-      );
+    final previousAssistantMessageId = _assistantMessageId;
+    final previousAssistantMessage = _assistantMessage;
+    final runtimeDraft = _ref.read(runtimeAssistantDraftProvider);
+    final finalText = previousAssistantMessageId == null
+        ? (event.content ?? previousAssistantMessage?.text ?? '')
+        : await _finalizeAssistantText(
+            buffer: _assistantStreamBuffer,
+            messageId: previousAssistantMessageId,
+            message: previousAssistantMessage,
+            dbHelper: dbHelper,
+            fallbackText: event.content ?? previousAssistantMessage?.text ?? '',
+            explicitText: event.content,
+          );
+
+    if (previousAssistantMessageId != null) {
       _ref
           .read(messagesProvider.notifier)
-          .updateMessageStatus(id, MessageStatus.completed);
-      await dbHelper.updateMessageStatus(id, MessageStatus.completed);
+          .deleteMessageById(previousAssistantMessageId);
+      await dbHelper.deleteMessage(previousAssistantMessageId);
     }
+
+    final message = ChatMessage(
+      text: finalText,
+      role: MessageRole.assistant,
+      status: MessageStatus.completed,
+      reasoningContent:
+          previousAssistantMessage?.reasoningContent ??
+              runtimeDraft?.reasoningText,
+    );
+    final insertedId = await dbHelper.insertMessage(message, _groupId);
+    message.id = insertedId;
+    _assistantDraftStage = _AssistantDraftStage.response;
+    _assistantMessageId = insertedId;
+    _assistantMessage = message;
+    _ref.read(messagesProvider.notifier).addMessage(message);
+
     _assistantStreamBuffer?.dispose();
     _assistantStreamBuffer = null;
+    _assistantDraftStage = null;
+    _ref.read(runtimeAssistantDraftProvider.notifier).state = null;
     _ref.read(chatSendStateProvider.notifier).update(
           isGenerating: false,
           phase: ChatSendPhase.idle,
         );
+  }
+
+  void _ensureAssistantDraftStage(_AssistantDraftStage stage) {
+    if (_assistantDraftStage == stage) {
+      return;
+    }
+    _assistantDraftStage = stage;
+    if (stage == _AssistantDraftStage.response &&
+        _assistantMessage != null &&
+        _assistantMessageId == null) {
+      _assistantMessage = null;
+    }
+  }
+
+  String _runtimeTurnId() {
+    return '${_groupId}_runtime_${
+        _agentTurnId ?? _traceTurnId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')
+      }';
   }
 
   bool _isTerminalFailureStatus(String? status) {
@@ -459,4 +537,9 @@ class AgentEventProcessor {
     }
     return finalText;
   }
+}
+
+enum _AssistantDraftStage {
+  reasoning,
+  response,
 }
