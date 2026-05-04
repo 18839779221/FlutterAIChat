@@ -173,80 +173,9 @@ void main() {
         'description': 'd',
         'input_schema': {'type': 'object'},
       });
-    });
-
-    test(
-        'prepends assistant content_blocks from providerState when continuation lacks assistant turn',
-        () {
-      final payload = adapter.buildPlannerPayload(
-        messages: [ChatMessage(text: 'q', role: MessageRole.user)],
-        config: ChatConfig(systemPrompt: ''),
-        modelName: 'claude',
-        availableTools: const [],
-        parallelToolCalls: true,
-        providerState: const {
-          'content_blocks': [
-            {'type': 'thinking', 'thinking': 'reasoning'},
-            {
-              'type': 'tool_use',
-              'id': 'toolu_1',
-              'name': 'search',
-              'input': {'q': 'x'},
-            },
-          ],
-        },
-        continuationItems: const [
-          {
-            'role': 'user',
-            'content': [
-              {
-                'type': 'tool_result',
-                'tool_use_id': 'toolu_1',
-                'content': 'done',
-              },
-            ],
-          },
-        ],
-      );
       final messages = payload['messages'] as List<dynamic>;
-      expect(messages.length, 3);
-      expect(messages[1]['role'], 'assistant');
-      expect((messages[1]['content'] as List).length, 2);
-      expect(messages[2]['content'][0]['type'], 'tool_result');
-    });
-
-    test(
-        'does not prepend content_blocks when continuation already has assistant turn',
-        () {
-      final payload = adapter.buildPlannerPayload(
-        messages: [ChatMessage(text: 'q', role: MessageRole.user)],
-        config: ChatConfig(systemPrompt: ''),
-        modelName: 'claude',
-        availableTools: const [],
-        parallelToolCalls: true,
-        providerState: const {
-          'content_blocks': [
-            {'type': 'text', 'text': 'stale'},
-          ],
-        },
-        continuationItems: const [
-          {
-            'role': 'assistant',
-            'content': [
-              {'type': 'text', 'text': 'fresh'},
-            ],
-          },
-          {
-            'role': 'user',
-            'content': [
-              {'type': 'tool_result', 'tool_use_id': 'x', 'content': 'y'},
-            ],
-          },
-        ],
-      );
-      final messages = payload['messages'] as List<dynamic>;
-      expect(messages.length, 3);
-      expect(messages[1]['content'][0]['text'], 'fresh');
+      expect(messages.length, 1);
+      expect(messages.first['role'], 'user');
     });
   });
 

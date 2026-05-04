@@ -3387,9 +3387,6 @@ class _QueuedNativeDecisionLLM implements BaseLLM {
     required List<ChatMessage> messages,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
-    ChatTurnProviderStyle? providerStyle,
-    Map<String, dynamic>? providerState,
-    List<Map<String, dynamic>> providerContinuationItems = const [],
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     if (decisions.isEmpty) {
@@ -3425,18 +3422,12 @@ class _AssertingLoopPlannerLLM implements BaseLLM {
     required List<ChatMessage> messages,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
-    ChatTurnProviderStyle? providerStyle,
-    Map<String, dynamic>? providerState,
-    List<Map<String, dynamic>> providerContinuationItems = const [],
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     planCalls += 1;
     final joinedText = messages.map((message) => message.text).join('\n');
 
     if (planCalls == 1) {
-      expect(providerStyle, isNull);
-      expect(providerState, isNull);
-      expect(providerContinuationItems, isEmpty);
       expect(joinedText, contains('历史结论：数据库版本线索在发布记录里。'));
       expect(joinedText, contains('继续确认版本并整理结果'));
       expect(
@@ -3462,19 +3453,10 @@ class _AssertingLoopPlannerLLM implements BaseLLM {
     }
 
     if (planCalls == 2) {
-      expect(providerStyle, ChatTurnProviderStyle.openaiResponses);
-      expect(providerState, equals(const {'response_id': 'resp_1'}));
-      expect(providerContinuationItems, hasLength(2));
-      expect(providerContinuationItems.first['type'], 'assistant_tool_call');
-      expect(providerContinuationItems.first['toolCallId'], 'call_1');
-      expect(providerContinuationItems.last['type'], 'tool_result');
-      expect(providerContinuationItems.last['toolCallId'], 'call_1');
-      expect(
-        providerContinuationItems.last['output'].toString(),
-        contains('已执行：搜索历史记录'),
-      );
       expect(joinedText, contains('我先检索历史记录。'));
-      expect(joinedText, isNot(contains('已执行：搜索历史记录')));
+      expect(joinedText, contains('search_chat_history'));
+      expect(joinedText, contains('数据库版本'));
+      expect(joinedText, contains('已执行：搜索历史记录'));
       return const ModelTurnDecision(
         toolCalls: [
           ModelToolCall(
@@ -3497,19 +3479,10 @@ class _AssertingLoopPlannerLLM implements BaseLLM {
     }
 
     expect(planCalls, 3);
-    expect(providerStyle, ChatTurnProviderStyle.openaiResponses);
-    expect(providerState, equals(const {'response_id': 'resp_2'}));
-    expect(providerContinuationItems, hasLength(2));
-    expect(providerContinuationItems.first['type'], 'assistant_tool_call');
-    expect(providerContinuationItems.first['toolCallId'], 'call_2');
-    expect(providerContinuationItems.last['type'], 'tool_result');
-    expect(providerContinuationItems.last['toolCallId'], 'call_2');
-    expect(
-      providerContinuationItems.last['output'].toString(),
-      contains('已写入文件：notes/version.md'),
-    );
     expect(joinedText, contains('我把确认结果写入文件。'));
-    expect(joinedText, isNot(contains('已写入文件：notes/version.md')));
+    expect(joinedText, contains('Write'));
+    expect(joinedText, contains('notes/version.md'));
+    expect(joinedText, contains('已写入文件：notes/version.md'));
     return const ModelTurnDecision(
       toolCalls: [],
       assistantMessage: '数据库版本已确认，并已记录到 notes/version.md。',
@@ -3547,18 +3520,12 @@ class _AssertingQuestionLoopPlannerLLM implements BaseLLM {
     required List<ChatMessage> messages,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
-    ChatTurnProviderStyle? providerStyle,
-    Map<String, dynamic>? providerState,
-    List<Map<String, dynamic>> providerContinuationItems = const [],
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     planCalls += 1;
     final joinedText = messages.map((message) => message.text).join('\n');
 
     if (planCalls == 1) {
-      expect(providerStyle, isNull);
-      expect(providerState, isNull);
-      expect(providerContinuationItems, isEmpty);
       expect(joinedText, contains('帮我确定存储方案'));
       expect(availableTools.map((tool) => tool.name), contains('ask_user_question'));
       return const ModelTurnDecision(
@@ -3595,22 +3562,8 @@ class _AssertingQuestionLoopPlannerLLM implements BaseLLM {
     }
 
     expect(planCalls, 2);
-    expect(providerStyle, ChatTurnProviderStyle.openaiResponses);
-    expect(providerState, equals(const {'response_id': 'resp_ask_1'}));
-    expect(providerContinuationItems, hasLength(1));
-    expect(
-      providerContinuationItems.single,
-      containsPair('type', 'user_interaction_answer'),
-    );
-    expect(
-      providerContinuationItems.single,
-      containsPair('toolCallId', 'ask_call_1'),
-    );
-    expect(
-      providerContinuationItems.single['content'].toString(),
-      contains('Storage: SQLite'),
-    );
-    expect(joinedText, isNot(contains('Storage: SQLite')));
+    expect(joinedText, contains('Storage: SQLite'));
+    expect(joinedText, contains('SQLite'));
     return const ModelTurnDecision(
       toolCalls: [],
       assistantMessage: '建议采用 SQLite 作为当前方案。',
@@ -4397,9 +4350,6 @@ class _NoopBaseLLM implements BaseLLM {
     required List<ChatMessage> messages,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
-    ChatTurnProviderStyle? providerStyle,
-    Map<String, dynamic>? providerState,
-    List<Map<String, dynamic>> providerContinuationItems = const [],
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async =>
       null;

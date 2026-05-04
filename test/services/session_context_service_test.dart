@@ -222,7 +222,7 @@ void main() {
     });
 
     test(
-        'excludes current turn tool loop transcript when provider continuation owns the active round',
+        'keeps current turn tool loop transcript in planner messages',
         () async {
       final storage = DatabaseHelper(
         databaseName: 'session_context_service_provider_continuation_filter_test.db',
@@ -331,8 +331,11 @@ void main() {
       final combined = plannerMessages.map((message) => message.text).join('\n');
       expect(combined, contains('继续查资料'));
       expect(combined, contains('我先继续搜索相关资料。'));
-      expect(combined, isNot(contains('准备执行工具：联网搜索')));
-      expect(combined, isNot(contains('已执行联网搜索')));
+      expect(
+        combined,
+        contains('[assistant tool_use] web_search query=turn harness continuation'),
+      );
+      expect(combined, contains('[user tool_result] 已执行联网搜索'));
 
       await storage.deleteGroup(groupId);
     });
@@ -1151,9 +1154,6 @@ class _FakeBaseLlm implements BaseLLM {
     required List<ChatMessage> messages,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
-    ChatTurnProviderStyle? providerStyle,
-    Map<String, dynamic>? providerState,
-    List<Map<String, dynamic>> providerContinuationItems = const [],
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     return null;

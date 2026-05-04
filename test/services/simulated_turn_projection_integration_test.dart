@@ -1455,9 +1455,6 @@ class _QueuedDecisionLLM extends BaseLLM {
     required List<ChatMessage> messages,
     required ChatConfig config,
     required List availableTools,
-    ChatTurnProviderStyle? providerStyle,
-    Map<String, dynamic>? providerState,
-    List<Map<String, dynamic>> providerContinuationItems = const [],
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     if (_decisions.isEmpty) {

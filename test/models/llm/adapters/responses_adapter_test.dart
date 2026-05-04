@@ -134,7 +134,7 @@ void main() {
   });
 
   group('ResponsesAdapter.buildPlannerPayload', () {
-    test('forces store=true and injects previous_response_id', () {
+    test('keeps transcript input and emits tools', () {
       final payload = adapter.buildPlannerPayload(
         messages: [ChatMessage(text: 'q', role: MessageRole.user)],
         config: ChatConfig(systemPrompt: ''),
@@ -147,10 +147,8 @@ void main() {
           ),
         ],
         parallelToolCalls: true,
-        previousResponseId: 'resp_prev',
       );
-      expect(payload['store'], true);
-      expect(payload['previous_response_id'], 'resp_prev');
+      expect(payload['store'], false);
       expect(payload['tool_choice'], 'auto');
       expect((payload['tools'] as List).first, {
         'type': 'function',
@@ -158,50 +156,10 @@ void main() {
         'description': 'd',
         'parameters': {'type': 'object'},
       });
-    });
-
-    test(
-        'when previousResponseId is set and only user_interaction_answer continuation, input is continuation-only',
-        () {
-      final payload = adapter.buildPlannerPayload(
-        messages: [ChatMessage(text: 'q', role: MessageRole.user)],
-        config: ChatConfig(systemPrompt: ''),
-        modelName: 'gpt-x',
-        availableTools: const [],
-        parallelToolCalls: true,
-        previousResponseId: 'resp_prev',
-        continuationItems: const [
-          {'type': 'user_interaction_answer', 'content': 'A'},
-        ],
-      );
       final input = payload['input'] as List<dynamic>;
       expect(input.length, 1);
       expect(input[0]['role'], 'user');
-      expect(input[0]['content'][0], {'type': 'input_text', 'text': 'A'});
-    });
-
-    test('appends continuation items when no previousResponseId', () {
-      final payload = adapter.buildPlannerPayload(
-        messages: [ChatMessage(text: 'q', role: MessageRole.user)],
-        config: ChatConfig(systemPrompt: ''),
-        modelName: 'gpt-x',
-        availableTools: const [],
-        parallelToolCalls: true,
-        continuationItems: const [
-          {
-            'type': 'function_call_output',
-            'call_id': 'fc_1',
-            'output': 'done',
-          },
-        ],
-      );
-      final input = payload['input'] as List<dynamic>;
-      expect(input.length, 2);
-      expect(input.last, {
-        'type': 'function_call_output',
-        'call_id': 'fc_1',
-        'output': 'done',
-      });
+      expect(input[0]['content'][0], {'type': 'input_text', 'text': 'q'});
     });
   });
 

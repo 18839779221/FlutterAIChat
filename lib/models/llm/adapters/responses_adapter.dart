@@ -64,9 +64,6 @@ class ResponsesAdapter extends ApiStyleAdapter {
     required List<PlannerToolOption> availableTools,
     required bool parallelToolCalls,
     LlmRequestOptions requestOptions = const LlmRequestOptions(),
-    String? previousResponseId,
-    List<Map<String, dynamic>> continuationItems = const [],
-    Map<String, dynamic>? providerState,
   }) {
     final payload = buildChatPayload(
       messages: messages,
@@ -75,10 +72,6 @@ class ResponsesAdapter extends ApiStyleAdapter {
       stream: false,
       requestOptions: requestOptions,
     );
-    // Responses tool-loop continuation relies on previous_response_id, so the
-    // planner response must remain server-addressable instead of being forced
-    // into stateless store:false mode.
-    payload['store'] = true;
     final tools = availableTools
         .map(
           (tool) => {
@@ -93,29 +86,6 @@ class ResponsesAdapter extends ApiStyleAdapter {
       payload['tools'] = tools;
       payload['tool_choice'] = 'auto';
       payload['parallel_tool_calls'] = parallelToolCalls;
-    }
-    if (previousResponseId != null && previousResponseId.isNotEmpty) {
-      payload['previous_response_id'] = previousResponseId;
-    }
-    if (continuationItems.isNotEmpty) {
-      final continuationInputItems =
-          _buildContinuationInputItems(
-        continuationItems,
-        includeAssistantToolCalls:
-            previousResponseId == null || previousResponseId.isEmpty,
-      );
-      final useContinuationOnly = previousResponseId != null &&
-          previousResponseId.isNotEmpty &&
-          continuationInputItems.isNotEmpty;
-      final input = useContinuationOnly
-          ? <dynamic>[]
-          : List<dynamic>.from(
-              payload['input'] as List<dynamic>? ?? const <dynamic>[],
-            );
-      for (final item in continuationInputItems) {
-        input.add(Map<String, dynamic>.from(item));
-      }
-      payload['input'] = input;
     }
     _applyCacheHints(payload, requestOptions.cache);
     return payload;
@@ -210,66 +180,6 @@ class ResponsesAdapter extends ApiStyleAdapter {
         },
       ],
     };
-  }
-
-  List<Map<String, dynamic>> _buildContinuationInputItems(
-    List<Map<String, dynamic>> continuationItems,
-    {
-    required bool includeAssistantToolCalls,
-  }) {
-    final items = <Map<String, dynamic>>[];
-    for (final item in continuationItems) {
-      final type = item['type'];
-      if (type == 'user_interaction_answer') {
-        final content = normalizeText(item['content']);
-        if (content == null) {
-          continue;
-        }
-        items.add({
-          'role': 'user',
-          'content': [
-            {
-              'type': 'input_text',
-              'text': content,
-            },
-          ],
-        });
-        continue;
-      }
-      if (type == 'assistant_tool_call') {
-        if (!includeAssistantToolCalls) {
-          continue;
-        }
-        final callId = normalizeText(item['toolCallId']);
-        final toolName = normalizeText(item['toolName']);
-        final arguments = item['arguments'];
-        if (callId == null || toolName == null || arguments is! Map) {
-          continue;
-        }
-        items.add({
-          'type': 'function_call',
-          'call_id': callId,
-          'name': toolName,
-          'arguments': jsonEncode(arguments),
-        });
-        continue;
-      }
-      if (type == 'tool_result') {
-        final callId = normalizeText(item['toolCallId']);
-        final output = normalizeText(item['output']);
-        if (callId == null || output == null) {
-          continue;
-        }
-        items.add({
-          'type': 'function_call_output',
-          'call_id': callId,
-          'output': output,
-        });
-        continue;
-      }
-      items.add(Map<String, dynamic>.from(item));
-    }
-    return items;
   }
 
   PlannerToolChoice? _parseToolCall(Map<String, dynamic> item) {

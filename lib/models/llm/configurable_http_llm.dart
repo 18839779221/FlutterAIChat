@@ -37,6 +37,13 @@ import 'tool_loop/openai_responses_tool_loop_adapter.dart';
 
 class ConfigurableHttpLLM implements BaseLLM {
   static const String _tag = 'ConfigurableHttpLLM';
+  // Architecture:
+  // - docs/architecture/append-only-transcript.md
+  // - docs/architecture/agent-loop-boundaries-and-decoupling.md
+  //
+  // Invariant:
+  // - planner requests consume transcript-derived messages only.
+  // - provider adapters may transform wire format, but must not own semantic state.
   static const Duration _defaultRequestTimeout = Duration(seconds: 60);
   static const Duration _defaultPlannerRequestTimeout = Duration(seconds: 60);
   static const Duration _defaultPlannerStreamOverallTimeout =
@@ -258,9 +265,6 @@ class ConfigurableHttpLLM implements BaseLLM {
     required List<ChatMessage> messages,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
-    ChatTurnProviderStyle? providerStyle,
-    Map<String, dynamic>? providerState,
-    List<Map<String, dynamic>> providerContinuationItems = const [],
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     try {
@@ -273,11 +277,6 @@ class ConfigurableHttpLLM implements BaseLLM {
         modelName: modelName,
         purpose: LlmRequestPurpose.planner,
         apiStyle: apiStyle,
-      );
-      final previousResponseId = _resolvePreviousResponseId(
-        apiStyle: apiStyle,
-        providerStyle: providerStyle,
-        providerState: providerState,
       );
       final traceContext = _requestTraceContext(
         label: 'native_planner',
@@ -295,51 +294,17 @@ class ConfigurableHttpLLM implements BaseLLM {
         availableTools: availableTools,
         parallelToolCalls: true,
         requestOptions: requestOptions,
-        previousResponseId: previousResponseId,
-        continuationItems: providerContinuationItems,
-        providerState: providerState,
       );
       if (_shouldUseStreamingPlanner(apiStyle)) {
-        var streamedResult = await _planTurnDecisionStreaming(
+        final streamedResult = await _planTurnDecisionStreaming(
           runtimeConfig: runtimeConfig,
           apiStyle: apiStyle,
           adapter: adapter,
           payload: payload,
           modelName: modelName,
-          previousResponseId: previousResponseId,
-          hasContinuationItems: providerContinuationItems.isNotEmpty,
           traceContext: traceContext,
           onRetryScheduled: onRetryScheduled,
         );
-        if (streamedResult.retryWithoutPreviousResponseId) {
-          Logger.w(
-            _tag,
-            'native planner streaming rejected previous_response_id; retrying with stateless responses continuation',
-          );
-          payload = adapter.buildPlannerPayload(
-            messages: messages,
-            config: config,
-            modelName: modelName,
-            availableTools: availableTools,
-            parallelToolCalls: true,
-            requestOptions: requestOptions,
-            previousResponseId: null,
-            continuationItems: providerContinuationItems,
-            providerState: providerState,
-          );
-          Logger.i(_tag, 'native planner streaming fallback 请求体: ${jsonEncode(payload)}');
-          streamedResult = await _planTurnDecisionStreaming(
-            runtimeConfig: runtimeConfig,
-            apiStyle: apiStyle,
-            adapter: adapter,
-            payload: payload,
-            modelName: modelName,
-            previousResponseId: null,
-            hasContinuationItems: providerContinuationItems.isNotEmpty,
-            traceContext: traceContext,
-            onRetryScheduled: onRetryScheduled,
-          );
-        }
         final streamedDecision = streamedResult.decision;
         if (streamedDecision == null) {
           Logger.w(
@@ -372,31 +337,6 @@ class ConfigurableHttpLLM implements BaseLLM {
       }
 
       var response = await sendPlannerRequest(payload);
-      if (_shouldRetryResponsesWithoutPreviousResponseId(
-        apiStyle: apiStyle,
-        previousResponseId: previousResponseId,
-        response: response,
-        hasContinuationItems: providerContinuationItems.isNotEmpty,
-      )) {
-        Logger.w(
-          _tag,
-          'native planner provider rejected previous_response_id; retrying with stateless responses continuation',
-        );
-        payload = adapter.buildPlannerPayload(
-          messages: messages,
-          config: config,
-          modelName: modelName,
-          availableTools: availableTools,
-          parallelToolCalls: true,
-          requestOptions: requestOptions,
-          previousResponseId: null,
-          continuationItems: providerContinuationItems,
-          providerState: providerState,
-        );
-        Logger.i(_tag, 'native planner fallback 请求体: ${jsonEncode(payload)}');
-        response = await sendPlannerRequest(payload);
-      }
-
       if (response.statusCode != 200) {
         final detail =
             'HTTP ${response.statusCode} ${response.reasonPhrase ?? '-'} ${_previewBody(response.body)}';
@@ -492,8 +432,6 @@ class ConfigurableHttpLLM implements BaseLLM {
     required ApiStyleAdapter adapter,
     required Map<String, dynamic> payload,
     required String modelName,
-    required String? previousResponseId,
-    required bool hasContinuationItems,
     required _RequestTraceContext traceContext,
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
@@ -514,8 +452,6 @@ class ConfigurableHttpLLM implements BaseLLM {
         apiStyle: apiStyle,
         adapter: adapter,
         streamingPayload: streamingPayload,
-        previousResponseId: previousResponseId,
-        hasContinuationItems: hasContinuationItems,
         traceContext: traceContext,
       ),
     );
@@ -526,8 +462,6 @@ class ConfigurableHttpLLM implements BaseLLM {
     required ApiStyle apiStyle,
     required ApiStyleAdapter adapter,
     required Map<String, dynamic> streamingPayload,
-    required String? previousResponseId,
-    required bool hasContinuationItems,
     required _RequestTraceContext traceContext,
   }) async {
     final streamedResponse = await _httpClient
@@ -545,15 +479,6 @@ class ConfigurableHttpLLM implements BaseLLM {
       final responseText = await streamedResponse.stream
           .bytesToString()
           .timeout(_plannerStreamIdleTimeout);
-      if (_shouldRetryResponsesWithoutPreviousResponseIdForStream(
-        apiStyle: apiStyle,
-        previousResponseId: previousResponseId,
-        statusCode: streamedResponse.statusCode,
-        responseText: responseText,
-        hasContinuationItems: hasContinuationItems,
-      )) {
-        return const _StreamingPlannerAttemptResult.retryWithoutPreviousResponseId();
-      }
       final detail =
           'HTTP ${streamedResponse.statusCode} ${streamedResponse.reasonPhrase ?? '-'} ${_previewBody(responseText)}';
       Logger.w(
@@ -863,66 +788,6 @@ class ConfigurableHttpLLM implements BaseLLM {
     }
   }
 
-  String? _resolvePreviousResponseId({
-    required ApiStyle apiStyle,
-    ChatTurnProviderStyle? providerStyle,
-    Map<String, dynamic>? providerState,
-  }) {
-    if (apiStyle != ApiStyle.responses ||
-        providerStyle != ChatTurnProviderStyle.openaiResponses ||
-        providerState == null) {
-      return null;
-    }
-    final responseId = providerState['response_id'];
-    if (responseId is! String) {
-      return null;
-    }
-    final trimmed = responseId.trim();
-    if (trimmed.isEmpty) {
-      return null;
-    }
-    return trimmed;
-  }
-
-  bool _shouldRetryResponsesWithoutPreviousResponseId({
-    required ApiStyle apiStyle,
-    required String? previousResponseId,
-    required http.Response response,
-    required bool hasContinuationItems,
-  }) {
-    if (apiStyle != ApiStyle.responses ||
-        !hasContinuationItems ||
-        previousResponseId == null ||
-        previousResponseId.trim().isEmpty ||
-        response.statusCode != 400) {
-      return false;
-    }
-    final normalizedBody = response.body.toLowerCase();
-    return normalizedBody.contains('previous_response_id') &&
-        (normalizedBody.contains('not supported') ||
-            normalizedBody.contains('only supported'));
-  }
-
-  bool _shouldRetryResponsesWithoutPreviousResponseIdForStream({
-    required ApiStyle apiStyle,
-    required String? previousResponseId,
-    required int statusCode,
-    required String responseText,
-    required bool hasContinuationItems,
-  }) {
-    if (apiStyle != ApiStyle.responses ||
-        !hasContinuationItems ||
-        previousResponseId == null ||
-        previousResponseId.trim().isEmpty ||
-        statusCode != 400) {
-      return false;
-    }
-    final normalizedBody = responseText.toLowerCase();
-    return normalizedBody.contains('previous_response_id') &&
-        (normalizedBody.contains('not supported') ||
-            normalizedBody.contains('only supported'));
-  }
-
   ModelTurnDecision? _parseTurnDecisionForStyle(
     ApiStyle apiStyle,
     Map<String, dynamic> payload,
@@ -1180,16 +1045,10 @@ class _StreamingPlannerAttemptResult {
   const _StreamingPlannerAttemptResult.completed(
     this.decision, {
     this.debugSnapshot,
-  }) : retryWithoutPreviousResponseId = false;
-
-  const _StreamingPlannerAttemptResult.retryWithoutPreviousResponseId()
-      : decision = null,
-        debugSnapshot = null,
-        retryWithoutPreviousResponseId = true;
+  });
 
   final ModelTurnDecision? decision;
   final Map<String, dynamic>? debugSnapshot;
-  final bool retryWithoutPreviousResponseId;
 }
 
 class _RequestTraceContext {
