@@ -197,6 +197,7 @@ Constraints:
 - The artifact itself should read as a single integrated surface inside the chat reply. Favor one coherent outer structure with the main content placed directly inside it, so the result feels embedded in the message rather than presented as a separate page.
 - Default the page-level background to transparent, and treat the main content container as the visible surface. Do not rely on the body element to create a full-screen stage unless the user explicitly asks for that effect.
 - The preview container height is derived from the document content, so keep the document flow-driven and avoid giant fixed-height outer wrappers unless they are necessary.
+- Prefer content that fits within one screen when rendered inline. Unless the user explicitly asks for a longer experience, keep the artifact concise and avoid exceeding two screens.
 - After the first version is created, prefer using Read/Edit/Write on the returned sourcePath to improve the same artifact instead of resending the full source every time.
 
 Design guidelines unless the user asks otherwise:
@@ -225,6 +226,7 @@ const String _chineseArtifactDescription = '''
 - artifact 自身应呈现为单层、整合的内容表面，让主要内容直接落在统一的外层结构中，使它更像消息中的嵌入式展示，而不是独立页面。
 - 默认让页面级背景保持透明，并把主要内容容器作为实际可见表面；除非用户明确要求，否则不要依赖 body 去搭建一个铺满全页的舞台背景。
 - 预览容器高度会根据文档内容自适应，因此尽量保持正常文档流，不要无必要地使用超大的固定外层高度。
+- 优先让内容在内联展示时控制在 1 屏内；除非用户明确要求更长体验，否则尽量保持精简，不要超过 2 屏。
 - 初版创建完成后，如需继续优化同一个 artifact，优先对返回的 sourcePath 使用 Read/Edit/Write，而不是每次都重发完整源码。
 
 默认设计规范（除非用户另有要求）：

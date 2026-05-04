@@ -1,5 +1,4 @@
 import 'package:ai_chat/widgets/chat_blocks/artifact_preview_surface.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -30,18 +29,15 @@ void main() {
     expect(document, contains('scrollHeight'));
   });
 
-  test('clamps reported preview height into supported bounds', () {
-    expect(clampArtifactPreviewHeight(80), 180);
-    expect(clampArtifactPreviewHeight(320), 320);
-    expect(clampArtifactPreviewHeight(2000), 720);
+  test('clamps reported preview height into three-screen bounds', () {
+    expect(clampArtifactPreviewHeight(80, viewportHeight: 800), 180);
+    expect(clampArtifactPreviewHeight(320, viewportHeight: 800), 320);
+    expect(clampArtifactPreviewHeight(2000, viewportHeight: 800), 2000);
+    expect(clampArtifactPreviewHeight(5000, viewportHeight: 800), 2400);
   });
 
-  test('registers vertical drag recognizer for nested artifact preview scroll', () {
-    expect(
-      artifactPreviewGestureRecognizers.any(
-        (factory) => factory.type == VerticalDragGestureRecognizer,
-      ),
-      isTrue,
-    );
+  test('exposes a stable truncation hint for overlong artifact previews', () {
+    expect(artifactPreviewTruncationMessage, contains('详情页'));
+    expect(artifactPreviewTruncationMessage, contains('完整内容'));
   });
 }
