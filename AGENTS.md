@@ -76,7 +76,7 @@ fvm flutter test
     `LIVE_LLM_LOCAL_DEFAULTS_PATH=/abs/path/config/local_defaults.json ...`
 - Prefer validating at least one real provider for each still-supported API style you touched
   - current examples in local defaults include `responses`, `chat completions`, and `anthropic messages`
-- The live suite should cover both first-round planner parsing and tool-continuation round-trip compatibility
+- The live suite should cover both first-round planner parsing and append-only transcript tool round-trip compatibility
   - do not treat a provider as verified if it only passes plain text / summary smoke paths
 - Keep live tests opt-in
   - do not make default `flutter test` depend on external network access or provider credentials
@@ -218,7 +218,7 @@ The app uses **flutter_riverpod** with a split provider/controller architecture:
 - Treat `AskUserQuestion` as an interaction-style tool:
   - do not route it through `ToolOrchestratorService.executeToolInvocation()`
   - do persist its structured result into `ChatTurnStep.resultJson`
-  - do allow provider continuation items to emit `function_call_output` from the completed interaction step
+  - do append the interaction result into transcript and let planner-visible context replay it from append-only transcript
   - do keep the human-readable transcript text and structured payload in sync
 - Tool-use UI should keep status semantics shared but allow per-tool presentation overrides:
   - preserve existing lifecycle enums and structured payload models instead of inventing a second UI-only state machine

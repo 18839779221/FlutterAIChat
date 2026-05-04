@@ -118,7 +118,7 @@ void main() {
   });
 
   group('ChatCompletionsAdapter.buildPlannerPayload', () {
-    test('emits tool declarations, parallel flag, and continuation items', () {
+    test('emits tool declarations and keeps transcript messages', () {
       final payload = adapter.buildPlannerPayload(
         messages: [
           ChatMessage(text: '继续', role: MessageRole.user),
@@ -133,23 +133,6 @@ void main() {
           ),
         ],
         parallelToolCalls: true,
-        continuationItems: const [
-          {
-            'type': 'assistant_tool_call',
-            'toolCallId': 'call_ext',
-            'toolName': 'search',
-            'arguments': {'q': 'flutter'},
-          },
-          {
-            'type': 'tool_result',
-            'toolCallId': 'call_ext',
-            'output': 'found',
-          },
-          {
-            'type': 'user_interaction_answer',
-            'content': 'pick A',
-          },
-        ],
       );
 
       expect(payload['tool_choice'], 'auto');
@@ -163,16 +146,8 @@ void main() {
         },
       });
       final messages = payload['messages'] as List<dynamic>;
-      expect(messages.length, 4);
-      expect(messages[1]['tool_calls'][0]['id'], 'call_ext');
-      expect(messages[1]['tool_calls'][0]['function']['arguments'],
-          '{"q":"flutter"}');
-      expect(messages[2], {
-        'role': 'tool',
-        'tool_call_id': 'call_ext',
-        'content': 'found',
-      });
-      expect(messages[3], {'role': 'user', 'content': 'pick A'});
+      expect(messages.length, 1);
+      expect(messages[0], {'role': 'user', 'content': '继续'});
     });
 
     test('omits tools when none provided', () {

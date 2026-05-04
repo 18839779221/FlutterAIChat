@@ -316,9 +316,6 @@ class _FakeBaseLlm implements BaseLLM {
     required List<ChatMessage> messages,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
-    ChatTurnProviderStyle? providerStyle,
-    Map<String, dynamic>? providerState,
-    List<Map<String, dynamic>> providerContinuationItems = const [],
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     return null;

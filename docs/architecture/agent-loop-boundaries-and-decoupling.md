@@ -126,12 +126,11 @@ Core 不应该直接承担：
 
 - `stream:true`
 - `stream:false`
-- `previous_response_id`
-- stateless continuation
+- append-only transcript replay
 - tool round-trip
 
-真实环境验证已经证明：存在 `responses`-like relay 只支持“流式 + stateless continuation”，却不支持 `previous_response_id` 与非流式 response body。
-因此，后续所有 provider 兼容判断都不应再把“风格识别”当成“能力完备”的同义词。
+当前架构已收敛到一条更强约束：planner 只能消费 append-only transcript replay，不再依赖 provider-native continuation。
+因此，后续所有 provider 兼容判断都不应再把“风格识别”当成“能力完备”的同义词，也不应把 provider 侧 continuation 当成语义主路径。
 
 ### 3. Planner Input Assembly
 
@@ -304,20 +303,19 @@ Core 不应该直接承担：
 
 ### 2. Provider/API 协议细节不得进入 Core
 
-- provider 特定的请求参数、字段命名、continuation 细节 `MUST` 留在 Model Gateway / Provider Adapter
+- provider 特定的请求参数、字段命名、流式解析细节 `MUST` 留在 Model Gateway / Provider Adapter
 - 不得让 `TurnHarness` 或 `TurnVerifier` 理解某个 provider 的私有 wire 协议
 
 ### 3. Provider capability 不得伪装成 Core 规则
 
-- `streaming-only`、`non-streaming unsupported`、`previous_response_id unsupported` 这类事实 `MUST` 被视为 provider capability 边界
+- `streaming-only`、`non-streaming unsupported` 这类事实 `MUST` 被视为 provider capability 边界
 - 不得为了兼容某个 relay，把这些差异改写成 `TurnHarness` 停止规则、等待态规则或 UI workflow 规则
 
 ### 4. Live contract tests 必须按 capability 维度解释结果
 
 - 对 `responses` 风格 provider，至少区分：
   - 流式首轮是否通过
-  - stateless continuation 是否通过
-  - `previous_response_id` 是否支持
+  - append-only transcript round-trip 是否通过
   - 非流式 response body 是否正常
 - 不得因为某个 provider “能聊天”就默认它完整兼容当前所有 side-task / planner 路径
 

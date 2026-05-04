@@ -3,7 +3,6 @@ import 'package:ai_chat/services/chat_service.dart';
 import '../agent/model_turn_decision.dart';
 import '../agent/planner_tool_option.dart';
 import '../chat_message.dart';
-import '../chat_turn.dart';
 
 class LlmRetryProgress {
   final String label;
@@ -22,6 +21,12 @@ class LlmRetryProgress {
 }
 
 abstract class BaseLLM {
+  /// Architecture:
+  /// - docs/architecture/append-only-transcript.md
+  ///
+  /// Invariant:
+  /// - planner-visible context is reconstructed from append-only transcript
+  /// - provider/runtime state must not become planner continuation input
   /// 模型名称
   String getModelName(ChatConfig config);
 
@@ -39,14 +44,11 @@ abstract class BaseLLM {
     throw UnimplementedError('processWebpageContent is not implemented');
   }
 
-  /// Provider-native multi-tool planner decision.
+  /// Planner decision built from append-only transcript context.
   Future<ModelTurnDecision?> planTurnDecision({
     required List<ChatMessage> messages,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
-    ChatTurnProviderStyle? providerStyle,
-    Map<String, dynamic>? providerState,
-    List<Map<String, dynamic>> providerContinuationItems = const [],
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     return null;

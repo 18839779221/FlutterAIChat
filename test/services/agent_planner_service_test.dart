@@ -624,283 +624,7 @@ void main() {
       expect(decision.assistantMessage, '我先查一下记录。');
     });
 
-    test('planNextDecision forwards turn runtime provider state to llm',
-        () async {
-      final llm = _NativeDecisionLLM(
-        decision: const ModelTurnDecision(
-          toolCalls: [],
-          assistantMessage: 'ok',
-          providerState: {'response_id': 'resp_234'},
-          isTerminal: true,
-        ),
-      );
-      final service = AgentPlannerService(
-        llm: llm,
-        toolPolicyService: await _createToolPolicyService(),
-        availableTools: const [
-          ToolDefinition(
-            name: 'search_chat_history',
-            title: '搜索聊天记录',
-            descriptionForModel: '当用户要求从历史记录找结论时使用。',
-            argumentSchema: ToolArgumentSchema(
-              properties: {
-                'query': ToolArgumentProperty.string(description: '查询词'),
-              },
-              required: ['query'],
-            ),
-          ),
-          ToolDefinition(
-            name: 'Write',
-            title: '写入文件',
-            descriptionForModel: '当用户明确要求创建本地文件或整文件覆盖时使用。',
-            argumentSchema: ToolArgumentSchema(
-              properties: {
-                'file_path': ToolArgumentProperty.string(description: '文件路径'),
-                'content': ToolArgumentProperty.string(description: '正文'),
-              },
-              required: ['file_path', 'content'],
-            ),
-          ),
-        ],
-      );
-
-      await service.planNextDecision(
-        turn: ChatTurn(
-          id: 1,
-          groupId: 1,
-          status: ChatTurnStatus.running,
-          userInput: '继续上一轮 responses tool loop',
-          providerStyle: ChatTurnProviderStyle.openaiResponses,
-          providerStateJson: const {'response_id': 'resp_prev'},
-        ),
-        transcript: [_userEvent()],
-        steps: const [],
-        config: ChatConfig(systemPrompt: ''),
-        limits: const AgentLoopLimits(),
-      );
-
-      expect(llm.lastProviderStyle, ChatTurnProviderStyle.openaiResponses);
-      expect(llm.lastProviderState, containsPair('response_id', 'resp_prev'));
-    });
-
-    test(
-        'planNextDecision does not fall back to responses continuation from steps',
-        () async {
-      final llm = _NativeDecisionLLM(
-        decision: const ModelTurnDecision(
-          toolCalls: [],
-          assistantMessage: 'ok',
-          providerState: {'response_id': 'resp_next'},
-          isTerminal: true,
-        ),
-      );
-      final service = AgentPlannerService(
-        llm: llm,
-        toolPolicyService: await _createToolPolicyService(),
-        availableTools: const [
-          ToolDefinition(
-            name: 'search_chat_history',
-            title: '搜索聊天记录',
-            descriptionForModel: '当用户要求从历史记录找结论时使用。',
-            argumentSchema: ToolArgumentSchema(
-              properties: {
-                'query': ToolArgumentProperty.string(description: '查询词'),
-              },
-              required: ['query'],
-            ),
-          ),
-        ],
-      );
-
-      await service.planNextDecision(
-        turn: ChatTurn(
-          id: 1,
-          groupId: 1,
-          status: ChatTurnStatus.running,
-          userInput: '继续执行 responses tool loop',
-          providerStyle: ChatTurnProviderStyle.openaiResponses,
-          providerStateJson: const {'response_id': 'resp_prev'},
-        ),
-        transcript: [_userEvent()],
-        steps: [
-          ChatTurnStep(
-            id: 1,
-            turnId: 1,
-            stepIndex: 1,
-            providerResponseId: 'resp_prev',
-            providerCallId: 'fc_1',
-            toolName: 'search_chat_history',
-            toolArgsJson: const {'query': '数据库版本'},
-            status: ChatTurnStepStatus.completed,
-            resultSummary: '已确认数据库版本 7',
-            resultJson: const {'databaseVersion': '7'},
-          ),
-          ChatTurnStep(
-            id: 2,
-            turnId: 1,
-            stepIndex: 2,
-            providerResponseId: 'resp_old',
-            providerCallId: 'fc_old',
-            toolName: 'Write',
-            toolArgsJson: const {'file_path': 'notes/old-note.md'},
-            status: ChatTurnStepStatus.completed,
-            resultSummary: '旧结果',
-          ),
-        ],
-        config: ChatConfig(systemPrompt: ''),
-        limits: const AgentLoopLimits(),
-      );
-
-      expect(llm.lastProviderContinuationItems, isEmpty);
-    });
-
-    test(
-        'planNextDecision builds responses continuation items from transcript when multiple tool calls share one step',
-        () async {
-      final llm = _NativeDecisionLLM(
-        decision: const ModelTurnDecision(
-          toolCalls: [],
-          assistantMessage: 'ok',
-          providerState: {'response_id': 'resp_next'},
-          isTerminal: true,
-        ),
-      );
-      final service = AgentPlannerService(
-        llm: llm,
-        toolPolicyService: await _createToolPolicyService(),
-        availableTools: const [
-          ToolDefinition(
-            name: 'search_chat_history',
-            title: '搜索聊天记录',
-            descriptionForModel: '当用户要求从历史记录找结论时使用。',
-            argumentSchema: ToolArgumentSchema(
-              properties: {
-                'query': ToolArgumentProperty.string(description: '查询词'),
-              },
-              required: ['query'],
-            ),
-          ),
-          ToolDefinition(
-            name: 'Write',
-            title: '写入文件',
-            descriptionForModel: '当需要写文件时使用。',
-            argumentSchema: ToolArgumentSchema(
-              properties: {
-                'file_path': ToolArgumentProperty.string(description: '路径'),
-              },
-            ),
-          ),
-        ],
-      );
-
-      await service.planNextDecision(
-        turn: ChatTurn(
-          id: 1,
-          groupId: 1,
-          status: ChatTurnStatus.running,
-          userInput: '继续执行 responses tool loop',
-          providerStyle: ChatTurnProviderStyle.openaiResponses,
-          providerStateJson: const {'response_id': 'resp_prev'},
-        ),
-        transcript: [
-          _userEvent(),
-          ChatEvent(
-            id: 2,
-            turnId: 1,
-            groupId: 1,
-            sequence: 2,
-            eventType: ChatEventType.assistantToolCall,
-            role: MessageRole.assistant,
-            content: '准备执行工具：搜索聊天记录',
-            payloadJson: const {
-              'toolName': 'search_chat_history',
-              'arguments': {'query': '数据库版本'},
-              'providerCallId': 'fc_1',
-              'providerResponseId': 'resp_prev',
-              'stepId': 1,
-            },
-          ),
-          ChatEvent(
-            id: 3,
-            turnId: 1,
-            groupId: 1,
-            sequence: 3,
-            eventType: ChatEventType.assistantToolCall,
-            role: MessageRole.assistant,
-            content: '准备执行工具：写入文件',
-            payloadJson: const {
-              'toolName': 'Write',
-              'arguments': {'file_path': 'notes/db.md'},
-              'providerCallId': 'fc_2',
-              'providerResponseId': 'resp_prev',
-              'stepId': 1,
-            },
-          ),
-          ChatEvent(
-            id: 4,
-            turnId: 1,
-            groupId: 1,
-            sequence: 4,
-            eventType: ChatEventType.toolResult,
-            role: MessageRole.system,
-            content: '已确认数据库版本 7',
-            payloadJson: const {
-              'summary': '已确认数据库版本 7',
-              'data': {'databaseVersion': '7'},
-              'providerCallId': 'fc_1',
-            },
-          ),
-          ChatEvent(
-            id: 5,
-            turnId: 1,
-            groupId: 1,
-            sequence: 5,
-            eventType: ChatEventType.toolResult,
-            role: MessageRole.system,
-            content: '已写入 notes/db.md',
-            payloadJson: const {
-              'summary': '已写入 notes/db.md',
-              'data': {'file_path': 'notes/db.md'},
-              'providerCallId': 'fc_2',
-            },
-          ),
-        ],
-        steps: [
-          ChatTurnStep(
-            id: 1,
-            turnId: 1,
-            stepIndex: 1,
-            providerResponseId: 'resp_prev',
-            toolName: 'search_chat_history,Write',
-            toolArgsJson: {},
-            status: ChatTurnStepStatus.completed,
-          ),
-        ],
-        config: ChatConfig(systemPrompt: ''),
-        limits: const AgentLoopLimits(),
-      );
-
-      expect(llm.lastProviderContinuationItems, hasLength(4));
-      expect(
-        llm.lastProviderContinuationItems.first,
-        containsPair('toolCallId', 'fc_1'),
-      );
-      expect(
-        llm.lastProviderContinuationItems[1],
-        containsPair('toolCallId', 'fc_1'),
-      );
-      expect(
-        llm.lastProviderContinuationItems[2],
-        containsPair('toolCallId', 'fc_2'),
-      );
-      expect(
-        llm.lastProviderContinuationItems.last,
-        containsPair('toolCallId', 'fc_2'),
-      );
-    });
-
-    test(
-        'planNextDecision builds chat completions continuation items for regular tools',
+    test('planNextDecision projects append-only transcript directly to llm',
         () async {
       final llm = _NativeDecisionLLM(
         decision: const ModelTurnDecision(
@@ -934,7 +658,8 @@ void main() {
           groupId: 1,
           status: ChatTurnStatus.running,
           userInput: '继续完成联网搜索结论',
-          providerStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          providerStyle: ChatTurnProviderStyle.openaiResponses,
+          providerStateJson: const {'response_id': 'resp_prev'},
         ),
         transcript: [
           _userEvent(),
@@ -960,239 +685,13 @@ void main() {
             content: '已完成联网搜索',
             payloadJson: const {
               'summary': '已完成联网搜索',
-              'data': {'topResult': 'https://example.com/minimax'},
+              'toolName': 'web_search',
+              'toolResultText': 'top result: https://example.com/minimax',
               'providerCallId': 'call_web_1',
             },
           ),
-        ],
-        steps: const [],
-        config: ChatConfig(systemPrompt: ''),
-        limits: const AgentLoopLimits(),
-      );
-
-      expect(
-        llm.lastProviderContinuationItems,
-        [
-          {
-            'type': 'assistant_tool_call',
-            'toolCallId': 'call_web_1',
-            'toolName': 'web_search',
-            'arguments': {
-              'query': 'MiniMax API',
-            },
-          },
-          {
-            'type': 'tool_result',
-            'toolCallId': 'call_web_1',
-            'toolName': 'web_search',
-            'output':
-                '{"status":"success","summary":"已完成联网搜索","data":{"topResult":"https://example.com/minimax"}}',
-          },
-        ],
-      );
-    });
-
-    test(
-        'planNextDecision builds chat completions ask-user continuation as user answer',
-        () async {
-      final llm = _NativeDecisionLLM(
-        decision: const ModelTurnDecision(
-          toolCalls: [],
-          assistantMessage: '继续处理',
-          providerState: {},
-          isTerminal: true,
-        ),
-      );
-      final service = AgentPlannerService(
-        llm: llm,
-        toolPolicyService: await _createToolPolicyService(),
-        availableTools: const [
-          ToolDefinition(
-            name: 'ask_user_question',
-            title: '向用户提问',
-            descriptionForModel: '当必须补充关键信息时使用。',
-            argumentSchema: ToolArgumentSchema(
-              properties: {
-                'questions': ToolArgumentProperty(
-                  type: 'array',
-                  description: '问题列表',
-                ),
-              },
-              required: ['questions'],
-            ),
-          ),
-        ],
-      );
-
-      await service.planNextDecision(
-        turn: ChatTurn(
-          id: 3,
-          groupId: 1,
-          status: ChatTurnStatus.running,
-          userInput: '继续根据我的偏好给建议',
-          providerStyle: ChatTurnProviderStyle.openaiChatCompletions,
-        ),
-        transcript: [
-          _userEvent(),
           ChatEvent(
-            turnId: 3,
-            groupId: 1,
-            sequence: 2,
-            eventType: ChatEventType.assistantQuestionPrompt,
-            role: MessageRole.assistant,
-            content: '请选择存储方案',
-            payloadJson: const {
-              'toolName': 'ask_user_question',
-              'questions': [
-                {'id': 'storage', 'question': '请选择存储方案'},
-              ],
-              'providerCallId': 'call_ask_1',
-            },
-          ),
-          ChatEvent(
-            turnId: 3,
-            groupId: 1,
-            sequence: 3,
-            eventType: ChatEventType.userInteractionResult,
-            role: MessageRole.system,
-            content: 'User answered AskUserQuestion:\n- Storage: SQLite',
-            payloadJson: const {
-              'answersByQuestionId': {'storage': 'SQLite'},
-              'providerCallId': 'call_ask_1',
-            },
-          ),
-        ],
-        steps: const [],
-        config: ChatConfig(systemPrompt: ''),
-        limits: const AgentLoopLimits(),
-      );
-
-      expect(
-        llm.lastProviderContinuationItems,
-        [
-          {
-            'type': 'user_interaction_answer',
-            'toolCallId': 'call_ask_1',
-            'content': 'User answered AskUserQuestion:\n- Storage: SQLite',
-          },
-        ],
-      );
-    });
-
-    test(
-        'planNextDecision does not fall back to responses ask-user continuation from steps',
-        () async {
-      final llm = _NativeDecisionLLM(
-        decision: const ModelTurnDecision(
-          toolCalls: [],
-          assistantMessage: '继续处理',
-          providerState: {'response_id': 'resp_next'},
-          isTerminal: true,
-        ),
-      );
-      final service = AgentPlannerService(llm: llm);
-
-      await service.planNextDecision(
-        turn: ChatTurn(
-          id: 3,
-          groupId: 1,
-          status: ChatTurnStatus.running,
-          userInput: '继续根据我的偏好给建议',
-          providerStyle: ChatTurnProviderStyle.openaiResponses,
-          providerStateJson: const {'response_id': 'resp_prev'},
-        ),
-        transcript: const [],
-        steps: [
-          ChatTurnStep(
-            id: 4,
-            turnId: 3,
-            stepIndex: 1,
-            providerResponseId: 'resp_prev',
-            providerCallId: 'call_ask_1',
-            toolName: 'ask_user_question',
-            toolArgsJson: {
-              'questions': [
-                {'id': 'storage', 'question': '请选择存储方案'},
-              ],
-            },
-            status: ChatTurnStepStatus.completed,
-            resultSummary: 'user_answered',
-            resultJson: {
-              'transcriptContent':
-                  'User answered AskUserQuestion:\n- Storage: SQLite',
-              'answersByQuestionId': {'storage': 'SQLite'},
-            },
-          ),
-        ],
-        config: ChatConfig(systemPrompt: ''),
-        limits: const AgentLoopLimits(),
-      );
-
-      expect(llm.lastProviderContinuationItems, isEmpty);
-    });
-
-    test(
-        'planNextDecision deduplicates responses ask-user continuation items from transcript',
-        () async {
-      final llm = _NativeDecisionLLM(
-        decision: const ModelTurnDecision(
-          toolCalls: [],
-          assistantMessage: '继续处理',
-          providerState: {'response_id': 'resp_next'},
-          isTerminal: true,
-        ),
-      );
-      final service = AgentPlannerService(llm: llm);
-
-      await service.planNextDecision(
-        turn: ChatTurn(
-          id: 3,
-          groupId: 1,
-          status: ChatTurnStatus.running,
-          userInput: '继续根据我的偏好给建议',
-          providerStyle: ChatTurnProviderStyle.openaiResponses,
-          providerStateJson: const {'response_id': 'resp_prev'},
-        ),
-        transcript: [
-          _userEvent(),
-          ChatEvent(
-            turnId: 3,
-            groupId: 1,
-            sequence: 2,
-            eventType: ChatEventType.assistantToolCall,
-            role: MessageRole.assistant,
-            content: '准备执行工具：向用户提问',
-            payloadJson: const {
-              'toolName': 'ask_user_question',
-              'arguments': {
-                'questions': [
-                  {'id': 'storage', 'question': '请选择存储方案'},
-                ],
-              },
-              'providerCallId': 'call_ask_1',
-              'providerResponseId': 'resp_prev',
-              'stepId': 8,
-            },
-          ),
-          ChatEvent(
-            turnId: 3,
-            groupId: 1,
-            sequence: 3,
-            eventType: ChatEventType.assistantQuestionPrompt,
-            role: MessageRole.assistant,
-            content: '请选择存储方案',
-            payloadJson: const {
-              'questions': [
-                {'id': 'storage', 'question': '请选择存储方案'},
-              ],
-              'agentTurnId': 3,
-              'providerCallId': 'call_ask_1',
-              'providerResponseId': 'resp_prev',
-              'stepId': 8,
-            },
-          ),
-          ChatEvent(
-            turnId: 3,
+            turnId: 2,
             groupId: 1,
             sequence: 4,
             eventType: ChatEventType.userInteractionResult,
@@ -1210,14 +709,12 @@ void main() {
       );
 
       expect(
-        llm.lastProviderContinuationItems,
-        [
-          {
-            'type': 'user_interaction_answer',
-            'toolCallId': 'call_ask_1',
-            'content': 'User answered AskUserQuestion:\n- Storage: SQLite',
-          },
-        ],
+        llm.lastMessages.map((message) => message.text).toList(),
+        containsAll([
+          '帮我回忆刚才聊到的数据库版本',
+          'top result: https://example.com/minimax',
+          'User answered AskUserQuestion:\n- Storage: SQLite',
+        ]),
       );
     });
 
@@ -1708,6 +1205,8 @@ void main() {
             content: 'user_answered',
             payloadJson: const {
               'summary': 'user_answered',
+              'toolResultText':
+                  'User answered AskUserQuestion:\n- 目标平台: Android',
               'answersByQuestionId': {'platform': 'Android'},
               'data': {
                 'answersByQuestionId': {'platform': 'Android'},
@@ -1721,36 +1220,11 @@ void main() {
         limits: const AgentLoopLimits(),
       );
 
+      final projectedTexts =
+          llm.lastMessages.map((message) => message.text).join('\n');
       expect(
-        llm.lastProviderContinuationItems,
-        [
-          {
-            'role': 'assistant',
-            'content': [
-              {
-                'type': 'tool_use',
-                'id': 'call_function_123',
-                'name': 'ask_user_question',
-                'input': {
-                  'questions': [
-                    {'id': 'platform', 'question': '目标平台是什么？'},
-                  ],
-                },
-              },
-            ],
-          },
-          {
-            'role': 'user',
-            'content': [
-              {
-                'type': 'tool_result',
-                'tool_use_id': 'call_function_123',
-                'content':
-                    '{"status":"success","summary":"user_answered","data":{"answersByQuestionId":{"platform":"Android"}}}',
-              },
-            ],
-          },
-        ],
+        projectedTexts,
+        contains('User answered AskUserQuestion:\n- 目标平台: Android'),
       );
     });
 
@@ -1821,35 +1295,11 @@ void main() {
         limits: const AgentLoopLimits(),
       );
 
+      final projectedTexts =
+          llm.lastMessages.map((message) => message.text).join('\n');
       expect(
-        llm.lastProviderContinuationItems,
-        [
-          {
-            'role': 'assistant',
-            'content': [
-              {
-                'type': 'tool_use',
-                'id': 'call_function_ujx5ah3p2ec4_1',
-                'name': 'ask_user_question',
-                'input': {
-                  'questions': [
-                    {'id': 'sort_method', 'question': '您想要按什么顺序排列美食？'},
-                  ],
-                },
-              },
-            ],
-          },
-          {
-            'role': 'user',
-            'content': [
-              {
-                'type': 'tool_result',
-                'tool_use_id': 'call_function_ujx5ah3p2ec4_1',
-                'content': 'User answered AskUserQuestion:\n- 排序方式: 按地区（由南到北）',
-              },
-            ],
-          },
-        ],
+        projectedTexts,
+        contains('User answered AskUserQuestion:\n- 排序方式: 按地区（由南到北）'),
       );
     });
 
@@ -1922,6 +1372,7 @@ void main() {
             payloadJson: const {
               'toolName': 'LS',
               'summary': '已列出目录：.',
+              'toolResultText': '目录为空',
               'status': 'success',
               'data': {
                 'path': '.',
@@ -1936,38 +1387,9 @@ void main() {
         limits: const AgentLoopLimits(),
       );
 
-      expect(
-        llm.lastProviderContinuationItems,
-        [
-          {
-            'role': 'assistant',
-            'content': [
-              {
-                'type': 'thinking',
-                'thinking': '我要先列出目录。',
-                'signature': 'sig_1',
-              },
-              {
-                'type': 'tool_use',
-                'id': 'call_function_123',
-                'name': 'LS',
-                'input': {'path': '.'},
-              },
-            ],
-          },
-          {
-            'role': 'user',
-            'content': [
-              {
-                'type': 'tool_result',
-                'tool_use_id': 'call_function_123',
-                'content':
-                    '{"status":"success","summary":"已列出目录：.","data":{"path":".","entries":[]}}',
-              },
-            ],
-          },
-        ],
-      );
+      final projectedTexts =
+          llm.lastMessages.map((message) => message.text).join('\n');
+      expect(projectedTexts, contains('目录为空'));
     });
 
     test(
@@ -2038,6 +1460,7 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '抓取页面 A 完成',
+              'toolResultText': '抓取页面 A 完成',
               'status': 'success',
               'providerCallId': 'call_00',
               'data': {'url': 'https://example.com/a'},
@@ -2053,6 +1476,7 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '抓取页面 B 失败',
+              'toolResultText': '抓取页面 B 失败',
               'status': 'failure',
               'errorMessage': 'network_timeout',
               'providerCallId': 'call_01',
@@ -2068,6 +1492,7 @@ void main() {
             payloadJson: const {
               'toolName': 'web_search',
               'summary': '联网搜索完成',
+              'toolResultText': '联网搜索完成',
               'status': 'success',
               'providerCallId': 'call_02',
               'data': {'query': 'Google latest news 2026'},
@@ -2079,66 +1504,18 @@ void main() {
         limits: const AgentLoopLimits(),
       );
 
-      expect(
-        llm.lastProviderContinuationItems,
-        [
-          {
-            'role': 'assistant',
-            'content': [
-              {
-                'type': 'thinking',
-                'thinking': '我要补充细节。',
-                'signature': 'sig_multi',
-              },
-              {
-                'type': 'tool_use',
-                'id': 'call_00',
-                'name': 'fetch_webpage',
-                'input': {'url': 'https://example.com/a'},
-              },
-              {
-                'type': 'tool_use',
-                'id': 'call_01',
-                'name': 'fetch_webpage',
-                'input': {'url': 'https://example.com/b'},
-              },
-              {
-                'type': 'tool_use',
-                'id': 'call_02',
-                'name': 'web_search',
-                'input': {'query': 'Google latest news 2026'},
-              },
-            ],
-          },
-          {
-            'role': 'user',
-            'content': [
-              {
-                'type': 'tool_result',
-                'tool_use_id': 'call_00',
-                'content':
-                    '{"status":"success","summary":"抓取页面 A 完成","data":{"url":"https://example.com/a"}}',
-              },
-              {
-                'type': 'tool_result',
-                'tool_use_id': 'call_01',
-                'content':
-                    '{"status":"failure","summary":"抓取页面 B 失败","error":"network_timeout"}',
-              },
-              {
-                'type': 'tool_result',
-                'tool_use_id': 'call_02',
-                'content':
-                    '{"status":"success","summary":"联网搜索完成","data":{"query":"Google latest news 2026"}}',
-              },
-            ],
-          },
-        ],
-      );
+      final toolResultTexts = llm.lastMessages
+          .map((message) => message.text)
+          .where((text) => text.contains('完成') || text.contains('失败'))
+          .toList();
+      expect(toolResultTexts, hasLength(3));
+      expect(toolResultTexts.join('\n'), contains('抓取页面 A 完成'));
+      expect(toolResultTexts.join('\n'), contains('抓取页面 B 失败'));
+      expect(toolResultTexts.join('\n'), contains('联网搜索完成'));
     });
 
     test(
-        'planNextDecision includes every anthropic tool result when one assistant message issued five tool calls',
+        'planNextDecision includes every transcript tool result when one turn contains five tool outcomes',
         () async {
       final llm = _NativeDecisionLLM(
         decision: const ModelTurnDecision(
@@ -2217,6 +1594,7 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '页面 A 失败',
+              'toolResultText': '页面 A 失败',
               'errorMessage': 'network_error',
               'providerCallId': 'call_00',
             },
@@ -2231,6 +1609,7 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '页面 B 完成',
+              'toolResultText': '页面 B 完成',
               'providerCallId': 'call_01',
               'data': {'url': 'https://example.com/b'},
             },
@@ -2245,6 +1624,7 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '页面 C 失败',
+              'toolResultText': '页面 C 失败',
               'errorMessage': 'timeout',
               'providerCallId': 'call_02',
             },
@@ -2259,6 +1639,7 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '页面 D 失败',
+              'toolResultText': '页面 D 失败',
               'errorMessage': 'network_error',
               'providerCallId': 'call_03',
             },
@@ -2273,6 +1654,7 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '页面 E 失败',
+              'toolResultText': '页面 E 失败',
               'errorMessage': 'network_error',
               'providerCallId': 'call_04',
             },
@@ -2283,86 +1665,17 @@ void main() {
         limits: const AgentLoopLimits(),
       );
 
+      final projectedTexts =
+          llm.lastMessages.map((message) => message.text).toList();
       expect(
-        llm.lastProviderContinuationItems,
-        [
-          {
-            'role': 'assistant',
-            'content': [
-              {
-                'type': 'thinking',
-                'thinking': '我要补充细节。',
-                'signature': 'sig_five',
-              },
-              {
-                'type': 'tool_use',
-                'id': 'call_00',
-                'name': 'fetch_webpage',
-                'input': {'url': 'https://example.com/a'},
-              },
-              {
-                'type': 'tool_use',
-                'id': 'call_01',
-                'name': 'fetch_webpage',
-                'input': {'url': 'https://example.com/b'},
-              },
-              {
-                'type': 'tool_use',
-                'id': 'call_02',
-                'name': 'fetch_webpage',
-                'input': {'url': 'https://example.com/c'},
-              },
-              {
-                'type': 'tool_use',
-                'id': 'call_03',
-                'name': 'fetch_webpage',
-                'input': {'url': 'https://example.com/d'},
-              },
-              {
-                'type': 'tool_use',
-                'id': 'call_04',
-                'name': 'fetch_webpage',
-                'input': {'url': 'https://example.com/e'},
-              },
-            ],
-          },
-          {
-            'role': 'user',
-            'content': [
-              {
-                'type': 'tool_result',
-                'tool_use_id': 'call_00',
-                'content':
-                    '{"status":"failure","summary":"页面 A 失败","error":"network_error"}',
-              },
-              {
-                'type': 'tool_result',
-                'tool_use_id': 'call_01',
-                'content':
-                    '{"status":"success","summary":"页面 B 完成","data":{"url":"https://example.com/b"}}',
-              },
-              {
-                'type': 'tool_result',
-                'tool_use_id': 'call_02',
-                'content':
-                    '{"status":"failure","summary":"页面 C 失败","error":"timeout"}',
-              },
-              {
-                'type': 'tool_result',
-                'tool_use_id': 'call_03',
-                'content':
-                    '{"status":"failure","summary":"页面 D 失败","error":"network_error"}',
-              },
-              {
-                'type': 'tool_result',
-                'tool_use_id': 'call_04',
-                'content':
-                    '{"status":"failure","summary":"页面 E 失败","error":"network_error"}',
-              },
-            ],
-          },
-        ],
+        projectedTexts.where((text) => text.contains('页面 ')),
+        hasLength(5),
       );
+      expect(projectedTexts.join('\n'), contains('页面 A 失败'));
+      expect(projectedTexts.join('\n'), contains('页面 B 完成'));
+      expect(projectedTexts.join('\n'), contains('页面 C 失败'));
+      expect(projectedTexts.join('\n'), contains('页面 D 失败'));
+      expect(projectedTexts.join('\n'), contains('页面 E 失败'));
     });
 
     test('planNextDecision parses native planner tool choice directly',
@@ -2453,9 +1766,6 @@ class _NativeDecisionLLM implements BaseLLM {
   List<ChatMessage> lastMessages = const [];
   ChatConfig? lastConfig;
   List<PlannerToolOption>? lastToolOptions;
-  ChatTurnProviderStyle? lastProviderStyle;
-  Map<String, dynamic>? lastProviderState;
-  List<Map<String, dynamic>> lastProviderContinuationItems = const [];
 
   _NativeDecisionLLM({required this.decision});
 
@@ -2470,20 +1780,11 @@ class _NativeDecisionLLM implements BaseLLM {
     required List<ChatMessage> messages,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
-    ChatTurnProviderStyle? providerStyle,
-    Map<String, dynamic>? providerState,
-    List<Map<String, dynamic>> providerContinuationItems = const [],
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     lastMessages = List<ChatMessage>.from(messages);
     lastConfig = config;
     lastToolOptions = List<PlannerToolOption>.from(availableTools);
-    lastProviderStyle = providerStyle;
-    lastProviderState =
-        providerState == null ? null : Map<String, dynamic>.from(providerState);
-    lastProviderContinuationItems = providerContinuationItems
-        .map((item) => Map<String, dynamic>.from(item))
-        .toList(growable: false);
     return decision;
   }
 
@@ -2514,9 +1815,6 @@ class _NativeNullPlannerLLM implements BaseLLM {
     required List<ChatMessage> messages,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
-    ChatTurnProviderStyle? providerStyle,
-    Map<String, dynamic>? providerState,
-    List<Map<String, dynamic>> providerContinuationItems = const [],
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     nativeAttempts += 1;
@@ -2550,9 +1848,6 @@ class _ThrowingNativePlannerLLM implements BaseLLM {
     required List<ChatMessage> messages,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
-    ChatTurnProviderStyle? providerStyle,
-    Map<String, dynamic>? providerState,
-    List<Map<String, dynamic>> providerContinuationItems = const [],
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     nativeAttempts += 1;

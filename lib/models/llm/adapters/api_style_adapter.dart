@@ -9,6 +9,13 @@ import '../llm_config.dart';
 /// Encapsulates the differences between the three supported HTTP LLM
 /// protocols. `ConfigurableHttpLLM` stays protocol-agnostic and dispatches to
 /// an [ApiStyleAdapter] per [ApiStyle].
+///
+/// Architecture:
+/// - docs/architecture/append-only-transcript.md
+///
+/// Invariant:
+/// - adapters only serialize transcript replay for planner requests
+/// - provider protocol details must not reintroduce native continuation state
 abstract class ApiStyleAdapter {
   const ApiStyleAdapter();
 
@@ -34,9 +41,6 @@ abstract class ApiStyleAdapter {
     required List<PlannerToolOption> availableTools,
     required bool parallelToolCalls,
     LlmRequestOptions requestOptions = const LlmRequestOptions(),
-    String? previousResponseId,
-    List<Map<String, dynamic>> continuationItems = const [],
-    Map<String, dynamic>? providerState,
   });
 
   /// Parse a structured planner response into a [PlannerToolChoice], or null

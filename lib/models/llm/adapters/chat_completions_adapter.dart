@@ -58,9 +58,6 @@ class ChatCompletionsAdapter extends ApiStyleAdapter {
     required List<PlannerToolOption> availableTools,
     required bool parallelToolCalls,
     LlmRequestOptions requestOptions = const LlmRequestOptions(),
-    String? previousResponseId,
-    List<Map<String, dynamic>> continuationItems = const [],
-    Map<String, dynamic>? providerState,
   }) {
     final payload = buildChatPayload(
       messages: messages,
@@ -69,17 +66,6 @@ class ChatCompletionsAdapter extends ApiStyleAdapter {
       stream: false,
       requestOptions: requestOptions,
     );
-    final payloadMessages = List<Map<String, dynamic>>.from(
-      (payload['messages'] as List<dynamic>? ?? const [])
-          .whereType<Map>()
-          .map((item) => Map<String, dynamic>.from(item)),
-    );
-    if (continuationItems.isNotEmpty) {
-      payload['messages'] = [
-        ...payloadMessages,
-        ..._buildContinuationMessages(continuationItems),
-      ];
-    }
     final tools = availableTools
         .map(
           (tool) => {
@@ -185,63 +171,6 @@ class ChatCompletionsAdapter extends ApiStyleAdapter {
       'role': message.role.toString().split('.').last,
       'content': message.text,
     };
-  }
-
-  List<Map<String, dynamic>> _buildContinuationMessages(
-    List<Map<String, dynamic>> continuationItems,
-  ) {
-    final messages = <Map<String, dynamic>>[];
-    for (final rawItem in continuationItems) {
-      final item = Map<String, dynamic>.from(rawItem);
-      final type = item['type'];
-      if (type == 'assistant_tool_call') {
-        final toolCallId = normalizeText(item['toolCallId']);
-        final toolName = normalizeText(item['toolName']);
-        final arguments = item['arguments'];
-        if (toolCallId == null || toolName == null || arguments is! Map) {
-          continue;
-        }
-        messages.add({
-          'role': 'assistant',
-          'content': '',
-          'tool_calls': [
-            {
-              'id': toolCallId,
-              'type': 'function',
-              'function': {
-                'name': toolName,
-                'arguments': jsonEncode(arguments),
-              },
-            },
-          ],
-        });
-        continue;
-      }
-      if (type == 'tool_result') {
-        final toolCallId = normalizeText(item['toolCallId']);
-        final output = normalizeText(item['output']);
-        if (toolCallId == null || output == null) {
-          continue;
-        }
-        messages.add({
-          'role': 'tool',
-          'tool_call_id': toolCallId,
-          'content': output,
-        });
-        continue;
-      }
-      if (type == 'user_interaction_answer') {
-        final content = normalizeText(item['content']);
-        if (content == null) {
-          continue;
-        }
-        messages.add({
-          'role': 'user',
-          'content': content,
-        });
-      }
-    }
-    return messages;
   }
 
   void _applyCacheHints(
