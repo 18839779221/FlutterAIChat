@@ -1,6 +1,7 @@
 import 'package:ai_chat/services/chat_service.dart';
 
 import '../agent/model_turn_decision.dart';
+import '../chat/runtime_stream_entry.dart';
 import '../agent/planner_tool_option.dart';
 import '../chat_message.dart';
 
@@ -18,6 +19,18 @@ class LlmRetryProgress {
     required this.delay,
     required this.error,
   });
+}
+
+typedef PlannerRuntimeStreamListener = void Function(
+  List<RuntimeStreamEntry> entries,
+);
+
+/// Optional capability for LLMs that can surface runtime-only planner stream
+/// snapshots while still returning one final decision to the loop.
+abstract class PlannerRuntimeStreamingCapable {
+  void setPlannerRuntimeStreamListener(
+    PlannerRuntimeStreamListener? listener,
+  );
 }
 
 abstract class BaseLLM {

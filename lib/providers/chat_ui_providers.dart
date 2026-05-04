@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:ai_chat/models/chat/chat_timeline_projection.dart';
 import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
+import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/session/context_window_snapshot.dart';
 import 'package:ai_chat/models/debug/debug_test_case.dart';
@@ -105,6 +106,14 @@ final activeSendCancellationProvider =
 final runtimeAssistantDraftProvider =
     StateProvider<RuntimeAssistantDraft?>((ref) => null);
 
+/// Runtime-only tool-call argument feed used by tool-specific renderers.
+final runtimeToolCallFeedProvider = StateNotifierProvider<
+    RuntimeToolCallFeedController, List<RuntimeStreamEntry>>((ref) {
+  final controller = RuntimeToolCallFeedController();
+  ref.onDispose(controller.dispose);
+  return controller;
+});
+
 /// Pair of the message that currently owns the confirmation step and the
 /// parsed invocation payload used by the bottom confirmation bar.
 class PendingToolConfirmation {
@@ -151,3 +160,65 @@ final activePendingToolConfirmationProvider =
     invocation: projected.invocation,
   );
 });
+
+class RuntimeToolCallFeedController
+    extends StateNotifier<List<RuntimeStreamEntry>> {
+  RuntimeToolCallFeedController() : super(const <RuntimeStreamEntry>[]);
+
+  static const Duration _minPublishInterval = Duration(milliseconds: 120);
+
+  Timer? _flushTimer;
+  DateTime? _lastPublishedAt;
+  List<RuntimeStreamEntry>? _pendingEntries;
+
+  void publish(List<RuntimeStreamEntry> entries) {
+    final filtered = entries
+        .where((entry) => entry.kind == RuntimeStreamEntryKind.toolCallArguments)
+        .toList(growable: false);
+    if (filtered.isEmpty) {
+      clear();
+      return;
+    }
+
+    _pendingEntries = filtered;
+    final now = DateTime.now();
+    final lastPublishedAt = _lastPublishedAt;
+    if (lastPublishedAt == null ||
+        now.difference(lastPublishedAt) >= _minPublishInterval) {
+      _flushPending(now);
+      return;
+    }
+
+    _flushTimer ??= Timer(
+      _minPublishInterval - now.difference(lastPublishedAt),
+      () => _flushPending(DateTime.now()),
+    );
+  }
+
+  void clear() {
+    _flushTimer?.cancel();
+    _flushTimer = null;
+    _pendingEntries = null;
+    if (state.isNotEmpty) {
+      state = const <RuntimeStreamEntry>[];
+    }
+  }
+
+  void _flushPending(DateTime now) {
+    _flushTimer?.cancel();
+    _flushTimer = null;
+    final pendingEntries = _pendingEntries;
+    _pendingEntries = null;
+    if (pendingEntries == null) {
+      return;
+    }
+    _lastPublishedAt = now;
+    state = pendingEntries;
+  }
+
+  @override
+  void dispose() {
+    _flushTimer?.cancel();
+    super.dispose();
+  }
+}

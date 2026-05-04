@@ -5,6 +5,7 @@ import '../models/agent/chat_turn_step.dart';
 import '../models/agent/model_tool_call.dart';
 import '../models/agent/model_turn_decision.dart';
 import '../models/agent/planner_tool_option.dart';
+import '../models/chat/runtime_stream_entry.dart';
 import '../models/chat_event.dart';
 import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
@@ -37,6 +38,8 @@ class AgentPlannerService {
   final PromptBuilderService _promptBuilder;
   final ToolResultContextProjector _toolResultContextProjector;
   final void Function(LlmRetryProgress progress)? _onPlannerRetryScheduled;
+  final void Function(List<RuntimeStreamEntry> entries)?
+      _onPlannerRuntimeStream;
 
   AgentPlannerService({
     required BaseLLM llm,
@@ -46,6 +49,7 @@ class AgentPlannerService {
     PromptBuilderService? promptBuilder,
     ToolResultContextProjector? toolResultContextProjector,
     void Function(LlmRetryProgress progress)? onPlannerRetryScheduled,
+    void Function(List<RuntimeStreamEntry> entries)? onPlannerRuntimeStream,
   })  : _llm = llm,
         _availableTools = availableTools,
         _toolExposureService =
@@ -54,7 +58,8 @@ class AgentPlannerService {
         _promptBuilder = promptBuilder ?? const PromptBuilderService(),
         _toolResultContextProjector =
             toolResultContextProjector ?? const ToolResultContextProjector(),
-        _onPlannerRetryScheduled = onPlannerRetryScheduled;
+        _onPlannerRetryScheduled = onPlannerRetryScheduled,
+        _onPlannerRuntimeStream = onPlannerRuntimeStream;
 
   Future<ModelTurnDecision?> planNextDecision({
     required ChatTurn turn,
@@ -89,6 +94,10 @@ class AgentPlannerService {
             .toList(growable: false);
 
     try {
+      if (_llm is PlannerRuntimeStreamingCapable) {
+        (_llm as PlannerRuntimeStreamingCapable)
+            .setPlannerRuntimeStreamListener(_onPlannerRuntimeStream);
+      }
       Logger.d(
         _tag,
         'planner decision start turnId=${turn.id} iteration=${turn.iterationCount} toolCalls=${turn.toolCallCount} transcriptEvents=${transcript.length} stepCount=${steps.length} userInput=${_preview(turn.userInput)}',
@@ -118,6 +127,11 @@ class AgentPlannerService {
       );
       Logger.e(_tag, 'native planner decision stack trace', stackTrace);
       return _plannerRequestFailedDecision(detail: detail);
+    } finally {
+      if (_llm is PlannerRuntimeStreamingCapable) {
+        (_llm as PlannerRuntimeStreamingCapable)
+            .setPlannerRuntimeStreamListener(null);
+      }
     }
   }
 

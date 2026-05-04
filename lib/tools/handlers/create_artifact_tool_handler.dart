@@ -193,6 +193,8 @@ Constraints:
 - source MUST be a self-contained HTML document or fragment. Inline <script>/<style> are allowed.
 - External <script src="...">, remote CSS, and network requests are blocked by default.
 - Prefer SVG, Canvas, and vanilla JS. Do NOT rely on external CDNs or third-party hosted assets.
+- When generating HTML, make progressive inline rendering easy: prefer writing CSS first, put visible markup before scripts, and place most script logic near the end of the document.
+- Let invalid or incomplete intermediate HTML still degrade gracefully while the source is streaming in. Avoid patterns that require the final closing chunk before anything visible can appear.
 - Design for one inline card that may be re-rendered after later Edit/Write operations on the same sourcePath.
 - The artifact itself should read as a single integrated surface inside the chat reply. Favor one coherent outer structure with the main content placed directly inside it, so the result feels embedded in the message rather than presented as a separate page.
 - Default the page-level background to transparent, and treat the main content container as the visible surface. Do not rely on the body element to create a full-screen stage unless the user explicitly asks for that effect.

@@ -12,6 +12,7 @@ import '../../repositories/app_settings_repository.dart';
 import '../../services/model_budget_registry.dart';
 import '../../utils/logger.dart';
 import '../agent/model_turn_decision.dart';
+import '../chat/runtime_stream_entry.dart';
 import '../agent/planner_tool_option.dart';
 import '../chat_message.dart';
 import '../chat_turn.dart';
@@ -35,7 +36,8 @@ import 'tool_loop/anthropic_messages_tool_loop_adapter.dart';
 import 'tool_loop/openai_chat_completions_tool_loop_adapter.dart';
 import 'tool_loop/openai_responses_tool_loop_adapter.dart';
 
-class ConfigurableHttpLLM implements BaseLLM {
+class ConfigurableHttpLLM
+    implements BaseLLM, PlannerRuntimeStreamingCapable {
   static const String _tag = 'ConfigurableHttpLLM';
   // Architecture:
   // - docs/architecture/append-only-transcript.md
@@ -78,6 +80,7 @@ class ConfigurableHttpLLM implements BaseLLM {
     Map<String, dynamic>? data,
   }) _traceEmitter;
   final Duration Function(int attempt) _retryDelayBuilder;
+  PlannerRuntimeStreamListener? _plannerRuntimeStreamListener;
 
   ConfigurableHttpLLM({
     required AppSettingsRepository settingsRepository,
@@ -133,6 +136,13 @@ class ConfigurableHttpLLM implements BaseLLM {
         _traceEmitter = traceEmitter ?? Logger.trace,
         _retryDelayBuilder = retryDelayBuilder ?? _defaultRetryDelayForAttempt {
     assert(mainFlowNetworkRetryAttempts >= 1);
+  }
+
+  @override
+  void setPlannerRuntimeStreamListener(
+    PlannerRuntimeStreamListener? listener,
+  ) {
+    _plannerRuntimeStreamListener = listener;
   }
 
   ApiStyleAdapter _adapterFor(ApiStyle apiStyle) {
@@ -547,6 +557,9 @@ class ConfigurableHttpLLM implements BaseLLM {
     return _StreamingPlannerAttemptResult.completed(
       accumulator.buildDecision(),
       debugSnapshot: accumulator.debugSnapshot(),
+      runtimeSnapshots: accumulator.runtimeSnapshots(
+        turnId: 'planner_runtime',
+      ),
     );
   }
 
@@ -573,6 +586,9 @@ class ConfigurableHttpLLM implements BaseLLM {
           onFirstChunk?.call();
         }
         accumulator.consume(chunk);
+        _plannerRuntimeStreamListener?.call(
+          accumulator.runtimeSnapshots(turnId: 'planner_runtime'),
+        );
       }
     }()).timeout(
       _plannerStreamOverallTimeout,
@@ -1045,10 +1061,12 @@ class _StreamingPlannerAttemptResult {
   const _StreamingPlannerAttemptResult.completed(
     this.decision, {
     this.debugSnapshot,
+    this.runtimeSnapshots = const <RuntimeStreamEntry>[],
   });
 
   final ModelTurnDecision? decision;
   final Map<String, dynamic>? debugSnapshot;
+  final List<RuntimeStreamEntry> runtimeSnapshots;
 }
 
 class _RequestTraceContext {

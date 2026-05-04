@@ -2,6 +2,7 @@ import 'package:ai_chat/models/agent/agent_loop_limits.dart';
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/agent/model_tool_call.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
+import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -452,7 +453,7 @@ void main() {
               'toolName': 'Edit',
               'status': 'success',
               'summary': '已编辑文件：my_hobbies.md',
-              'toolResultText': '已编辑文件：agent/my_hobbies.md',
+              'contextText': '已编辑文件：agent/my_hobbies.md',
               'data': {
                 'filePath': 'agent/my_hobbies.md',
               },
@@ -686,7 +687,7 @@ void main() {
             payloadJson: const {
               'summary': '已完成联网搜索',
               'toolName': 'web_search',
-              'toolResultText': 'top result: https://example.com/minimax',
+              'contextText': 'top result: https://example.com/minimax',
               'providerCallId': 'call_web_1',
             },
           ),
@@ -1205,7 +1206,7 @@ void main() {
             content: 'user_answered',
             payloadJson: const {
               'summary': 'user_answered',
-              'toolResultText':
+              'contextText':
                   'User answered AskUserQuestion:\n- 目标平台: Android',
               'answersByQuestionId': {'platform': 'Android'},
               'data': {
@@ -1372,7 +1373,7 @@ void main() {
             payloadJson: const {
               'toolName': 'LS',
               'summary': '已列出目录：.',
-              'toolResultText': '目录为空',
+              'contextText': '目录为空',
               'status': 'success',
               'data': {
                 'path': '.',
@@ -1460,7 +1461,7 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '抓取页面 A 完成',
-              'toolResultText': '抓取页面 A 完成',
+              'contextText': '抓取页面 A 完成',
               'status': 'success',
               'providerCallId': 'call_00',
               'data': {'url': 'https://example.com/a'},
@@ -1476,7 +1477,7 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '抓取页面 B 失败',
-              'toolResultText': '抓取页面 B 失败',
+              'contextText': '抓取页面 B 失败',
               'status': 'failure',
               'errorMessage': 'network_timeout',
               'providerCallId': 'call_01',
@@ -1492,7 +1493,7 @@ void main() {
             payloadJson: const {
               'toolName': 'web_search',
               'summary': '联网搜索完成',
-              'toolResultText': '联网搜索完成',
+              'contextText': '联网搜索完成',
               'status': 'success',
               'providerCallId': 'call_02',
               'data': {'query': 'Google latest news 2026'},
@@ -1594,7 +1595,7 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '页面 A 失败',
-              'toolResultText': '页面 A 失败',
+              'contextText': '页面 A 失败',
               'errorMessage': 'network_error',
               'providerCallId': 'call_00',
             },
@@ -1609,7 +1610,7 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '页面 B 完成',
-              'toolResultText': '页面 B 完成',
+              'contextText': '页面 B 完成',
               'providerCallId': 'call_01',
               'data': {'url': 'https://example.com/b'},
             },
@@ -1624,7 +1625,7 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '页面 C 失败',
-              'toolResultText': '页面 C 失败',
+              'contextText': '页面 C 失败',
               'errorMessage': 'timeout',
               'providerCallId': 'call_02',
             },
@@ -1639,7 +1640,7 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '页面 D 失败',
-              'toolResultText': '页面 D 失败',
+              'contextText': '页面 D 失败',
               'errorMessage': 'network_error',
               'providerCallId': 'call_03',
             },
@@ -1654,7 +1655,7 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '页面 E 失败',
-              'toolResultText': '页面 E 失败',
+              'contextText': '页面 E 失败',
               'errorMessage': 'network_error',
               'providerCallId': 'call_04',
             },
@@ -1730,6 +1731,49 @@ void main() {
       expect(result.toolCalls.single.toolName, 'fetch_webpage');
       expect(result.toolCalls.single.arguments,
           containsPair('url', 'https://example.com'));
+    });
+    test('forwards runtime planner stream entries without changing decision flow',
+        () async {
+      final emittedEntries = <List<RuntimeStreamEntry>>[];
+      final llm = _RuntimeStreamingDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: 'ok',
+          providerState: {},
+          isTerminal: true,
+        ),
+        runtimeEntries: [
+          RuntimeStreamEntry(
+            turnId: 'runtime_turn',
+            entryId: 'runtime_turn-tool-1',
+            kind: RuntimeStreamEntryKind.toolCallArguments,
+            providerCallId: 'call_1',
+            toolName: 'create_artifact',
+            createdAt: DateTime(2026, 5, 5, 10),
+            updatedAt: DateTime(2026, 5, 5, 10),
+            text: '{"source":"<div>',
+          ),
+        ],
+      );
+      final service = AgentPlannerService(
+        llm: llm,
+        onPlannerRuntimeStream: (entries) {
+          emittedEntries.add(List<RuntimeStreamEntry>.from(entries));
+        },
+      );
+
+      final decision = await service.planNextDecision(
+        turn: _turn(),
+        transcript: [_userEvent()],
+        steps: const [],
+        config: ChatConfig(systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(decision?.assistantMessage, 'ok');
+      expect(emittedEntries, hasLength(1));
+      expect(emittedEntries.single.single.toolName, 'create_artifact');
+      expect(llm.listenerClearedAfterCall, isTrue);
     });
   });
 }
@@ -1865,4 +1909,55 @@ class _ThrowingNativePlannerLLM implements BaseLLM {
   Future<String> summarizeConversation(List<ChatMessage> messages) async =>
       'summary';
 
+}
+
+class _RuntimeStreamingDecisionLLM
+    implements BaseLLM, PlannerRuntimeStreamingCapable {
+  _RuntimeStreamingDecisionLLM({
+    required this.decision,
+    required this.runtimeEntries,
+  });
+
+  final ModelTurnDecision decision;
+  final List<RuntimeStreamEntry> runtimeEntries;
+  PlannerRuntimeStreamListener? _listener;
+  bool listenerClearedAfterCall = false;
+
+  @override
+  Map<String, dynamic> get config => const {};
+
+  @override
+  String getModelName(ChatConfig config) => 'runtime-streaming-native';
+
+  @override
+  Future<ModelTurnDecision?> planTurnDecision({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+    void Function(LlmRetryProgress progress)? onRetryScheduled,
+  }) async {
+    _listener?.call(runtimeEntries);
+    return decision;
+  }
+
+  @override
+  void setPlannerRuntimeStreamListener(
+    PlannerRuntimeStreamListener? listener,
+  ) {
+    _listener = listener;
+    if (listener == null) {
+      listenerClearedAfterCall = true;
+    }
+  }
+
+  @override
+  Future<String> processWebpageContent({
+    required String webpageContent,
+    required String prompt,
+  }) async =>
+      '';
+
+  @override
+  Future<String> summarizeConversation(List<ChatMessage> messages) async =>
+      'summary';
 }

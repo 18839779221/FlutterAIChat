@@ -36,6 +36,16 @@ String buildArtifactPreviewDocument(String source) {
 <base target="_self">
 <script>
   (function() {
+    const lockScroll = () => {
+      if (document.documentElement) {
+        document.documentElement.style.overflow = 'hidden';
+        document.documentElement.style.touchAction = 'none';
+      }
+      if (document.body) {
+        document.body.style.overflow = 'hidden';
+        document.body.style.touchAction = 'none';
+      }
+    };
     const postHeight = () => {
       const body = document.body;
       const root = document.documentElement;
@@ -49,23 +59,36 @@ String buildArtifactPreviewDocument(String source) {
         window.ArtifactHeight.postMessage(String(height));
       }
     };
+    window.__artifactLockScroll__ = lockScroll;
     window.__artifactHeight__ = postHeight;
+    lockScroll();
     window.addEventListener('load', () => {
+      lockScroll();
       postHeight();
       requestAnimationFrame(postHeight);
       setTimeout(postHeight, 120);
       setTimeout(postHeight, 360);
     });
-    window.addEventListener('resize', postHeight);
+    window.addEventListener('resize', () => {
+      lockScroll();
+      postHeight();
+    });
     if (typeof ResizeObserver !== 'undefined') {
-      const observer = new ResizeObserver(() => postHeight());
+      const observer = new ResizeObserver(() => {
+        lockScroll();
+        postHeight();
+      });
       window.addEventListener('DOMContentLoaded', () => {
         if (document.body) observer.observe(document.body);
         if (document.documentElement) observer.observe(document.documentElement);
+        lockScroll();
         postHeight();
       });
     } else {
-      window.addEventListener('DOMContentLoaded', postHeight);
+      window.addEventListener('DOMContentLoaded', () => {
+        lockScroll();
+        postHeight();
+      });
     }
   })();
 </script>
@@ -164,6 +187,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
       final controller = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
         ..setBackgroundColor(Colors.transparent)
+        ..enableZoom(false)
         ..addJavaScriptChannel(
           _artifactHeightChannelName,
           onMessageReceived: (message) {
@@ -325,8 +349,8 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
 
   double _estimateSourceFallbackHeight(String source) {
     final lines = '\n'.allMatches(source).length + 1;
-    final estimatedLineHeight = 22.0;
-    final estimatedPadding = 24.0;
+    const estimatedLineHeight = 22.0;
+    const estimatedPadding = 24.0;
     return (lines * estimatedLineHeight) + estimatedPadding;
   }
 }
