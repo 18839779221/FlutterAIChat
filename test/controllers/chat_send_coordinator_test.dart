@@ -202,6 +202,122 @@ void main() {
     });
 
     test(
+        'tool-use reasoning stays as a separate analysis message before workflow and is not folded into final answer',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.assistantReasoningDelta,
+            role: MessageRole.assistant,
+            content: '先确认是否需要联网。',
+            payloadJson: const {'scope': 'tool_use'},
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.toolExecutionStarted,
+            role: MessageRole.assistant,
+            content: '正在执行工具',
+            payloadJson: const {
+              'toolName': 'web_search',
+              'arguments': {'query': 'FlutterAIChat'},
+              'status': 'running',
+              'summary': '正在执行工具',
+              'requiresConfirmation': false,
+              'stepId': 1,
+            },
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: '已获得搜索结果',
+            payloadJson: const {
+              'toolName': 'web_search',
+              'status': 'success',
+              'summary': '已获得搜索结果',
+              'data': {'items': []},
+              'stepId': 1,
+            },
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 4,
+            eventType: ChatEventType.finalAnswer,
+            role: MessageRole.assistant,
+            content: '这是最终回答。',
+          ),
+        ],
+      );
+      final container = _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      await container.read(chatSendCoordinatorProvider).sendMessage(
+            '帮我查一下',
+            scheduleAutoSummary: () {},
+            cancelActiveStream:
+                container.read(chatControllerProvider).cancelStreamSubscription,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      final projection = ChatTimelineProjectionService().build(
+        groupId: groupId,
+        messages: container.read(messagesProvider),
+      );
+      final toolUseBlockIndex = projection.assistantBlocks.indexWhere(
+        (block) =>
+            block.type == AssistantTurnBlockType.analysis &&
+            block.reasoningText == '先确认是否需要联网。' &&
+            block.payload?['reasoningScope'] == 'tool_use',
+      );
+      final firstToolBlockIndex = projection.assistantBlocks.indexWhere(
+        (block) =>
+            block.type == AssistantTurnBlockType.toolWorkflow ||
+            block.type == AssistantTurnBlockType.toolResultSummary,
+      );
+      final finalResponse = projection.assistantBlocks.firstWhere(
+        (block) =>
+            block.type == AssistantTurnBlockType.finalResponse &&
+            block.text == '这是最终回答。',
+      );
+
+      expect(toolUseBlockIndex, isNonNegative);
+      expect(firstToolBlockIndex, greaterThan(toolUseBlockIndex));
+      expect(finalResponse.reasoningText, isNull);
+
+      final assistantMessages = container
+          .read(messagesProvider)
+          .where((message) => message.role == MessageRole.assistant)
+          .toList(growable: false);
+      expect(
+        assistantMessages.any(
+          (message) =>
+              message.reasoningContent == '先确认是否需要联网。' &&
+              message.payloadJson?['reasoningScope'] == 'tool_use' &&
+              message.text.isEmpty,
+        ),
+        isTrue,
+      );
+    });
+
+    test(
         'reasoning delta does not create an early final-answer placeholder before final answer stage',
         () async {
       final databaseHelper = _createTestDatabaseHelper();
