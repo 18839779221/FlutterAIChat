@@ -1,28 +1,29 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 const double _minArtifactPreviewHeight = 180;
-const double _maxArtifactPreviewHeight = 720;
 const double _defaultArtifactPreviewHeight = 260;
+const double _maxArtifactPreviewScreenCount = 3;
 const String _artifactHeightChannelName = 'ArtifactHeight';
+const String artifactPreviewTruncationMessage =
+    '内容较长，长按进入详情页查看完整内容。';
 
-final Set<Factory<OneSequenceGestureRecognizer>>
-    artifactPreviewGestureRecognizers =
-    <Factory<OneSequenceGestureRecognizer>>{
-  Factory<VerticalDragGestureRecognizer>(
-    () => VerticalDragGestureRecognizer(),
-  ),
-};
-
-double clampArtifactPreviewHeight(double rawHeight) {
+double clampArtifactPreviewHeight(
+  double rawHeight, {
+  required double viewportHeight,
+}) {
   if (!rawHeight.isFinite) {
     return _defaultArtifactPreviewHeight;
   }
+  final resolvedViewportHeight = viewportHeight.isFinite && viewportHeight > 0
+      ? viewportHeight
+      : _defaultArtifactPreviewHeight;
+  final maxArtifactPreviewHeight =
+      resolvedViewportHeight * _maxArtifactPreviewScreenCount;
   return rawHeight.clamp(
     _minArtifactPreviewHeight,
-    _maxArtifactPreviewHeight,
+    maxArtifactPreviewHeight,
   ).toDouble();
 }
 
@@ -133,6 +134,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   WebViewController? _controller;
   String? _errorText;
   double _previewHeight = _defaultArtifactPreviewHeight;
+  bool _isPreviewTruncated = false;
 
   @override
   void initState() {
@@ -147,6 +149,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         oldWidget.isStale != widget.isStale) {
       _errorText = null;
       _previewHeight = _defaultArtifactPreviewHeight;
+      _isPreviewTruncated = false;
       _controller = _createController();
     }
   }
@@ -168,8 +171,14 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
             if (value == null || !mounted) {
               return;
             }
+            final viewportHeight = _resolveViewportHeight();
+            final clampedHeight = clampArtifactPreviewHeight(
+              value,
+              viewportHeight: viewportHeight,
+            );
             setState(() {
-              _previewHeight = clampArtifactPreviewHeight(value);
+              _previewHeight = clampedHeight;
+              _isPreviewTruncated = value > clampedHeight;
             });
           },
         )
@@ -223,19 +232,33 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-        height: _previewHeight,
-        color: Colors.transparent,
-        child: RepaintBoundary(
-          child: WebViewWidget(
-            controller: _controller!,
-            gestureRecognizers: artifactPreviewGestureRecognizers,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            height: _previewHeight,
+            color: Colors.transparent,
+            child: RepaintBoundary(
+              child: WebViewWidget(
+                controller: _controller!,
+              ),
+            ),
           ),
-        ),
+          if (_isPreviewTruncated) _buildTruncationMessage(context),
+        ],
       ),
     );
+  }
+
+  double _resolveViewportHeight() {
+    final mediaQuery = MediaQuery.maybeOf(context);
+    final viewportHeight = mediaQuery?.size.height;
+    if (viewportHeight == null || !viewportHeight.isFinite || viewportHeight <= 0) {
+      return _defaultArtifactPreviewHeight;
+    }
+    return viewportHeight;
   }
 
   Widget _buildInfoMessage(BuildContext context, String text) {
@@ -253,24 +276,57 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     );
   }
 
-  Widget _buildSourceFallback(BuildContext context, String source) {
+  Widget _buildTruncationMessage(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
       width: double.infinity,
-      constraints: const BoxConstraints(maxHeight: 260),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-      child: SingleChildScrollView(
-        primary: false,
-        physics: const ClampingScrollPhysics(),
-        child: SelectableText(
-          source,
-          style: theme.textTheme.bodySmall?.copyWith(
-            fontFamily: 'JetBrainsMono',
-            height: 1.45,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+      color: theme.colorScheme.surface.withValues(alpha: 0.92),
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+      child: Text(
+        artifactPreviewTruncationMessage,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+          height: 1.4,
         ),
       ),
     );
+  }
+
+  Widget _buildSourceFallback(BuildContext context, String source) {
+    final theme = Theme.of(context);
+    final estimatedHeight = _estimateSourceFallbackHeight(source);
+    final fallbackHeight = clampArtifactPreviewHeight(
+      estimatedHeight,
+      viewportHeight: _resolveViewportHeight(),
+    );
+    final isTruncated = estimatedHeight > fallbackHeight;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          constraints: BoxConstraints(maxHeight: fallbackHeight),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          child: ClipRect(
+            child: SelectableText(
+              source,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontFamily: 'JetBrainsMono',
+                height: 1.45,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+        if (isTruncated) _buildTruncationMessage(context),
+      ],
+    );
+  }
+
+  double _estimateSourceFallbackHeight(String source) {
+    final lines = '\n'.allMatches(source).length + 1;
+    final estimatedLineHeight = 22.0;
+    final estimatedPadding = 24.0;
+    return (lines * estimatedLineHeight) + estimatedPadding;
   }
 }
