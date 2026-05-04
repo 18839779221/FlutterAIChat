@@ -579,13 +579,18 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
   }) async* {
     final turnId = turn.id!;
     final groupId = turn.groupId;
-    final toolInvocation = execution.toolInvocation;
+    final toolInvocation = _stableToolInvocation(
+      fallback: invocation,
+      override: execution.toolInvocation,
+      stepId: stepId,
+      providerCallId: providerCallId,
+    );
     final toolPayload = _buildToolInvocationPayload(
-      invocation: toolInvocation ?? invocation,
+      invocation: toolInvocation,
       toolAccess: execution.toolAccess,
     );
 
-    if (toolInvocation != null && toolInvocation.requiresConfirmation) {
+    if (toolInvocation.requiresConfirmation) {
       await _turnRepository.markAwaitingToolConfirmation(turnId);
       Logger.trace(
         _tag,
@@ -611,7 +616,7 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
       yield await _eventRepository.appendToolExecutionStarted(
         turnId: turnId,
         groupId: groupId,
-        content: toolInvocation?.summary ?? invocation.summary,
+        content: toolInvocation.summary,
         payloadJson: toolPayload,
       );
       if (stepId != null) {
@@ -687,6 +692,7 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
       content: toolResult.summary,
       payloadJson: {
         ...toolResult.toJson(),
+        if (stepId != null) 'stepId': stepId,
         if (providerCallId != null) 'providerCallId': providerCallId,
       },
     );
@@ -698,6 +704,19 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
         resultJson: toolResult.data,
       );
     }
+  }
+
+  ToolInvocation _stableToolInvocation({
+    required ToolInvocation fallback,
+    required ToolInvocation? override,
+    required int? stepId,
+    required String? providerCallId,
+  }) {
+    final effective = override ?? fallback;
+    return effective.copyWith(
+      stepId: stepId ?? effective.stepId,
+      providerCallId: providerCallId ?? effective.providerCallId,
+    );
   }
 
   Map<String, dynamic> _buildToolInvocationPayload({

@@ -1,4 +1,5 @@
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
+import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
@@ -11,6 +12,7 @@ class ChatTimelineProjection {
     this.pendingToolConfirmation,
     this.assistantBlocks = const <AssistantTurnBlock>[],
     this.toolPresentationEvents = const <ToolPresentationEvent>[],
+    this.runtimeAssistantDraft,
   });
 
   /// Latest unresolved ask-user-question prompt, when present.
@@ -24,6 +26,9 @@ class ChatTimelineProjection {
 
   /// Standardized tool phase events for pluggable presentation consumers.
   final List<ToolPresentationEvent> toolPresentationEvents;
+
+  /// Runtime-only stage draft used to render active streaming/reasoning UI.
+  final RuntimeAssistantDraft? runtimeAssistantDraft;
 }
 
 /// Stable pending-confirmation projection exposed outside provider-specific

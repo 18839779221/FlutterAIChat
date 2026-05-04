@@ -1,5 +1,6 @@
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat/chat_timeline_projection.dart';
+import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
@@ -28,6 +29,7 @@ class ChatTimelineProjectionService {
   ChatTimelineProjection build({
     required List<ChatMessage> messages,
     int? groupId,
+    RuntimeAssistantDraft? runtimeDraft,
   }) {
     final toolPresentationEvents = _buildToolPresentationEvents(
       messages: messages,
@@ -44,6 +46,7 @@ class ChatTimelineProjectionService {
       messages: messages,
       groupId: groupId,
     );
+    final runtimeDraftBlock = _buildRuntimeDraftBlock(runtimeDraft);
     return ChatTimelineProjection(
       activeAskUserQuestionMessage: _findActiveAskUserQuestion(messages),
       pendingToolConfirmation: _findPendingConfirmation(messages),
@@ -51,10 +54,12 @@ class ChatTimelineProjectionService {
         baseBlocks: [
           ...blocks,
           ...toolBlocks,
+          if (runtimeDraftBlock != null) runtimeDraftBlock,
         ],
         artifactBlocks: artifactBlocks,
       ),
       toolPresentationEvents: toolPresentationEvents,
+      runtimeAssistantDraft: runtimeDraft,
     );
   }
 
@@ -104,7 +109,8 @@ class ChatTimelineProjectionService {
       switch (message.contentType) {
         case MessageContentType.toolInvocation:
         case MessageContentType.actionConfirmation:
-          final invocation = ToolInvocation.fromJson(message.payloadJson ?? const {});
+          final invocation =
+              ToolInvocation.fromJson(message.payloadJson ?? const {});
           events.add(
             ToolPresentationEvent(
               toolName: invocation.toolName,
@@ -114,7 +120,7 @@ class ChatTimelineProjectionService {
                 turnId: currentTurnId,
                 payload: message.payloadJson,
               ),
-              providerCallId: _readProviderCallId(message.payloadJson),
+                providerCallId: _readProviderCallId(message.payloadJson),
               sourceContentType: message.contentType,
               sourceMessageId: message.id,
               timestamp: message.timestamp,
@@ -141,7 +147,7 @@ class ChatTimelineProjectionService {
                 turnId: currentTurnId,
                 payload: message.payloadJson,
               ),
-              providerCallId: _readProviderCallId(message.payloadJson),
+                providerCallId: _readProviderCallId(message.payloadJson),
               sourceContentType: message.contentType,
               sourceMessageId: message.id,
               timestamp: message.timestamp,
@@ -249,6 +255,23 @@ class ChatTimelineProjectionService {
     return merged;
   }
 
+  AssistantTurnBlock? _buildRuntimeDraftBlock(RuntimeAssistantDraft? draft) {
+    if (draft == null) {
+      return null;
+    }
+    return AssistantTurnBlock(
+      id: draft.draftId,
+      turnId: draft.turnId,
+      type: draft.blockType,
+      sequence: 99999,
+      createdAt: draft.createdAt,
+      updatedAt: draft.updatedAt,
+      text: draft.text,
+      reasoningText: draft.reasoningText,
+      payload: draft.payload,
+    );
+  }
+
   int _compareTurnBlocks(
     AssistantTurnBlock left,
     AssistantTurnBlock right,
@@ -296,7 +319,7 @@ class ChatTimelineProjectionService {
       if (message.contentType != MessageContentType.askUserQuestionResult) {
         continue;
       }
-      final turnId = message.payloadJson?['agentTurnId'];
+        final turnId = message.payloadJson?['agentTurnId'];
       if (turnId is int) {
         resolvedTurnIds.add(turnId);
       }
@@ -306,7 +329,7 @@ class ChatTimelineProjectionService {
       if (message.contentType != MessageContentType.askUserQuestionPrompt) {
         continue;
       }
-      final payload = message.payloadJson;
+        final payload = message.payloadJson;
       final turnId = payload?['agentTurnId'];
       final status = payload?['status'];
       if (turnId is! int || resolvedTurnIds.contains(turnId)) {
@@ -333,7 +356,7 @@ class ChatTimelineProjectionService {
         continue;
       }
 
-      final payload = message.payloadJson;
+        final payload = message.payloadJson;
       if (payload == null) {
         continue;
       }
