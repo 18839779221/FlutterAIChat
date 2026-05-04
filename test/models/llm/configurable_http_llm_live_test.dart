@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
+import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
 import 'package:ai_chat/models/llm/configurable_http_llm.dart';
@@ -192,6 +193,75 @@ void main() {
 
             expect(result.trim(), isNotEmpty);
             expect(result.toLowerCase(), contains('sunbird'));
+          },
+          skip: missingProviderReason,
+          tags: const ['live-llm'],
+        );
+
+        test(
+          'planner stream emits create_artifact tool-call argument deltas',
+          () async {
+            final llm = await _buildLiveLlm(provider!);
+            final emittedSnapshots = <List<RuntimeStreamEntry>>[];
+            llm.setPlannerRuntimeStreamListener((entries) {
+              emittedSnapshots.add(List<RuntimeStreamEntry>.from(entries));
+            });
+
+            final decision = await llm.planTurnDecision(
+              messages: [
+                ChatMessage(
+                  text:
+                      'Create a tiny HTML artifact and call create_artifact exactly once. '
+                      'The artifact must be self-contained, start with visible content, '
+                      'and keep the source concise.',
+                  role: MessageRole.user,
+                ),
+              ],
+              config: ChatConfig(
+                systemPrompt:
+                    'You must call create_artifact exactly once. '
+                    'Return only the tool call and no ordinary answer. '
+                    'The artifact should prefer <style> first, visible content before scripts, '
+                    'and a compact one-screen layout when possible.',
+              ),
+              availableTools: const [
+                PlannerToolOption(
+                  name: 'create_artifact',
+                  description:
+                      'Creates a self-contained HTML artifact that is shown inline.',
+                  inputSchema: {
+                    'type': 'object',
+                    'properties': {
+                      'id': {'type': 'string'},
+                      'type': {'type': 'string'},
+                      'title': {'type': 'string'},
+                      'source': {'type': 'string'},
+                    },
+                    'required': ['id', 'type', 'title', 'source'],
+                  },
+                ),
+              ],
+            );
+
+            expect(decision, isNotNull);
+            expect(decision!.toolCalls, hasLength(1));
+            expect(decision.toolCalls.single.toolName, 'create_artifact');
+            expect(decision.toolCalls.single.arguments['source'], isA<String>());
+            expect(
+              decision.toolCalls.single.arguments['source'].toString(),
+              contains('<style>'),
+            );
+            expect(
+              emittedSnapshots.any(
+                (snapshot) => snapshot.any(
+                  (entry) =>
+                      entry.kind == RuntimeStreamEntryKind.toolCallArguments &&
+                      entry.toolName == 'create_artifact' &&
+                      entry.text.trim().isNotEmpty,
+                ),
+              ),
+              isTrue,
+            );
           },
           skip: missingProviderReason,
           tags: const ['live-llm'],
