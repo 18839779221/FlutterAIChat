@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('SessionContextProjector', () {
     test(
-        'projects tool result and user interaction result into compact context messages',
+        'projects payload-backed tool result and user interaction result into compact context messages',
         () {
       final projector = SessionContextProjector();
 
@@ -18,7 +18,16 @@ void main() {
           sequence: 1,
           eventType: ChatEventType.toolResult,
           role: MessageRole.system,
-          content: '以下是工具 `read` 的执行结果，请结合这些信息回答用户。\n结果摘要：数据库版本是 9',
+          content: '已读取文件：db/version.txt',
+          payloadJson: const {
+            'toolName': 'Read',
+            'status': 'success',
+            'summary': '已读取文件：db/version.txt',
+            'data': {
+              'filePath': 'db/version.txt',
+              'message': '数据库版本是 9',
+            },
+          },
         ),
         ChatEvent(
           turnId: 1,
@@ -63,9 +72,9 @@ void main() {
             'toolName': 'Read',
             'status': 'success',
             'summary': '已读取文件：my_hobbies.md',
-            'toolResultText': '已读取文件：agent/my_hobbies.md',
             'data': {
               'filePath': 'agent/my_hobbies.md',
+              'message': '已读取文件：agent/my_hobbies.md',
             },
           },
         ),
@@ -73,7 +82,7 @@ void main() {
 
       expect(
         message?.text,
-        '[user tool_result] 已读取文件：agent/my_hobbies.md',
+        '[user tool_result] Read path: agent/my_hobbies.md\n已读取文件：agent/my_hobbies.md',
       );
       expect(message?.role, MessageRole.user);
     });
@@ -149,9 +158,9 @@ void main() {
             'providerCallId': 'call_edit_1',
             'status': 'success',
             'summary': '已编辑文件：my_hobbies.md',
-            'toolResultText': 'Successfully edited my_hobbies.md',
             'data': {
               'filePath': 'my_hobbies.md',
+              'message': 'Successfully edited my_hobbies.md',
             },
           },
         ),
@@ -170,9 +179,9 @@ void main() {
             'providerCallId': 'call_edit_1',
             'status': 'success',
             'summary': '已编辑文件：my_hobbies.md',
-            'toolResultText': 'Successfully edited my_hobbies.md',
             'data': {
               'filePath': 'my_hobbies.md',
+              'message': 'Successfully edited my_hobbies.md',
             },
           },
         ),
@@ -182,14 +191,44 @@ void main() {
       expect(item!.type, ModelContextItemType.userToolResult);
       expect(item.toolName, 'Edit');
       expect(item.providerCallId, 'call_edit_1');
-      expect(item.text, 'Successfully edited my_hobbies.md');
+      expect(item.text, 'Edit path: my_hobbies.md\nSuccessfully edited my_hobbies.md');
       expect(message, isNotNull);
       expect(message!.role, MessageRole.user);
       expect(message.payloadJson?['providerCallId'], 'call_edit_1');
       expect(
         message.text,
-        '[user tool_result] Successfully edited my_hobbies.md',
+        '[user tool_result] Edit path: my_hobbies.md\nSuccessfully edited my_hobbies.md',
       );
+    });
+
+    test('projects structured action result instead of falling back to summary', () {
+      final projector = SessionContextProjector();
+
+      final message = projector.projectEventToContext(
+        ChatEvent(
+          turnId: 1,
+          groupId: 1,
+          sequence: 1,
+          eventType: ChatEventType.toolResult,
+          role: MessageRole.system,
+          content: '已创建提醒：今晚 8 点同步',
+          payloadJson: const {
+            'toolName': 'create_reminder',
+            'status': 'success',
+            'summary': '已创建提醒：今晚 8 点同步',
+            'data': {
+              'title': '同步',
+              'scheduledAt': '今晚 8 点',
+            },
+          },
+        ),
+      );
+
+      expect(
+        message?.text,
+        '[user tool_result] create_reminder status: success\ntitle: 同步\nscheduledAt: 今晚 8 点',
+      );
+      expect(message?.role, MessageRole.user);
     });
 
     test('projects snapshot text as a system context message', () {

@@ -69,43 +69,57 @@ Session 代表“同一个会话容器下的完整连续上下文对话”。
 - 文档中若出现“tool call 一律过滤”的旧描述，以当前实现为准，不再适用
 - `create_artifact` 与后续 `Write/Edit` 仍按真实 tool transcript 进入上下文；当前架构不为 artifact 额外注入 summary-style 派生回传
 
-### ToolResult 文本约定
+### ToolResult 结果约定
 
-`ToolResult` 当前同时允许携带两类文本：
+`ToolResult` 当前正式 contract 只保留两类核心结果字段：
 
 - `summary`
-- `toolResultText`
+- `data`
 
-两者职责不同：
+两者职责固定如下：
 
-- `summary` 面向 UI 时间线与结果卡片，要求短、稳、易扫读
-- `toolResultText` 面向后续 planner / Session 上下文投影，表示“工具结果给模型看的标准文本”
+- `summary`
+  - 只面向 UI 时间线、tool result summary row、结果卡片等展示层
+  - 也用于 transcript event `content` 的紧凑可读文本
+  - 要求短、稳、易扫读
+- `data`
+  - 是 tool result 的唯一结构化结果真相
+  - 面向后续 planner / Session 上下文投影
+  - 承载搜索命中、网页片段、文件路径、动作标识、失败细节等真正可继续决策的结果
 
 统一规则如下：
 
-1. 默认优先只写 `summary`
-   - 如果 UI 摘要已经足够让后续模型理解结果，不需要额外填写 `toolResultText`
-2. 只有当模型需要比 UI 更明确的文本时，才填写 `toolResultText`
-   - 例如需要补充真实路径、失败原因、关键约束、结构化结果的自然语言总结
-3. 不要机械重复 `summary` 已经表达过的信息
-   - 特别是不要把同一条文件路径在同一段 `toolResultText` 中重复两遍
-4. `TurnHarness` 不负责生成工具语义文本
-   - orchestration 层只持久化 `summary`
-   - 投影层只消费 `ToolResult` 已声明的正式文本
-5. `SessionContextProjector` 与 planner transcript 投影统一优先读取 `toolResultText`
-   - 若为空，再回退到事件 `content` / `summary`
+1. transcript payload 是 tool result 的唯一语义来源
+   - `toolResult` / `toolError` 事件必须持久化 `ToolResult.toJson()`
+   - `SessionContextProjector` 必须从 payload 解析结构化 `ToolResult`
+   - planner-visible tool result 文本必须由统一投影逻辑基于 `toolName + status + data + errorMessage` 派生
+2. `summary` 不得承担 planner 语义职责
+   - 不允许再把 `summary` 回退成模型上下文文本
+3. 不允许再引入 `contextText` / `toolResultText`
+   - 也不允许保留另一个与 `data` 平行的 planner-facing 文本字段
+4. 不允许再引入 `additionalContextMessages`
+   - handler 不得绕过 transcript，直接附加另一份“给模型看的消息列表”
+5. `TurnHarness` / orchestration 层不生成派生语义文本
+   - orchestration 只持久化 transcript event `content`
+   - 真实模型可见语义来自 payload 中的结构化结果投影
 
 文件类工具推荐做法：
 
 - 成功时：
-  - 若 `summary` 已经包含真实相对路径，`toolResultText` 可以与 `summary` 相同
+  - 若后续模型还需要稳定路径，应把真实相对路径稳定写入 `data`
 - 失败时：
-  - 若 `summary` 不含真实路径，而模型继续决策又需要它，可在 `toolResultText` 中补一次真实路径
+  - 若后续恢复/继续决策仍需要路径、原因、约束，也应进入 `data`
 
 artifact 相关补充：
 
-- `create_artifact` 的 `toolResultText` 可以包含稳定 `sourcePath`，用于让模型后续优先通过 `Read/Edit/Write` 修改同一个 artifact 文件
-- Session 上下文层不为 artifact 额外生成“摘要回投”文本；继续编辑所需的语义应尽量由真实 transcript 与稳定路径表达
+- `create_artifact` 应把稳定 `sourcePath` 写入 `data`
+- Session 上下文层不为 artifact 额外生成“摘要回投”文本；继续编辑所需的语义应尽量由真实 transcript 与结构化结果表达
+
+实现与防漂移约束：
+
+- 代码 contract 见 [`lib/models/tool/tool_result.dart`](/Users/skka/flutterSpace/FlutterAIChat/lib/models/tool/tool_result.dart)
+- transcript-only 约束见 [`append-only-transcript.md`](/Users/skka/flutterSpace/FlutterAIChat/docs/architecture/append-only-transcript.md)
+- 本轮收口设计见 [`2026-05-04-tool-result-single-source-context-design.md`](/Users/skka/flutterSpace/FlutterAIChat/docs/superpowers/specs/2026-05-04-tool-result-single-source-context-design.md)
 
 ### SessionTokenBudgetService
 

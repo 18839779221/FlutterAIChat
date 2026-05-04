@@ -336,14 +336,6 @@ void main() {
                 'isVisibleToPlanner': true,
               },
             ),
-            additionalContextMessages: [
-              ChatMessage(
-                text:
-                    '以下是工具 `search_chat_history` 的执行结果，请结合这些信息回答用户。\n状态：success\n查询词：数据库\n命中历史消息：\n- [assistant] 数据库版本是 7',
-                role: MessageRole.system,
-                status: MessageStatus.completed,
-              ),
-            ],
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
@@ -615,7 +607,6 @@ void main() {
               isVisibleToPlanner: true,
             ),
             toolResult: null,
-            additionalContextMessages: [],
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
@@ -689,7 +680,6 @@ void main() {
               summary: '搜索失败',
               errorMessage: 'search_failed',
             ),
-            additionalContextMessages: [],
           ),
         ),
         limits:
@@ -749,7 +739,6 @@ void main() {
               status: ToolExecutionStatus.success,
               summary: '已创建提醒',
             ),
-            additionalContextMessages: [],
             executionStarted: true,
           ),
         ),
@@ -843,12 +832,13 @@ void main() {
               toolName: 'Read',
               status: ToolExecutionStatus.failure,
               summary: 'Read failed: file not found',
-              toolResultText:
-                  'Read failed: file not found\n实际文件路径：agent/missing.md',
-              data: {'filePath': 'agent/missing.md'},
+              data: {
+                'filePath': 'agent/missing.md',
+                'message':
+                    'Read failed: file not found\n实际文件路径：agent/missing.md',
+              },
               errorMessage: 'file_not_found',
             ),
-            additionalContextMessages: [],
           ),
         ),
         limits:
@@ -956,7 +946,6 @@ void main() {
                 'matches': [],
               },
             ),
-            additionalContextMessages: [],
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 5),
@@ -1084,7 +1073,6 @@ void main() {
                 'matchCount': 1,
               },
             ),
-            additionalContextMessages: [],
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
@@ -1155,7 +1143,6 @@ void main() {
               status: ToolExecutionStatus.success,
               summary: '已创建提醒：交周报',
             ),
-            additionalContextMessages: [],
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
@@ -1236,7 +1223,6 @@ void main() {
               status: ToolExecutionStatus.success,
               summary: '已创建提醒：开会',
             ),
-            additionalContextMessages: [],
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 2),
@@ -1322,7 +1308,6 @@ void main() {
               status: ToolExecutionStatus.success,
               summary: '已创建提醒：开会',
             ),
-            additionalContextMessages: [],
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 2),
@@ -1470,7 +1455,6 @@ void main() {
               stepId: 11,
             ),
             toolResult: null,
-            additionalContextMessages: [],
           ),
         ),
         limits: const AgentLoopLimits(maxConsecutiveFailures: 1),
@@ -1847,7 +1831,6 @@ void main() {
                 'matchCount': 1,
               },
             ),
-            additionalContextMessages: [],
           ),
         ]),
         limits: const AgentLoopLimits(maxIterations: 4),
@@ -1955,7 +1938,6 @@ void main() {
                 'matchCount': 1,
               },
             ),
-            additionalContextMessages: [],
           ),
         ]),
         sessionContextService: sessionContextService,
@@ -2058,7 +2040,6 @@ void main() {
                 'matchCount': 1,
               },
             ),
-            additionalContextMessages: [],
           ),
         ]),
         limits: const AgentLoopLimits(maxIterations: 4),
@@ -2176,7 +2157,6 @@ void main() {
                 ],
               },
             ),
-            additionalContextMessages: [],
           ),
           const ToolPreparationResult(
             toolInvocation: ToolInvocation(
@@ -2197,7 +2177,6 @@ void main() {
                 'filePath': 'notes/version.md',
               },
             ),
-            additionalContextMessages: [],
           ),
         ]),
         sessionContextService: SessionContextService(
@@ -2690,13 +2669,6 @@ void main() {
               status: ToolExecutionStatus.success,
               summary: '数据库版本是 7',
             ),
-            additionalContextMessages: [
-              ChatMessage(
-                text: '数据库版本是 7',
-                role: MessageRole.system,
-                status: MessageStatus.completed,
-              ),
-            ],
           ),
           const ToolPreparationResult(
             toolInvocation: ToolInvocation(
@@ -2707,7 +2679,6 @@ void main() {
               requiresConfirmation: true,
             ),
             toolResult: null,
-            additionalContextMessages: [],
           ),
         ]),
         limits: const AgentLoopLimits(maxIterations: 4),
@@ -2858,14 +2829,6 @@ void main() {
                 ],
               },
             ),
-            additionalContextMessages: [
-              ChatMessage(
-                text:
-                    '以下是工具 `web_search` 的执行结果，请结合这些信息回答用户。\n状态：success\n查询词：Claude latest news\n联网搜索结果：\n- [example.com] Claude 3.7 Sonnet announced\n  摘要：Anthropic introduced a hybrid reasoning model.\n  链接：https://example.com/claude-3-7',
-                role: MessageRole.system,
-                status: MessageStatus.completed,
-              ),
-            ],
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
@@ -2948,12 +2911,11 @@ void main() {
               toolName: 'Edit',
               status: ToolExecutionStatus.success,
               summary: '已编辑文件：my_hobbies.md',
-              toolResultText: '已编辑文件：agent/my_hobbies.md',
               data: {
                 'filePath': 'agent/my_hobbies.md',
+                'message': '已编辑文件：agent/my_hobbies.md',
               },
             ),
-            additionalContextMessages: [],
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
@@ -3034,7 +2996,6 @@ void main() {
               summary: '已找到数据库版本是 7',
               data: {'query': '数据库版本', 'matchCount': 1},
             ),
-            additionalContextMessages: [],
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
@@ -3159,14 +3120,6 @@ void main() {
                 ],
               },
             ),
-            additionalContextMessages: [
-              ChatMessage(
-                text:
-                    '以下是工具 `search_chat_history` 的执行结果，请结合这些信息回答用户。\n命中历史消息：数据库版本是 7，发版时间是 2026-04-12 10:00',
-                role: MessageRole.system,
-                status: MessageStatus.completed,
-              ),
-            ],
           ),
           const ToolPreparationResult(
             toolInvocation: ToolInvocation(
@@ -3187,7 +3140,6 @@ void main() {
                 'filePath': 'notes/db-version.md',
               },
             ),
-            additionalContextMessages: [],
           ),
           const ToolPreparationResult(
             toolInvocation: ToolInvocation(
@@ -3209,7 +3161,6 @@ void main() {
                 'dueAt': '2026-04-13T20:00:00+08:00',
               },
             ),
-            additionalContextMessages: [],
           ),
         ]),
         limits: const AgentLoopLimits(maxIterations: 4),
@@ -3456,7 +3407,8 @@ class _AssertingLoopPlannerLLM implements BaseLLM {
       expect(joinedText, contains('我先检索历史记录。'));
       expect(joinedText, contains('search_chat_history'));
       expect(joinedText, contains('数据库版本'));
-      expect(joinedText, contains('已执行：搜索历史记录'));
+      expect(joinedText, contains('search_chat_history query: 数据库版本'));
+      expect(joinedText, contains('1. 数据库版本是 7'));
       return const ModelTurnDecision(
         toolCalls: [
           ModelToolCall(
@@ -3482,7 +3434,7 @@ class _AssertingLoopPlannerLLM implements BaseLLM {
     expect(joinedText, contains('我把确认结果写入文件。'));
     expect(joinedText, contains('Write'));
     expect(joinedText, contains('notes/version.md'));
-    expect(joinedText, contains('已写入文件：notes/version.md'));
+    expect(joinedText, contains('Write path: notes/version.md'));
     return const ModelTurnDecision(
       toolCalls: [],
       assistantMessage: '数据库版本已确认，并已记录到 notes/version.md。',

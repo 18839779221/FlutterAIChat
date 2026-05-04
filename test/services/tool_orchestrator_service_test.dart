@@ -1,9 +1,9 @@
-import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/trace/chat_trace_event.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/models/tool/tool_policy.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
+import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/file_tools/file_tool_budget_service.dart';
 import 'package:ai_chat/services/file_tools/file_tool_discovery_service.dart';
@@ -52,7 +52,6 @@ void main() {
       );
 
       expect(result.toolResult, isNull);
-      expect(result.additionalContextMessages, isEmpty);
       expect(result.toolInvocation, isNotNull);
       expect(
         result.toolInvocation!.status,
@@ -160,20 +159,18 @@ void main() {
         result.toolResult!.toolAccess?['executionPolicy'],
         'require_confirmation',
       );
-      expect(result.additionalContextMessages.single.text,
-          contains('分享状态：success'));
+      expect(result.toolResult!.summary, '已发起分享');
+      expect(
+        result.toolResult!.data,
+        containsPair('shareStatus', 'success'),
+      );
 
       final stages = traceRecorder
           .eventsForTurn('turn-tool-1')
           .map((event) => event.stage)
           .toList();
-      expect(
-        stages,
-        containsAllInOrder([
-          ChatTraceStage.toolExecuteDone,
-          ChatTraceStage.toolContextBuilt,
-        ]),
-      );
+      expect(stages, contains(ChatTraceStage.toolExecuteDone));
+      expect(stages, isNot(contains(ChatTraceStage.toolContextBuilt)));
     });
 
     test('trustTool flag persists trust before execution', () async {
@@ -270,7 +267,7 @@ void main() {
       expect(result.toolResult, isNotNull);
       expect(result.toolResult!.status, ToolExecutionStatus.failure);
       expect(result.toolResult!.errorMessage, 'invalid_query');
-      expect(result.additionalContextMessages, isEmpty);
+      expect(result.toolResult!.data, containsPair('detail', '查询参数无效'));
     });
 
     test('fires execution-started callback before runtime handler executes',
@@ -424,20 +421,6 @@ class _FakeShareToolHandler implements ToolHandler {
       );
 
   @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return [
-      ChatMessage(
-        text: '分享状态：success',
-        role: MessageRole.system,
-        status: MessageStatus.completed,
-      ),
-    ];
-  }
-
-  @override
   Future<ToolResult> execute(ToolExecutionContext context) async {
     return ToolResult(
       toolName: 'share_result',
@@ -447,8 +430,18 @@ class _FakeShareToolHandler implements ToolHandler {
         'text': context.arguments['text'],
         'subject': context.arguments['subject'],
         'shareStatus': 'success',
+        'message':
+            '分享状态：success\n分享内容：${context.arguments['text']}\n主题：${context.arguments['subject']}',
       },
     );
+  }
+
+  @override
+  List<ChatMessage> buildContextMessages({
+    required ToolResult result,
+    required ToolExecutionContext context,
+  }) {
+    return const [];
   }
 
   @override
@@ -475,20 +468,6 @@ class _FakeReminderToolHandler implements ToolHandler {
       );
 
   @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return [
-      ChatMessage(
-        text: '已创建提醒：${context.arguments['title']}',
-        role: MessageRole.system,
-        status: MessageStatus.completed,
-      ),
-    ];
-  }
-
-  @override
   Future<ToolResult> execute(ToolExecutionContext context) async {
     return ToolResult(
       toolName: 'create_reminder',
@@ -497,8 +476,17 @@ class _FakeReminderToolHandler implements ToolHandler {
       data: {
         'title': context.arguments['title'],
         'dueAt': context.arguments['dueAt'],
+        'message': '已创建提醒：${context.arguments['title']}',
       },
     );
+  }
+
+  @override
+  List<ChatMessage> buildContextMessages({
+    required ToolResult result,
+    required ToolExecutionContext context,
+  }) {
+    return const [];
   }
 
   @override
@@ -559,28 +547,25 @@ class _RecordingNormalizeToolHandler implements ToolHandler {
       );
 
   @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return [
-      ChatMessage(
-        text: '已归一化 maxResults=${context.arguments['maxResults']}',
-        role: MessageRole.system,
-        status: MessageStatus.completed,
-      ),
-    ];
-  }
-
-  @override
   Future<ToolResult> execute(ToolExecutionContext context) async {
     executedArguments = Map<String, dynamic>.from(context.arguments);
     return ToolResult(
       toolName: 'web_search',
       status: ToolExecutionStatus.success,
       summary: '联网搜索成功',
-      data: Map<String, dynamic>.from(context.arguments),
+      data: {
+        ...Map<String, dynamic>.from(context.arguments),
+        'message': '已归一化 maxResults=${context.arguments['maxResults']}',
+      },
     );
+  }
+
+  @override
+  List<ChatMessage> buildContextMessages({
+    required ToolResult result,
+    required ToolExecutionContext context,
+  }) {
+    return const [];
   }
 
   @override
@@ -631,6 +616,7 @@ class _InvalidNormalizeToolHandler implements ToolHandler {
     return ToolArgumentResolution.invalid(
       errorCode: 'invalid_query',
       errorSummary: '联网搜索失败：缺少有效查询词',
+      errorContextText: '查询参数无效',
     );
   }
 }
@@ -663,6 +649,9 @@ class _ExecutionStartedProbeToolHandler implements ToolHandler {
       toolName: 'web_search',
       status: ToolExecutionStatus.success,
       summary: '联网搜索成功',
+      data: {
+        'message': '联网搜索成功',
+      },
     );
   }
 
