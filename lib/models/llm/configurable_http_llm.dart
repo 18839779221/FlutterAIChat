@@ -24,8 +24,11 @@ import 'adapters/responses_adapter.dart';
 import 'api_protocol_resolver.dart';
 import 'api_stream_parser.dart';
 import 'base_llm.dart';
+import 'llm_cache_usage.dart';
+import 'llm_cache_strategy.dart';
 import 'llm_config.dart';
 import 'llm_request_options.dart';
+import 'llm_usage_extractor.dart';
 import 'streaming_decision_accumulator.dart';
 import 'streaming_planner_chunk.dart';
 import 'tool_loop/anthropic_messages_tool_loop_adapter.dart';
@@ -61,6 +64,12 @@ class ConfigurableHttpLLM implements BaseLLM {
   final AnthropicMessagesToolLoopAdapter _anthropicMessagesToolLoopAdapter;
   final PromptBuilderService _promptBuilder;
   final ModelBudgetRegistry _modelBudgetRegistry;
+  final void Function(
+    String tag,
+    String message, {
+    LogLevel level,
+    Map<String, dynamic>? data,
+  }) _traceEmitter;
   final Duration Function(int attempt) _retryDelayBuilder;
 
   ConfigurableHttpLLM({
@@ -79,6 +88,12 @@ class ConfigurableHttpLLM implements BaseLLM {
     AnthropicMessagesToolLoopAdapter? anthropicMessagesToolLoopAdapter,
     PromptBuilderService? promptBuilder,
     ModelBudgetRegistry? modelBudgetRegistry,
+    void Function(
+      String tag,
+      String message, {
+      LogLevel level,
+      Map<String, dynamic>? data,
+    })? traceEmitter,
     Duration Function(int attempt)? retryDelayBuilder,
   })  : _settingsRepository = settingsRepository,
         _protocolResolver = protocolResolver ?? const ApiProtocolResolver(),
@@ -108,6 +123,7 @@ class ConfigurableHttpLLM implements BaseLLM {
             const AnthropicMessagesToolLoopAdapter(),
         _promptBuilder = promptBuilder ?? const PromptBuilderService(),
         _modelBudgetRegistry = modelBudgetRegistry ?? ModelBudgetRegistry(),
+        _traceEmitter = traceEmitter ?? Logger.trace,
         _retryDelayBuilder = retryDelayBuilder ?? _defaultRetryDelayForAttempt {
     assert(mainFlowNetworkRetryAttempts >= 1);
   }
@@ -263,6 +279,15 @@ class ConfigurableHttpLLM implements BaseLLM {
         providerStyle: providerStyle,
         providerState: providerState,
       );
+      final traceContext = _requestTraceContext(
+        label: 'native_planner',
+        apiStyle: apiStyle,
+        modelName: modelName,
+        purpose: LlmRequestPurpose.planner,
+        requestOptions: requestOptions,
+        messageCount: messages.length,
+        messages: messages,
+      );
       Map<String, dynamic> payload = adapter.buildPlannerPayload(
         messages: messages,
         config: config,
@@ -274,7 +299,6 @@ class ConfigurableHttpLLM implements BaseLLM {
         continuationItems: providerContinuationItems,
         providerState: providerState,
       );
-      Logger.i(_tag, 'native planner 请求体: ${jsonEncode(payload)}');
       if (_shouldUseStreamingPlanner(apiStyle)) {
         var streamedResult = await _planTurnDecisionStreaming(
           runtimeConfig: runtimeConfig,
@@ -284,6 +308,7 @@ class ConfigurableHttpLLM implements BaseLLM {
           modelName: modelName,
           previousResponseId: previousResponseId,
           hasContinuationItems: providerContinuationItems.isNotEmpty,
+          traceContext: traceContext,
           onRetryScheduled: onRetryScheduled,
         );
         if (streamedResult.retryWithoutPreviousResponseId) {
@@ -311,6 +336,7 @@ class ConfigurableHttpLLM implements BaseLLM {
             modelName: modelName,
             previousResponseId: null,
             hasContinuationItems: providerContinuationItems.isNotEmpty,
+            traceContext: traceContext,
             onRetryScheduled: onRetryScheduled,
           );
         }
@@ -327,6 +353,8 @@ class ConfigurableHttpLLM implements BaseLLM {
           modelName: modelName,
         );
       }
+      _emitRequestStart(traceContext, payload);
+      Logger.i(_tag, 'native planner 请求体: ${jsonEncode(payload)}');
       Future<http.Response> sendPlannerRequest(
         Map<String, dynamic> requestPayload,
       ) {
@@ -405,6 +433,12 @@ class ConfigurableHttpLLM implements BaseLLM {
         );
         return null;
       }
+      _emitRequestDone(
+        traceContext,
+        totalMs: _elapsedMilliseconds(traceContext.startedAt),
+        payloadBytes: _payloadBytes(payload),
+        cacheUsage: LlmUsageExtractor.extract(decoded),
+      );
       if (decision.toolCalls.length > 1) {
         Logger.i(
           _tag,
@@ -423,6 +457,20 @@ class ConfigurableHttpLLM implements BaseLLM {
       Logger.w(
         _tag,
         'native planner 请求失败: ${_previewBody(e.toString())}',
+      );
+      _traceEmitter(
+        _tag,
+        'llm.request.failed',
+        level: LogLevel.error,
+        data: {
+          'label': 'native_planner',
+          'apiStyle': _protocolResolver.resolveStyle(
+            (await _settingsRepository.getLlmConfig()).apiUrl,
+          ).name,
+          'model': (await _settingsRepository.getLlmConfig()).model,
+          'purpose': LlmRequestPurpose.planner.name,
+          'error': e.toString(),
+        },
       );
       Logger.e(_tag, 'native planner stack trace', stackTrace);
       rethrow;
@@ -446,12 +494,14 @@ class ConfigurableHttpLLM implements BaseLLM {
     required String modelName,
     required String? previousResponseId,
     required bool hasContinuationItems,
+    required _RequestTraceContext traceContext,
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     final streamingPayload = <String, dynamic>{
       ...payload,
       'stream': true,
     };
+    _emitRequestStart(traceContext, streamingPayload);
     Logger.i(
       _tag,
       'native planner streaming 请求体: ${jsonEncode(streamingPayload)}',
@@ -466,6 +516,7 @@ class ConfigurableHttpLLM implements BaseLLM {
         streamingPayload: streamingPayload,
         previousResponseId: previousResponseId,
         hasContinuationItems: hasContinuationItems,
+        traceContext: traceContext,
       ),
     );
   }
@@ -477,6 +528,7 @@ class ConfigurableHttpLLM implements BaseLLM {
     required Map<String, dynamic> streamingPayload,
     required String? previousResponseId,
     required bool hasContinuationItems,
+    required _RequestTraceContext traceContext,
   }) async {
     final streamedResponse = await _httpClient
         .send(
@@ -522,9 +574,23 @@ class ConfigurableHttpLLM implements BaseLLM {
         'native planner streaming fallback 响应体: $responseText',
       );
       if (responseText.trim().isEmpty) {
+        _emitRequestDone(
+          traceContext,
+          totalMs: _elapsedMilliseconds(traceContext.startedAt),
+          payloadBytes: _payloadBytes(streamingPayload),
+        );
         return const _StreamingPlannerAttemptResult.completed(null);
       }
       final decoded = jsonDecode(responseText);
+      final cacheUsage = decoded is Map<String, dynamic>
+          ? LlmUsageExtractor.extract(decoded)
+          : null;
+      _emitRequestDone(
+        traceContext,
+        totalMs: _elapsedMilliseconds(traceContext.startedAt),
+        payloadBytes: _payloadBytes(streamingPayload),
+        cacheUsage: cacheUsage,
+      );
       if (decoded is! Map<String, dynamic>) {
         return const _StreamingPlannerAttemptResult.completed(null);
       }
@@ -534,11 +600,25 @@ class ConfigurableHttpLLM implements BaseLLM {
     }
 
     final accumulator = StreamingDecisionAccumulator();
+    DateTime? firstChunkAt;
     await _consumePlannerStreamWithTimeouts(
       stream: _streamParser.parsePlannerChunks(streamedResponse, apiStyle),
       accumulator: accumulator,
+      onFirstChunk: () {
+        firstChunkAt ??= DateTime.now();
+        _emitFirstChunk(
+          traceContext,
+          firstChunkMs: firstChunkAt!.difference(traceContext.startedAt).inMilliseconds,
+        );
+      },
     );
 
+    _emitRequestDone(
+      traceContext,
+      totalMs: _elapsedMilliseconds(traceContext.startedAt),
+      payloadBytes: _payloadBytes(streamingPayload),
+      firstChunkMs: firstChunkAt?.difference(traceContext.startedAt).inMilliseconds,
+    );
     return _StreamingPlannerAttemptResult.completed(
       accumulator.buildDecision(),
       debugSnapshot: accumulator.debugSnapshot(),
@@ -548,8 +628,10 @@ class ConfigurableHttpLLM implements BaseLLM {
   Future<void> _consumePlannerStreamWithTimeouts({
     required Stream<StreamingPlannerChunk> stream,
     required StreamingDecisionAccumulator accumulator,
+    void Function()? onFirstChunk,
   }) {
     return (() async {
+      var firstChunkEmitted = false;
       await for (final chunk in stream.timeout(
         _plannerStreamIdleTimeout,
         onTimeout: (sink) {
@@ -561,6 +643,10 @@ class ConfigurableHttpLLM implements BaseLLM {
           );
         },
       )) {
+        if (!firstChunkEmitted) {
+          firstChunkEmitted = true;
+          onFirstChunk?.call();
+        }
         accumulator.consume(chunk);
       }
     }()).timeout(
@@ -645,6 +731,125 @@ class ConfigurableHttpLLM implements BaseLLM {
       case LlmRequestPurpose.sideTask:
         return true;
     }
+  }
+
+  _RequestTraceContext _requestTraceContext({
+    required String label,
+    required ApiStyle apiStyle,
+    required String modelName,
+    required LlmRequestPurpose purpose,
+    required LlmRequestOptions requestOptions,
+    required int messageCount,
+    required List<ChatMessage> messages,
+  }) {
+    return _RequestTraceContext(
+      label: label,
+      apiStyle: apiStyle,
+      modelName: modelName,
+      purpose: purpose,
+      estimatedInputTokens: _estimateInputTokens(messages),
+      messageCount: messageCount,
+      cacheStrategy: requestOptions.cache.strategy,
+      startedAt: DateTime.now(),
+    );
+  }
+
+  int _estimateInputTokens(List<ChatMessage> messages) {
+    return messages.fold<int>(
+      0,
+      (total, message) => total + _estimateTextTokens(message.text),
+    );
+  }
+
+  int _estimateTextTokens(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) {
+      return 0;
+    }
+    return trimmed.runes.fold<int>(
+      0,
+      (total, rune) => total + (rune > 127 ? 2 : 1),
+    );
+  }
+
+  int _payloadBytes(Map<String, dynamic> payload) {
+    return utf8.encode(jsonEncode(payload)).length;
+  }
+
+  void _emitRequestStart(
+    _RequestTraceContext context,
+    Map<String, dynamic> payload,
+  ) {
+    _traceEmitter(
+      _tag,
+      'llm.request.start',
+      data: {
+        'label': context.label,
+        'apiStyle': context.apiStyle.name,
+        'model': context.modelName,
+        'purpose': context.purpose.name,
+        'estimatedInputTokens': context.estimatedInputTokens,
+        'messageCount': context.messageCount,
+        'payloadBytes': _payloadBytes(payload),
+        'cacheStrategy': context.cacheStrategy.name,
+      },
+    );
+  }
+
+  void _emitFirstChunk(
+    _RequestTraceContext context, {
+    required int firstChunkMs,
+  }) {
+    _traceEmitter(
+      _tag,
+      'llm.first_chunk',
+      data: {
+        'label': context.label,
+        'apiStyle': context.apiStyle.name,
+        'model': context.modelName,
+        'purpose': context.purpose.name,
+        'firstChunkMs': firstChunkMs,
+        'cacheStrategy': context.cacheStrategy.name,
+      },
+    );
+  }
+
+  void _emitRequestDone(
+    _RequestTraceContext context, {
+    required int totalMs,
+    required int payloadBytes,
+    int? firstChunkMs,
+    LlmCacheUsage? cacheUsage,
+  }) {
+    _traceEmitter(
+      _tag,
+      'llm.request.done',
+      data: {
+        'label': context.label,
+        'apiStyle': context.apiStyle.name,
+        'model': context.modelName,
+        'purpose': context.purpose.name,
+        'estimatedInputTokens': context.estimatedInputTokens,
+        'messageCount': context.messageCount,
+        'payloadBytes': payloadBytes,
+        'firstChunkMs': firstChunkMs,
+        'totalMs': totalMs,
+        'cacheStrategy': context.cacheStrategy.name,
+        if (cacheUsage != null) 'inputTokens': cacheUsage.inputTokens,
+        if (cacheUsage != null) 'outputTokens': cacheUsage.outputTokens,
+        if (cacheUsage != null) 'cachedInputTokens': cacheUsage.cachedInputTokens,
+        if (cacheUsage != null)
+          'cacheReadInputTokens': cacheUsage.cacheReadInputTokens,
+        if (cacheUsage != null)
+          'cacheWriteInputTokens': cacheUsage.cacheWriteInputTokens,
+        if (cacheUsage != null)
+          'cacheMissInputTokens': cacheUsage.cacheMissInputTokens,
+      },
+    );
+  }
+
+  int _elapsedMilliseconds(DateTime startedAt) {
+    return DateTime.now().difference(startedAt).inMilliseconds;
   }
 
   ChatTurnProviderStyle _toProviderStyle(ApiStyle apiStyle) {
@@ -752,6 +957,19 @@ class ConfigurableHttpLLM implements BaseLLM {
       },
       apiStyle: apiStyle,
     );
+    final traceContext = _requestTraceContext(
+      label: requestLabel,
+      apiStyle: apiStyle,
+      modelName: modelName,
+      purpose: switch (requestLabel) {
+        'side_summary' => LlmRequestPurpose.summary,
+        'side_webpage' => LlmRequestPurpose.webpageProcessing,
+        _ => LlmRequestPurpose.sideTask,
+      },
+      requestOptions: requestOptions,
+      messageCount: messages.length,
+      messages: messages,
+    );
     final payload = adapter.buildPlannerPayload(
       messages: messages,
       config: config,
@@ -760,6 +978,7 @@ class ConfigurableHttpLLM implements BaseLLM {
       parallelToolCalls: false,
       requestOptions: requestOptions,
     );
+    _emitRequestStart(traceContext, payload);
     Logger.i(_tag, '$requestLabel 请求体: ${jsonEncode(payload)}');
     final response = await _performRetriableMainFlowRequest(
       label: requestLabel,
@@ -781,6 +1000,12 @@ class ConfigurableHttpLLM implements BaseLLM {
       return '';
     }
     final decision = _parseTurnDecisionForStyle(apiStyle, decoded);
+    _emitRequestDone(
+      traceContext,
+      totalMs: _elapsedMilliseconds(traceContext.startedAt),
+      payloadBytes: _payloadBytes(payload),
+      cacheUsage: LlmUsageExtractor.extract(decoded),
+    );
     if (decision != null) {
       if (decision.toolCalls.isNotEmpty) {
         Logger.w(_tag, '$requestLabel 意外返回 tool calls，已忽略');
@@ -965,6 +1190,28 @@ class _StreamingPlannerAttemptResult {
   final ModelTurnDecision? decision;
   final Map<String, dynamic>? debugSnapshot;
   final bool retryWithoutPreviousResponseId;
+}
+
+class _RequestTraceContext {
+  final String label;
+  final ApiStyle apiStyle;
+  final String modelName;
+  final LlmRequestPurpose purpose;
+  final int estimatedInputTokens;
+  final int messageCount;
+  final LlmCacheStrategy cacheStrategy;
+  final DateTime startedAt;
+
+  const _RequestTraceContext({
+    required this.label,
+    required this.apiStyle,
+    required this.modelName,
+    required this.purpose,
+    required this.estimatedInputTokens,
+    required this.messageCount,
+    required this.cacheStrategy,
+    required this.startedAt,
+  });
 }
 
 enum LlmRequestPurpose {

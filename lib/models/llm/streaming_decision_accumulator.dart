@@ -87,11 +87,19 @@ class StreamingDecisionAccumulator {
       return null;
     }
 
+    final providerState = Map<String, dynamic>.from(_providerState);
+    _ensureAnthropicContentBlocks(
+      providerState: providerState,
+      toolCalls: toolCalls,
+      assistantMessage: assistantMessage,
+      visibleReasoning: visibleReasoning,
+    );
+
     return ModelTurnDecision(
       toolCalls: toolCalls,
       assistantMessage: toolCalls.isNotEmpty ? assistantMessage : assistantMessage,
       visibleReasoning: visibleReasoning,
-      providerState: Map<String, dynamic>.from(_providerState),
+      providerState: providerState,
       isTerminal: toolCalls.isEmpty,
     );
   }
@@ -147,6 +155,50 @@ class StreamingDecisionAccumulator {
     }
     for (final entry in metadata.entries) {
       _providerState[entry.key] = entry.value;
+    }
+  }
+
+  void _ensureAnthropicContentBlocks({
+    required Map<String, dynamic> providerState,
+    required List<ModelToolCall> toolCalls,
+    required String? assistantMessage,
+    required String? visibleReasoning,
+  }) {
+    if (providerState.containsKey('content_blocks')) {
+      return;
+    }
+    final messageId = providerState['message_id'];
+    final hasStructuredAnthropicLikeState = toolCalls.isNotEmpty ||
+        assistantMessage != null ||
+        visibleReasoning != null;
+    if ((messageId is! String || messageId.trim().isEmpty) &&
+        !hasStructuredAnthropicLikeState) {
+      return;
+    }
+
+    final contentBlocks = <Map<String, dynamic>>[];
+    if (visibleReasoning != null) {
+      contentBlocks.add({
+        'type': 'thinking',
+        'thinking': visibleReasoning,
+      });
+    }
+    for (final toolCall in toolCalls) {
+      contentBlocks.add({
+        'type': 'tool_use',
+        'id': toolCall.providerCallId,
+        'name': toolCall.toolName,
+        'input': toolCall.arguments,
+      });
+    }
+    if (assistantMessage != null) {
+      contentBlocks.add({
+        'type': 'text',
+        'text': assistantMessage,
+      });
+    }
+    if (contentBlocks.isNotEmpty) {
+      providerState['content_blocks'] = contentBlocks;
     }
   }
 

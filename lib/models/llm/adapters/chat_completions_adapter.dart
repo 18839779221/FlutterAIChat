@@ -3,6 +3,8 @@ import 'dart:convert';
 import '../../agent/planner_tool_choice.dart';
 import '../../agent/planner_tool_option.dart';
 import '../../chat_message.dart';
+import '../llm_cache_request_options.dart';
+import '../llm_cache_strategy.dart';
 import '../llm_request_options.dart';
 import '../../../services/chat_service.dart';
 import '../api_protocol_resolver.dart';
@@ -35,7 +37,7 @@ class ChatCompletionsAdapter extends ApiStyleAdapter {
   }) {
     final normalizedMessages = normalizeMessagesWithConfiguredSystemPrompt(
         messages, config.systemPrompt);
-    return {
+    final payload = {
       'model': modelName,
       'messages': normalizedMessages
           .map(
@@ -44,6 +46,8 @@ class ChatCompletionsAdapter extends ApiStyleAdapter {
           .toList(),
       'stream': stream,
     };
+    _applyCacheHints(payload, requestOptions.cache);
+    return payload;
   }
 
   @override
@@ -93,6 +97,7 @@ class ChatCompletionsAdapter extends ApiStyleAdapter {
       payload['tool_choice'] = 'auto';
       payload['parallel_tool_calls'] = parallelToolCalls;
     }
+    _applyCacheHints(payload, requestOptions.cache);
     return payload;
   }
 
@@ -237,6 +242,21 @@ class ChatCompletionsAdapter extends ApiStyleAdapter {
       }
     }
     return messages;
+  }
+
+  void _applyCacheHints(
+    Map<String, dynamic> payload,
+    LlmCacheRequestOptions cache,
+  ) {
+    if (cache.strategy != LlmCacheStrategy.providerHints) {
+      return;
+    }
+    if (cache.cacheKey != null && cache.cacheKey!.trim().isNotEmpty) {
+      payload['prompt_cache_key'] = cache.cacheKey!.trim();
+    }
+    if (cache.retention != null && cache.retention!.trim().isNotEmpty) {
+      payload['prompt_cache_retention'] = cache.retention!.trim();
+    }
   }
 
   PlannerToolChoice? _parseToolCall(Map<String, dynamic> message) {
