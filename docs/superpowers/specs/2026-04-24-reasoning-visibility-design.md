@@ -24,6 +24,9 @@
 3. 保持 Anthropic continuation 对原始 thinking block 的续传要求
 4. 不把 provider 原始 continuation 结构和 UI 展示文本混为一层
 5. 在现有聊天消息结构与时间线模式内增量实现，避免引入第二套 reasoning 消息体系
+6. 保持 reasoning 的阶段语义清晰：
+   - `tool_use` reasoning 以时间线内联分析块呈现，强调“先思考，再执行工具”
+   - final-answer reasoning 仅作为最终答复的折叠思考区呈现
 
 ## 非目标
 
@@ -31,7 +34,6 @@
 
 - 不新增用户可切换的“深度模式”入口
 - 不尝试展示 OpenAI 原始 chain-of-thought
-- 不新增独立的 reasoning timeline message 类型
 - 不改造 planner / tool loop 的整体事件模型
 - 不引入 provider 级 capability 协商协议
 
@@ -99,33 +101,42 @@
 
 ### 方案选择
 
-采用“assistant 消息附属思考区”方案：
+采用“按 reasoning scope 分阶段展示”方案：
 
-- reasoning 不作为独立消息插入时间线
-- reasoning 绑定到当前 assistant 消息
-- 在 assistant 正文块上方显示一个可折叠“思考过程”区域
+- `tool_use` reasoning 作为 assistant analysis 消息进入时间线
+- final-answer / response reasoning 绑定到当前 assistant 最终答复
+- 最终答复正文块上方显示一个可折叠“思考过程”区域
 
 选择原因：
 
 - 与当前时间线结构最兼容
 - 不破坏 turn / transcript / block 的现有组织方式
 - 能同时支持 streaming 与 completed 两种 assistant message
-- 不会引入新的消息排序、分页、压缩边界问题
+- 能把“工具前思考”和“最终答复思考”分开建模，避免 tool-use thinking 被错误吸收到 final answer
+- 不会引入 provider continuation 与 UI thinking 混层问题
 
 ### UI 结构
 
-对于 assistant 文本消息：
+对于 `tool_use` reasoning：
+
+- 以 assistant analysis 块进入时间线
+- 默认直接可见，不折叠到最终答复中
+- 顺序上必须出现在对应工具 workflow / result 之前
+
+对于 final-answer / response reasoning：
 
 - 若 `reasoningContent` 为空：仅展示正文
 - 若 `reasoningContent` 非空：
   - 在正文上方展示“思考过程”区
   - 支持折叠 / 展开
-  - Streaming 阶段和完成阶段使用一致视觉语义
+  - final-answer completed 阶段默认按折叠语义展示
+  - response streaming 阶段可继续沿用当前展示方式
 
 展示原则：
 
 - 推理内容弱于最终回答，不抢主层级
-- 默认可以是展开或折叠，但视觉上必须清楚区分“思考过程”与“最终回答”
+- `tool_use` reasoning 以时序为先，优先表达“先思考再执行动作”
+- final-answer reasoning 以答复为主，优先表达“思考过程从属于最终回答”
 - Anthropic 的 redacted thinking 仅展示可见文本，不暴露结构化协议细节
 
 ### 数据与状态边界
@@ -144,6 +155,9 @@
 
 - UI 不依赖 `content_blocks`
 - continuation 不依赖 `reasoningContent`
+- `reasoningScope` 负责决定 UI 呈现语义：
+  - `tool_use`：进入时间线 analysis block
+  - 其他 scope（如 general / response / final-answer）：仅在对应 assistant 答复块上折叠展示
 
 ### 流式处理策略
 
@@ -158,13 +172,19 @@ assistant streaming 需要拆成双通道：
 - 节流持久化
 - turn 完成时强制 flush
 
+补充约束：
+
+- 不允许把 `tool_use` reasoning 作为 runtime draft 在 final answer 阶段再回填
+- final answer 只能消费 final-answer / response 阶段的 reasoning，不能回退吸收 `tool_use` reasoning
+
 ## 实现边界
 
 ### 需要修改的区域
 
-- `lib/controllers/chat_send_coordinator.dart`
+- `lib/controllers/agent_event_processor.dart`
   - 接入 `assistantReasoningDelta`
-  - 对 assistant message 的 reasoning 做更新和写库
+  - 将 `tool_use` reasoning 持久化为独立 assistant analysis 消息
+  - 仅将 final-answer / response reasoning 合并到最终答复消息
 - `lib/services/assistant_stream_output_buffer.dart`
   - 从单通道扩展为正文 / 推理双通道，或新增 reasoning companion buffer
 - `lib/widgets/chat_blocks/streaming_response_block.dart`
@@ -200,6 +220,8 @@ assistant streaming 需要拆成双通道：
 - 有 `reasoningContent` 的 completed assistant message 会展示“思考过程”
 - 有 `reasoningContent` 的 generating assistant message 会展示流式 reasoning
 - 无 `reasoningContent` 时不渲染思考区
+- `tool_use` reasoning 会以独立 analysis block 出现在第一个工具展示块之前
+- final answer 不会吸收 `tool_use` reasoning
 
 ## 风险与规避
 
@@ -245,3 +267,4 @@ assistant streaming 需要拆成双通道：
 3. OpenAI Responses 返回 reasoning summary 时，用户可在当前 assistant 消息中看到思考过程
 4. Anthropic continuation 仍能正确回传原始 thinking block，不因 UI 展示层而报 400
 5. 无 reasoning 的 provider 不会出现空白 reasoning UI
+6. 一次完整的 `thinking -> tool -> result -> final answer` 回合中，`tool_use` thinking 与 final-answer thinking 的展示语义保持分离

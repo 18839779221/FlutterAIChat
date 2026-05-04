@@ -215,6 +215,10 @@ The app uses **flutter_riverpod** with a split provider/controller architecture:
   - overall timeout is a coarse upper bound for one streaming attempt
   - do not regress to a single "whole request must fully close within one fixed timeout" rule for streaming planner paths
 - Persist intermediate assistant text emitted before tool execution as `assistantPlannerMessage` so transcript, UI projection, and step ledger stay aligned
+- Keep assistant reasoning stage-scoped in the timeline:
+  - `tool_use` reasoning should render as a normal analysis block in chronological order before the corresponding tool workflow/result
+  - only final-answer / response reasoning may be folded into the final response block
+  - do not let final answer fallback logic absorb earlier `tool_use` reasoning into the final response message
 - Treat `AskUserQuestion` as an interaction-style tool:
   - do not route it through `ToolOrchestratorService.executeToolInvocation()`
   - do persist its structured result into `ChatTurnStep.resultJson`

@@ -71,6 +71,8 @@ class AgentEventProcessor {
   _AssistantDraftStage? _assistantDraftStage;
   int? _assistantMessageId;
   ChatMessage? _assistantMessage;
+  int? _toolUseReasoningMessageId;
+  ChatMessage? _toolUseReasoningMessage;
   AssistantStreamOutputBuffer? _assistantStreamBuffer;
   bool _hasPendingConfirmation = false;
   bool _receivedFinalAnswer = false;
@@ -95,6 +97,10 @@ class AgentEventProcessor {
       return;
     }
     final dbHelper = _ref.read(databaseProvider);
+    if (event.eventType != ChatEventType.assistantReasoningDelta) {
+      _toolUseReasoningMessageId = null;
+      _toolUseReasoningMessage = null;
+    }
     switch (event.eventType) {
       case ChatEventType.userMessage:
       case ChatEventType.assistantTextFinal:
@@ -359,6 +365,16 @@ class AgentEventProcessor {
       return;
     }
 
+    final reasoningScope = event.payloadJson?['scope']?.toString();
+    if (reasoningScope == 'tool_use') {
+      await _appendToolUseReasoningMessage(
+        dbHelper: dbHelper,
+        content: content,
+        reasoningScope: reasoningScope!,
+      );
+      return;
+    }
+
     _assistantDraftStage ??= _AssistantDraftStage.reasoning;
 
     if (_assistantDraftStage == _AssistantDraftStage.response &&
@@ -395,8 +411,7 @@ class AgentEventProcessor {
     final now = DateTime.now();
     final nextPayload = _withIdentity({
       'draftStage': 'reasoning',
-      if (event.payloadJson?['scope'] != null)
-        'reasoningScope': event.payloadJson!['scope'],
+      if (reasoningScope != null) 'reasoningScope': reasoningScope,
     });
     if (draft == null || draft.turnId != _runtimeTurnId()) {
       _ref.read(runtimeAssistantDraftProvider.notifier).state =
@@ -451,9 +466,8 @@ class AgentEventProcessor {
       text: finalText,
       role: MessageRole.assistant,
       status: MessageStatus.completed,
-      reasoningContent:
-          previousAssistantMessage?.reasoningContent ??
-              runtimeDraft?.reasoningText,
+      reasoningContent: previousAssistantMessage?.reasoningContent ??
+          _resolvedFinalAnswerReasoning(runtimeDraft),
     );
     final insertedId = await dbHelper.insertMessage(message, _groupId);
     message.id = insertedId;
@@ -470,6 +484,49 @@ class AgentEventProcessor {
           isGenerating: false,
           phase: ChatSendPhase.idle,
         );
+  }
+
+  Future<void> _appendToolUseReasoningMessage({
+    required ChatStorage dbHelper,
+    required String content,
+    required String reasoningScope,
+  }) async {
+    if (_toolUseReasoningMessageId != null && _toolUseReasoningMessage != null) {
+      final message = _toolUseReasoningMessage!;
+      _ref
+          .read(messagesProvider.notifier)
+          .appendReasoningToMessage(_toolUseReasoningMessageId!, content);
+      await dbHelper.updateMessageReasoning(
+        _toolUseReasoningMessageId!,
+        message.reasoningContent,
+      );
+      return;
+    }
+
+    final message = ChatMessage(
+      text: '',
+      role: MessageRole.assistant,
+      status: MessageStatus.completed,
+      reasoningContent: content,
+      payloadJson: _withIdentity({
+        'reasoningScope': reasoningScope,
+      }),
+    );
+    final id = await dbHelper.insertMessage(message, _groupId);
+    message.id = id;
+    _toolUseReasoningMessageId = id;
+    _toolUseReasoningMessage = message;
+    _ref.read(messagesProvider.notifier).addMessage(message);
+  }
+
+  String? _resolvedFinalAnswerReasoning(RuntimeAssistantDraft? runtimeDraft) {
+    if (runtimeDraft == null) {
+      return null;
+    }
+    if (runtimeDraft.payload?['reasoningScope'] == 'tool_use') {
+      return null;
+    }
+    return runtimeDraft.reasoningText;
   }
 
   void _ensureAssistantDraftStage(_AssistantDraftStage stage) {

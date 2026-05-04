@@ -6,14 +6,19 @@
 
 基于 `docs/superpowers/specs/2026-04-24-reasoning-visibility-design.md`，把三类 API 风格的 reasoning/thinking 接入到现有 assistant 消息展示链路中，并保持 Anthropic continuation 边界不被破坏。
 
+补充约束：
+
+- `tool_use` reasoning 必须作为时间线顺序块展示，不得被 final answer 吸收
+- final-answer reasoning 才允许继续采用当前折叠展示方式
+
 ## 代码结构与职责
 
 ### 需要修改的文件
 
-- 修改：`lib/controllers/chat_send_coordinator.dart`
+- 修改：`lib/controllers/agent_event_processor.dart`
   - 消费 `assistantReasoningDelta`
-  - 将 reasoning 写入当前 assistant message
-  - 调用数据库更新 reasoning 内容
+  - 将 `tool_use` reasoning 写入独立 assistant analysis 消息
+  - 将 final-answer / response reasoning 写入最终 assistant message
 
 - 修改：`lib/services/assistant_stream_output_buffer.dart`
   - 从单通道文本缓冲升级为正文 / 推理双通道缓冲
@@ -64,6 +69,20 @@
   - `text` 正常
   - `reasoningContent` 包含 reasoning 增量
 
+- [ ] **Step 1.1: 写一个失败测试，覆盖 `tool_use` reasoning 保持为独立 analysis 块**
+
+测试要点：
+
+- 构造事件序列：
+  - `assistantReasoningDelta(scope=tool_use)`
+  - `toolExecutionStarted`
+  - `toolResult`
+  - `finalAnswer`
+- 断言：
+  - timeline 中存在独立 analysis block
+  - 该 block 位于第一个工具展示块之前
+  - final answer 的 `reasoningContent` 不包含该段 tool-use thinking
+
 - [ ] **Step 2: 运行单测，确认当前行为失败**
 
 运行：
@@ -76,21 +95,24 @@ fvm flutter test test/providers/chat_controller_tool_flow_test.dart --plain-name
 
 - 失败，原因是 reasoning 未写入 message
 
-### 任务 2：实现 send coordinator 对 reasoning 的接入
+### 任务 2：实现事件分发器对 reasoning 的阶段化接入
 
 **文件：**
 
-- 修改：`lib/controllers/chat_send_coordinator.dart`
+- 修改：`lib/controllers/agent_event_processor.dart`
 - 可能修改：`lib/services/assistant_stream_output_buffer.dart`
 
-- [ ] **Step 3: 在 send coordinator 中处理 `ChatEventType.assistantReasoningDelta`**
+- [ ] **Step 3: 在事件分发器中按 scope 处理 `ChatEventType.assistantReasoningDelta`**
 
 实现要求：
 
-- 若当前 assistant message 不存在，先创建 generating placeholder
-- 将 reasoning 追加到当前 message 的 `reasoningContent`
-- 调用 provider 的 `appendReasoningToMessage`
-- 调用 `DatabaseHelper.updateMessageReasoning()`
+- `tool_use` reasoning：
+  - 不创建 final-answer placeholder
+  - 以独立 assistant analysis 消息落库
+  - 相邻多段 delta 继续追加到同一条 reasoning message
+- final-answer / response reasoning：
+  - 继续写入 runtime draft 或当前 response message
+  - 最终只合并到对应 final answer 消息
 
 - [ ] **Step 4: 若现有缓冲器不适合 reasoning，最小化扩展为双通道**
 
@@ -100,7 +122,7 @@ fvm flutter test test/providers/chat_controller_tool_flow_test.dart --plain-name
 - flush 周期与正文保持一致或近似一致
 - `finish()` 时两个通道都强制 flush
 
-- [ ] **Step 5: 运行单测，确认 reasoning 更新逻辑通过**
+- [ ] **Step 5: 运行单测，确认阶段化 reasoning 逻辑通过**
 
 运行：
 
@@ -147,7 +169,7 @@ fvm flutter test test/widgets/chat_message_list_test.dart --plain-name "reasonin
 
 - 失败，原因是当前 block 不渲染 reasoning
 
-### 任务 4：实现 reasoning UI
+### 任务 4：实现 reasoning UI 语义分层
 
 **文件：**
 
@@ -165,6 +187,7 @@ fvm flutter test test/widgets/chat_message_list_test.dart --plain-name "reasonin
 - 显示文案：`思考过程`
 - reasoning 在正文之前
 - 样式弱于正文
+- 仅用于 response / final-answer reasoning，不承接 `tool_use` reasoning 的回填
 
 - [ ] **Step 11: 给 `FinalResponseBlock` 增加 reasoning 展示区**
 
@@ -255,8 +278,15 @@ fvm flutter analyze
 
 ### 注意 3：不要引入新的 timeline message 类型
 
-- 继续挂载在当前 assistant message 上
-- 避免影响消息排序、分页、session context 压缩边界
+- `tool_use` reasoning 允许作为普通 assistant analysis 消息进入时间线
+- 但不要为它再发明新的专用消息 role / contentType / 第二套状态机
+- 仍然沿用当前 assistant message / block / projection 体系
+
+### 注意 4：不要让 final answer 回退吸收 tool-use reasoning
+
+- `tool_use` reasoning 一旦进入时间线，就应视为该阶段已经定稿的 UI 事实
+- final answer 只能消费自身阶段的 reasoning
+- 不允许通过 fallback 再把 `tool_use` reasoning 填回最终答复
 
 ## 建议提交粒度
 
@@ -270,6 +300,7 @@ fvm flutter analyze
 
 - `assistantReasoningDelta` 能更新当前 assistant message
 - assistant message 的 `reasoningContent` 能在 UI 中看到
+- `tool_use` reasoning 能在工具块前按时间顺序看到
 - streaming / completed 两种状态都支持显示 reasoning
 - Anthropic continuation 相关测试仍通过
 - 受影响测试通过，analyze 不新增问题

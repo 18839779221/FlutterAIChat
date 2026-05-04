@@ -125,8 +125,11 @@ Hook 约定：
 
 processor 内部按 `ChatEvent.eventType` 分发：
 
-- `userMessage` / `assistantTextFinal` / `turnStatus` / `error` / `assistantReasoningDelta`（当前）：no-op
-  - 注：`assistantReasoningDelta` 随着 reasoning-visibility plan 推进会变成"追加到当前 assistant message"，届时在 processor 内落地即可，三处调用方不需要改
+- `userMessage` / `assistantTextFinal` / `turnStatus` / `error`：no-op
+- `assistantReasoningDelta`：
+  - `tool_use` scope：持久化为独立 assistant analysis 消息，保持“thinking -> tool -> result”的时间线顺序
+  - final-answer / response scope：写入当前 response draft 或最终答复消息
+  - 不允许在 `finalAnswer` 阶段把早先的 `tool_use` reasoning 回退吸收到 final response
 - `assistantPlannerMessage` / `assistantToolCall` / `assistantQuestionPrompt` / `toolExecutionStarted` / `toolResult`：
   - 构造 `ChatMessage`，按 processor 配置注入 `agentTurnId` / `traceTurnIdPayloadKey`
   - `dbHelper.insertMessage` + `messagesProvider.addMessage`
