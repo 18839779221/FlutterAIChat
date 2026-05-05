@@ -554,9 +554,14 @@ class ConfigurableHttpLLM
       payloadBytes: _payloadBytes(streamingPayload),
       firstChunkMs: firstChunkAt?.difference(traceContext.startedAt).inMilliseconds,
     );
+    final debugSnapshot = accumulator.debugSnapshot();
+    Logger.i(
+      _tag,
+      'native planner streaming snapshot: ${_summarizeStreamingPlannerAttempt(debugSnapshot)}',
+    );
     return _StreamingPlannerAttemptResult.completed(
       accumulator.buildDecision(),
-      debugSnapshot: accumulator.debugSnapshot(),
+      debugSnapshot: debugSnapshot,
       runtimeSnapshots: accumulator.runtimeSnapshots(
         turnId: 'planner_runtime',
       ),

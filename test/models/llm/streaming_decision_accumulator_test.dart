@@ -137,6 +137,36 @@ void main() {
       expect(snapshots.single.text, contains('<div>Hello'));
     });
 
+    test('keeps anonymous argument deltas attached to latest unfinished tool call',
+        () {
+      final accumulator = StreamingDecisionAccumulator();
+
+      accumulator.consume(
+        const StreamingPlannerChunk.toolCallStarted(
+          providerCallId: 'call_1',
+          toolName: 'create_artifact',
+        ),
+      );
+      accumulator.consume(
+        const StreamingPlannerChunk.toolCallArgumentsDelta(
+          argumentsTextDelta: '{"id":"demo","type":"html","title":"Demo","source":"<div>Hello</div>"}',
+        ),
+      );
+      accumulator.consume(
+        const StreamingPlannerChunk.streamCompleted(),
+      );
+
+      final decision = accumulator.buildDecision();
+
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, hasLength(1));
+      expect(decision.toolCalls.single.toolName, 'create_artifact');
+      expect(
+        decision.toolCalls.single.arguments['source'],
+        '<div>Hello</div>',
+      );
+    });
+
     test('returns null when completed tool call arguments stay invalid', () {
       final accumulator = StreamingDecisionAccumulator();
 
