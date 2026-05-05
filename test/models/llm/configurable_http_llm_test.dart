@@ -186,19 +186,25 @@ void main() {
       expect(decision.isTerminal, isFalse);
     });
 
-    test('anthropic streaming planner returns null on incomplete tool args',
+    test('anthropic streaming planner keeps decision on incomplete tool args',
         () async {
       final client = _RecordingHttpClient(
-        handler: (request) => http.Response(
-          'event: content_block_start\n'
-          'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"write_file"}}\n\n'
-          'event: content_block_delta\n'
-          'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"path\\":"}}\n\n'
-          'event: content_block_stop\n'
-          'data: {"type":"content_block_stop","index":0}\n\n'
-          'data: [DONE]\n',
+        handler: (request) => http.StreamedResponse(
+          Stream<List<int>>.fromIterable([
+            utf8.encode(
+              'event: content_block_delta\n'
+              'data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"先分析"}}\n\n'
+              'event: content_block_start\n'
+              'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"write_file"}}\n\n'
+              'event: content_block_delta\n'
+              'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"path\\":"}}\n\n'
+              'event: content_block_stop\n'
+              'data: {"type":"content_block_stop","index":0}\n\n'
+              'data: [DONE]\n',
+            ),
+          ]),
           200,
-          headers: {'content-type': 'text/event-stream'},
+          headers: {'content-type': 'text/event-stream; charset=utf-8'},
         ),
       );
       final llm = await _buildLlm(
@@ -227,7 +233,134 @@ void main() {
       );
 
       expect(client.lastRequestBody?['stream'], isTrue);
-      expect(decision, isNull);
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, isEmpty);
+      expect(decision.visibleReasoning, '先分析');
+    });
+
+    test(
+        'anthropic streaming planner keeps decision when tool args end with trailing garbage',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.StreamedResponse(
+          Stream<List<int>>.fromIterable([
+            utf8.encode(
+              'event: content_block_delta\n'
+              'data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"先分析"}}\n\n'
+              'event: content_block_start\n'
+              'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"create_artifact"}}\n\n'
+              'event: content_block_delta\n'
+              'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"id\\":\\"china-food-ranking\\",\\"type\\":\\"html\\",\\"title\\":\\"中国美食排行\\",\\"source\\":\\"<div>ok</div>\\"}"}}\n\n'
+              'event: content_block_delta\n'
+              'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"<unexpected-tail>"}}\n\n'
+              'event: content_block_stop\n'
+              'data: {"type":"content_block_stop","index":0}\n\n'
+              'data: [DONE]\n',
+            ),
+          ]),
+          200,
+          headers: {'content-type': 'text/event-stream; charset=utf-8'},
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/anthropic/v1/messages',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '请创建美食页面', role: MessageRole.user),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [
+          PlannerToolOption(
+            name: 'create_artifact',
+            description: '创建 artifact',
+            inputSchema: {
+              'type': 'object',
+              'properties': {
+                'id': {'type': 'string'},
+                'type': {'type': 'string'},
+                'title': {'type': 'string'},
+                'source': {'type': 'string'},
+              },
+              'required': ['id', 'type', 'title', 'source'],
+            },
+          ),
+        ],
+      );
+
+      expect(client.lastRequestBody?['stream'], isTrue);
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, isEmpty);
+      expect(decision.visibleReasoning, '先分析');
+    });
+
+    test('anthropic streaming planner should tolerate ping keepalive chunks',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.StreamedResponse(
+          (() async* {
+            yield utf8.encode(
+              'event: content_block_delta\n'
+              'data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"先分析"}}\n\n',
+            );
+            await Future<void>.delayed(const Duration(milliseconds: 10));
+            yield utf8.encode('event: ping\ndata: {"type":"ping"}\n\n');
+            await Future<void>.delayed(const Duration(milliseconds: 10));
+            yield utf8.encode('event: ping\ndata: {"type":"ping"}\n\n');
+            await Future<void>.delayed(const Duration(milliseconds: 10));
+            yield utf8.encode(
+              'event: content_block_start\n'
+              'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"create_artifact"}}\n\n',
+            );
+            yield utf8.encode(
+              'event: content_block_delta\n'
+              'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"id\\":\\"demo\\",\\"type\\":\\"html\\",\\"title\\":\\"Demo\\",\\"source\\":\\"<div>ok</div>\\"}"}}\n\n',
+            );
+            yield utf8.encode(
+              'event: content_block_stop\n'
+              'data: {"type":"content_block_stop","index":0}\n\n',
+            );
+            yield utf8.encode('data: [DONE]\n');
+          })(),
+          200,
+          headers: {'content-type': 'text/event-stream; charset=utf-8'},
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/anthropic/v1/messages',
+        httpClient: client,
+        plannerStreamIdleTimeout: const Duration(milliseconds: 20),
+        plannerStreamOverallTimeout: const Duration(seconds: 1),
+      );
+
+      final decision = await llm.planTurnDecision(
+        messages: [
+          ChatMessage(text: '请创建 artifact', role: MessageRole.user),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [
+          PlannerToolOption(
+            name: 'create_artifact',
+            description: '创建 artifact',
+            inputSchema: {
+              'type': 'object',
+              'properties': {
+                'id': {'type': 'string'},
+                'type': {'type': 'string'},
+                'title': {'type': 'string'},
+                'source': {'type': 'string'},
+              },
+              'required': ['id', 'type', 'title', 'source'],
+            },
+          ),
+        ],
+      );
+
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, hasLength(1));
+      expect(decision.toolCalls.single.toolName, 'create_artifact');
     });
 
     test('anthropic streaming planner assembles terminal assistant decision',

@@ -1,5 +1,6 @@
 /// Internal normalized planner-stream chunk used only inside the LLM layer.
 enum StreamingPlannerChunkType {
+  keepalive,
   contentDelta,
   reasoningDelta,
   toolCallStarted,
@@ -34,21 +35,32 @@ class StreamingPlannerChunk {
 
   const StreamingPlannerChunk.contentDelta(
     String content, {
+    int? toolCallIndex,
     Map<String, dynamic>? providerMetadata,
   })
       : this(
           type: StreamingPlannerChunkType.contentDelta,
           content: content,
+          toolCallIndex: toolCallIndex,
+          providerMetadata: providerMetadata,
+        );
+
+  const StreamingPlannerChunk.keepalive({
+    Map<String, dynamic>? providerMetadata,
+  }) : this(
+          type: StreamingPlannerChunkType.keepalive,
           providerMetadata: providerMetadata,
         );
 
   const StreamingPlannerChunk.reasoningDelta(
     String content, {
+    int? toolCallIndex,
     Map<String, dynamic>? providerMetadata,
   })
       : this(
           type: StreamingPlannerChunkType.reasoningDelta,
           content: content,
+          toolCallIndex: toolCallIndex,
           providerMetadata: providerMetadata,
         );
 

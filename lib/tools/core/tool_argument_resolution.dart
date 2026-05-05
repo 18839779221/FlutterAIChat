@@ -13,8 +13,8 @@ class ToolArgumentResolution {
   /// Human-readable summary for invalid arguments.
   final String? errorSummary;
 
-  /// Optional planner/debug-facing detail text that explains why the argument
-  /// normalization failed without replacing the short summary.
+  /// Optional planner-facing context text for invalid arguments when the model
+  /// needs a clearer failure explanation than the UI summary.
   final String? errorContextText;
 
   const ToolArgumentResolution._({

@@ -178,8 +178,13 @@ void main() {
       );
     });
 
-    test('returns null when completed tool call arguments stay invalid', () {
+    test('drops invalid completed tool call arguments instead of failing decision',
+        () {
       final accumulator = StreamingDecisionAccumulator();
+
+      accumulator.consume(
+        const StreamingPlannerChunk.reasoningDelta('先整理页面结构'),
+      );
 
       accumulator.consume(
         const StreamingPlannerChunk.toolCallStarted(
@@ -206,7 +211,11 @@ void main() {
         const StreamingPlannerChunk.streamCompleted(),
       );
 
-      expect(accumulator.buildDecision(), isNull);
+      final decision = accumulator.buildDecision();
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, isEmpty);
+      expect(decision.visibleReasoning, '先整理页面结构');
+      expect(decision.isTerminal, isTrue);
       expect(
         accumulator.debugSnapshot(),
         containsPair('assistantTextLength', 0),
@@ -216,6 +225,65 @@ void main() {
       expect(toolDrafts, hasLength(1));
       expect(toolDrafts.first, containsPair('isCompleted', true));
       expect(toolDrafts.first, containsPair('rawArgumentsLength', 8));
+    });
+
+    test(
+        'drops invalid create_artifact arguments with trailing garbage but preserves reasoning',
+        () {
+      final accumulator = StreamingDecisionAccumulator();
+
+      accumulator.consume(
+        const StreamingPlannerChunk.reasoningDelta('先整理页面结构。'),
+      );
+      accumulator.consume(
+        const StreamingPlannerChunk.toolCallStarted(
+          toolCallIndex: 0,
+          providerCallId: 'call_artifact_bad_1',
+          toolName: 'create_artifact',
+        ),
+      );
+      accumulator.consume(
+        const StreamingPlannerChunk.toolCallArgumentsDelta(
+          toolCallIndex: 0,
+          providerCallId: 'call_artifact_bad_1',
+          toolName: 'create_artifact',
+          argumentsTextDelta:
+              '{"id":"china-food-ranking","type":"html","title":"中国美食排行","source":"<div>ok</div>"}',
+        ),
+      );
+      accumulator.consume(
+        const StreamingPlannerChunk.toolCallArgumentsDelta(
+          toolCallIndex: 0,
+          providerCallId: 'call_artifact_bad_1',
+          toolName: 'create_artifact',
+          argumentsTextDelta: '\n<unexpected-tail>',
+        ),
+      );
+      accumulator.consume(
+        const StreamingPlannerChunk.toolCallCompleted(
+          toolCallIndex: 0,
+          providerCallId: 'call_artifact_bad_1',
+          toolName: 'create_artifact',
+        ),
+      );
+      accumulator.consume(
+        const StreamingPlannerChunk.streamCompleted(),
+      );
+
+      final decision = accumulator.buildDecision();
+
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, isEmpty);
+      expect(decision.visibleReasoning, '先整理页面结构。');
+      expect(decision.isTerminal, isTrue);
+      final toolDrafts =
+          accumulator.debugSnapshot()['toolDrafts'] as List<dynamic>;
+      expect(toolDrafts, hasLength(1));
+      expect(toolDrafts.first, containsPair('isCompleted', true));
+      expect(
+        toolDrafts.first,
+        containsPair('rawArgumentsLength', greaterThan(80)),
+      );
     });
 
     test('finalizes chat-completions style tool call on stream completion', () {
