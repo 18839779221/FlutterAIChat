@@ -1,11 +1,14 @@
+import 'package:ai_chat/models/artifact/artifact_turn_projection.dart';
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat/chat_timeline_projection.dart';
 import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
+import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
+import 'package:ai_chat/services/artifact/runtime_artifact_preview_parser.dart';
 import 'package:ai_chat/services/artifact/artifact_turn_resolver.dart';
 import 'package:ai_chat/services/chat_block_builder.dart';
 import 'package:ai_chat/services/tool_presentation_block_projector.dart';
@@ -19,17 +22,20 @@ class ChatTimelineProjectionService {
     ToolPresentationBlockProjector? toolBlockProjector,
   })  : _blockBuilder = blockBuilder ?? ChatBlockBuilder(),
         _artifactTurnResolver = artifactTurnResolver,
+        _runtimeArtifactPreviewParser = const RuntimeArtifactPreviewParser(),
         _toolBlockProjector =
             toolBlockProjector ?? const ToolPresentationBlockProjector();
 
   final ChatBlockBuilder _blockBuilder;
   final ArtifactTurnResolver? _artifactTurnResolver;
+  final RuntimeArtifactPreviewParser _runtimeArtifactPreviewParser;
   final ToolPresentationBlockProjector _toolBlockProjector;
 
   ChatTimelineProjection build({
     required List<ChatMessage> messages,
     int? groupId,
     RuntimeAssistantDraft? runtimeDraft,
+    List<RuntimeStreamEntry> runtimeStreamEntries = const <RuntimeStreamEntry>[],
   }) {
     final toolPresentationEvents = _buildToolPresentationEvents(
       messages: messages,
@@ -47,6 +53,14 @@ class ChatTimelineProjectionService {
       groupId: groupId,
     );
     final runtimeDraftBlock = _buildRuntimeDraftBlock(runtimeDraft);
+    final runtimeArtifactBlocks = _buildRuntimeArtifactBlocks(
+      projectedAssistantBlocks: [
+        ...blocks,
+        ...toolBlocks,
+        if (runtimeDraftBlock != null) runtimeDraftBlock,
+      ],
+      runtimeStreamEntries: runtimeStreamEntries,
+    );
     return ChatTimelineProjection(
       activeAskUserQuestionMessage: _findActiveAskUserQuestion(messages),
       pendingToolConfirmation: _findPendingConfirmation(messages),
@@ -56,10 +70,14 @@ class ChatTimelineProjectionService {
           ...toolBlocks,
           if (runtimeDraftBlock != null) runtimeDraftBlock,
         ],
-        artifactBlocks: artifactBlocks,
+        artifactBlocks: [
+          ...artifactBlocks,
+          ...runtimeArtifactBlocks,
+        ],
       ),
       toolPresentationEvents: toolPresentationEvents,
       runtimeAssistantDraft: runtimeDraft,
+      runtimeStreamEntries: runtimeStreamEntries,
     );
   }
 
@@ -212,6 +230,58 @@ class ChatTimelineProjectionService {
         artifactProjection: projection,
       );
     }).toList(growable: false);
+  }
+
+  List<AssistantTurnBlock> _buildRuntimeArtifactBlocks({
+    required List<AssistantTurnBlock> projectedAssistantBlocks,
+    required List<RuntimeStreamEntry> runtimeStreamEntries,
+  }) {
+    if (runtimeStreamEntries.isEmpty) {
+      return const <AssistantTurnBlock>[];
+    }
+
+    final runtimeArtifactBlocks = <AssistantTurnBlock>[];
+    for (final entry in runtimeStreamEntries) {
+      final preview = _runtimeArtifactPreviewParser.parse(entry);
+      if (preview == null) {
+        continue;
+      }
+      final alreadyResolved = projectedAssistantBlocks.any(
+        (block) =>
+            block.type == AssistantTurnBlockType.artifact &&
+            block.turnId == preview.turnId,
+      );
+      if (alreadyResolved) {
+        continue;
+      }
+      runtimeArtifactBlocks.add(
+        AssistantTurnBlock(
+          id: preview.entryId,
+          turnId: preview.turnId,
+          type: AssistantTurnBlockType.artifact,
+          sequence: 99998,
+          createdAt: preview.createdAt,
+          updatedAt: preview.updatedAt,
+          title: preview.title,
+          text: preview.source,
+          payload: const {
+            'isRuntimePreview': true,
+          },
+          artifactProjection: ArtifactTurnProjection(
+            artifactId: preview.artifactId,
+            turnId: preview.turnId,
+            title: preview.title,
+            type: preview.type,
+            sourcePath: preview.sourcePath,
+            source: preview.source,
+            isStale: false,
+            createdAt: preview.createdAt,
+            updatedAt: preview.updatedAt,
+          ),
+        ),
+      );
+    }
+    return runtimeArtifactBlocks;
   }
 
   List<AssistantTurnBlock> _mergeBlocks({
