@@ -164,7 +164,7 @@ void main() async {
         },
         onPlannerRuntimeStream: (entries) {
           container
-              .read(runtimeToolCallFeedProvider.notifier)
+              .read(runtimeStreamEntriesProvider.notifier)
               .publish(entries);
         },
       ),

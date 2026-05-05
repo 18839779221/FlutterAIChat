@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:ai_chat/models/artifact/artifact_type.dart';
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
+import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -319,6 +320,48 @@ void main() {
       );
 
       await tempDirectory.delete(recursive: true);
+    });
+
+    test(
+        'projects runtime create_artifact preview from generic runtime stream entries',
+        () {
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我做个 artifact',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+        ],
+        runtimeStreamEntries: [
+          RuntimeStreamEntry(
+            turnId: '7_30',
+            entryId: '7_30-tool-call-1',
+            kind: RuntimeStreamEntryKind.toolCallArguments,
+            providerCallId: 'call_artifact_1',
+            toolName: 'create_artifact',
+            createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+            updatedAt: DateTime(2026, 4, 30, 10, 0, 1),
+            text:
+                '{"id":"food-rank","type":"html","title":"中国美食","source":"<div>渐进预览</div>"}',
+            payload: const {
+              'toolCallIndex': 0,
+              'isCompleted': false,
+            },
+          ),
+        ],
+      );
+
+      final runtimeArtifactBlocks = projection.assistantBlocks
+          .where((block) => block.type == AssistantTurnBlockType.artifact)
+          .toList(growable: false);
+      expect(runtimeArtifactBlocks, hasLength(1));
+      expect(runtimeArtifactBlocks.single.payload?['isRuntimePreview'], isTrue);
+      expect(runtimeArtifactBlocks.single.text, contains('渐进预览'));
+      expect(projection.runtimeStreamEntries, hasLength(1));
+      expect(projection.runtimeStreamEntries.single.toolName, 'create_artifact');
     });
 
     test(

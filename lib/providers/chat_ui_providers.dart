@@ -106,10 +106,10 @@ final activeSendCancellationProvider =
 final runtimeAssistantDraftProvider =
     StateProvider<RuntimeAssistantDraft?>((ref) => null);
 
-/// Runtime-only tool-call argument feed used by tool-specific renderers.
-final runtimeToolCallFeedProvider = StateNotifierProvider<
-    RuntimeToolCallFeedController, List<RuntimeStreamEntry>>((ref) {
-  final controller = RuntimeToolCallFeedController();
+/// Runtime-only generic stream entries used by projection/UI consumers.
+final runtimeStreamEntriesProvider = StateNotifierProvider<
+    RuntimeStreamEntriesController, List<RuntimeStreamEntry>>((ref) {
+  final controller = RuntimeStreamEntriesController();
   ref.onDispose(controller.dispose);
   return controller;
 });
@@ -132,10 +132,12 @@ final chatTimelineProjectionProvider = Provider<ChatTimelineProjection>((ref) {
   final groupId = ref.watch(currentGroupProvider)?.id;
   final messages = ref.watch(messagesProvider);
   final runtimeDraft = ref.watch(runtimeAssistantDraftProvider);
+  final runtimeStreamEntries = ref.watch(runtimeStreamEntriesProvider);
   return ref.watch(chatTimelineProjectionServiceProvider).build(
         messages: messages,
         groupId: groupId,
         runtimeDraft: runtimeDraft,
+        runtimeStreamEntries: runtimeStreamEntries,
       );
 });
 
@@ -161,9 +163,9 @@ final activePendingToolConfirmationProvider =
   );
 });
 
-class RuntimeToolCallFeedController
+class RuntimeStreamEntriesController
     extends StateNotifier<List<RuntimeStreamEntry>> {
-  RuntimeToolCallFeedController() : super(const <RuntimeStreamEntry>[]);
+  RuntimeStreamEntriesController() : super(const <RuntimeStreamEntry>[]);
 
   static const Duration _minPublishInterval = Duration(milliseconds: 120);
 
@@ -172,15 +174,12 @@ class RuntimeToolCallFeedController
   List<RuntimeStreamEntry>? _pendingEntries;
 
   void publish(List<RuntimeStreamEntry> entries) {
-    final filtered = entries
-        .where((entry) => entry.kind == RuntimeStreamEntryKind.toolCallArguments)
-        .toList(growable: false);
-    if (filtered.isEmpty) {
+    if (entries.isEmpty) {
       clear();
       return;
     }
 
-    _pendingEntries = filtered;
+    _pendingEntries = List<RuntimeStreamEntry>.from(entries);
     final now = DateTime.now();
     final lastPublishedAt = _lastPublishedAt;
     if (lastPublishedAt == null ||
