@@ -203,6 +203,22 @@ class StreamingDecisionAccumulator {
       }
     }
 
+    if (providerCallId == null && toolName == null) {
+      final unfinishedDrafts = _toolCallDrafts
+          .where((draft) => !draft.isCompleted)
+          .toList(growable: false);
+      if (unfinishedDrafts.length == 1) {
+        return unfinishedDrafts.single;
+      }
+
+      if (_toolCallDrafts.isNotEmpty) {
+        final latestDraft = _toolCallDrafts.last;
+        if (latestDraft.canFinalizeOnStreamCompleted) {
+          return latestDraft;
+        }
+      }
+    }
+
     final draft = _ToolCallDraft(sequence: _toolCallDrafts.length);
     _toolCallDrafts.add(draft);
     return draft;
