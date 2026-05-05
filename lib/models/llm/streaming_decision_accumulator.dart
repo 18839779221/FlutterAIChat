@@ -33,6 +33,7 @@ class StreamingDecisionAccumulator {
       case StreamingPlannerChunkType.toolCallStarted:
         _mergeProviderState(chunk.providerMetadata);
         _resolveDraft(chunk).mergeStarted(
+          toolCallIndex: chunk.toolCallIndex,
           providerCallId: chunk.providerCallId,
           toolName: chunk.toolName,
         );
@@ -41,11 +42,15 @@ class StreamingDecisionAccumulator {
         _mergeProviderState(chunk.providerMetadata);
         _resolveDraft(chunk).appendArgumentsDelta(
           chunk.argumentsTextDelta ?? '',
+          toolCallIndex: chunk.toolCallIndex,
+          providerCallId: chunk.providerCallId,
+          toolName: chunk.toolName,
         );
         return;
       case StreamingPlannerChunkType.toolCallCompleted:
         _mergeProviderState(chunk.providerMetadata);
         _resolveDraft(chunk).markCompleted(
+          toolCallIndex: chunk.toolCallIndex,
           providerCallId: chunk.providerCallId,
           toolName: chunk.toolName,
         );
@@ -115,6 +120,7 @@ class StreamingDecisionAccumulator {
           .map(
             (draft) => {
               'sequence': draft.sequence,
+              'toolCallIndex': draft.toolCallIndex,
               'providerCallId': draft.providerCallId,
               'toolName': draft.toolName,
               'isCompleted': draft.isCompleted,
@@ -176,6 +182,7 @@ class StreamingDecisionAccumulator {
           text: draft.rawArgumentsText,
           payload: {
             'sequence': draft.sequence,
+            if (draft.toolCallIndex != null) 'toolCallIndex': draft.toolCallIndex,
             'isCompleted': draft.isCompleted,
           },
         ),
@@ -185,36 +192,11 @@ class StreamingDecisionAccumulator {
   }
 
   _ToolCallDraft _resolveDraft(StreamingPlannerChunk chunk) {
-    final providerCallId = _normalizeText(chunk.providerCallId);
-    if (providerCallId != null) {
-      final byId = _toolCallDrafts.where((draft) => draft.providerCallId == providerCallId);
-      if (byId.isNotEmpty) {
-        return byId.first;
-      }
-    }
-
-    final toolName = _normalizeText(chunk.toolName);
-    if (providerCallId == null && toolName != null) {
-      final byName = _toolCallDrafts.where(
-        (draft) => draft.providerCallId == null && draft.toolName == toolName && !draft.isCompleted,
-      );
-      if (byName.isNotEmpty) {
-        return byName.first;
-      }
-    }
-
-    if (providerCallId == null && toolName == null) {
-      final unfinishedDrafts = _toolCallDrafts
-          .where((draft) => !draft.isCompleted)
-          .toList(growable: false);
-      if (unfinishedDrafts.length == 1) {
-        return unfinishedDrafts.single;
-      }
-
-      if (_toolCallDrafts.isNotEmpty) {
-        final latestDraft = _toolCallDrafts.last;
-        if (latestDraft.canFinalizeOnStreamCompleted) {
-          return latestDraft;
+    final toolCallIndex = chunk.toolCallIndex;
+    if (toolCallIndex != null) {
+      for (final draft in _toolCallDrafts) {
+        if (draft.toolCallIndex == toolCallIndex) {
+          return draft;
         }
       }
     }
@@ -305,34 +287,50 @@ class _ToolCallDraft {
   String? providerCallId;
   String? toolName;
   bool isCompleted = false;
+  int? toolCallIndex;
   final StringBuffer _rawArgumentsBuffer = StringBuffer();
 
   int get rawArgumentsLength => _rawArgumentsBuffer.length;
   String get rawArgumentsText => _rawArgumentsBuffer.toString();
 
   bool get canFinalizeOnStreamCompleted =>
-      toolName != null || providerCallId != null || _rawArgumentsBuffer.isNotEmpty;
+      toolCallIndex != null || toolName != null || _rawArgumentsBuffer.isNotEmpty;
 
   void mergeStarted({
+    int? toolCallIndex,
     String? providerCallId,
     String? toolName,
   }) {
+    this.toolCallIndex = toolCallIndex ?? this.toolCallIndex;
     this.providerCallId = providerCallId ?? this.providerCallId;
     this.toolName = toolName ?? this.toolName;
   }
 
-  void appendArgumentsDelta(String delta) {
+  void appendArgumentsDelta(
+    String delta, {
+    int? toolCallIndex,
+    String? providerCallId,
+    String? toolName,
+  }) {
     if (delta.isEmpty) {
       return;
     }
+    this.toolCallIndex = toolCallIndex ?? this.toolCallIndex;
+    this.providerCallId = providerCallId ?? this.providerCallId;
+    this.toolName = toolName ?? this.toolName;
     _rawArgumentsBuffer.write(delta);
   }
 
   void markCompleted({
+    int? toolCallIndex,
     String? providerCallId,
     String? toolName,
   }) {
-    mergeStarted(providerCallId: providerCallId, toolName: toolName);
+    mergeStarted(
+      toolCallIndex: toolCallIndex,
+      providerCallId: providerCallId,
+      toolName: toolName,
+    );
     isCompleted = true;
   }
 

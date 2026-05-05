@@ -61,30 +61,34 @@ void main() {
       );
     });
 
-    test('aggregates completed tool call arguments by provider call id', () {
+    test('aggregates completed tool call arguments by tool call index', () {
       final accumulator = StreamingDecisionAccumulator();
 
       accumulator.consume(
         const StreamingPlannerChunk.toolCallStarted(
-          providerCallId: 'toolu_1',
+          toolCallIndex: 0,
+          providerCallId: 'call_1',
           toolName: 'write_file',
         ),
       );
       accumulator.consume(
         const StreamingPlannerChunk.toolCallArgumentsDelta(
-          providerCallId: 'toolu_1',
+          toolCallIndex: 0,
+          providerCallId: 'call_1',
           argumentsTextDelta: '{"path":"a.txt",',
         ),
       );
       accumulator.consume(
         const StreamingPlannerChunk.toolCallArgumentsDelta(
-          providerCallId: 'toolu_1',
+          toolCallIndex: 0,
+          providerCallId: 'call_1',
           argumentsTextDelta: '"content":"hello"}',
         ),
       );
       accumulator.consume(
         const StreamingPlannerChunk.toolCallCompleted(
-          providerCallId: 'toolu_1',
+          toolCallIndex: 0,
+          providerCallId: 'call_1',
           toolName: 'write_file',
         ),
       );
@@ -96,7 +100,7 @@ void main() {
 
       expect(decision, isNotNull);
       expect(decision!.toolCalls, hasLength(1));
-      expect(decision.toolCalls.single.providerCallId, 'toolu_1');
+      expect(decision.toolCalls.single.providerCallId, 'call_1');
       expect(decision.toolCalls.single.toolName, 'write_file');
       expect(
         decision.toolCalls.single.arguments,
@@ -113,13 +117,15 @@ void main() {
 
       accumulator.consume(
         const StreamingPlannerChunk.toolCallStarted(
-          providerCallId: 'toolu_1',
+          toolCallIndex: 0,
+          providerCallId: 'call_artifact_1',
           toolName: 'create_artifact',
         ),
       );
       accumulator.consume(
         const StreamingPlannerChunk.toolCallArgumentsDelta(
-          providerCallId: 'toolu_1',
+          toolCallIndex: 0,
+          providerCallId: 'call_artifact_1',
           toolName: 'create_artifact',
           argumentsTextDelta: '{"source":"<div>Hello',
         ),
@@ -132,23 +138,27 @@ void main() {
 
       expect(snapshots, hasLength(1));
       expect(snapshots.single.kind, RuntimeStreamEntryKind.toolCallArguments);
-      expect(snapshots.single.providerCallId, 'toolu_1');
+      expect(snapshots.single.providerCallId, 'call_artifact_1');
+      expect(snapshots.single.payload?['toolCallIndex'], 0);
       expect(snapshots.single.toolName, 'create_artifact');
       expect(snapshots.single.text, contains('<div>Hello'));
     });
 
-    test('keeps anonymous argument deltas attached to latest unfinished tool call',
+    test('keeps anonymous argument deltas attached to latest unfinished indexed tool call',
         () {
       final accumulator = StreamingDecisionAccumulator();
 
       accumulator.consume(
         const StreamingPlannerChunk.toolCallStarted(
-          providerCallId: 'call_1',
+          toolCallIndex: 0,
+          providerCallId: 'call_artifact_2',
           toolName: 'create_artifact',
         ),
       );
       accumulator.consume(
         const StreamingPlannerChunk.toolCallArgumentsDelta(
+          toolCallIndex: 0,
+          providerCallId: 'call_artifact_2',
           argumentsTextDelta: '{"id":"demo","type":"html","title":"Demo","source":"<div>Hello</div>"}',
         ),
       );
@@ -160,6 +170,7 @@ void main() {
 
       expect(decision, isNotNull);
       expect(decision!.toolCalls, hasLength(1));
+      expect(decision.toolCalls.single.providerCallId, 'call_artifact_2');
       expect(decision.toolCalls.single.toolName, 'create_artifact');
       expect(
         decision.toolCalls.single.arguments['source'],
@@ -172,19 +183,22 @@ void main() {
 
       accumulator.consume(
         const StreamingPlannerChunk.toolCallStarted(
-          providerCallId: 'toolu_1',
+          toolCallIndex: 0,
+          providerCallId: 'call_invalid_1',
           toolName: 'write_file',
         ),
       );
       accumulator.consume(
         const StreamingPlannerChunk.toolCallArgumentsDelta(
-          providerCallId: 'toolu_1',
+          toolCallIndex: 0,
+          providerCallId: 'call_invalid_1',
           argumentsTextDelta: '{"path":',
         ),
       );
       accumulator.consume(
         const StreamingPlannerChunk.toolCallCompleted(
-          providerCallId: 'toolu_1',
+          toolCallIndex: 0,
+          providerCallId: 'call_invalid_1',
           toolName: 'write_file',
         ),
       );
@@ -209,13 +223,15 @@ void main() {
 
       accumulator.consume(
         const StreamingPlannerChunk.toolCallStarted(
-          providerCallId: 'call_1',
+          toolCallIndex: 0,
+          providerCallId: 'call_search_1',
           toolName: 'search_chat_history',
         ),
       );
       accumulator.consume(
         const StreamingPlannerChunk.toolCallArgumentsDelta(
-          providerCallId: 'call_1',
+          toolCallIndex: 0,
+          providerCallId: 'call_search_1',
           argumentsTextDelta: '{"query":"数据库版本"}',
         ),
       );
@@ -227,9 +243,55 @@ void main() {
 
       expect(decision, isNotNull);
       expect(decision!.toolCalls, hasLength(1));
-      expect(decision.toolCalls.single.providerCallId, 'call_1');
+      expect(decision.toolCalls.single.providerCallId, 'call_search_1');
       expect(decision.toolCalls.single.toolName, 'search_chat_history');
       expect(decision.toolCalls.single.arguments, {'query': '数据库版本'});
+      expect(decision.isTerminal, isFalse);
+    });
+
+    test('keeps assistant text and reasoning when tool call streams too', () {
+      final accumulator = StreamingDecisionAccumulator();
+
+      accumulator.consume(
+        const StreamingPlannerChunk.reasoningDelta('先确认上下文。'),
+      );
+      accumulator.consume(
+        const StreamingPlannerChunk.contentDelta('我先读取文件。'),
+      );
+      accumulator.consume(
+        const StreamingPlannerChunk.toolCallStarted(
+          toolCallIndex: 0,
+          providerCallId: 'call_read_1',
+          toolName: 'read_file',
+        ),
+      );
+      accumulator.consume(
+        const StreamingPlannerChunk.toolCallArgumentsDelta(
+          toolCallIndex: 0,
+          providerCallId: 'call_read_1',
+          argumentsTextDelta: '{"path":"README.md"}',
+        ),
+      );
+      accumulator.consume(
+        const StreamingPlannerChunk.toolCallCompleted(
+          toolCallIndex: 0,
+          providerCallId: 'call_read_1',
+          toolName: 'read_file',
+        ),
+      );
+      accumulator.consume(
+        const StreamingPlannerChunk.streamCompleted(),
+      );
+
+      final decision = accumulator.buildDecision();
+
+      expect(decision, isNotNull);
+      expect(decision!.visibleReasoning, '先确认上下文。');
+      expect(decision.assistantMessage, '我先读取文件。');
+      expect(decision.toolCalls, hasLength(1));
+      expect(decision.toolCalls.single.providerCallId, 'call_read_1');
+      expect(decision.toolCalls.single.toolName, 'read_file');
+      expect(decision.toolCalls.single.arguments, {'path': 'README.md'});
       expect(decision.isTerminal, isFalse);
     });
 

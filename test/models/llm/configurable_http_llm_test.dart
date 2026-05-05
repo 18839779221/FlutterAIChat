@@ -284,6 +284,7 @@ void main() {
             'delta': {
               'tool_calls': [
                 {
+                  'index': 0,
                   'id': 'call_1',
                   'type': 'function',
                   'function': {
@@ -303,6 +304,7 @@ void main() {
             'delta': {
               'tool_calls': [
                 {
+                  'index': 0,
                   'id': 'call_1',
                   'type': 'function',
                   'function': {
@@ -373,6 +375,7 @@ void main() {
         () async {
       final addedChunk = jsonEncode({
         'type': 'response.output_item.added',
+        'output_index': 0,
         'response': {'id': 'resp_stream'},
         'item': {
           'type': 'function_call',
@@ -382,6 +385,7 @@ void main() {
       });
       final firstArgsChunk = jsonEncode({
         'type': 'response.function_call_arguments.delta',
+        'output_index': 0,
         'response': {'id': 'resp_stream'},
         'call_id': 'fc_1',
         'name': 'web_search',
@@ -389,6 +393,7 @@ void main() {
       });
       final secondArgsChunk = jsonEncode({
         'type': 'response.function_call_arguments.delta',
+        'output_index': 0,
         'response': {'id': 'resp_stream'},
         'call_id': 'fc_1',
         'name': 'web_search',
@@ -396,6 +401,7 @@ void main() {
       });
       final doneChunk = jsonEncode({
         'type': 'response.function_call_arguments.done',
+        'output_index': 0,
         'response': {'id': 'resp_stream'},
         'call_id': 'fc_1',
         'name': 'web_search',
