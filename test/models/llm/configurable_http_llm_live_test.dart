@@ -248,8 +248,8 @@ void main() {
             expect(decision.toolCalls.single.toolName, 'create_artifact');
             expect(decision.toolCalls.single.arguments['source'], isA<String>());
             expect(
-              decision.toolCalls.single.arguments['source'].toString(),
-              contains('<style>'),
+              decision.toolCalls.single.arguments['type'],
+              anyOf('html', 'webview'),
             );
             expect(
               emittedSnapshots.any(
@@ -258,6 +258,18 @@ void main() {
                       entry.kind == RuntimeStreamEntryKind.toolCallArguments &&
                       entry.toolName == 'create_artifact' &&
                       entry.text.trim().isNotEmpty,
+                ),
+              ),
+              isTrue,
+            );
+            expect(
+              emittedSnapshots.any(
+                (snapshot) => snapshot.any(
+                  (entry) =>
+                      entry.kind == RuntimeStreamEntryKind.toolCallArguments &&
+                      entry.toolName == 'create_artifact' &&
+                      ((entry.payload?['toolCallIndex'] is int) ||
+                          entry.providerCallId != null),
                 ),
               ),
               isTrue,
