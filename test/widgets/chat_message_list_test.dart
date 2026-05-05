@@ -1,6 +1,7 @@
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/chat/tool_phase_visibility.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
+import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/debug/debug_test_case.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
@@ -105,6 +106,38 @@ void main() {
       );
 
       expect(find.text('assistant reply'), findsOneWidget);
+    });
+
+    testWidgets(
+        'runtime create_artifact debug stream stays out of the normal timeline',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我做个 artifact',
+            role: MessageRole.user,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+        runtimeStreamEntries: [
+          RuntimeStreamEntry(
+            turnId: 'planner_runtime',
+            entryId: 'planner_runtime-tool-call-1',
+            kind: RuntimeStreamEntryKind.toolCallArguments,
+            providerCallId: 'call_artifact_1',
+            toolName: 'create_artifact',
+            createdAt: DateTime(2026, 5, 5, 10, 0, 1),
+            updatedAt: DateTime(2026, 5, 5, 10, 0, 1),
+            text: '{"source":"<div>调试流内容</div>"}',
+          ),
+        ],
+      );
+
+      expect(find.text('Analysis'), findsNothing);
+      expect(find.textContaining('调试流内容'), findsNothing);
     });
 
     testWidgets('completed final-answer reasoning stays collapsed until tapped',
@@ -1141,6 +1174,7 @@ void main() {
 Future<void> _pumpMessageList(
   WidgetTester tester, {
   required List<ChatMessage> messages,
+  List<RuntimeStreamEntry> runtimeStreamEntries = const [],
   TextEditingController? textController,
   FocusNode? focusNode,
   ToolUiRendererRegistry? registry,
@@ -1207,6 +1241,9 @@ Future<void> _pumpMessageList(
             isGenerating: sendPhase == ChatSendPhase.streamingResponse,
             statusText: sendStatusText,
           ),
+      ),
+      runtimeStreamEntriesProvider.overrideWith(
+        (ref) => RuntimeStreamEntriesController()..publish(runtimeStreamEntries),
       ),
       if (registry != null)
         toolUiRendererRegistryProvider.overrideWith((ref) => registry),
