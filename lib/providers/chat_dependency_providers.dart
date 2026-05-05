@@ -28,6 +28,7 @@ import 'package:ai_chat/widgets/tool_renderers/web_search_tool_workflow_card.dar
 import 'package:ai_chat/widgets/tool_renderers/write_tool_workflow_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/repositories/session_context_snapshot_repository.dart';
@@ -35,6 +36,11 @@ import 'package:ai_chat/repositories/session_context_snapshot_repository.dart';
 // 数据库提供者（实际实现在 main.dart 中通过 override 注入）
 final databaseProvider = Provider<ChatStorage>((ref) {
   throw UnimplementedError('需要在 main.dart 中覆盖 databaseProvider');
+});
+
+/// App-wide shared preferences used for lightweight UI state only.
+final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
+  throw UnimplementedError('需要在 main.dart 中覆盖 sharedPreferencesProvider');
 });
 
 final appSettingsRepositoryProvider = Provider<AppSettingsRepository>((ref) {
