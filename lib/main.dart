@@ -183,6 +183,7 @@ void main() async {
     container = ProviderContainer(
       overrides: [
         // 覆盖聊天服务工厂提供者
+        sharedPreferencesProvider.overrideWithValue(preferences),
         appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
         databaseProvider.overrideWithValue(storage),
         artifactFileStorageServiceProvider

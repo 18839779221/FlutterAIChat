@@ -441,6 +441,39 @@ void main() {
     );
     expect(input.controller?.text, '用一句话解释什么是 SQLite');
   });
+
+  testWidgets('debug turn inspector opens from header', (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider.overrideWith(
+          (ref) => _StubSessionCoordinator(),
+        ),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('debug-turn-inspector-button')), findsOneWidget);
+  });
 }
 
 const _debugCaseEmptySetup = DebugTestCaseSetup(

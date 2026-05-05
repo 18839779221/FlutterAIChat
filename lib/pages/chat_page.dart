@@ -13,8 +13,11 @@ import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/chat_drawer.dart';
 import '../widgets/debug/debug_test_case_sheet.dart';
+import '../widgets/debug/debug_turn_inspector_button.dart';
+import '../widgets/debug/debug_turn_inspector_sheet.dart';
 import '../widgets/context_window/context_window_bottom_sheet.dart';
 import '../widgets/tool_confirmation/tool_confirmation_bottom_bar.dart';
+import '../services/debug/debug_turn_inspector_projection_service.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({super.key, required this.title});
@@ -160,6 +163,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       ref.read(chatControllerProvider).createNewGroup,
                   onDebugCasesPressed:
                       kDebugMode ? () => _showDebugTestCases(context) : null,
+                  onDebugInspectorPressed:
+                      kDebugMode ? () => _showDebugTurnInspector(context) : null,
                   onMorePressed: () => _showHeaderActions(
                     context,
                     hasSystemPrompt:
@@ -211,6 +216,45 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       isScrollControlled: true,
       backgroundColor: Theme.of(context).extension<AppColors>()!.chatBackground,
       builder: (_) => ContextWindowBottomSheet(snapshot: snapshot),
+    );
+  }
+
+  Future<void> _showDebugTurnInspector(BuildContext context) async {
+    final currentGroup = ref.read(currentGroupProvider);
+    final groupId = currentGroup?.id;
+    if (groupId == null || !context.mounted) {
+      return;
+    }
+    final service = DebugTurnInspectorProjectionService(
+      chatTurnRepository: ref.read(chatTurnRepositoryProvider),
+      chatEventRepository: ref.read(chatEventRepositoryProvider),
+      sessionContextService: ref.read(sessionContextServiceProvider),
+      traceRecorder: ref.read(traceRecorderProvider),
+      runtimeAssistantDraft: ref.read(runtimeAssistantDraftProvider),
+      runtimeStreamEntries: ref.read(runtimeStreamEntriesProvider),
+      toolPresentationEvents:
+          ref.read(chatTimelineProjectionProvider).toolPresentationEvents,
+      sendPhase: ref.read(chatSendStateProvider).phase,
+      sendStatusText: ref.read(chatSendStateProvider).statusText,
+      activeAskUserQuestionMessage:
+          ref.read(activeAskUserQuestionMessageProvider),
+    );
+    final projection = await service.build(groupId: groupId);
+    if (!context.mounted) {
+      return;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      builder: (_) => FractionallySizedBox(
+        heightFactor: 0.92,
+        child: DebugTurnInspectorSheet(
+          groupId: groupId,
+          initialProjection: projection,
+        ),
+      ),
     );
   }
 
@@ -279,6 +323,7 @@ class _GhostHeader extends StatelessWidget {
   final VoidCallback onMenuPressed;
   final VoidCallback onNewChatPressed;
   final VoidCallback? onDebugCasesPressed;
+  final VoidCallback? onDebugInspectorPressed;
   final VoidCallback onMorePressed;
 
   const _GhostHeader({
@@ -286,6 +331,7 @@ class _GhostHeader extends StatelessWidget {
     required this.onMenuPressed,
     required this.onNewChatPressed,
     required this.onDebugCasesPressed,
+    required this.onDebugInspectorPressed,
     required this.onMorePressed,
   });
 
@@ -324,6 +370,12 @@ class _GhostHeader extends StatelessWidget {
                 icon: Icons.science_outlined,
                 tooltip: '测试案例',
                 onPressed: onDebugCasesPressed,
+              ),
+            ],
+            if (onDebugInspectorPressed != null) ...[
+              SizedBox(width: spacing.xs),
+              DebugTurnInspectorButton(
+                onPressed: onDebugInspectorPressed!,
               ),
             ],
             SizedBox(width: spacing.xs),
