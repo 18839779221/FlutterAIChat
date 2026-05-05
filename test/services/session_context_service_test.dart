@@ -792,6 +792,7 @@ void main() {
           'toolName': 'Edit',
           'status': 'success',
           'summary': '已编辑文件：my_hobbies.md',
+          'contextText': 'Successfully edited my_hobbies.md',
           'data': {
             'filePath': 'my_hobbies.md',
             'message': 'Successfully edited my_hobbies.md',

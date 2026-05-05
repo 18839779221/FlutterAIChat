@@ -117,6 +117,57 @@ void main() {
       expect(blocks.single.payload?['data']['title'], '开会');
     });
 
+    test(
+        'context-gathering result collapses earlier workflow states into one result card',
+        () {
+      final blocks = projector.project(
+        events: [
+          ToolPresentationEvent(
+            toolName: 'search_chat_history',
+            phase: ToolPresentationEventPhase.proposed,
+            turnId: '7_41',
+            stepId: '7_41-step-1',
+            sourceContentType: MessageContentType.toolInvocation,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 1),
+            data: const {
+              'summary': '准备执行工具：搜索历史记录',
+              'arguments': {'query': '周报', 'maxResults': 3},
+            },
+          ),
+          ToolPresentationEvent(
+            toolName: 'search_chat_history',
+            phase: ToolPresentationEventPhase.running,
+            turnId: '7_41',
+            stepId: '7_41-step-1',
+            sourceContentType: MessageContentType.toolInvocation,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 2),
+            data: const {
+              'summary': '正在执行工具：搜索历史记录',
+              'arguments': {'query': '周报', 'maxResults': 3},
+            },
+          ),
+          ToolPresentationEvent(
+            toolName: 'search_chat_history',
+            phase: ToolPresentationEventPhase.result,
+            turnId: '7_41',
+            stepId: '7_41-step-1',
+            sourceContentType: MessageContentType.toolResult,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 3),
+            data: const {
+              'status': 'success',
+              'summary': '已执行：搜索历史记录',
+              'data': {'matchCount': 2},
+            },
+          ),
+        ],
+      );
+
+      expect(blocks, hasLength(1));
+      expect(blocks.single.type, AssistantTurnBlockType.toolResultSummary);
+      expect(blocks.single.text, '已执行：搜索历史记录');
+      expect(blocks.single.payload?['data']['matchCount'], 2);
+    });
+
     test('keeps parallel steps separate and matches result by provider call id',
         () {
       final blocks = projector.project(

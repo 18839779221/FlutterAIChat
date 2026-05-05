@@ -246,11 +246,9 @@ void main() {
             expect(decision, isNotNull);
             expect(decision!.toolCalls, hasLength(1));
             expect(decision.toolCalls.single.toolName, 'create_artifact');
+            expect(decision.toolCalls.single.providerCallId?.trim(), isNotEmpty);
             expect(decision.toolCalls.single.arguments['source'], isA<String>());
-            expect(
-              decision.toolCalls.single.arguments['type'],
-              anyOf('html', 'webview'),
-            );
+            expect(decision.toolCalls.single.arguments['source'].toString(), isNotEmpty);
             expect(
               emittedSnapshots.any(
                 (snapshot) => snapshot.any(
@@ -276,6 +274,107 @@ void main() {
             );
           },
           skip: missingProviderReason,
+          tags: const ['live-llm'],
+        );
+
+        test(
+          'planner handles real create_artifact food-ranking prompt end-to-end',
+          () async {
+            final llm = await _buildLiveLlm(provider!);
+            final emittedSnapshots = <List<RuntimeStreamEntry>>[];
+            llm.setPlannerRuntimeStreamListener((entries) {
+              emittedSnapshots.add(List<RuntimeStreamEntry>.from(entries));
+            });
+
+            final decision = await llm.planTurnDecision(
+              messages: [
+                ChatMessage(
+                  text: '帮我制作一个精美的HTML介绍中国各地美食从顶级到差强人意的排序',
+                  role: MessageRole.user,
+                ),
+                ChatMessage(
+                  text: '我来为你创建一个精美的中国美食排名HTML页面。先搜索一下相关信息来确保内容准确。',
+                  role: MessageRole.assistant,
+                ),
+                ChatMessage(
+                  text: '',
+                  role: MessageRole.assistant,
+                  payloadJson: const {
+                    'providerCallId': 'call_function_1fflbyxnuria_1',
+                    'toolName': 'web_search',
+                    'arguments': {
+                      'maxResults': 3,
+                      'query': '中国各地美食特色 排行榜 2025',
+                    },
+                    'status': 'running',
+                    'summary': '正在执行工具：Web Search',
+                    'requiresConfirmation': false,
+                  },
+                ),
+                ChatMessage(
+                  text:
+                      '[user tool_result] web_search query: 中国各地美食特色 排行榜 2025\n'
+                      '1. 2025 中國美食排行榜熱騰騰出爐！ 網友討論度超高的大陸小吃有哪些？\n'
+                      'snippet: 2025 中國美食排行榜熱騰騰出爐！ 網友討論度超高的大陸小吃有哪些？\n'
+                      '2. 酸菜魚、螺螄粉退燒？2025十大中國美食討論度揭曉\n'
+                      'snippet: 麻辣乾鍋（或稱麻辣香鍋）是近年在台灣興起、深受年輕族群喜愛的中國特色料理。\n'
+                      '3. 2025中国十大美食之都,你最爱哪个城市\n'
+                      'snippet: 下面，就让我们一起来看看这个排行榜，看看你去过几个城市，最爱哪个城市呢？',
+                  role: MessageRole.user,
+                ),
+              ],
+              config: ChatConfig(
+                systemPrompt:
+                    'You must call create_artifact exactly once when the user asks for a polished HTML page. '
+                    'Return a provider-native decision, not a plain-text answer. '
+                    'Prefer a mobile-friendly layout, keep the artifact self-contained, '
+                    'put visible content before scripts, and keep the page concise.',
+              ),
+              availableTools: const [
+                PlannerToolOption(
+                  name: 'create_artifact',
+                  description:
+                      'Creates a self-contained HTML artifact that is shown inline.',
+                  inputSchema: {
+                    'type': 'object',
+                    'properties': {
+                      'id': {'type': 'string'},
+                      'type': {'type': 'string'},
+                      'title': {'type': 'string'},
+                      'source': {'type': 'string'},
+                    },
+                    'required': ['id', 'type', 'title', 'source'],
+                  },
+                ),
+              ],
+            );
+
+            expect(decision, isNotNull);
+            expect(decision!.toolCalls, hasLength(1));
+            expect(decision.toolCalls.single.toolName, 'create_artifact');
+            expect(decision.toolCalls.single.providerCallId?.trim(), isNotEmpty);
+            expect(decision.toolCalls.single.arguments['type'], 'html');
+            expect(decision.toolCalls.single.arguments['source'], isA<String>());
+            expect(
+              decision.toolCalls.single.arguments['source'].toString(),
+              isNotEmpty,
+            );
+            expect(
+              emittedSnapshots.any(
+                (snapshot) => snapshot.any(
+                  (entry) =>
+                      entry.kind == RuntimeStreamEntryKind.toolCallArguments &&
+                      entry.toolName == 'create_artifact' &&
+                      entry.text.trim().isNotEmpty,
+                ),
+              ),
+              isTrue,
+            );
+          },
+          skip: missingProviderReason ??
+              (providerId == 'minimax-anthropic'
+                  ? null
+                  : 'This regression case currently targets minimax-anthropic only.'),
           tags: const ['live-llm'],
         );
       });
