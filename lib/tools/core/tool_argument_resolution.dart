@@ -13,11 +13,16 @@ class ToolArgumentResolution {
   /// Human-readable summary for invalid arguments.
   final String? errorSummary;
 
+  /// Optional planner/debug-facing detail text that explains why the argument
+  /// normalization failed without replacing the short summary.
+  final String? errorContextText;
+
   const ToolArgumentResolution._({
     required this.isValid,
     required this.normalizedArguments,
     this.errorCode,
     this.errorSummary,
+    this.errorContextText,
   });
 
   factory ToolArgumentResolution.valid(Map<String, dynamic> normalizedArgs) {
@@ -30,12 +35,14 @@ class ToolArgumentResolution {
   factory ToolArgumentResolution.invalid({
     required String errorCode,
     required String errorSummary,
+    String? errorContextText,
   }) {
     return ToolArgumentResolution._(
       isValid: false,
       normalizedArguments: const {},
       errorCode: errorCode,
       errorSummary: errorSummary,
+      errorContextText: errorContextText,
     );
   }
 }

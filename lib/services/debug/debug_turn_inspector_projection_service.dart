@@ -205,21 +205,26 @@ class DebugTurnInspectorProjectionService {
         ),
       );
     }
-    for (final event in _traceRecorder.eventsForTurn(
-      turnId == null ? '' : _traceTurnId(turnId),
+    for (final traceTurnId in _resolveTraceTurnIds(
+      turnId: turnId,
+      transcript: transcript,
+      plannerMessages: plannerMessages,
     )) {
-      entries.add(
-        DebugTurnTimelineEntry(
-          id: 'trace-${event.timestamp.microsecondsSinceEpoch}-${event.stage.name}',
-          timestamp: event.timestamp,
-          kind: 'trace.${event.stage.name}.${event.status.name}',
-          title: event.stage.name,
-          summary: event.summary ?? '',
-          source: DebugTurnTimelineSource.trace,
-          severity: _severityForTrace(event),
-          payloadJson: event.data,
-        ),
-      );
+      for (final event in _traceRecorder.eventsForTurn(traceTurnId)) {
+        entries.add(
+          DebugTurnTimelineEntry(
+            id:
+                'trace-${traceTurnId}-${event.timestamp.microsecondsSinceEpoch}-${event.stage.name}',
+            timestamp: event.timestamp,
+            kind: 'trace.${event.stage.name}.${event.status.name}',
+            title: event.stage.name,
+            summary: event.summary ?? '',
+            source: DebugTurnTimelineSource.trace,
+            severity: _severityForTrace(event),
+            payloadJson: event.data,
+          ),
+        );
+      }
     }
     entries.sort((left, right) => left.timestamp.compareTo(right.timestamp));
     return entries;
@@ -401,7 +406,33 @@ class DebugTurnInspectorProjectionService {
     return '${normalized.substring(0, 80)}...';
   }
 
-  String _traceTurnId(int turnId) {
-    return 'turn_$turnId';
+  List<String> _resolveTraceTurnIds({
+    required int? turnId,
+    required List<ChatEvent> transcript,
+    required List<ChatMessage> plannerMessages,
+  }) {
+    final ids = <String>[];
+
+    void addCandidate(Object? rawValue) {
+      final value = rawValue?.toString().trim();
+      if (value == null || value.isEmpty) {
+        return;
+      }
+      if (!ids.contains(value)) {
+        ids.add(value);
+      }
+    }
+
+    for (final event in transcript) {
+      addCandidate(event.payloadJson?['traceTurnId']);
+    }
+    for (final message in plannerMessages) {
+      addCandidate(message.payloadJson?['traceTurnId']);
+      addCandidate(message.payloadJson?['payloadJson']?['traceTurnId']);
+    }
+    if (ids.isEmpty && turnId != null) {
+      addCandidate('turn_$turnId');
+    }
+    return ids;
   }
 }

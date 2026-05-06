@@ -90,6 +90,13 @@ class ToolResult {
     return status == ToolExecutionStatus.success ? '完成' : '失败';
   }
 
+  /// Backward-compatible alias for callers that still expect legacy naming.
+  String get displayText => summary;
+
+  /// Backward-compatible alias for callers that still refer to structured
+  /// result data as `payload`.
+  Map<String, dynamic> get payload => data;
+
   /// Resolves the effective execution policy, preferring the runtime snapshot
   /// because it reflects the final policy state visible to the user.
   String? get resolvedExecutionPolicy {
