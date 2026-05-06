@@ -16,6 +16,7 @@ enum StreamingPlannerChunkType {
 class StreamingPlannerChunk {
   final StreamingPlannerChunkType type;
   final String? content;
+  final int? toolCallIndex;
   final String? providerCallId;
   final String? toolName;
   final String? argumentsTextDelta;
@@ -24,6 +25,7 @@ class StreamingPlannerChunk {
   const StreamingPlannerChunk({
     required this.type,
     this.content,
+    this.toolCallIndex,
     this.providerCallId,
     this.toolName,
     this.argumentsTextDelta,
@@ -51,23 +53,27 @@ class StreamingPlannerChunk {
         );
 
   const StreamingPlannerChunk.toolCallStarted({
+    int? toolCallIndex,
     String? providerCallId,
     String? toolName,
     Map<String, dynamic>? providerMetadata,
   }) : this(
           type: StreamingPlannerChunkType.toolCallStarted,
+          toolCallIndex: toolCallIndex,
           providerCallId: providerCallId,
           toolName: toolName,
           providerMetadata: providerMetadata,
         );
 
   const StreamingPlannerChunk.toolCallArgumentsDelta({
+    int? toolCallIndex,
     String? providerCallId,
     String? toolName,
     required String argumentsTextDelta,
     Map<String, dynamic>? providerMetadata,
   }) : this(
           type: StreamingPlannerChunkType.toolCallArgumentsDelta,
+          toolCallIndex: toolCallIndex,
           providerCallId: providerCallId,
           toolName: toolName,
           argumentsTextDelta: argumentsTextDelta,
@@ -75,11 +81,13 @@ class StreamingPlannerChunk {
         );
 
   const StreamingPlannerChunk.toolCallCompleted({
+    int? toolCallIndex,
     String? providerCallId,
     String? toolName,
     Map<String, dynamic>? providerMetadata,
   }) : this(
           type: StreamingPlannerChunkType.toolCallCompleted,
+          toolCallIndex: toolCallIndex,
           providerCallId: providerCallId,
           toolName: toolName,
           providerMetadata: providerMetadata,

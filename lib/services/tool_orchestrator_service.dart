@@ -81,6 +81,7 @@ class ToolOrchestratorService {
         ),
         toolAccess: toolAccess,
         toolResult: null,
+        additionalContextMessages: const [],
         executionStarted: false,
       );
     }
@@ -109,6 +110,7 @@ class ToolOrchestratorService {
         ),
         toolAccess: toolAccess,
         toolResult: failureResult,
+        additionalContextMessages: const [],
         executionStarted: false,
       );
     }
@@ -154,6 +156,7 @@ class ToolOrchestratorService {
         ),
         toolAccess: toolAccess,
         toolResult: failureResult,
+        additionalContextMessages: const [],
         executionStarted: false,
       );
     }
@@ -185,6 +188,10 @@ class ToolOrchestratorService {
       await runtimeHandler.execute(executionContext),
       toolAccess,
     );
+    final additionalContextMessages = runtimeHandler.buildContextMessages(
+      result: toolResult,
+      context: executionContext,
+    );
     Logger.i(
       _tag,
       'tool execution finished tool=${invocation.toolName} status=${toolResult.status.name} summary=${toolResult.summary}',
@@ -205,6 +212,7 @@ class ToolOrchestratorService {
       toolInvocation: runningInvocation,
       toolAccess: toolAccess,
       toolResult: toolResult,
+      additionalContextMessages: additionalContextMessages,
       executionStarted: onExecutionStarted != null,
     );
   }

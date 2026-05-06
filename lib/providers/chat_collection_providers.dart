@@ -80,7 +80,11 @@ class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
   }
 
   void deleteMessageById(int id) {
-    state = state.where((message) => message.id != id).toList();
+    final nextState = state.where((message) => message.id != id).toList();
+    if (nextState.length == state.length) {
+      return;
+    }
+    state = nextState;
   }
 
   void deleteMessagePair(int index) {

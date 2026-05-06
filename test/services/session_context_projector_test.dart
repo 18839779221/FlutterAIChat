@@ -231,6 +231,56 @@ void main() {
       expect(message?.role, MessageRole.user);
     });
 
+    test('falls back to event content when tool error has no payload', () {
+      final projector = SessionContextProjector();
+
+      final message = projector.projectEventToContext(
+        ChatEvent(
+          turnId: 1,
+          groupId: 1,
+          sequence: 1,
+          eventType: ChatEventType.toolError,
+          role: MessageRole.system,
+          content: 'Read failed: file not found',
+        ),
+      );
+
+      expect(
+        message?.text,
+        '[user tool_result] Read failed: file not found',
+      );
+      expect(message?.role, MessageRole.user);
+    });
+
+    test(
+        'falls back to event content when structured tool payload projects to empty text',
+        () {
+      final projector = SessionContextProjector();
+
+      final message = projector.projectEventToContext(
+        ChatEvent(
+          turnId: 1,
+          groupId: 1,
+          sequence: 1,
+          eventType: ChatEventType.toolResult,
+          role: MessageRole.system,
+          content: 'Tool finished but only summary is available',
+          payloadJson: const {
+            'toolName': 'unknown_tool',
+            'status': 'success',
+            'summary': '',
+            'data': {},
+          },
+        ),
+      );
+
+      expect(
+        message?.text,
+        '[user tool_result] Tool finished but only summary is available',
+      );
+      expect(message?.role, MessageRole.user);
+    });
+
     test('projects snapshot text as a system context message', () {
       final projector = SessionContextProjector();
 

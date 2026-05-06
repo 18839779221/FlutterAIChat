@@ -161,12 +161,14 @@ class SessionContextProjector {
       case ChatEventType.toolResult:
       case ChatEventType.toolError:
         final payload = event.payloadJson;
-        final content = payload == null
-            ? ''
-            : (_toolResultContextProjector
-                    .projectToContextText(ToolResult.fromJson(payload))
-                    ?.trim() ??
-                '');
+        final structuredContent = payload == null
+            ? null
+            : _toolResultContextProjector
+                .projectToContextText(ToolResult.fromJson(payload))
+                ?.trim();
+        final content = structuredContent != null && structuredContent.isNotEmpty
+            ? structuredContent
+            : (event.content?.trim() ?? '');
         if (content.isEmpty) {
           return null;
         }

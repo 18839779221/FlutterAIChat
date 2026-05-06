@@ -178,7 +178,9 @@ class ApiStreamParser {
             continue;
           }
           if (item['type'] == 'function_call') {
+            final toolCallIndex = _normalizeInt(data['output_index']);
             yield StreamingPlannerChunk.toolCallStarted(
+              toolCallIndex: toolCallIndex,
               providerCallId: _normalizeText(item['call_id'] ?? item['id']),
               toolName: _normalizeText(item['name']),
               providerMetadata: _providerStateFromResponsesItem(data),
@@ -201,7 +203,9 @@ class ApiStreamParser {
         if (type == 'response.function_call_arguments.delta' &&
             delta is String &&
             delta.isNotEmpty) {
+          final toolCallIndex = _normalizeInt(data['output_index']);
           yield StreamingPlannerChunk.toolCallArgumentsDelta(
+            toolCallIndex: toolCallIndex,
             providerCallId: _normalizeText(
               data['call_id'] ?? data['item_id'] ?? data['id'],
             ),
@@ -213,7 +217,9 @@ class ApiStreamParser {
         }
 
         if (type == 'response.function_call_arguments.done') {
+          final toolCallIndex = _normalizeInt(data['output_index']);
           yield StreamingPlannerChunk.toolCallCompleted(
+            toolCallIndex: toolCallIndex,
             providerCallId: _normalizeText(
               data['call_id'] ?? data['item_id'] ?? data['id'],
             ),
@@ -314,15 +320,18 @@ class ApiStreamParser {
               if (_normalizeText(data['message_id']) != null)
                 'message_id': _normalizeText(data['message_id']),
             };
+            final toolCallIndex = _normalizeInt(data['index']);
             final providerCallId = _normalizeText(contentBlock['id']);
             final toolName = _normalizeText(contentBlock['name']);
             blockMetaByIndex[index] = {
+              'toolCallIndex': toolCallIndex,
               'providerCallId': providerCallId,
               'toolName': toolName,
               'providerMetadata': meta,
             };
             if (contentBlock['type'] == 'tool_use') {
               yield StreamingPlannerChunk.toolCallStarted(
+                toolCallIndex: toolCallIndex,
                 providerCallId: providerCallId,
                 toolName: toolName,
                 providerMetadata: meta,
@@ -361,6 +370,7 @@ class ApiStreamParser {
             }
             final meta = blockMetaByIndex[index];
             yield StreamingPlannerChunk.toolCallArgumentsDelta(
+              toolCallIndex: _normalizeInt(meta?['toolCallIndex']),
               providerCallId: _normalizeText(meta?['providerCallId']),
               toolName: _normalizeText(meta?['toolName']),
               argumentsTextDelta: rawPartialJson,
@@ -387,6 +397,7 @@ class ApiStreamParser {
           if (_normalizeText(meta['providerCallId']) != null ||
               _normalizeText(meta['toolName']) != null) {
             yield StreamingPlannerChunk.toolCallCompleted(
+              toolCallIndex: _normalizeInt(meta['toolCallIndex']),
               providerCallId: _normalizeText(meta['providerCallId']),
               toolName: _normalizeText(meta['toolName']),
               providerMetadata: meta['providerMetadata'] is Map<String, dynamic>
@@ -470,11 +481,15 @@ class ApiStreamParser {
         if (toolCalls is! List) {
           continue;
         }
-        for (final toolCall in toolCalls) {
+        for (var toolCallPosition = 0;
+            toolCallPosition < toolCalls.length;
+            toolCallPosition += 1) {
+          final toolCall = toolCalls[toolCallPosition];
           if (toolCall is! Map) {
             continue;
           }
           final function = toolCall['function'];
+          final toolCallIndex = _normalizeInt(toolCall['index']);
           final providerCallId = _normalizeText(toolCall['id']);
           String? toolName;
           String? argumentsDelta;
@@ -484,6 +499,7 @@ class ApiStreamParser {
           }
           if (providerCallId != null || toolName != null) {
             yield StreamingPlannerChunk.toolCallStarted(
+              toolCallIndex: toolCallIndex,
               providerCallId: providerCallId,
               toolName: toolName,
               providerMetadata: _providerStateFromChatCompletions(data),
@@ -491,6 +507,7 @@ class ApiStreamParser {
           }
           if (argumentsDelta != null) {
             yield StreamingPlannerChunk.toolCallArgumentsDelta(
+              toolCallIndex: toolCallIndex,
               providerCallId: providerCallId,
               toolName: toolName,
               argumentsTextDelta: argumentsDelta,
@@ -555,6 +572,16 @@ class ApiStreamParser {
       return null;
     }
     return {'response_id': responseId};
+  }
+
+  int? _normalizeInt(Object? value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is String) {
+      return int.tryParse(value.trim());
+    }
+    return null;
   }
 
   Map<String, dynamic>? _providerStateFromChatCompletions(

@@ -97,6 +97,7 @@ void main() {
         chunks.any(
           (chunk) =>
               chunk.type == StreamingPlannerChunkType.toolCallStarted &&
+              chunk.toolCallIndex == 0 &&
               chunk.providerCallId == 'toolu_1' &&
               chunk.toolName == 'write_file',
         ),
@@ -106,6 +107,7 @@ void main() {
         chunks.where(
           (chunk) =>
               chunk.type == StreamingPlannerChunkType.toolCallArgumentsDelta &&
+              chunk.toolCallIndex == 0 &&
               chunk.providerCallId == 'toolu_1',
         ),
         hasLength(2),
@@ -114,6 +116,7 @@ void main() {
         chunks.any(
           (chunk) =>
               chunk.type == StreamingPlannerChunkType.toolCallCompleted &&
+              chunk.toolCallIndex == 0 &&
               chunk.providerCallId == 'toolu_1',
         ),
         isTrue,
@@ -145,9 +148,10 @@ void main() {
           .toList();
       final argumentText = chunks
           .where(
-            (chunk) =>
-                chunk.type == StreamingPlannerChunkType.toolCallArgumentsDelta &&
-                chunk.providerCallId == 'toolu_1',
+              (chunk) =>
+                  chunk.type == StreamingPlannerChunkType.toolCallArgumentsDelta &&
+                  chunk.toolCallIndex == 0 &&
+                  chunk.providerCallId == 'toolu_1',
           )
           .map((chunk) => chunk.argumentsTextDelta)
           .join();
@@ -169,6 +173,7 @@ void main() {
             'delta': {
               'tool_calls': [
                 {
+                  'index': 0,
                   'id': 'call_1',
                   'type': 'function',
                   'function': {
@@ -188,6 +193,7 @@ void main() {
             'delta': {
               'tool_calls': [
                 {
+                  'index': 0,
                   'id': 'call_1',
                   'type': 'function',
                   'function': {
@@ -216,6 +222,7 @@ void main() {
         chunks.any(
           (chunk) =>
               chunk.type == StreamingPlannerChunkType.toolCallStarted &&
+              chunk.toolCallIndex == 0 &&
               chunk.providerCallId == 'call_1' &&
               chunk.toolName == 'search_chat_history',
         ),
@@ -225,6 +232,7 @@ void main() {
         chunks.where(
           (chunk) =>
               chunk.type == StreamingPlannerChunkType.toolCallArgumentsDelta &&
+              chunk.toolCallIndex == 0 &&
               chunk.providerCallId == 'call_1',
         ),
         hasLength(2),
@@ -232,6 +240,52 @@ void main() {
       expect(
         chunks.last.type,
         StreamingPlannerChunkType.streamCompleted,
+      );
+    });
+
+    test('does not synthesize toolCallIndex from tool call array position',
+        () async {
+      const parser = ApiStreamParser();
+      final chunkBody = jsonEncode({
+        'id': 'chatcmpl_stream',
+        'choices': [
+          {
+            'delta': {
+              'tool_calls': [
+                {
+                  'id': 'call_without_index',
+                  'type': 'function',
+                  'function': {
+                    'name': 'search_chat_history',
+                    'arguments': '{"query":"missing index"}',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
+      final response = http.StreamedResponse(
+        Stream<List<int>>.fromIterable([
+          utf8.encode('data: $chunkBody\n\n'),
+          utf8.encode('data: [DONE]\n'),
+        ]),
+        200,
+      );
+
+      final chunks = await parser
+          .parsePlannerChunks(response, ApiStyle.chatCompletions)
+          .toList();
+      final toolChunks = chunks
+          .where((chunk) =>
+              chunk.type == StreamingPlannerChunkType.toolCallStarted ||
+              chunk.type == StreamingPlannerChunkType.toolCallArgumentsDelta)
+          .toList(growable: false);
+
+      expect(toolChunks, isNotEmpty);
+      expect(
+        toolChunks.every((chunk) => chunk.toolCallIndex == null),
+        isTrue,
       );
     });
   });
@@ -242,6 +296,7 @@ void main() {
       const parser = ApiStreamParser();
       final addedChunk = jsonEncode({
         'type': 'response.output_item.added',
+        'output_index': 0,
         'response': {'id': 'resp_stream'},
         'item': {
           'type': 'function_call',
@@ -251,6 +306,7 @@ void main() {
       });
       final firstArgsChunk = jsonEncode({
         'type': 'response.function_call_arguments.delta',
+        'output_index': 0,
         'response': {'id': 'resp_stream'},
         'call_id': 'fc_1',
         'name': 'web_search',
@@ -258,6 +314,7 @@ void main() {
       });
       final secondArgsChunk = jsonEncode({
         'type': 'response.function_call_arguments.delta',
+        'output_index': 0,
         'response': {'id': 'resp_stream'},
         'call_id': 'fc_1',
         'name': 'web_search',
@@ -265,6 +322,7 @@ void main() {
       });
       final doneChunk = jsonEncode({
         'type': 'response.function_call_arguments.done',
+        'output_index': 0,
         'response': {'id': 'resp_stream'},
         'call_id': 'fc_1',
         'name': 'web_search',
@@ -287,6 +345,7 @@ void main() {
         chunks.any(
           (chunk) =>
               chunk.type == StreamingPlannerChunkType.toolCallStarted &&
+              chunk.toolCallIndex == 0 &&
               chunk.providerCallId == 'fc_1' &&
               chunk.toolName == 'web_search',
         ),
@@ -296,6 +355,7 @@ void main() {
         chunks.where(
           (chunk) =>
               chunk.type == StreamingPlannerChunkType.toolCallArgumentsDelta &&
+              chunk.toolCallIndex == 0 &&
               chunk.providerCallId == 'fc_1',
         ),
         hasLength(2),
@@ -304,6 +364,7 @@ void main() {
         chunks.any(
           (chunk) =>
               chunk.type == StreamingPlannerChunkType.toolCallCompleted &&
+              chunk.toolCallIndex == 0 &&
               chunk.providerCallId == 'fc_1',
         ),
         isTrue,
