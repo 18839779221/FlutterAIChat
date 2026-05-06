@@ -109,9 +109,7 @@ final runtimeAssistantDraftProvider =
 /// Runtime-only generic stream entries used by projection/UI consumers.
 final runtimeStreamEntriesProvider = StateNotifierProvider<
     RuntimeStreamEntriesController, List<RuntimeStreamEntry>>((ref) {
-  final controller = RuntimeStreamEntriesController();
-  ref.onDispose(controller.dispose);
-  return controller;
+  return RuntimeStreamEntriesController();
 });
 
 /// Pair of the message that currently owns the confirmation step and the
@@ -174,6 +172,9 @@ class RuntimeStreamEntriesController
   List<RuntimeStreamEntry>? _pendingEntries;
 
   void publish(List<RuntimeStreamEntry> entries) {
+    if (!mounted) {
+      return;
+    }
     if (entries.isEmpty) {
       clear();
       return;
@@ -198,7 +199,7 @@ class RuntimeStreamEntriesController
     _flushTimer?.cancel();
     _flushTimer = null;
     _pendingEntries = null;
-    if (state.isNotEmpty) {
+    if (mounted && state.isNotEmpty) {
       state = const <RuntimeStreamEntry>[];
     }
   }
@@ -208,7 +209,7 @@ class RuntimeStreamEntriesController
     _flushTimer = null;
     final pendingEntries = _pendingEntries;
     _pendingEntries = null;
-    if (pendingEntries == null) {
+    if (!mounted || pendingEntries == null) {
       return;
     }
     _lastPublishedAt = now;

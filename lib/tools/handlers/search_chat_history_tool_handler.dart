@@ -1,8 +1,8 @@
-import '../../models/chat_message.dart';
 import '../../models/tool/tool_argument_property.dart';
 import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
 import '../../models/tool/localized_tool_text.dart';
+import '../../models/chat_message.dart';
 import '../../models/tool/tool_result.dart';
 import '../../services/tool_executor.dart';
 import '../core/tool_argument_resolution.dart';
@@ -101,47 +101,5 @@ class SearchChatHistoryToolHandler implements ToolHandler {
       query: context.arguments['query'] as String,
       maxResults: context.arguments['maxResults'] as int,
     );
-  }
-
-  @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return [
-      ChatMessage(
-        text: _buildContextText(result),
-        role: MessageRole.system,
-        status: MessageStatus.completed,
-      ),
-    ];
-  }
-
-  String _buildContextText(ToolResult toolResult) {
-    final buffer = StringBuffer()
-      ..writeln('以下是工具 `${toolResult.toolName}` 的执行结果，请结合这些信息回答用户。')
-      ..writeln('状态：${toolResult.status.name}');
-
-    final payload = toolResult.payload;
-    if (payload['query'] is String) {
-      buffer.writeln('查询词：${payload['query']}');
-    }
-
-    final matches = payload['matches'];
-    if (matches is List && matches.isNotEmpty) {
-      buffer.writeln('命中历史消息：');
-      for (final match in matches) {
-        if (match is! Map) {
-          continue;
-        }
-        final role = (match['role'] ?? 'unknown').toString();
-        final text = (match['text'] ?? '').toString();
-        buffer.writeln('- [$role] $text');
-      }
-    } else if (toolResult.summary.isNotEmpty) {
-      buffer.writeln('结果摘要：${toolResult.summary}');
-    }
-
-    return buffer.toString().trim();
   }
 }

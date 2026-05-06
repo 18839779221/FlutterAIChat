@@ -127,8 +127,6 @@ class ToolOrchestratorService {
           errorMessage: normalizedArguments.errorCode ?? 'invalid_arguments',
           data: {
             'reason': normalizedArguments.errorCode ?? 'invalid_arguments',
-            if (normalizedArguments.errorContextText?.trim().isNotEmpty == true)
-              'detail': normalizedArguments.errorContextText!.trim(),
           },
         ),
         toolAccess,

@@ -1,8 +1,8 @@
-import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/artifact/artifact_record.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/chat_event.dart';
+import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
@@ -24,7 +24,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   group('ToolCallService.executeToolInvocation', () {
     test(
-        'delegates confirmed invocation to runtime handler and returns context',
+        'delegates confirmed invocation to runtime handler and returns tool result only',
         () async {
       final service = ToolCallService(
         runtimeRegistry: ToolRuntimeRegistry(
@@ -50,9 +50,7 @@ void main() {
       expect(result.toolResult, isNotNull);
       expect(result.toolResult!.toolName, 'debug_runtime_tool');
       expect(result.toolResult!.status, ToolExecutionStatus.success);
-      expect(result.additionalContextMessages, isNotEmpty);
-      expect(result.additionalContextMessages.single.role, MessageRole.system);
-      expect(result.additionalContextMessages.single.text, 'runtime-debug-ok');
+      expect(result.toolResult!.data['topic'], 'runtime');
     });
   });
 }
@@ -77,21 +75,6 @@ class _FakeRuntimeToolHandler implements ToolHandler {
           'topic': 'string',
         },
       );
-
-  @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return [
-      ChatMessage(
-        text: 'runtime-debug-ok',
-        role: MessageRole.system,
-        status: MessageStatus.completed,
-      ),
-    ];
-  }
-
   @override
   Future<ToolResult> execute(ToolExecutionContext context) async {
     return ToolResult(

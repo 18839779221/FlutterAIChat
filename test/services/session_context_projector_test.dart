@@ -57,7 +57,7 @@ void main() {
       expect(messages.map((m) => m.role.name), ['user', 'user', 'assistant']);
     });
 
-    test('uses tool-provided model context text from payload', () {
+    test('projects tool result from structured payload instead of summary-only text', () {
       final projector = SessionContextProjector();
 
       final message = projector.projectEventToContext(

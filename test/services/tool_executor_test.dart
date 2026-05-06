@@ -48,12 +48,12 @@ void main() {
       );
 
       expect(result.status, ToolExecutionStatus.success);
-      expect(result.displayText, '已执行：搜索历史记录');
-      expect(result.payload['query'], '数据库');
-      expect(result.payload['matchCount'], 2);
-      expect(result.payload['matches'], hasLength(2));
-      expect((result.payload['matches'] as List).first['id'], 101);
-      expect((result.payload['matches'] as List).last['id'], 102);
+      expect(result.summary, '已执行：搜索历史记录');
+      expect(result.data['query'], '数据库');
+      expect(result.data['matchCount'], 2);
+      expect(result.data['matches'], hasLength(2));
+      expect((result.data['matches'] as List).first['id'], 101);
+      expect((result.data['matches'] as List).last['id'], 102);
     });
 
     test('查询为空时返回失败结果而不是抛异常', () async {
@@ -66,8 +66,8 @@ void main() {
       );
 
       expect(result.status, ToolExecutionStatus.failure);
-      expect(result.displayText, contains('搜索失败'));
-      expect(result.payload['reason'], 'empty_query');
+      expect(result.summary, contains('搜索失败'));
+      expect(result.data['reason'], 'empty_query');
     });
 
     test('无匹配结果时返回成功且结果列表为空', () async {
@@ -91,9 +91,9 @@ void main() {
       );
 
       expect(result.status, ToolExecutionStatus.success);
-      expect(result.displayText, '已执行：搜索历史记录');
-      expect(result.payload['matchCount'], 0);
-      expect(result.payload['matches'], isEmpty);
+      expect(result.summary, '已执行：搜索历史记录');
+      expect(result.data['matchCount'], 0);
+      expect(result.data['matches'], isEmpty);
     });
   });
 

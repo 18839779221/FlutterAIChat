@@ -1,4 +1,5 @@
 import '../../models/chat_message.dart';
+import '../../models/tool/tool_result.dart';
 import '../../models/tool/tool_argument_property.dart';
 import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
@@ -87,40 +88,5 @@ class ShareResultToolHandler implements ToolHandler {
       text: context.arguments['text'] as String,
       subject: context.arguments['subject'] as String?,
     );
-  }
-
-  @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return [
-      ChatMessage(
-        text: _buildContextText(result),
-        role: MessageRole.system,
-        status: MessageStatus.completed,
-      ),
-    ];
-  }
-
-  String _buildContextText(ToolResult toolResult) {
-    final buffer = StringBuffer()
-      ..writeln('以下是工具 `${toolResult.toolName}` 的执行结果，请结合这些信息回答用户。')
-      ..writeln('状态：${toolResult.status.name}');
-
-    if (toolResult.summary.isNotEmpty) {
-      buffer.writeln('结果摘要：${toolResult.summary}');
-    }
-
-    final payload = toolResult.payload;
-    if (payload['subject'] is String &&
-        (payload['subject'] as String).trim().isNotEmpty) {
-      buffer.writeln('分享主题：${payload['subject']}');
-    }
-    if (payload['shareStatus'] is String) {
-      buffer.writeln('分享状态：${payload['shareStatus']}');
-    }
-
-    return buffer.toString().trim();
   }
 }

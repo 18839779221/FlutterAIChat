@@ -74,10 +74,8 @@ void main() {
 
       expect(result.status, ToolExecutionStatus.success);
       expect(result.data['replacementCount'], 1);
-      expect(
-        result.toolResultText,
-        '已编辑文件：memories/demo.md',
-      );
+      expect(result.summary, '已编辑文件：memories/demo.md');
+      expect(result.data['message'], '已编辑文件：memories/demo.md');
       expect(await file.readAsString(), contains('delta'));
 
       await tempDirectory.delete(recursive: true);
@@ -140,10 +138,8 @@ void main() {
 
       expect(result.status, ToolExecutionStatus.failure);
       expect(result.errorMessage, 'ambiguous_old_string');
-      expect(
-        result.toolResultText,
-        '编辑文件失败\n实际文件路径：memories/demo.md',
-      );
+      expect(result.summary, '编辑文件失败');
+      expect(result.data['message'], '编辑文件失败\n实际文件路径：memories/demo.md');
 
       await tempDirectory.delete(recursive: true);
     });

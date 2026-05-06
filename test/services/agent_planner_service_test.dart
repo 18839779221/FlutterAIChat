@@ -453,9 +453,9 @@ void main() {
               'toolName': 'Edit',
               'status': 'success',
               'summary': '已编辑文件：my_hobbies.md',
-              'contextText': '已编辑文件：agent/my_hobbies.md',
               'data': {
                 'filePath': 'agent/my_hobbies.md',
+                'message': '已编辑文件：agent/my_hobbies.md',
               },
             },
           ),
@@ -467,7 +467,7 @@ void main() {
 
       expect(
         llm.lastMessages.single.text,
-        '已编辑文件：agent/my_hobbies.md',
+        'Edit path: agent/my_hobbies.md\n已编辑文件：agent/my_hobbies.md',
       );
     });
 
@@ -687,8 +687,18 @@ void main() {
             payloadJson: const {
               'summary': '已完成联网搜索',
               'toolName': 'web_search',
-              'contextText': 'top result: https://example.com/minimax',
               'providerCallId': 'call_web_1',
+              'status': 'success',
+              'data': {
+                'query': 'MiniMax API',
+                'results': [
+                  {
+                    'title': 'MiniMax API Docs',
+                    'url': 'https://example.com/minimax',
+                    'snippet': 'The latest MiniMax API reference.',
+                  },
+                ],
+              },
             },
           ),
           ChatEvent(
@@ -713,9 +723,16 @@ void main() {
         llm.lastMessages.map((message) => message.text).toList(),
         containsAll([
           '帮我回忆刚才聊到的数据库版本',
-          'top result: https://example.com/minimax',
           'User answered AskUserQuestion:\n- Storage: SQLite',
         ]),
+      );
+      expect(
+        llm.lastMessages.map((message) => message.text).join('\n'),
+        contains('web_search query: MiniMax API'),
+      );
+      expect(
+        llm.lastMessages.map((message) => message.text).join('\n'),
+        contains('https://example.com/minimax'),
       );
     });
 
@@ -1201,17 +1218,11 @@ void main() {
             turnId: 3,
             groupId: 1,
             sequence: 3,
-            eventType: ChatEventType.toolResult,
+            eventType: ChatEventType.userInteractionResult,
             role: MessageRole.system,
-            content: 'user_answered',
+            content: 'User answered AskUserQuestion:\n- 目标平台: Android',
             payloadJson: const {
-              'summary': 'user_answered',
-              'contextText':
-                  'User answered AskUserQuestion:\n- 目标平台: Android',
               'answersByQuestionId': {'platform': 'Android'},
-              'data': {
-                'answersByQuestionId': {'platform': 'Android'},
-              },
               'providerCallId': 'call_function_123',
             },
           ),
@@ -1373,7 +1384,6 @@ void main() {
             payloadJson: const {
               'toolName': 'LS',
               'summary': '已列出目录：.',
-              'contextText': '目录为空',
               'status': 'success',
               'data': {
                 'path': '.',
@@ -1390,7 +1400,8 @@ void main() {
 
       final projectedTexts =
           llm.lastMessages.map((message) => message.text).join('\n');
-      expect(projectedTexts, contains('目录为空'));
+      expect(projectedTexts, contains('LS path: .'));
+      expect(projectedTexts, contains('entries: empty'));
     });
 
     test(
@@ -1461,10 +1472,12 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '抓取页面 A 完成',
-              'contextText': '抓取页面 A 完成',
               'status': 'success',
               'providerCallId': 'call_00',
-              'data': {'url': 'https://example.com/a'},
+              'data': {
+                'url': 'https://example.com/a',
+                'processedContent': '页面 A 的正文摘要',
+              },
             },
           ),
           ChatEvent(
@@ -1477,7 +1490,6 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '抓取页面 B 失败',
-              'contextText': '抓取页面 B 失败',
               'status': 'failure',
               'errorMessage': 'network_timeout',
               'providerCallId': 'call_01',
@@ -1493,10 +1505,18 @@ void main() {
             payloadJson: const {
               'toolName': 'web_search',
               'summary': '联网搜索完成',
-              'contextText': '联网搜索完成',
               'status': 'success',
               'providerCallId': 'call_02',
-              'data': {'query': 'Google latest news 2026'},
+              'data': {
+                'query': 'Google latest news 2026',
+                'results': [
+                  {
+                    'title': 'Google latest news 2026',
+                    'url': 'https://example.com/google-news',
+                    'snippet': 'Top result snippet',
+                  },
+                ],
+              },
             },
           ),
         ],
@@ -1507,12 +1527,14 @@ void main() {
 
       final toolResultTexts = llm.lastMessages
           .map((message) => message.text)
-          .where((text) => text.contains('完成') || text.contains('失败'))
+          .where((text) =>
+              text.contains('fetch_webpage') || text.contains('web_search'))
           .toList();
       expect(toolResultTexts, hasLength(3));
-      expect(toolResultTexts.join('\n'), contains('抓取页面 A 完成'));
-      expect(toolResultTexts.join('\n'), contains('抓取页面 B 失败'));
-      expect(toolResultTexts.join('\n'), contains('联网搜索完成'));
+      expect(toolResultTexts.join('\n'), contains('fetch_webpage url: https://example.com/a'));
+      expect(toolResultTexts.join('\n'), contains('页面 A 的正文摘要'));
+      expect(toolResultTexts.join('\n'), contains('fetch_webpage failed: network_timeout'));
+      expect(toolResultTexts.join('\n'), contains('web_search query: Google latest news 2026'));
     });
 
     test(
@@ -1595,7 +1617,7 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '页面 A 失败',
-              'contextText': '页面 A 失败',
+              'status': 'failure',
               'errorMessage': 'network_error',
               'providerCallId': 'call_00',
             },
@@ -1610,9 +1632,12 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '页面 B 完成',
-              'contextText': '页面 B 完成',
+              'status': 'success',
               'providerCallId': 'call_01',
-              'data': {'url': 'https://example.com/b'},
+              'data': {
+                'url': 'https://example.com/b',
+                'processedContent': '页面 B 的结构化结果',
+              },
             },
           ),
           ChatEvent(
@@ -1625,7 +1650,7 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '页面 C 失败',
-              'contextText': '页面 C 失败',
+              'status': 'failure',
               'errorMessage': 'timeout',
               'providerCallId': 'call_02',
             },
@@ -1640,7 +1665,7 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '页面 D 失败',
-              'contextText': '页面 D 失败',
+              'status': 'failure',
               'errorMessage': 'network_error',
               'providerCallId': 'call_03',
             },
@@ -1655,7 +1680,7 @@ void main() {
             payloadJson: const {
               'toolName': 'fetch_webpage',
               'summary': '页面 E 失败',
-              'contextText': '页面 E 失败',
+              'status': 'failure',
               'errorMessage': 'network_error',
               'providerCallId': 'call_04',
             },
@@ -1666,17 +1691,12 @@ void main() {
         limits: const AgentLoopLimits(),
       );
 
-      final projectedTexts =
-          llm.lastMessages.map((message) => message.text).toList();
-      expect(
-        projectedTexts.where((text) => text.contains('页面 ')),
-        hasLength(5),
-      );
-      expect(projectedTexts.join('\n'), contains('页面 A 失败'));
-      expect(projectedTexts.join('\n'), contains('页面 B 完成'));
-      expect(projectedTexts.join('\n'), contains('页面 C 失败'));
-      expect(projectedTexts.join('\n'), contains('页面 D 失败'));
-      expect(projectedTexts.join('\n'), contains('页面 E 失败'));
+      final projectedText =
+          llm.lastMessages.map((message) => message.text).join('\n');
+      expect(projectedText, contains('fetch_webpage failed: network_error'));
+      expect(projectedText, contains('fetch_webpage failed: timeout'));
+      expect(projectedText, contains('fetch_webpage url: https://example.com/b'));
+      expect(projectedText, contains('页面 B 的结构化结果'));
     });
 
     test('planNextDecision parses native planner tool choice directly',

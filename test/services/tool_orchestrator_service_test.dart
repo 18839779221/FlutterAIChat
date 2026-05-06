@@ -267,7 +267,7 @@ void main() {
       expect(result.toolResult, isNotNull);
       expect(result.toolResult!.status, ToolExecutionStatus.failure);
       expect(result.toolResult!.errorMessage, 'invalid_query');
-      expect(result.toolResult!.data, containsPair('detail', '查询参数无效'));
+      expect(result.toolResult!.data, containsPair('reason', 'invalid_query'));
     });
 
     test('fires execution-started callback before runtime handler executes',
@@ -436,13 +436,6 @@ class _FakeShareToolHandler implements ToolHandler {
     );
   }
 
-  @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return const [];
-  }
 
   @override
   Future<ToolArgumentResolution> normalizeArguments({
@@ -481,13 +474,6 @@ class _FakeReminderToolHandler implements ToolHandler {
     );
   }
 
-  @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return const [];
-  }
 
   @override
   Future<ToolArgumentResolution> normalizeArguments({
@@ -513,13 +499,6 @@ class _FakeAskUserQuestionToolHandler implements ToolHandler {
     throw StateError('interaction tools should not execute via orchestrator');
   }
 
-  @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return const [];
-  }
 
   @override
   Future<ToolArgumentResolution> normalizeArguments({
@@ -560,13 +539,6 @@ class _RecordingNormalizeToolHandler implements ToolHandler {
     );
   }
 
-  @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return const [];
-  }
 
   @override
   Future<ToolArgumentResolution> normalizeArguments({
@@ -593,13 +565,6 @@ class _InvalidNormalizeToolHandler implements ToolHandler {
         },
       );
 
-  @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return const [];
-  }
 
   @override
   Future<ToolResult> execute(ToolExecutionContext context) async {
@@ -616,7 +581,6 @@ class _InvalidNormalizeToolHandler implements ToolHandler {
     return ToolArgumentResolution.invalid(
       errorCode: 'invalid_query',
       errorSummary: '联网搜索失败：缺少有效查询词',
-      errorContextText: '查询参数无效',
     );
   }
 }
@@ -634,13 +598,6 @@ class _ExecutionStartedProbeToolHandler implements ToolHandler {
         },
       );
 
-  @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return const [];
-  }
 
   @override
   Future<ToolResult> execute(ToolExecutionContext context) async {

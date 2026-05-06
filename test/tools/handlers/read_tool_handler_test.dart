@@ -82,14 +82,12 @@ void main() {
       expect(result.data['content'], contains('     3\tgamma'));
       expect(result.data['linesReturned'], 2);
       expect(result.data['fileVersion'], isA<Map<String, dynamic>>());
-      expect(
-        result.toolResultText,
-        '已读取文件：memories/demo.md',
-      );
+      expect(result.summary, '已读取文件：memories/demo.md');
+      expect(result.data['message'], '已读取文件：memories/demo.md');
       expect(guard.hasSeen('memories/demo.md'), isTrue);
     });
 
-    test('read missing file returns toolResultText for planner context', () async {
+    test('read missing file returns structured payload for projector', () async {
       final resolution = await handler.normalizeArguments(
         rawArguments: {
           'file_path': 'memories/missing.md',
@@ -124,8 +122,9 @@ void main() {
 
       expect(result.status, ToolExecutionStatus.failure);
       expect(result.errorMessage, 'file_not_found');
+      expect(result.summary, 'Read failed: file not found');
       expect(
-        result.toolResultText,
+        result.data['message'],
         'Read failed: file not found\n实际文件路径：memories/missing.md',
       );
     });
