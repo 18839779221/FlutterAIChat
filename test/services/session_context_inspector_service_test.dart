@@ -104,7 +104,10 @@ void main() {
           'toolName': 'Read',
           'status': 'success',
           'summary': '已读取 README',
-          'toolResultText': 'Read README.md successfully',
+          'data': {
+            'filePath': 'README.md',
+            'message': 'Read README.md successfully',
+          },
         },
       );
 

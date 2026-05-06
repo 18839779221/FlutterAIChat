@@ -19,11 +19,4 @@ abstract class ToolHandler {
 
   /// Executes the tool using normalized input.
   Future<ToolResult> execute(ToolExecutionContext context);
-
-  /// Builds system context messages that should be injected into the next LLM
-  /// round after the tool has completed.
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  });
 }

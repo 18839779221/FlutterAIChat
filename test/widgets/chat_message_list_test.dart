@@ -326,8 +326,8 @@ void main() {
             payloadJson: const ToolResult(
               toolName: 'search_chat_history',
               status: ToolExecutionStatus.success,
-              displayText: '已执行：搜索历史记录',
-              payload: {'matchCount': 2},
+              summary: '已执行：搜索历史记录',
+              data: {'matchCount': 2},
             ).toJson(),
           ),
         ],
@@ -562,7 +562,7 @@ void main() {
             payloadJson: const ToolResult(
               toolName: 'web_search',
               status: ToolExecutionStatus.success,
-              displayText: '已找到 5 条结果',
+              summary: '已找到 5 条结果',
             ).toJson(),
           ),
         ],
@@ -616,7 +616,7 @@ void main() {
             payloadJson: const ToolResult(
               toolName: 'web_search',
               status: ToolExecutionStatus.success,
-              displayText: '已找到 5 条结果',
+              summary: '已找到 5 条结果',
             ).toJson(),
           ),
         ],
@@ -641,8 +641,8 @@ void main() {
             payloadJson: const ToolResult(
               toolName: 'create_reminder',
               status: ToolExecutionStatus.success,
-              displayText: '已发起提醒创建：设计评审',
-              payload: {
+              summary: '已发起提醒创建：设计评审',
+              data: {
                 'title': '设计评审',
                 'dueAt': '明天 09:00',
               },
@@ -667,8 +667,8 @@ void main() {
             payloadJson: const ToolResult(
               toolName: 'web_search',
               status: ToolExecutionStatus.failure,
-              displayText: '联网搜索失败',
-              payload: {
+              summary: '联网搜索失败',
+              data: {
                 'query': 'latest openai',
                 'reason': 'missing_api_key',
               },

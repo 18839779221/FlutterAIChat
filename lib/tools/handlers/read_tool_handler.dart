@@ -178,19 +178,6 @@ class ReadToolHandler implements ToolHandler {
     );
   }
 
-  @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return [
-      ChatMessage(
-        text: result.summary,
-        role: MessageRole.system,
-        status: MessageStatus.completed,
-      ),
-    ];
-  }
 
   bool _looksBinary(List<int> bytes) {
     for (final byte in bytes.take(512)) {

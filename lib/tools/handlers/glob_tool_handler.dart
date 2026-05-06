@@ -93,11 +93,4 @@ class GlobToolHandler implements ToolHandler {
     );
   }
 
-  @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return const [];
-  }
 }

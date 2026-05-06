@@ -1,9 +1,9 @@
 import '../../models/chat_message.dart';
-import '../../models/response/message_content_type.dart';
 import '../../models/tool/tool_argument_property.dart';
 import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
 import '../../models/tool/localized_tool_text.dart';
+import '../../models/tool/tool_result.dart';
 import '../../services/tool_executor.dart';
 import '../core/tool_argument_resolution.dart';
 import '../core/tool_execution_context.dart';
@@ -94,73 +94,6 @@ class WebSearchToolHandler implements ToolHandler {
       maxResults: context.arguments['maxResults'] as int?,
     );
   }
-
-  @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return [
-      ChatMessage(
-        text: _buildContextText(result),
-        role: MessageRole.system,
-        status: MessageStatus.completed,
-        contentType: MessageContentType.plainText,
-      ),
-    ];
-  }
-
-  String _buildContextText(ToolResult toolResult) {
-    final buffer = StringBuffer()
-      ..writeln('以下是工具 `${toolResult.toolName}` 的执行结果，请结合这些信息回答用户。')
-      ..writeln('状态：${toolResult.status.name}');
-
-    final payload = toolResult.payload;
-    if (payload['query'] is String) {
-      buffer.writeln('查询词：${payload['query']}');
-    }
-
-    final results = payload['results'];
-    if (results is List && results.isNotEmpty) {
-      buffer.writeln('联网搜索结果：');
-      for (final result in results.take(3)) {
-        if (result is! Map) {
-          continue;
-        }
-        final title = (result['title'] ?? '').toString().trim();
-        final snippet = _truncateContextText(
-          (result['snippet'] ?? '').toString().trim(),
-          maxLength: 160,
-        );
-        final source = (result['source'] ?? '').toString().trim();
-        final url = (result['url'] ?? '').toString().trim();
-        final titleText = title.isEmpty ? url : title;
-        final sourceText = source.isEmpty ? 'unknown' : source;
-        buffer.writeln('- [$sourceText] $titleText');
-        if (snippet.isNotEmpty) {
-          buffer.writeln('  摘要：$snippet');
-        }
-        if (url.isNotEmpty) {
-          buffer.writeln('  链接：$url');
-        }
-      }
-    } else if (toolResult.summary.isNotEmpty) {
-      buffer.writeln('结果摘要：${toolResult.summary}');
-    }
-
-    return buffer.toString().trim();
-  }
-
-  String _truncateContextText(
-    String value, {
-    required int maxLength,
-  }) {
-    if (value.length <= maxLength) {
-      return value;
-    }
-    return '${value.substring(0, maxLength)}...';
-  }
-
   String _buildEnglishDescription() {
     final currentMonthYear = _currentMonthYearProvider();
     return '''

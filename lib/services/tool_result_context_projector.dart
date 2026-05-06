@@ -10,6 +10,7 @@ class ToolResultContextProjector {
       'web_search' => _projectWebSearch(result),
       'search_chat_history' => _projectSearchChatHistory(result),
       'fetch_webpage' => _projectFetchWebpage(result),
+      'LS' || 'Glob' || 'Grep' => _projectDiscoveryResult(result),
       'Read' || 'Write' || 'Edit' || 'create_artifact' => _projectFileResult(result),
       'create_reminder' || 'create_calendar_event' || 'share_result' =>
         _projectActionResult(result),
@@ -113,6 +114,74 @@ class ToolResultContextProjector {
     if (path != null && path.isNotEmpty) {
       lines.add('${result.toolName} path: $path');
     }
+    if (message != null && message.isNotEmpty) {
+      lines.add(message);
+    }
+    return lines.isEmpty ? null : lines.join('\n');
+  }
+
+  String? _projectDiscoveryResult(ToolResult result) {
+    final lines = <String>[];
+    final path = result.data['path']?.toString().trim();
+    final pattern = result.data['pattern']?.toString().trim();
+    if (path != null && path.isNotEmpty) {
+      lines.add('${result.toolName} path: $path');
+    }
+    if (pattern != null && pattern.isNotEmpty) {
+      lines.add('pattern: $pattern');
+    }
+
+    final entries = result.data['entries'];
+    if (entries is List) {
+      if (entries.isEmpty) {
+        lines.add('entries: empty');
+      } else {
+        for (var i = 0; i < entries.length && i < 5; i++) {
+          final item = entries[i];
+          if (item is! Map) {
+            continue;
+          }
+          final map = Map<String, dynamic>.from(item as Map<dynamic, dynamic>);
+          final entryPath = map['path']?.toString().trim();
+          final entryType = map['entryType']?.toString().trim() ??
+              map['type']?.toString().trim();
+          if (entryPath == null || entryPath.isEmpty) {
+            continue;
+          }
+          lines.add(
+            entryType == null || entryType.isEmpty
+                ? entryPath
+                : '$entryType: $entryPath',
+          );
+        }
+      }
+    }
+
+    final matches = result.data['matches'];
+    if (matches is List) {
+      if (matches.isEmpty) {
+        lines.add('matches: empty');
+      } else {
+        for (var i = 0; i < matches.length && i < 5; i++) {
+          final item = matches[i];
+          if (item is! Map) {
+            continue;
+          }
+          final map = Map<String, dynamic>.from(item as Map<dynamic, dynamic>);
+          final matchPath = map['path']?.toString().trim();
+          final lineText = map['lineText']?.toString().trim() ??
+              map['text']?.toString().trim();
+          if (matchPath != null && matchPath.isNotEmpty) {
+            lines.add(matchPath);
+          }
+          if (lineText != null && lineText.isNotEmpty) {
+            lines.add(lineText);
+          }
+        }
+      }
+    }
+
+    final message = result.data['message']?.toString().trim();
     if (message != null && message.isNotEmpty) {
       lines.add(message);
     }

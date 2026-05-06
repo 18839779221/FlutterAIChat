@@ -230,13 +230,6 @@ class _FakeToolHandler implements ToolHandler {
         supportedPlatforms: supportedPlatforms,
       );
 
-  @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return const [];
-  }
 
   @override
   Future<ToolResult> execute(ToolExecutionContext context) async {

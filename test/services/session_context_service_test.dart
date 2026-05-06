@@ -206,6 +206,15 @@ void main() {
             eventType: ChatEventType.toolResult,
             role: MessageRole.system,
             content: '结果摘要：TurnHarness 是主入口',
+            payloadJson: const {
+              'toolName': 'Read',
+              'status': 'success',
+              'summary': '结果摘要：TurnHarness 是主入口',
+              'data': {
+                'filePath': 'docs/architecture/agent-loop-boundaries-and-decoupling.md',
+                'message': 'TurnHarness 是主入口',
+              },
+            },
           ),
         ],
         config: ChatConfig(systemPrompt: '你是一个助手'),
@@ -216,6 +225,7 @@ void main() {
         plannerMessages.map((m) => m.text).join('\n'),
         contains('最近工作集：TurnHarness 还没接入'),
       );
+      expect(plannerMessages.last.text, contains('Read path:'));
       expect(plannerMessages.last.text, contains('TurnHarness 是主入口'));
 
       await storage.deleteGroup(groupId);
@@ -322,6 +332,16 @@ void main() {
               'summary': '已执行联网搜索',
               'providerCallId': 'call_search_1',
               'status': 'success',
+              'data': {
+                'query': 'turn harness continuation',
+                'results': [
+                  {
+                    'title': 'TurnHarness continuation notes',
+                    'url': 'https://example.com/turn-harness',
+                    'snippet': 'Planner continues from transcript payload only.',
+                  },
+                ],
+              },
             },
           ),
         ],
@@ -335,7 +355,8 @@ void main() {
         combined,
         contains('[assistant tool_use] web_search query=turn harness continuation'),
       );
-      expect(combined, contains('[user tool_result] 已执行联网搜索'));
+      expect(combined, contains('[user tool_result] web_search query: turn harness continuation'));
+      expect(combined, contains('https://example.com/turn-harness'));
 
       await storage.deleteGroup(groupId);
     });
@@ -771,9 +792,9 @@ void main() {
           'toolName': 'Edit',
           'status': 'success',
           'summary': '已编辑文件：my_hobbies.md',
-          'toolResultText': 'Successfully edited my_hobbies.md',
           'data': {
             'filePath': 'my_hobbies.md',
+            'message': 'Successfully edited my_hobbies.md',
           },
         },
       );
@@ -829,8 +850,8 @@ void main() {
           plannerMessages.map((message) => message.text).join('\n');
       expect(combined, contains('[assistant tool_use]'));
       expect(combined, contains('Edit'));
-      expect(combined,
-          contains('[user tool_result] Successfully edited my_hobbies.md'));
+      expect(combined, contains('[user tool_result] Edit path: my_hobbies.md'));
+      expect(combined, contains('Successfully edited my_hobbies.md'));
       expect(combined, isNot(contains('\n已编辑文件：my_hobbies.md\n已经帮你更新好爱好笔记。')));
 
       await storage.deleteGroup(groupId);

@@ -102,39 +102,5 @@ void main() {
       expect(capturedPrompt, contains('TextField'));
     });
 
-    test('buildContextMessages uses processed result instead of raw webpage body label',
-        () {
-      final handler = FetchWebpageToolHandler(
-        webpageFetcher: ({required url, required prompt}) async =>
-            const ToolResult(
-          toolName: 'fetch_webpage',
-          status: ToolExecutionStatus.success,
-          summary: 'ok',
-        ),
-      );
-
-      final messages = handler.buildContextMessages(
-        result: const ToolResult(
-          toolName: 'fetch_webpage',
-          status: ToolExecutionStatus.success,
-          summary: '已返回网页处理结果',
-          data: {
-            'url': 'https://flutter.dev',
-            'prompt': '总结动画抖动成因',
-            'processedContent': '页面提到频繁 rebuild 可能导致抖动。',
-          },
-        ),
-        context: ToolExecutionContext(
-          groupId: 1,
-          toolName: 'fetch_webpage',
-          arguments: const {},
-          history: const <ChatMessage>[],
-          now: DateTime(2026, 4, 25),
-        ),
-      );
-
-      expect(messages.single.text, contains('处理结果'));
-      expect(messages.single.text, isNot(contains('网页正文')));
-    });
   });
 }

@@ -160,8 +160,7 @@ void main() {
                   'query': 'SQLite',
                   'matchCount': 1,
                 },
-              ),
-              additionalContextMessages: [],
+              )
             ),
           ]),
         },
@@ -338,8 +337,7 @@ void main() {
                   'query': '周报',
                   'matchCount': 2,
                 },
-              ),
-              additionalContextMessages: [],
+              )
             ),
           ]),
           'create_reminder': Queue.of([
@@ -351,8 +349,7 @@ void main() {
                 summary: '请确认执行工具：创建提醒',
                 requiresConfirmation: true,
               ),
-              toolResult: null,
-              additionalContextMessages: [],
+              toolResult: null
             ),
             const ToolPreparationResult(
               toolInvocation: ToolInvocation(
@@ -366,8 +363,7 @@ void main() {
                 toolName: 'create_reminder',
                 status: ToolExecutionStatus.success,
                 summary: '已创建提醒：交周报',
-              ),
-              additionalContextMessages: [],
+              )
             ),
           ]),
         },
@@ -550,8 +546,7 @@ void main() {
                   'query': '会议',
                   'matchCount': 1,
                 },
-              ),
-              additionalContextMessages: [],
+              )
             ),
           ]),
           'create_reminder': Queue.of([
@@ -563,8 +558,7 @@ void main() {
                 summary: '请确认执行工具：创建提醒',
                 requiresConfirmation: true,
               ),
-              toolResult: null,
-              additionalContextMessages: [],
+              toolResult: null
             ),
             const ToolPreparationResult(
               toolInvocation: ToolInvocation(
@@ -578,8 +572,7 @@ void main() {
                 toolName: 'create_reminder',
                 status: ToolExecutionStatus.success,
                 summary: '已创建提醒：准备会前材料',
-              ),
-              additionalContextMessages: [],
+              )
             ),
           ]),
           'create_calendar_event': Queue.of([
@@ -594,8 +587,7 @@ void main() {
                 summary: '请确认执行工具：创建日历事件',
                 requiresConfirmation: true,
               ),
-              toolResult: null,
-              additionalContextMessages: [],
+              toolResult: null
             ),
           ]),
         },
@@ -728,8 +720,7 @@ void main() {
                   'query': '提醒',
                   'matchCount': 1,
                 },
-              ),
-              additionalContextMessages: [],
+              )
             ),
           ]),
           'create_reminder': Queue.of([
@@ -741,8 +732,7 @@ void main() {
                 summary: '请确认执行工具：创建提醒',
                 requiresConfirmation: true,
               ),
-              toolResult: null,
-              additionalContextMessages: [],
+              toolResult: null
             ),
             const ToolPreparationResult(
               toolInvocation: ToolInvocation(
@@ -756,8 +746,7 @@ void main() {
                 toolName: 'create_reminder',
                 status: ToolExecutionStatus.success,
                 summary: '已创建提醒：提醒测试',
-              ),
-              additionalContextMessages: [],
+              )
             ),
           ]),
         },
@@ -893,8 +882,7 @@ void main() {
                   'query': '历史',
                   'matchCount': 1,
                 },
-              ),
-              additionalContextMessages: [],
+              )
             ),
             const ToolPreparationResult(
               toolInvocation: ToolInvocation(
@@ -904,8 +892,7 @@ void main() {
                 summary: '请确认执行工具：搜索历史记录',
                 requiresConfirmation: true,
               ),
-              toolResult: null,
-              additionalContextMessages: [],
+              toolResult: null
             ),
             const ToolPreparationResult(
               toolInvocation: ToolInvocation(
@@ -931,8 +918,7 @@ void main() {
                   'executionPolicy': 'blocked',
                   'isVisibleToPlanner': false,
                 },
-              ),
-              additionalContextMessages: [],
+              )
             ),
           ]),
         },
@@ -1063,8 +1049,7 @@ void main() {
                   'query': '数据库版本',
                   'matchCount': 1,
                 },
-              ),
-              additionalContextMessages: [],
+              )
             ),
           ]),
         },
@@ -1156,8 +1141,7 @@ void main() {
                 summary: '请确认执行工具：创建提醒',
                 requiresConfirmation: true,
               ),
-              toolResult: null,
-              additionalContextMessages: [],
+              toolResult: null
             ),
           ]),
         },

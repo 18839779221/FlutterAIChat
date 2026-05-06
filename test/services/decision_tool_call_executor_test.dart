@@ -621,7 +621,6 @@ Future<ToolPreparationResult> _delayedSuccess(
       summary: '$key ok',
       data: {'filePath': key},
     ),
-    additionalContextMessages: const [],
   );
 }
 
@@ -646,7 +645,6 @@ Future<ToolPreparationResult> _delayedFailure(
       errorMessage: 'failed_$key',
       data: {'filePath': key},
     ),
-    additionalContextMessages: const [],
   );
 }
 
@@ -714,7 +712,6 @@ class _TrackingToolCallService extends ToolCallService {
         toolInvocation: result.toolInvocation,
         toolAccess: result.toolAccess,
         toolResult: result.toolResult,
-        additionalContextMessages: result.additionalContextMessages,
         executionStarted: onExecutionStarted != null,
       );
     } finally {
@@ -748,7 +745,6 @@ class _TrackingToolCallService extends ToolCallService {
           summary: '$key done',
           data: {'filePath': key},
         ),
-        additionalContextMessages: const [],
       ),
     );
   }

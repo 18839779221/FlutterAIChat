@@ -3,6 +3,7 @@ import '../../models/tool/tool_argument_property.dart';
 import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
 import '../../models/tool/localized_tool_text.dart';
+import '../../models/tool/tool_result.dart';
 import '../../services/tool_executor.dart';
 import '../core/tool_argument_resolution.dart';
 import '../core/tool_execution_context.dart';
@@ -111,62 +112,5 @@ class FetchWebpageToolHandler implements ToolHandler {
       url: context.arguments['url'] as String,
       prompt: context.arguments['prompt'] as String,
     );
-  }
-
-  @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return [
-      ChatMessage(
-        text: _buildContextText(result),
-        role: MessageRole.system,
-        status: MessageStatus.completed,
-      ),
-    ];
-  }
-
-  String _buildContextText(ToolResult toolResult) {
-    final buffer = StringBuffer()
-      ..writeln('以下是工具 `${toolResult.toolName}` 的执行结果，请结合这些信息回答用户。')
-      ..writeln('状态：${toolResult.status.name}');
-
-    final payload = toolResult.payload;
-    if (payload['title'] is String &&
-        (payload['title'] as String).trim().isNotEmpty) {
-      buffer.writeln('网页标题：${payload['title']}');
-    }
-    if (payload['url'] is String &&
-        (payload['url'] as String).trim().isNotEmpty) {
-      buffer.writeln('网页链接：${payload['url']}');
-    }
-
-    final prompt = (payload['prompt'] ?? '').toString().trim();
-    if (prompt.isNotEmpty) {
-      buffer.writeln('处理目标：$prompt');
-    }
-
-    final processedContent =
-        (payload['processedContent'] ?? '').toString().trim();
-    if (processedContent.isNotEmpty) {
-      buffer.writeln(
-        '处理结果：${_truncateContextText(processedContent, maxLength: 1200)}',
-      );
-    } else if (toolResult.summary.isNotEmpty) {
-      buffer.writeln('结果摘要：${toolResult.summary}');
-    }
-
-    return buffer.toString().trim();
-  }
-
-  String _truncateContextText(
-    String value, {
-    required int maxLength,
-  }) {
-    if (value.length <= maxLength) {
-      return value;
-    }
-    return '${value.substring(0, maxLength)}...';
   }
 }

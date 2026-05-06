@@ -168,17 +168,4 @@ class CreateCalendarEventToolHandler implements ToolHandler {
     );
   }
 
-  @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return [
-      ChatMessage(
-        text: '日历工具执行结果：${result.summary}',
-        role: MessageRole.system,
-        status: MessageStatus.completed,
-      ),
-    ];
-  }
 }
