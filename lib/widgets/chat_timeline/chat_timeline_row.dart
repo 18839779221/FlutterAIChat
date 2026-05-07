@@ -11,6 +11,8 @@ import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/chat_block_builder.dart';
 import 'package:ai_chat/services/tool_presentation_block_projector.dart';
 import 'package:ai_chat/services/tool_card_presentation_mapper.dart';
+import 'package:ai_chat/theme/app_motion.dart';
+import 'package:ai_chat/widgets/animations/message_growth_animation.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/artifact_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
@@ -51,6 +53,8 @@ class ChatTimelineRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final motion = Theme.of(context).extension<AppMotion>()!;
+
     final row = switch (item.type) {
       ChatTimelineItemType.userBubble => _buildUserBubble(),
       ChatTimelineItemType.assistantBlock => _buildAssistantBlock(
@@ -59,13 +63,20 @@ class ChatTimelineRow extends ConsumerWidget {
         ),
     };
 
+    // Wrap with growth animation for new messages
+    final animatedRow = MessageGrowthAnimation(
+      duration: motion.standard,
+      curve: motion.easeOut,
+      child: row,
+    );
+
     if (item.runningTailText == null) {
-      return row;
+      return animatedRow;
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        row,
+        animatedRow,
         LatestMessageRunningStatusTail(statusText: item.runningTailText!),
       ],
     );

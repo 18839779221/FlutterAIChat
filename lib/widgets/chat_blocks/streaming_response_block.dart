@@ -1,5 +1,7 @@
+import 'package:ai_chat/theme/app_colors.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/theme/app_typography.dart';
+import 'package:ai_chat/widgets/animations/streaming_cursor.dart';
 import 'package:ai_chat/widgets/chat_blocks/reasoning_section.dart';
 import 'package:flutter/material.dart';
 
@@ -17,6 +19,7 @@ class StreamingResponseBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final colors = Theme.of(context).extension<AppColors>()!;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -36,13 +39,24 @@ class StreamingResponseBlock extends StatelessWidget {
                 variant: ReasoningSectionVariant.finalAnswerCollapsible,
                 initiallyExpanded: true,
               ),
-            SelectableText(
-              text,
-              style: AppTypography.documentStyle(
-                color: Theme.of(context).colorScheme.onSurface,
-                fontSize: 13.2,
-                height: 1.48,
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: SelectableText(
+                    text,
+                    style: AppTypography.documentStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
+                      fontSize: 13.2,
+                      height: 1.48,
+                    ),
+                  ),
+                ),
+                StreamingCursor(
+                  isVisible: true,
+                  color: colors.workflowRunning,
+                ),
+              ],
             ),
           ],
         ),
