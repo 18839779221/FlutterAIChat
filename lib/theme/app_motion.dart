@@ -199,7 +199,7 @@ class AppMotion extends ThemeExtension<AppMotion> {
       easeInOut: easeInOut,
       spring: spring,
       breathing: breathing,
-      gentleCurve: gentle,
+      gentleCurve: gentleCurve,
     );
   }
 }
