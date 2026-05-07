@@ -10,7 +10,7 @@ import '../core/tool_execution_context.dart';
 import '../core/tool_handler.dart';
 
 /// Handles the complete runtime behavior for the `share_result` tool.
-class ShareResultToolHandler implements ToolHandler {
+class ShareResultToolHandler extends ToolHandler {
   ShareResultToolHandler({
     required ResultSharer resultSharer,
   }) : _resultSharer = resultSharer;

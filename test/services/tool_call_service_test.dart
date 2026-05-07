@@ -68,7 +68,7 @@ Future<ToolPolicyService> _createToolPolicyService() async {
   );
 }
 
-class _FakeRuntimeToolHandler implements ToolHandler {
+class _FakeRuntimeToolHandler extends ToolHandler {
   @override
   ToolDefinition get definition => const ToolDefinition(
         name: 'debug_runtime_tool',
