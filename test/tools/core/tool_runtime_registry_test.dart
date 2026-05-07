@@ -206,7 +206,7 @@ Future<ToolResult> _noopShareResult({
   );
 }
 
-class _FakeToolHandler implements ToolHandler {
+class _FakeToolHandler extends ToolHandler {
   _FakeToolHandler({
     required this.toolName,
     this.supportedPlatforms = const ['android', 'ios', 'web'],

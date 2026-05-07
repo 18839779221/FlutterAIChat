@@ -10,7 +10,7 @@ import '../core/tool_execution_context.dart';
 import '../core/tool_handler.dart';
 
 /// Handles the complete runtime behavior for the `fetch_webpage` tool.
-class FetchWebpageToolHandler implements ToolHandler {
+class FetchWebpageToolHandler extends ToolHandler {
   FetchWebpageToolHandler({
     required WebpageFetcher webpageFetcher,
   }) : _webpageFetcher = webpageFetcher;

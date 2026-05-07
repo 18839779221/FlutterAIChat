@@ -9,7 +9,7 @@ import '../core/tool_argument_resolution.dart';
 import '../core/tool_execution_context.dart';
 import '../core/tool_handler.dart';
 
-class WriteToolHandler implements ToolHandler {
+class WriteToolHandler extends ToolHandler {
   @override
   ToolDefinition get definition => const ToolDefinition(
         name: 'Write',

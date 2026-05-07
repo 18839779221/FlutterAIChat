@@ -408,7 +408,7 @@ Future<ToolOrchestratorService> _createService({
   );
 }
 
-class _FakeShareToolHandler implements ToolHandler {
+class _FakeShareToolHandler extends ToolHandler {
   @override
   ToolDefinition get definition => const ToolDefinition(
         name: 'share_result',
@@ -448,7 +448,7 @@ class _FakeShareToolHandler implements ToolHandler {
   }
 }
 
-class _FakeReminderToolHandler implements ToolHandler {
+class _FakeReminderToolHandler extends ToolHandler {
   @override
   ToolDefinition get definition => const ToolDefinition(
         name: 'create_reminder',
@@ -486,7 +486,7 @@ class _FakeReminderToolHandler implements ToolHandler {
   }
 }
 
-class _FakeAskUserQuestionToolHandler implements ToolHandler {
+class _FakeAskUserQuestionToolHandler extends ToolHandler {
   @override
   ToolDefinition get definition => const ToolDefinition(
         name: 'ask_user_question',
@@ -511,7 +511,7 @@ class _FakeAskUserQuestionToolHandler implements ToolHandler {
   }
 }
 
-class _RecordingNormalizeToolHandler implements ToolHandler {
+class _RecordingNormalizeToolHandler extends ToolHandler {
   Map<String, dynamic>? seenRawArguments;
   Map<String, dynamic>? executedArguments;
 
@@ -555,7 +555,7 @@ class _RecordingNormalizeToolHandler implements ToolHandler {
   }
 }
 
-class _InvalidNormalizeToolHandler implements ToolHandler {
+class _InvalidNormalizeToolHandler extends ToolHandler {
   @override
   ToolDefinition get definition => const ToolDefinition(
         name: 'web_search',
@@ -585,7 +585,7 @@ class _InvalidNormalizeToolHandler implements ToolHandler {
   }
 }
 
-class _ExecutionStartedProbeToolHandler implements ToolHandler {
+class _ExecutionStartedProbeToolHandler extends ToolHandler {
   bool executionStarted = false;
   bool sawExecutionStartedBeforeExecute = false;
 

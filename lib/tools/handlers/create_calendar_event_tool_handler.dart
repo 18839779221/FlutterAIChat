@@ -11,7 +11,7 @@ import '../core/tool_handler.dart';
 
 /// Handles validation, normalization, execution, and context building for
 /// `create_calendar_event`.
-class CreateCalendarEventToolHandler implements ToolHandler {
+class CreateCalendarEventToolHandler extends ToolHandler {
   CreateCalendarEventToolHandler({
     required CalendarEventCreator calendarEventCreator,
     DateTime Function()? nowProvider,

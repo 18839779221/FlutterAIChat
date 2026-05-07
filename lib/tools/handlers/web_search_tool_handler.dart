@@ -1,16 +1,16 @@
 import '../../models/chat_message.dart';
+import '../../models/response/message_content_type.dart';
 import '../../models/tool/tool_argument_property.dart';
 import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
 import '../../models/tool/localized_tool_text.dart';
-import '../../models/tool/tool_result.dart';
 import '../../services/tool_executor.dart';
 import '../core/tool_argument_resolution.dart';
 import '../core/tool_execution_context.dart';
 import '../core/tool_handler.dart';
 
 /// Handles the complete runtime behavior for the `web_search` tool.
-class WebSearchToolHandler implements ToolHandler {
+class WebSearchToolHandler extends ToolHandler {
   WebSearchToolHandler({
     required WebSearcher webSearcher,
     String Function()? currentMonthYearProvider,
