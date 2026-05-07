@@ -2,35 +2,46 @@
 
 ## 设计哲学
 
-FlutterAIChat 的动效设计遵循 **"自然流动"（Natural Flow）** 的核心理念，通过克制而有意义的动画提升用户体验，而非单纯的视觉装饰。
+FlutterAIChat 的动效设计对标 **Claude 和 Apple** 的交互标准，追求**克制、精准、有呼吸感**的专业体验。动画不是装饰，而是信息传达和状态反馈的核心手段。
 
-### 核心原则
+### 设计参考
 
-#### 1. 功能性优先 (Functional First)
-- 动画必须服务于功能理解和信息传达
-- 避免纯装饰性动画，每个动效都应有明确目的
-- 动画应帮助用户理解状态变化、层级关系和交互反馈
+- **Claude**：专业、流畅、有节奏感的 AI 对话体验
+- **Apple HIG**：自然、精准、人性化的交互标准
+- **Material Design Motion**：系统化的动画语言
 
-#### 2. 自然流动 (Natural Flow)
-- 模拟物理世界的运动规律
-- 使用缓动曲线而非线性动画
-- 遵循惯性、重力、弹性等自然特性
+### 核心特质
 
-#### 3. 性能至上 (Performance First)
-- 优先使用 GPU 加速的属性（opacity, transform）
-- 避免触发 layout 的动画（width, height 需谨慎）
-- 控制同时运行的动画数量
-- 大列表使用 `AnimatedList` 而非全量重建
+#### 1. 时间感知的精准度 (Temporal Precision)
+- 动画时长基于人类感知研究，而非随意数值
+- 小元素快速响应（触觉反馈），大元素有惯性（空间感知）
+- 有"重量感"：轻的东西快，重的东西慢
 
-#### 4. 一致性 (Consistency)
-- 统一的时长规范
-- 统一的缓动曲线
-- 相同场景使用相同动画模式
+#### 2. 缓动曲线的人性化 (Humanized Easing)
+- 几乎不用线性动画
+- 进入用 `easeOut`（快速响应，缓慢停止）
+- 退出用 `easeIn`（缓慢启动，快速消失）
+- 循环用正弦曲线（平滑无顿挫）
 
-#### 5. 可访问性 (Accessibility)
-- 尊重系统的 `减少动画` 设置
-- 提供禁用动画的选项
-- 避免快速闪烁可能引发不适的动画
+#### 3. 状态转换的连贯性 (State Continuity)
+- 状态变化有明确的"完成时刻"
+- 不是简单的颜色切换，而是有仪式感的转换
+- 工具执行完成有"结算动画"
+
+#### 4. 微交互的即时反馈 (Instant Feedback)
+- 按钮按下瞬间就有反馈
+- 视觉模拟触觉体验
+- 有"按下去"的真实感
+
+#### 5. 信息出现的节奏感 (Rhythmic Appearance)
+- 内容不是"突然出现"，而是"生长出来"
+- 有从无到有的过程，符合认知预期
+- 消息、卡片、列表项都有出场节奏
+
+#### 6. 性能与可访问性 (Performance & Accessibility)
+- 优先使用 GPU 加速属性
+- 尊重系统减少动画设置
+- 60fps 流畅体验
 
 ---
 
@@ -38,55 +49,75 @@ FlutterAIChat 的动效设计遵循 **"自然流动"（Natural Flow）** 的核�
 
 ### 时长规范 (Duration Scale)
 
+基于人类感知研究的时长体系，每个数值都有科学依据：
+
 ```dart
 // lib/theme/app_motion.dart
 class AppMotion extends ThemeExtension<AppMotion> {
-  /// 即时反馈 - 用于按钮按下、开关切换等即时响应
+  /// 即时反馈 - 基于触觉反馈延迟（人手指触感）
   final Duration instant;      // 100ms
   
-  /// 快速过渡 - 用于小元素的显示/隐藏、颜色变化
+  /// 快速过渡 - 基于视觉跟随延迟（眼球追踪速度）
   final Duration quick;        // 200ms
   
-  /// 标准动画 - 用于大多数UI元素的过渡
+  /// 标准动画 - 基于阅读节奏（一个词的识别时间）
   final Duration standard;     // 300ms
   
-  /// 强调动画 - 用于需要引起注意的重要变化
+  /// 强调动画 - 基于空间感知（房间大小的判断）
   final Duration emphasized;   // 400ms
   
-  /// 柔和动画 - 用于背景、大面积元素的缓慢变化
+  /// 柔和动画 - 基于注意力转移周期
   final Duration gentle;       // 600ms
+  
+  // 循环动画的节奏
+  /// 脉冲节奏 - 基于人的静息呼吸周期（12-20次/分钟）
+  final Duration pulse;        // 800ms
+  
+  /// 扫光节奏 - 基于视觉扫描速度（横向阅读一行）
+  final Duration sweep;        // 1200ms
+  
+  /// 氛围节奏 - 不干扰主任务的背景动画
+  final Duration ambient;      // 2000ms
 }
 ```
 
 **使用指南：**
 
-| 时长 | 适用场景 | 示例 |
-|------|---------|------|
-| `instant` (100ms) | 即时反馈 | 按钮按下、开关切换、Ripple效果 |
-| `quick` (200ms) | 快速过渡 | 小图标显示/隐藏、颜色变化、小卡片翻转 |
-| `standard` (300ms) | 标准动画 | 消息卡片出现、抽屉展开、对话框弹出 |
-| `emphasized` (400ms) | 强调动画 | 页面转场、重要状态变化、大卡片展开 |
-| `gentle` (600ms) | 柔和动画 | 背景渐变、大面积布局变化、氛围动画 |
+| 时长 | 人体工程学依据 | 适用场景 | 示例 |
+|------|---------------|---------|------|
+| `instant` (100ms) | 触觉反馈延迟 | 即时反馈 | 按钮按下、开关切换 |
+| `quick` (200ms) | 视觉跟随速度 | 快速过渡 | 小卡片展开、颜色变化 |
+| `standard` (300ms) | 词汇识别时间 | 标准动画 | 消息出现、对话框弹出 |
+| `emphasized` (400ms) | 空间感知时间 | 强调动画 | 页面转场、工具完成 |
+| `gentle` (600ms) | 注意力转移 | 柔和动画 | 背景渐变、大面积变化 |
+| `pulse` (800ms) | 呼吸周期 | 循环脉冲 | 工具执行中的呼吸效果 |
+| `sweep` (1200ms) | 阅读扫描 | 扫光效果 | 工具卡片的扫光动画 |
+| `ambient` (2000ms) | 背景感知 | 氛围动画 | 空状态浮动、背景动态 |
 
 ---
 
 ### 缓动曲线规范 (Easing Curves)
 
+基于 Apple HIG 和 Material Design 的曲线标准：
+
 ```dart
 class AppMotion extends ThemeExtension<AppMotion> {
-  /// 标准进出 - 元素在屏幕内移动
-  final Curve easeInOut;       // Curves.easeInOutCubic
-  
-  /// 元素进入 - 元素从外部进入屏幕
+  /// 元素进入 - 快速响应，缓慢停止（符合物理惯性）
   final Curve easeOut;         // Curves.easeOutCubic
   
-  /// 元素退出 - 元素从屏幕退出
+  /// 元素退出 - 缓慢启动，快速消失（减少干扰）
   final Curve easeIn;          // Curves.easeInCubic
   
-  /// 弹性效果 - 需要强调的交互反馈
+  /// 元素移动 - 自然的加速减速（模拟物理运动）
+  final Curve easeInOut;       // Curves.easeInOutCubic
+  
+  /// 弹性效果 - 完成时刻的仪式感（工具执行完成）
   final Curve spring;          // Curves.elasticOut
   
-  /// 柔和曲线 - 大面积、慢速的变化
+  /// 呼吸曲线 - 循环动画的平滑过渡（无顿挫感）
+  final Curve breathing;       // Curves.easeInOutSine
+  
+  /// 柔和曲线 - 大面积变化的缓慢过渡
   final Curve gentle;          // Curves.easeOutQuart
 }
 ```
@@ -94,398 +125,827 @@ class AppMotion extends ThemeExtension<AppMotion> {
 **曲线选择指南：**
 
 ```
-easeOut (进入)
+easeOut (进入) - Apple 推荐的默认进入曲线
   ▲
   │     ╱─────
   │   ╱
   │ ╱
   └──────────▶
-  快速启动，缓慢结束
-  用于：元素进入、展开、显示
+  快速响应用户操作，缓慢停止给予确认感
+  用于：消息出现、卡片展开、对话框弹出
 
-easeIn (退出)
+easeIn (退出) - Apple 推荐的默认退出曲线
   ▲
   │ ─────╲
   │       ╲
   │         ╲
   └──────────▶
-  缓慢启动，快速结束
-  用于：元素退出、收起、隐藏
+  缓慢启动减少突兀感，快速消失不占用注意力
+  用于：消息消失、卡片收起、对话框关闭
 
-easeInOut (移动)
+easeInOutCubic (移动) - Material Design 标准曲线
   ▲
   │   ╱───╲
   │ ╱       ╲
   │╱         ╲
   └──────────▶
-  两端缓慢，中间快速
-  用于：元素在屏幕内移动、位置变化
+  两端缓慢，中间快速，符合物理运动规律
+  用于：元素在屏幕内移动、位置调整、布局变化
 
-spring (弹性)
+spring (弹性) - 完成时刻的仪式感
   ▲
   │     ╱╲╱─
   │   ╱
   │ ╱
   └──────────▶
-  带有回弹效果
-  用于：按钮点击、重要提示、强调反馈
+  带有回弹效果，强调"完成"的瞬间
+  用于：工具执行完成、重要操作成功、成就解锁
+
+easeInOutSine (呼吸) - 循环动画专用
+  ▲
+  │   ╱───╲
+  │ ╱       ╲
+  │╱         ╲
+  └──────────▶
+  正弦曲线，循环时无顿挫感，像呼吸一样自然
+  用于：脉冲动画、呼吸效果、加载指示器
+
+⚠️ 避免使用：
+- Curves.linear：机械感，缺少人性化
+- Curves.easeInOut（非Cubic）：循环时有顿挫感
+- 过度弹性的曲线：分散注意力
 ```
 
 ---
 
 ## 动画模式库
 
-### 1. 渐入动画 (Fade In)
+基于 Claude/Apple 体验标准的核心动画模式。
 
-**用途**：元素首次出现、内容加载完成
+### 1. 消息生长动画 (Message Growth) ⭐⭐⭐⭐⭐
+
+**设计意图**：消息不是"突然出现"，而是"生长出来"，符合对话的自然节奏。
+
+**Claude 的实现**：
+- 从下方滑入（20px）
+- 同时渐入（0 → 1）
+- 轻微缩放（96% → 100%）
+- 三者组合产生"生长"的感觉
 
 **规范**：
-- 时长：`standard` (300ms)
-- 曲线：`easeOut`
-- 透明度：0.0 → 1.0
+- 时长：`standard` (300ms) - 基于阅读节奏
+- 曲线：`easeOut` - 快速响应，缓慢停止
+- 对齐：`Alignment.topCenter` - 从顶部锚点生长
 
 ```dart
-FadeTransition(
-  opacity: Tween<double>(begin: 0.0, end: 1.0).animate(
-    CurvedAnimation(
-      parent: controller,
+class MessageGrowthAnimation extends StatelessWidget {
+  final Widget child;
+  
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 300),
+      tween: Tween(begin: 0.0, end: 1.0),
       curve: Curves.easeOutCubic,
-    ),
-  ),
-  child: child,
-)
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 20 * (1 - value)),  // 从下方20px滑入
+            child: Transform.scale(
+              scale: 0.96 + (0.04 * value),  // 从96%放大到100%
+              alignment: Alignment.topCenter,
+              child: child,
+            ),
+          ),
+        );
+      },
+      child: child,
+    );
+  }
+}
 ```
+
+**应用场景**：
+- 新消息出现
+- AI 回复渲染完成
+- 工具结果卡片出现
+
+**注意事项**：
+- 不要在滚动列表中对所有可见项同时应用
+- 只对新增的项应用动画
+- 使用 `AnimatedList` 管理列表动画
 
 ---
 
-### 2. 滑动渐入 (Slide Fade In)
+### 2. 工具完成动画 (Tool Completion) ⭐⭐⭐⭐⭐
 
-**用途**：列表项出现、消息卡片进入、页面内容加载
+**设计意图**：工具从 running → success 的瞬间，需要明确的"完成感"和"仪式感"。
+
+**Claude 的实现**：
+- 状态图标切换（脉冲点 → 对勾）
+- 使用弹性曲线（elasticOut）
+- 有"弹跳"的完成感
 
 **规范**：
-- 时长：`standard` (300ms) 或 `emphasized` (400ms)
-- 曲线：`easeOut`
-- 位移：Y轴 15% → 0%
-- 透明度：0.0 → 1.0
+- 时长：`emphasized` (400ms) - 强调完成时刻
+- 曲线：`spring` (elasticOut) - 弹性效果
+- 图标：`Icons.check_circle_outline`
 
 ```dart
-// 组合动画
-SlideTransition(
-  position: Tween<Offset>(
-    begin: const Offset(0, 0.15),
-    end: Offset.zero,
-  ).animate(
-    CurvedAnimation(
-      parent: controller,
-      curve: Curves.easeOutCubic,
-    ),
-  ),
-  child: FadeTransition(
-    opacity: Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: controller,
-        curve: Curves.easeOutCubic,
+class ToolCompletionAnimation extends StatefulWidget {
+  final ToolWorkflowStepStatus status;
+  final Color successColor;
+  
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 400),
+      switchInCurve: Curves.elasticOut,  // 弹性进入
+      switchOutCurve: Curves.easeIn,     // 快速退出
+      transitionBuilder: (child, animation) {
+        return ScaleTransition(
+          scale: animation,
+          child: FadeTransition(
+            opacity: animation,
+            child: child,
+          ),
+        );
+      },
+      child: _buildStatusIcon(status),
+    );
+  }
+  
+  Widget _buildStatusIcon(ToolWorkflowStepStatus status) {
+    return switch (status) {
+      ToolWorkflowStepStatus.running => RunningStatusDot(
+        key: const ValueKey('running'),
+        color: runningColor,
+        isRunning: true,
       ),
-    ),
-    child: child,
-  ),
-)
+      ToolWorkflowStepStatus.completed => Icon(
+        Icons.check_circle_outline,
+        key: const ValueKey('completed'),
+        size: 16,
+        color: successColor,
+      ),
+      _ => const SizedBox.shrink(),
+    };
+  }
+}
 ```
 
-**变体**：
-- **从左滑入**：`Offset(-0.3, 0)` → `Offset.zero` - 用于侧边栏列表项
-- **从右滑入**：`Offset(0.3, 0)` → `Offset.zero` - 用于用户消息气泡
-- **从下滑入**：`Offset(0, 0.15)` → `Offset.zero` - 用于AI回复、工具卡片
+**应用场景**：
+- 工具执行完成
+- 文件保存成功
+- 操作确认反馈
+
+**注意事项**：
+- 弹性曲线不要过度（elasticOut 而非 bounceOut）
+- 完成图标应该保持可见，不要立即消失
+- 配合颜色变化增强反馈
 
 ---
 
-### 3. 缩放动画 (Scale)
+### 3. 输入框焦点呼吸 (Input Focus Breathing) ⭐⭐⭐⭐⭐
 
-**用途**：按钮按下反馈、强调效果、模态弹出
+**设计意图**：输入框是对话的入口，获得焦点时应该"浮起来"，有邀请感。
 
-**规范**：
-- 时长：`instant` (100ms) 或 `quick` (200ms)
-- 曲线：`easeOut`
-- 缩放：1.0 → 0.92 → 1.0（按下）或 0.8 → 1.0（弹出）
-
-```dart
-// 按钮按下
-AnimatedScale(
-  scale: isPressed ? 0.92 : 1.0,
-  duration: const Duration(milliseconds: 100),
-  curve: Curves.easeOut,
-  child: child,
-)
-
-// 模态弹出
-ScaleTransition(
-  scale: Tween<double>(begin: 0.8, end: 1.0).animate(
-    CurvedAnimation(
-      parent: controller,
-      curve: Curves.easeOutCubic,
-    ),
-  ),
-  child: child,
-)
-```
-
----
-
-### 4. 高度动画 (Elevation)
-
-**用途**：输入框获得焦点、卡片悬停、强调状态
+**Apple 的实现**：
+- 阴影增强（模拟高度提升）
+- 轻微缩放（1.0 → 1.02）
+- 阴影扩散（模拟光晕）
 
 **规范**：
-- 时长：`quick` (200ms)
-- 曲线：`easeOut`
-- 阴影模糊半径：20 → 32
+- 时长：`quick` (200ms) - 快速响应焦点变化
+- 曲线：`easeOut` - 快速响应，缓慢停止
+- 阴影模糊：20 → 28
 - 阴影偏移：(0, 9) → (0, 12)
-- 可选：轻微缩放 1.0 → 1.02
+- 缩放：1.0 → 1.02
 
 ```dart
-AnimatedContainer(
-  duration: const Duration(milliseconds: 200),
-  curve: Curves.easeOut,
-  decoration: BoxDecoration(
-    boxShadow: [
-      BoxShadow(
-        color: Colors.black.withOpacity(isFocused ? 0.1 : 0.065),
-        blurRadius: isFocused ? 32 : 20,
-        offset: Offset(0, isFocused ? 12 : 9),
+class FocusBreathingInput extends StatefulWidget {
+  final Widget child;
+  final FocusNode focusNode;
+  
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppColors>()!;
+    final isFocused = focusNode.hasFocus;
+    
+    return AnimatedScale(
+      scale: isFocused ? 1.02 : 1.0,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutCubic,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        decoration: BoxDecoration(
+          color: colors.assistantSurface.withValues(alpha: 0.96),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: colors.primaryText.withValues(
+                alpha: isFocused ? 0.12 : 0.065,
+              ),
+              blurRadius: isFocused ? 28 : 20,
+              offset: Offset(0, isFocused ? 12 : 9),
+              spreadRadius: isFocused ? 1 : 0,
+            ),
+          ],
+        ),
+        child: child,
+      ),
+    );
+  }
+}
+```
+
+**应用场景**：
+- 聊天输入框
+- 搜索框
+- 表单输入
+
+**注意事项**：
+- 缩放幅度要克制（1.02 而非 1.1）
+- 阴影变化要平滑
+- 配合边框高亮增强效果
+
+---
+
+### 4. 按钮按下反馈 (Button Press Feedback) ⭐⭐⭐⭐⭐
+
+**设计意图**：按钮按下瞬间就要有反馈，模拟真实的"按下去"的感觉。
+
+**Apple 的实现**：
+- 轻微缩小（1.0 → 0.98）
+- 阴影降低（模拟高度下降）
+- 瞬间响应（100ms）
+
+**规范**：
+- 时长：`instant` (100ms) - 触觉反馈延迟
+- 曲线：`easeOut` - 快速响应
+- 缩放：1.0 → 0.98
+- 阴影模糊：20 → 12
+- 阴影偏移：(0, 9) → (0, 4)
+
+```dart
+class PressableButton extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onPressed;
+  
+  @override
+  State<PressableButton> createState() => _PressableButtonState();
+}
+
+class _PressableButtonState extends State<PressableButton> {
+  bool _isPressed = false;
+  
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _isPressed = true),
+      onTapUp: (_) {
+        setState(() => _isPressed = false);
+        widget.onPressed?.call();
+      },
+      onTapCancel: () => setState(() => _isPressed = false),
+      child: AnimatedScale(
+        scale: _isPressed ? 0.98 : 1.0,
+        duration: const Duration(milliseconds: 100),
+        curve: Curves.easeOut,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 100),
+          curve: Curves.easeOut,
+          decoration: BoxDecoration(
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: _isPressed ? 12 : 20,
+                offset: Offset(0, _isPressed ? 4 : 9),
+              ),
+            ],
+          ),
+          child: widget.child,
+        ),
+      ),
+    );
+  }
+}
+```
+
+**应用场景**：
+- 发送按钮
+- 工具确认按钮
+- 所有可点击的按钮
+
+**注意事项**：
+- 必须在 `onTapDown` 时立即响应
+- 不要等到 `onTap` 才反馈
+- 缩放幅度要克制（0.98 而非 0.9）
+
+---
+
+### 5. 流式打字光标 (Streaming Cursor) ⭐⭐⭐⭐⭐
+
+**设计意图**：流式回复时，光标闪烁提示"AI 正在思考"，增强视觉连续性。
+
+**Claude 的实现**：
+- 光标闪烁（不是匀速，而是呼吸节奏）
+- 位置精准跟随文本
+- 透明度变化（0.3 → 1.0）
+
+**规范**：
+- 时长：`pulse` (800ms) - 呼吸周期
+- 曲线：`breathing` (easeInOutSine) - 平滑无顿挫
+- 透明度：0.3 → 1.0
+- 尺寸：2x18px
+
+```dart
+class StreamingCursor extends StatefulWidget {
+  final bool isVisible;
+  final Color color;
+  
+  @override
+  State<StreamingCursor> createState() => _StreamingCursorState();
+}
+
+class _StreamingCursorState extends State<StreamingCursor>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _opacityAnimation;
+  
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    )..repeat(reverse: true);
+    
+    _opacityAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeInOutSine,  // 呼吸曲线
+      ),
+    );
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.isVisible) return const SizedBox.shrink();
+    
+    return FadeTransition(
+      opacity: _opacityAnimation,
+      child: Container(
+        width: 2,
+        height: 18,
+        margin: const EdgeInsets.only(left: 1),
+        decoration: BoxDecoration(
+          color: widget.color,
+          borderRadius: BorderRadius.circular(1),
+        ),
+      ),
+    );
+  }
+}
+```
+
+**应用场景**：
+- AI 流式回复
+- 实时输入提示
+- 加载状态指示
+
+**注意事项**：
+- 光标必须紧跟文本末尾
+- 使用 `easeInOutSine` 而非 `easeInOut`
+- 流式结束后立即隐藏光标
+
+---
+
+### 6. 工具执行呼吸效果 (Tool Running Pulse)
+
+**设计意图**：工具执行中，通过呼吸效果传达"正在工作"的状态。
+
+**现有实现分析**：
+- ✅ `RunningStatusDot` 已实现脉冲效果
+- ✅ 使用 760ms 周期（接近呼吸节奏）
+- ⚠️ 曲线使用 `easeInOut`，建议改为 `easeInOutSine`
+
+**优化建议**：
+```dart
+// 当前实现（tool_running_effects.dart:28）
+duration: const Duration(milliseconds: 760),
+curve: Curves.easeInOut,  // ⚠️ 有轻微顿挫感
+
+// 优化后
+duration: const Duration(milliseconds: 800),  // 标准呼吸周期
+curve: Curves.easeInOutSine,  // 更平滑的呼吸曲线
+```
+
+**规范**：
+- 时长：`pulse` (800ms) - 人的呼吸周期
+- 曲线：`breathing` (easeInOutSine) - 平滑无顿挫
+- 缩放：1.0 → 1.42
+- 透明度：0.78 → 1.0
+- 光晕：10 → 18 blur radius
+
+**应用场景**：
+- 工具执行中的状态点
+- 加载指示器
+- 实时状态指示
+
+---
+
+### 7. 工具卡片扫光效果 (Tool Card Sweep)
+
+**设计意图**：工具执行中，扫光效果增强"正在处理"的感知。
+
+**现有实现分析**：
+- ✅ `RunningSweepSurface` 已实现扫光
+- ✅ 使用 1100ms 周期（接近阅读扫描速度）
+- ✅ 对角线扫光，视觉效果自然
+
+**优化建议**：
+```dart
+// 当前实现（tool_running_effects.dart:210）
+duration: const Duration(milliseconds: 1100),
+
+// 优化后
+duration: const Duration(milliseconds: 1200),  // 标准扫描周期
+```
+
+**规范**：
+- 时长：`sweep` (1200ms) - 视觉扫描速度
+- 曲线：`easeInOut` - 平滑循环
+- 角度：-0.32 弧度（约 -18°）
+- 宽度：容器宽度的 56%
+- 透明度：0 → 0.42 → 0
+
+**应用场景**：
+- 工具执行中的卡片背景
+- 大面积加载状态
+- 强调正在处理的区域
+
+---
+
+### 8. Reasoning 折叠动画 (Reasoning Collapse)
+
+**设计意图**：思考过程的展开/折叠应该平滑，有高度变化的过渡。
+
+**现有实现分析**：
+- ⚠️ 当前直接显示/隐藏，无过渡动画
+- 需要添加 `AnimatedSize`
+
+**规范**：
+- 时长：`standard` (300ms) - 标准动画
+- 曲线：`easeInOutCubic` - 平滑的高度变化
+- 对齐：`Alignment.topCenter` - 从顶部展开
+
+```dart
+// 优化 reasoning_section.dart
+Widget _buildCollapsibleContent({
+  required BuildContext context,
+  required AppColors colors,
+  required AppSpacing spacing,
+  required String normalized,
+}) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: () => setState(() => _isExpanded = !_isExpanded),
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: spacing.xxs),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text('思考过程', ...),
+              ),
+              AnimatedRotation(  // 添加箭头旋转动画
+                turns: _isExpanded ? 0.5 : 0,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOutCubic,
+                child: Icon(Icons.keyboard_arrow_down, ...),
+              ),
+            ],
+          ),
+        ),
+      ),
+      AnimatedSize(  // 添加高度动画
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOutCubic,
+        alignment: Alignment.topCenter,
+        child: _isExpanded
+            ? Padding(
+                padding: EdgeInsets.only(top: spacing.xxs),
+                child: SelectableText(normalized, ...),
+              )
+            : const SizedBox.shrink(),
       ),
     ],
-  ),
-  child: child,
-)
+  );
+}
+```
+
+**应用场景**：
+- Reasoning 区域展开/折叠
+- 工具详情展开/折叠
+- FAQ 手风琴
+
+---
+
+### 9. 页面转场动画 (Page Transition)
+
+**设计意图**：页面切换应该有空间感，从右侧滑入 + 渐入。
+
+**规范**：
+- 时长：`emphasized` (400ms) - 强调空间变化
+- 曲线：`easeOut` - 快速响应，缓慢停止
+- 位移：从右侧 100% 滑入
+- 透明度：0.0 → 1.0
+
+```dart
+class AppPageRoute<T> extends PageRouteBuilder<T> {
+  final Widget page;
+  
+  AppPageRoute({required this.page})
+      : super(
+          pageBuilder: (context, animation, secondaryAnimation) => page,
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            const begin = Offset(1.0, 0.0);
+            const end = Offset.zero;
+            
+            var slideTween = Tween(begin: begin, end: end)
+                .chain(CurveTween(curve: Curves.easeOutCubic));
+            var slideAnimation = animation.drive(slideTween);
+            
+            var fadeTween = Tween<double>(begin: 0.0, end: 1.0);
+            var fadeAnimation = animation.drive(fadeTween);
+            
+            return SlideTransition(
+              position: slideAnimation,
+              child: FadeTransition(
+                opacity: fadeAnimation,
+                child: child,
+              ),
+            );
+          },
+          transitionDuration: const Duration(milliseconds: 400),
+        );
+}
+
+// 使用
+Navigator.of(context).push(
+  AppPageRoute(page: SettingsPage()),
+);
+```
+
+**应用场景**：
+- 设置页面
+- 详情页面
+- 模型管理页面
+
+---
+
+### 10. 空状态浮动动画 (Empty State Float)
+
+**设计意图**：空状态的建议卡片轻微浮动，增加活力和吸引力。
+
+**规范**：
+- 时长：`ambient` (2000ms + index * 200ms) - 错位节奏
+- 曲线：`easeInOut` - 平滑循环
+- 位移：±4px - 微妙的浮动
+
+```dart
+class FloatingCard extends StatefulWidget {
+  final Widget child;
+  final int index;
+  
+  @override
+  State<FloatingCard> createState() => _FloatingCardState();
+}
+
+class _FloatingCardState extends State<FloatingCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _floatAnimation;
+  
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: Duration(milliseconds: 2000 + (widget.index * 200)),
+      vsync: this,
+    )..repeat(reverse: true);
+    
+    _floatAnimation = Tween<double>(
+      begin: -4.0,
+      end: 4.0,
+    ).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeInOut,
+      ),
+    );
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _floatAnimation,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, _floatAnimation.value),
+          child: child,
+        );
+      },
+      child: widget.child,
+    );
+  }
+}
+```
+
+**应用场景**：
+- 空状态建议卡片
+- 引导页装饰元素
+- 非核心的氛围动画
+
+**注意事项**：
+- 浮动幅度要克制（±4px）
+- 不同卡片错位启动
+- 可以提供禁用选项
+
+---
+
+## 现有动画审查与优化建议
+
+基于对现有代码的分析，以下是需要优化的地方：
+
+### 1. `tool_running_effects.dart` 优化
+
+#### RunningStatusDot
+```dart
+// 当前实现
+duration: const Duration(milliseconds: 760),  // ⚠️ 非标准数值
+curve: Curves.easeInOut,  // ⚠️ 循环时有轻微顿挫
+
+// 建议优化
+duration: const Duration(milliseconds: 800),  // ✅ 标准呼吸周期
+curve: Curves.easeInOutSine,  // ✅ 更平滑的呼吸曲线
+```
+
+#### SubtleRunningBreathingSurface
+```dart
+// 当前实现
+duration: const Duration(milliseconds: 1500),  // ⚠️ 偏慢
+
+// 建议优化
+duration: const Duration(milliseconds: 1200),  // ✅ 标准扫描周期
+```
+
+#### RunningSweepSurface
+```dart
+// 当前实现
+duration: const Duration(milliseconds: 1100),  // ⚠️ 非标准数值
+
+// 建议优化
+duration: const Duration(milliseconds: 1200),  // ✅ 标准扫描周期
 ```
 
 ---
 
-### 5. 展开/折叠动画 (Expand/Collapse)
+### 2. `tool_workflow_card.dart` 优化
 
-**用途**：Reasoning区域、工具详情、FAQ手风琴
+```dart
+// 当前实现（第77行）
+AnimatedContainer(
+  duration: const Duration(milliseconds: 180),  // ⚠️ 非标准数值
+  curve: Curves.easeOut,  // ✅ 曲线正确
+  
+// 建议优化
+AnimatedContainer(
+  duration: const Duration(milliseconds: 200),  // ✅ 标准快速过渡
+  curve: Curves.easeOutCubic,  // ✅ 更精确的曲线
+```
 
-**规范**：
-- 时长：`standard` (300ms)
-- 曲线：`easeInOutCubic`
-- 使用 `AnimatedSize` 或 `AnimatedCrossFade`
+---
 
+### 3. `reasoning_section.dart` 优化
+
+**当前问题**：折叠/展开无过渡动画
+
+**建议添加**：
 ```dart
 AnimatedSize(
   duration: const Duration(milliseconds: 300),
   curve: Curves.easeInOutCubic,
   alignment: Alignment.topCenter,
-  child: isExpanded
-      ? Column(children: expandedContent)
-      : const SizedBox.shrink(),
+  child: _isExpanded ? content : const SizedBox.shrink(),
 )
-```
 
-**注意事项**：
-- 避免在长列表中使用，可能导致性能问题
-- 优先使用 `AnimatedSize` 而非手动计算高度
-- 折叠时使用 `SizedBox.shrink()` 而非 `Container(height: 0)`
-
----
-
-### 6. 错位动画 (Staggered)
-
-**用途**：列表批量出现、侧边栏菜单项、卡片网格
-
-**规范**：
-- 基础时长：`standard` (300ms)
-- 错位延迟：50ms/项（最多300ms）
-- 曲线：`easeOut`
-
-```dart
-// 每个列表项
-Future.delayed(Duration(milliseconds: index * 50), () {
-  if (mounted) controller.forward();
-});
-```
-
-**最佳实践**：
-- 限制错位项数量（最多6-8项）
-- 超过限制的项直接显示，避免等待过长
-- 使用 `AnimatedList` 处理动态列表
-
----
-
-### 7. 页面转场 (Page Transition)
-
-**用途**：页面导航、路由切换
-
-**规范**：
-- 时长：`emphasized` (400ms)
-- 曲线：`easeOutCubic`
-- 效果：滑动 + 渐变
-
-```dart
-PageRouteBuilder(
-  pageBuilder: (context, animation, secondaryAnimation) => page,
-  transitionsBuilder: (context, animation, secondaryAnimation, child) {
-    const begin = Offset(1.0, 0.0);
-    const end = Offset.zero;
-    
-    var slideTween = Tween(begin: begin, end: end)
-        .chain(CurveTween(curve: Curves.easeOutCubic));
-    var slideAnimation = animation.drive(slideTween);
-    
-    var fadeTween = Tween<double>(begin: 0.0, end: 1.0);
-    var fadeAnimation = animation.drive(fadeTween);
-    
-    return SlideTransition(
-      position: slideAnimation,
-      child: FadeTransition(
-        opacity: fadeAnimation,
-        child: child,
-      ),
-    );
-  },
-  transitionDuration: const Duration(milliseconds: 400),
+// 同时添加箭头旋转动画
+AnimatedRotation(
+  turns: _isExpanded ? 0.5 : 0,
+  duration: const Duration(milliseconds: 300),
+  curve: Curves.easeInOutCubic,
+  child: Icon(Icons.keyboard_arrow_down),
 )
 ```
 
 ---
 
-### 8. 加载动画 (Loading)
+### 4. `chat_timeline_row.dart` 优化
 
-**用途**：数据加载、AI思考、工具执行
+**当前问题**：消息直接渲染，无出现动画
 
-**规范**：
-
-#### 8.1 线性进度条
-- 时长：循环 1500ms
-- 曲线：`easeInOut`
-- 高度：3px
-- 位置：顶部或内容区域顶部
-
+**建议添加**：
 ```dart
-LinearProgressIndicator(
-  minHeight: 3,
-  backgroundColor: Colors.transparent,
-  valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
-)
-```
-
-#### 8.2 脉冲动画（工具执行中）
-- 时长：循环 1200ms
-- 曲线：`easeInOut`
-- 透明度：0.4 → 1.0 → 0.4
-- 缩放：1.0 → 1.05 → 1.0
-
-```dart
-// 已在 tool_running_effects.dart 中实现
-PulsingDot(
-  size: 8,
-  color: workflowRunningColor,
-)
-```
-
-#### 8.3 打字光标
-- 时长：循环 800ms
-- 曲线：`easeInOut`
-- 透明度：0.2 → 1.0 → 0.2
-- 尺寸：2x16px
-
-```dart
-FadeTransition(
-  opacity: Tween<double>(begin: 0.2, end: 1.0).animate(
-    CurvedAnimation(
-      parent: controller,
-      curve: Curves.easeInOut,
-    ),
-  ),
-  child: Container(
-    width: 2,
-    height: 16,
-    decoration: BoxDecoration(
-      color: cursorColor,
-      borderRadius: BorderRadius.circular(1),
-    ),
-  ),
-)
-```
-
----
-
-### 9. 微交互动画 (Micro-interactions)
-
-**用途**：按钮点击、开关切换、复选框勾选
-
-**规范**：
-- 时长：`instant` (100ms)
-- 曲线：`easeOut` 或 `spring`
-- 效果：缩放 + 颜色变化
-
-```dart
-// 按钮点击反馈
-GestureDetector(
-  onTapDown: (_) => setState(() => isPressed = true),
-  onTapUp: (_) => setState(() => isPressed = false),
-  onTapCancel: () => setState(() => isPressed = false),
-  child: AnimatedScale(
-    scale: isPressed ? 0.92 : 1.0,
-    duration: const Duration(milliseconds: 100),
-    curve: Curves.easeOut,
-    child: child,
-  ),
-)
-```
-
----
-
-### 10. 氛围动画 (Ambient)
-
-**用途**：背景渐变、空状态浮动、装饰性元素
-
-**规范**：
-- 时长：`gentle` (600ms) 或更长（2-10秒）
-- 曲线：`easeInOut`
-- 幅度：微妙（位移 ±4px，透明度 ±0.1）
-
-```dart
-// 浮动动画
-AnimatedBuilder(
-  animation: controller,
-  builder: (context, child) {
-    return Transform.translate(
-      offset: Offset(0, sin(controller.value * 2 * pi) * 4),
+// 包装 ChatTimelineRow
+class AnimatedTimelineEntry extends StatefulWidget {
+  final Widget child;
+  
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 300),
+      tween: Tween(begin: 0.0, end: 1.0),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 20 * (1 - value)),
+            child: Transform.scale(
+              scale: 0.96 + (0.04 * value),
+              alignment: Alignment.topCenter,
+              child: child,
+            ),
+          ),
+        );
+      },
       child: child,
     );
-  },
-  child: child,
-)
+  }
+}
 ```
-
-**注意事项**：
-- 氛围动画应极其克制，避免分散注意力
-- 仅在空状态、引导页等非核心交互场景使用
-- 提供禁用选项
 
 ---
 
-## 性能优化指南
+### 5. `chat_input.dart` 优化
 
-### GPU 加速属性（推荐）
-✅ **优先使用**：
-- `opacity` - 透明度
-- `transform` - 位移、旋转、缩放
-- `decoration.color` - 颜色变化
+**当前问题**：焦点状态无动画反馈
 
-### 触发重排属性（谨慎使用）
-⚠️ **需要优化**：
-- `width` / `height` - 使用 `AnimatedSize` 包装
-- `padding` / `margin` - 使用 `AnimatedPadding`
-- `alignment` - 使用 `AnimatedAlign`
+**建议添加**：
+```dart
+// 监听焦点变化
+focusNode.addListener(() {
+  setState(() {});
+});
 
-### 性能检查清单
-- [ ] 避免在 `build` 方法中创建 `AnimationController`
-- [ ] 使用 `const` 构造函数
-- [ ] 大列表使用 `AnimatedList` 而非 `ListView` 全量重建
-- [ ] 限制同时运行的动画数量（建议 ≤ 3个复杂动画）
-- [ ] 使用 `RepaintBoundary` 隔离动画区域
-- [ ] 动画完成后及时 `dispose` controller
+// 添加焦点动画
+AnimatedScale(
+  scale: focusNode.hasFocus ? 1.02 : 1.0,
+  duration: const Duration(milliseconds: 200),
+  curve: Curves.easeOutCubic,
+  child: AnimatedContainer(
+    duration: const Duration(milliseconds: 200),
+    curve: Curves.easeOutCubic,
+    decoration: BoxDecoration(
+      boxShadow: [
+        BoxShadow(
+          blurRadius: focusNode.hasFocus ? 28 : 20,
+          offset: Offset(0, focusNode.hasFocus ? 12 : 9),
+          spreadRadius: focusNode.hasFocus ? 1 : 0,
+        ),
+      ],
+    ),
+  ),
+)
+```
+
+---
+
+### 6. `streaming_response_block.dart` 优化
+
+**当前问题**：缺少打字光标
+
+**建议添加**：
+```dart
+Row(
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+    Expanded(
+      child: MarkdownBody(data: text),
+    ),
+    StreamingCursor(
+      isVisible: true,
+      color: colors.workflowRunning,
+    ),
+  ],
+)
+```
 
 ---
 
