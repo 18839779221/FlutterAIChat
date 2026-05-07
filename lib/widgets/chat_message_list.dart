@@ -30,6 +30,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   static const double _anchorThreshold = 100;
   bool _isLoadingOlderHistory = false;
   late final ScrollController _scrollController;
+  int _previousItemCount = 0;
 
   @override
   void initState() {
@@ -131,6 +132,10 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final itemCount = timelineItems.length + (hasMoreMessages ? 1 : 0);
     final currentGroupId = ref.read(currentGroupProvider)?.id;
 
+    // Detect if new items were added (only animate the last item if count increased)
+    final hasNewItems = timelineItems.length > _previousItemCount;
+    _previousItemCount = timelineItems.length;
+
     if (messages.isEmpty) {
       return ChatEmptyState(
         suggestions: buildChatEmptySuggestionsFromCases(
@@ -170,6 +175,9 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
               }
 
               final item = timelineItems[index];
+              final isLastItem = index == timelineItems.length - 1;
+              final shouldAnimate = hasNewItems && isLastItem;
+
               return Align(
                 alignment: Alignment.topCenter,
                 child: ConstrainedBox(
@@ -184,6 +192,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
                       blockBuilder: _blockBuilder,
                       currentGroupId: currentGroupId,
                       onLongPressMessage: _showMessageOptionMenu,
+                      shouldAnimate: shouldAnimate,
                     ),
                   ),
                 ),

@@ -42,6 +42,7 @@ class ChatTimelineRow extends ConsumerWidget {
   final ChatBlockBuilder blockBuilder;
   final int? currentGroupId;
   final ValueChanged<ChatMessage> onLongPressMessage;
+  final bool shouldAnimate;
 
   const ChatTimelineRow({
     super.key,
@@ -49,12 +50,11 @@ class ChatTimelineRow extends ConsumerWidget {
     required this.blockBuilder,
     required this.currentGroupId,
     required this.onLongPressMessage,
+    this.shouldAnimate = false,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final motion = Theme.of(context).extension<AppMotion>()!;
-
     final row = switch (item.type) {
       ChatTimelineItemType.userBubble => _buildUserBubble(),
       ChatTimelineItemType.assistantBlock => _buildAssistantBlock(
@@ -63,20 +63,22 @@ class ChatTimelineRow extends ConsumerWidget {
         ),
     };
 
-    // Wrap with growth animation for new messages
-    final animatedRow = MessageGrowthAnimation(
-      duration: motion.standard,
-      curve: motion.easeOut,
-      child: row,
-    );
+    // Only animate if explicitly requested (for new messages)
+    final displayRow = shouldAnimate
+        ? MessageGrowthAnimation(
+            duration: Theme.of(context).extension<AppMotion>()!.standard,
+            curve: Theme.of(context).extension<AppMotion>()!.easeOut,
+            child: row,
+          )
+        : row;
 
     if (item.runningTailText == null) {
-      return animatedRow;
+      return displayRow;
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        animatedRow,
+        displayRow,
         LatestMessageRunningStatusTail(statusText: item.runningTailText!),
       ],
     );
