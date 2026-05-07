@@ -17,6 +17,7 @@ import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
 import 'package:ai_chat/widgets/chat_message_list.dart';
+import 'package:ai_chat/widgets/animations/message_growth_animation.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_result_card.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_timeline_card.dart';
 import 'package:ai_chat/widgets/tool_renderers/web_search_tool_result_card.dart';
@@ -368,6 +369,43 @@ void main() {
 
       expect(find.byType(ToolInlineStepRow), findsOneWidget);
       expect(find.text('已执行：搜索历史记录'), findsOneWidget);
+      expect(find.byType(AnimatedSwitcher), findsOneWidget);
+    });
+
+    testWidgets('newly appended assistant row uses restrained growth motion',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '先前消息',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+      );
+
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '先前消息',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+          ),
+          _buildMessage(
+            text: '新消息',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+      );
+
+      final animation = tester.widget<MessageGrowthAnimation>(
+        find.byType(MessageGrowthAnimation).last,
+      );
+      expect(animation.offsetY, 10);
+      expect(animation.beginScale, 0.985);
     });
 
     testWidgets(

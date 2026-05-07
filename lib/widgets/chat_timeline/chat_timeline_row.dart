@@ -101,6 +101,7 @@ class ChatTimelineRow extends ConsumerWidget {
     final activeAskUserQuestion =
         ref.watch(activeAskUserQuestionMessageProvider);
     final toolUiRegistry = ref.watch(toolUiRendererRegistryProvider);
+    final motion = Theme.of(context).extension<AppMotion>()!;
 
     late final Widget blockWidget;
     switch (block.type) {
@@ -219,7 +220,26 @@ class ChatTimelineRow extends ConsumerWidget {
         );
         break;
     }
-    return blockWidget;
+
+    final shouldUseBlockTransition =
+        block.type == AssistantTurnBlockType.toolResultSummary ||
+        block.type == AssistantTurnBlockType.toolWorkflow;
+    if (!shouldUseBlockTransition) {
+      return blockWidget;
+    }
+
+    return AnimatedSwitcher(
+      duration: motion.quick,
+      switchInCurve: motion.easeOut,
+      switchOutCurve: motion.easeIn,
+      transitionBuilder: (child, animation) {
+        return FadeTransition(opacity: animation, child: child);
+      },
+      child: KeyedSubtree(
+        key: ValueKey('${block.type.name}_${block.id}_${block.text ?? ''}'),
+        child: blockWidget,
+      ),
+    );
   }
 
   Widget _buildToolResultBlockWidget({
@@ -552,8 +572,30 @@ class _MinimumVisibleToolStateSwitcherState
   @override
   Widget build(BuildContext context) {
     if (widget.visibleUntil.isAfter(DateTime.now())) {
-      return widget.runningChild;
+      return AnimatedSwitcher(
+        duration: Theme.of(context).extension<AppMotion>()!.quick,
+        switchInCurve: Theme.of(context).extension<AppMotion>()!.easeOut,
+        switchOutCurve: Theme.of(context).extension<AppMotion>()!.easeIn,
+        transitionBuilder: (child, animation) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        child: KeyedSubtree(
+          key: const ValueKey('tool-running-child'),
+          child: widget.runningChild,
+        ),
+      );
     }
-    return widget.resultChild;
+    return AnimatedSwitcher(
+      duration: Theme.of(context).extension<AppMotion>()!.quick,
+      switchInCurve: Theme.of(context).extension<AppMotion>()!.easeOut,
+      switchOutCurve: Theme.of(context).extension<AppMotion>()!.easeIn,
+      transitionBuilder: (child, animation) {
+        return FadeTransition(opacity: animation, child: child);
+      },
+      child: KeyedSubtree(
+        key: const ValueKey('tool-result-child'),
+        child: widget.resultChild,
+      ),
+    );
   }
 }

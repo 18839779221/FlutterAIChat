@@ -8,12 +8,16 @@ class MessageGrowthAnimation extends StatelessWidget {
   final Widget child;
   final Duration? duration;
   final Curve? curve;
+  final double offsetY;
+  final double beginScale;
 
   const MessageGrowthAnimation({
     super.key,
     required this.child,
     this.duration,
     this.curve,
+    this.offsetY = 10,
+    this.beginScale = 0.985,
   });
 
   @override
@@ -26,9 +30,9 @@ class MessageGrowthAnimation extends StatelessWidget {
         return Opacity(
           opacity: value,
           child: Transform.translate(
-            offset: Offset(0, 20 * (1 - value)), // Slide up from 20px below
+            offset: Offset(0, offsetY * (1 - value)),
             child: Transform.scale(
-              scale: 0.96 + (0.04 * value), // Scale from 96% to 100%
+              scale: beginScale + ((1 - beginScale) * value),
               alignment: Alignment.topCenter,
               child: child,
             ),

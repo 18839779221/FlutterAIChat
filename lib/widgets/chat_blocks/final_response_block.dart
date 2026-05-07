@@ -1,3 +1,4 @@
+import 'package:ai_chat/theme/app_motion.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/theme/app_typography.dart';
 import 'package:ai_chat/widgets/chat_blocks/reasoning_section.dart';
@@ -22,44 +23,50 @@ class FinalResponseBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final motion = Theme.of(context).extension<AppMotion>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        spacing.md - 1,
-        0,
-        spacing.md - 1,
-        spacing.xxs,
-      ),
-      child: SizedBox(
-        width: double.infinity,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (title.trim().isNotEmpty && title != '最终回答') ...[
-              Text(
-                title,
-                style: AppTypography.uiStyle(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  fontSize: 14.8,
-                  fontWeight: FontWeight.w500,
-                  height: 1.14,
+    return AnimatedOpacity(
+      duration: motion.quick,
+      curve: motion.easeOut,
+      opacity: 1,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          spacing.md - 1,
+          0,
+          spacing.md - 1,
+          spacing.xxs,
+        ),
+        child: SizedBox(
+          width: double.infinity,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (title.trim().isNotEmpty && title != '最终回答') ...[
+                Text(
+                  title,
+                  style: AppTypography.uiStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontSize: 14.8,
+                    fontWeight: FontWeight.w500,
+                    height: 1.14,
+                  ),
                 ),
+                SizedBox(height: spacing.xxs + 1),
+              ],
+              if ((reasoningText ?? '').trim().isNotEmpty)
+                ReasoningSection(
+                  text: reasoningText!,
+                  variant: ReasoningSectionVariant.finalAnswerCollapsible,
+                  initiallyExpanded: false,
+                ),
+              StableMarkdownBlock(
+                cacheKey:
+                    markdownCacheKey ?? 'final:${title.trim()}:${text.hashCode}',
+                child: FlutterMarkdownImpl(data: text),
               ),
-              SizedBox(height: spacing.xxs + 1),
             ],
-            if ((reasoningText ?? '').trim().isNotEmpty)
-              ReasoningSection(
-                text: reasoningText!,
-                variant: ReasoningSectionVariant.finalAnswerCollapsible,
-                initiallyExpanded: false,
-              ),
-            StableMarkdownBlock(
-              cacheKey:
-                  markdownCacheKey ?? 'final:${title.trim()}:${text.hashCode}',
-              child: FlutterMarkdownImpl(data: text),
-            ),
-          ],
+          ),
         ),
       ),
     );
