@@ -24,6 +24,30 @@ void main() {
       expect(message.text, contains('# runtimePlatform'));
     });
 
+    test('preserves skills list reminder block inside system reminder', () {
+      const builder = UserContextMessageBuilder();
+      final message = builder.buildMessage(
+        snapshot: const RuntimeUserContextSnapshot(
+          currentDateText: "Today's date is 2026-05-09.",
+          agentsMdText: '',
+          additionalSections: [
+            'The following skills are available for use with the Skill tool:\n\n- verify: Run project verification after code changes.'
+          ],
+        ),
+      );
+
+      expect(message.role, MessageRole.user);
+      expect(message.text, contains('<system-reminder>'));
+      expect(
+        message.text,
+        contains('The following skills are available for use with the Skill tool:'),
+      );
+      expect(
+        message.text,
+        contains('- verify: Run project verification after code changes.'),
+      );
+    });
+
     test('omits empty sections from reminder body', () {
       const builder = UserContextMessageBuilder();
       final message = builder.buildMessage(

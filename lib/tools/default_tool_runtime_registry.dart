@@ -1,4 +1,5 @@
 import '../services/tool_executor.dart';
+import '../services/skills/skill_runtime_service.dart';
 import 'core/tool_runtime_registry.dart';
 import 'handlers/ask_user_question_tool_handler.dart';
 import 'handlers/create_calendar_event_tool_handler.dart';
@@ -12,6 +13,7 @@ import 'handlers/ls_tool_handler.dart';
 import 'handlers/read_tool_handler.dart';
 import 'handlers/search_chat_history_tool_handler.dart';
 import 'handlers/share_result_tool_handler.dart';
+import 'handlers/skill_tool_handler.dart';
 import 'handlers/web_search_tool_handler.dart';
 import 'handlers/write_tool_handler.dart';
 
@@ -19,11 +21,14 @@ import 'handlers/write_tool_handler.dart';
 /// host adapters exposed by [ToolExecutor].
 ToolRuntimeRegistry buildDefaultToolRuntimeRegistry({
   required ToolExecutor toolExecutor,
+  SkillRuntimeService? skillRuntimeService,
   CreateArtifactToolHandler? createArtifactHandler,
 }) {
   return ToolRuntimeRegistry(
     handlers: [
       if (createArtifactHandler != null) createArtifactHandler,
+      if (skillRuntimeService != null)
+        SkillToolHandler(skillRuntimeService: skillRuntimeService),
       AskUserQuestionToolHandler(),
       SearchChatHistoryToolHandler(
         searcher: ({

@@ -5,6 +5,9 @@ import 'package:ai_chat/pages/settings_page.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
+import 'package:ai_chat/models/skill/skill_descriptor.dart';
+import 'package:ai_chat/services/skills/skill_runtime_service.dart';
+import 'package:ai_chat/services/skills/skill_storage_service.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -31,6 +34,8 @@ void main() {
       ProviderScope(
         overrides: [
           appSettingsRepositoryProvider.overrideWithValue(repository),
+          skillRuntimeServiceProvider
+              .overrideWithValue(_EmptySkillRuntimeService()),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -86,6 +91,8 @@ void main() {
       ProviderScope(
         overrides: [
           appSettingsRepositoryProvider.overrideWithValue(repository),
+          skillRuntimeServiceProvider
+              .overrideWithValue(_EmptySkillRuntimeService()),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -143,6 +150,8 @@ void main() {
       ProviderScope(
         overrides: [
           appSettingsRepositoryProvider.overrideWithValue(repository),
+          skillRuntimeServiceProvider
+              .overrideWithValue(_EmptySkillRuntimeService()),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -208,6 +217,8 @@ void main() {
       ProviderScope(
         overrides: [
           appSettingsRepositoryProvider.overrideWithValue(repository),
+          skillRuntimeServiceProvider
+              .overrideWithValue(_EmptySkillRuntimeService()),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -248,6 +259,8 @@ void main() {
       ProviderScope(
         overrides: [
           appSettingsRepositoryProvider.overrideWithValue(repository),
+          skillRuntimeServiceProvider
+              .overrideWithValue(_EmptySkillRuntimeService()),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -269,4 +282,81 @@ void main() {
     expect(find.text('fetch_webpage'), findsNothing);
     expect(await repository.getTrustedToolNames(), isEmpty);
   });
+
+  testWidgets('skills section renders installed skills', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    SharedPreferences.setMockInitialValues({});
+    final repository = AppSettingsRepository(
+      await SharedPreferences.getInstance(),
+      localDefaultsLoader: () async => null,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appSettingsRepositoryProvider.overrideWithValue(repository),
+          skillRuntimeServiceProvider.overrideWithValue(
+            _StaticSkillRuntimeService(
+              skills: const [
+                SkillDescriptor(
+                  id: 'edge-to-edge',
+                  name: 'edge-to-edge',
+                  description: 'Improve Android edge-to-edge handling.',
+                  bodyText: '# Workflow\nPrefer Android edge-to-edge guidance.',
+                  skillRootPath: '/tmp/skills/edge-to-edge',
+                  entryFilePath: '/tmp/skills/edge-to-edge/SKILL.md',
+                  sourceType: SkillSourceType.localInstalled,
+                  isEnabled: true,
+                ),
+              ],
+            ),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const SettingsPage(),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Skills'), findsOneWidget);
+    expect(
+      find.textContaining('运行时上下文'),
+      findsOneWidget,
+    );
+    expect(find.text('edge-to-edge'), findsOneWidget);
+    expect(find.text('Improve Android edge-to-edge handling.'), findsOneWidget);
+  });
+}
+
+class _EmptySkillRuntimeService extends SkillRuntimeService {
+  _EmptySkillRuntimeService()
+      : super(
+          storageService: SkillStorageService(
+            rootDirectoryProvider: () async =>
+                throw UnimplementedError('not used in this test'),
+          ),
+        );
+
+  @override
+  Future<List<SkillDescriptor>> listAvailableSkills() async => const [];
+}
+
+class _StaticSkillRuntimeService extends SkillRuntimeService {
+  _StaticSkillRuntimeService({required this.skills})
+      : super(
+          storageService: SkillStorageService(
+            rootDirectoryProvider: () async =>
+                throw UnimplementedError('not used in this test'),
+          ),
+        );
+
+  final List<SkillDescriptor> skills;
+
+  @override
+  Future<List<SkillDescriptor>> listAvailableSkills() async => skills;
 }

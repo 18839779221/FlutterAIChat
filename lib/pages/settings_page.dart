@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/llm/llm_provider_config.dart';
 import '../models/llm/llm_provider_model.dart';
+import '../models/skill/skill_descriptor.dart';
 import '../models/tool/tool_policy.dart';
 import '../providers/chat_providers.dart';
 import '../services/llm_model_test_service.dart';
@@ -12,6 +13,7 @@ import '../theme/app_spacing.dart';
 import '../widgets/settings/settings_group_section.dart';
 import '../widgets/settings/settings_row.dart';
 import '../widgets/settings/settings_segmented_control.dart';
+import '../widgets/settings/skill_install_sheet.dart';
 import 'model_management_page.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
@@ -26,8 +28,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _autoShowKeyboard = true;
   bool _isLoading = true;
   bool _isTestingModel = false;
+  bool _isLoadingSkills = true;
+  bool _isInstallingSkill = false;
   ToolExecutionMode _toolExecutionMode = ToolExecutionMode.balanced;
   List<String> _trustedToolNames = const [];
+  List<SkillDescriptor> _skills = const [];
+  String? _latestSkillInstallUrl;
   List<LlmProviderConfig> _providers = const [];
   LlmProviderConfig? _currentProvider;
   LlmProviderModel? _currentModel;
@@ -44,6 +50,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final selection = await repository.getSelectionState();
     final toolExecutionModeName = await repository.getToolExecutionModeName();
     final trustedToolNames = await repository.getTrustedToolNames();
+    final latestSkillInstallUrl = await repository.getLatestSkillInstallUrl();
 
     LlmProviderConfig? currentProvider;
     LlmProviderModel? currentModel;
@@ -68,13 +75,31 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       return;
     }
 
+    await _loadSkills();
+
+    if (!mounted) {
+      return;
+    }
+
     setState(() {
       _providers = providers;
       _currentProvider = currentProvider;
       _currentModel = currentModel;
       _toolExecutionMode = _parseToolExecutionMode(toolExecutionModeName);
       _trustedToolNames = trustedToolNames.toList()..sort();
+      _latestSkillInstallUrl = latestSkillInstallUrl;
       _isLoading = false;
+    });
+  }
+
+  Future<void> _loadSkills() async {
+    final skills = await ref.read(skillRuntimeServiceProvider).listAvailableSkills();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _skills = skills;
+      _isLoadingSkills = false;
     });
   }
 
@@ -131,6 +156,55 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ),
     );
     await _loadSettings();
+  }
+
+  Future<void> _toggleSkill(SkillDescriptor skill, bool enabled) async {
+    final repository = ref.read(appSettingsRepositoryProvider);
+    if (enabled) {
+      await repository.enableSkillId(skill.id);
+    } else {
+      await repository.disableSkillId(skill.id);
+    }
+    await _loadSkills();
+  }
+
+  Future<void> _openSkillInstallSheet() async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).extension<AppColors>()!.chatBackground,
+      builder: (_) => SkillInstallSheet(initialUrl: _latestSkillInstallUrl),
+    );
+    if (result == null || result.trim().isEmpty) {
+      return;
+    }
+    setState(() {
+      _isInstallingSkill = true;
+    });
+    try {
+      await ref.read(appSettingsRepositoryProvider).saveLatestSkillInstallUrl(result);
+      await ref.read(skillInstallerServiceProvider).installFromGitHubUrl(result);
+      await _loadSettings();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Skill 安装成功')),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Skill 安装失败: $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isInstallingSkill = false;
+        });
+      }
+    }
   }
 
   Future<void> _selectProvider(LlmProviderConfig provider) async {
@@ -354,6 +428,73 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           ),
                         ],
                       ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: spacing.lg),
+                SettingsGroupSection(
+                  title: 'Skills',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '这里可以安装到本地、启用或停用可用 skills。启用后的 skills 会出现在运行时上下文中，并可由 Skill tool 调用。',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: colors.secondaryText,
+                              height: 1.4,
+                            ),
+                      ),
+                      SizedBox(height: spacing.md),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: _isInstallingSkill ? null : _openSkillInstallSheet,
+                              child: _isInstallingSkill
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Text('安装 Skill'),
+                            ),
+                          ),
+                          SizedBox(width: spacing.md),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: _isLoadingSkills ? null : _loadSkills,
+                              child: const Text('刷新列表'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: spacing.md),
+                      if (_isLoadingSkills)
+                        const Center(child: CircularProgressIndicator())
+                      else if (_skills.isEmpty)
+                        Text(
+                          '当前没有已安装 skills。',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: colors.secondaryText,
+                              ),
+                        )
+                      else
+                        ..._skills.map(
+                          (skill) => Column(
+                            children: [
+                              SettingsRow(
+                                title: skill.name,
+                                subtitle: skill.description,
+                                trailing: Switch(
+                                  value: skill.isEnabled,
+                                  onChanged: (value) => _toggleSkill(skill, value),
+                                ),
+                              ),
+                              if (skill != _skills.last)
+                                Divider(color: colors.divider, height: spacing.md * 2),
+                            ],
+                          ),
+                        ),
                     ],
                   ),
                 ),

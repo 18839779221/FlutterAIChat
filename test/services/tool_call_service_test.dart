@@ -3,7 +3,6 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/chat_event.dart';
-import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
@@ -77,14 +76,6 @@ class _FakeRuntimeToolHandler extends ToolHandler {
           'topic': 'string',
         },
       );
-
-  @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return const [];
-  }
 
   @override
   Future<ToolResult> execute(ToolExecutionContext context) async {

@@ -134,6 +134,34 @@ void main() {
           llm.lastToolOptions!.single.executionPolicy, 'require_confirmation');
     });
 
+    test('planNextDecision does not inject active skill runtime sections into prompt',
+        () async {
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: 'ok',
+          providerState: {},
+          isTerminal: true,
+        ),
+      );
+      final service = AgentPlannerService(
+        llm: llm,
+      );
+
+      await service.planNextDecision(
+        turn: _turn(userInput: 'Please help with Android edge-to-edge'),
+        transcript: [_userEvent()],
+        steps: const [],
+        config: ChatConfig(systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+      );
+
+      expect(
+        llm.lastConfig?.systemPrompt,
+        isNot(contains('# Active skill:')),
+      );
+    });
+
     test(
         'planNextDecision requires tool policy service when resolving visible tools',
         () async {
@@ -1798,11 +1826,14 @@ void main() {
   });
 }
 
-ChatTurn _turn() => ChatTurn(
+ChatTurn _turn({
+  String userInput = '帮我回忆刚才聊到的数据库版本',
+}) =>
+    ChatTurn(
       id: 1,
       groupId: 1,
       status: ChatTurnStatus.running,
-      userInput: '帮我回忆刚才聊到的数据库版本',
+      userInput: userInput,
     );
 
 ChatEvent _userEvent() => ChatEvent(

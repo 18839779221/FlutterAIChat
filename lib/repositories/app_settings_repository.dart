@@ -15,6 +15,8 @@ class AppSettingsRepository {
   static const String _toolExecutionModeKey = 'tool.execution_mode';
   static const String _trustedToolNamesKey = 'tool.trusted_names';
   static const String _blockedToolNamesKey = 'tool.blocked_names';
+  static const String _disabledSkillIdsKey = 'skills.disabled_ids';
+  static const String _latestSkillInstallUrlKey = 'skills.latest_install_url';
   static const String _legacyApiKeyKey = 'llm.api_key';
   static const String _legacyBaseUrlKey = 'llm.base_url';
   static const String _legacyModelKey = 'llm.model';
@@ -352,6 +354,49 @@ class AppSettingsRepository {
       _blockedToolNamesKey,
       blockedTools.toList()..sort(),
     );
+  }
+
+  Future<Set<String>> getDisabledSkillIds() async {
+    final values = _preferences.getStringList(_disabledSkillIdsKey) ?? const [];
+    return values
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toSet();
+  }
+
+  Future<void> disableSkillId(String skillId) async {
+    final disabled = await getDisabledSkillIds();
+    disabled.add(skillId.trim());
+    await _preferences.setStringList(
+      _disabledSkillIdsKey,
+      disabled.toList()..sort(),
+    );
+  }
+
+  Future<void> enableSkillId(String skillId) async {
+    final disabled = await getDisabledSkillIds();
+    disabled.remove(skillId.trim());
+    await _preferences.setStringList(
+      _disabledSkillIdsKey,
+      disabled.toList()..sort(),
+    );
+  }
+
+  Future<String?> getLatestSkillInstallUrl() async {
+    final value = _preferences.getString(_latestSkillInstallUrlKey)?.trim();
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return value;
+  }
+
+  Future<void> saveLatestSkillInstallUrl(String url) async {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) {
+      await _preferences.remove(_latestSkillInstallUrlKey);
+      return;
+    }
+    await _preferences.setString(_latestSkillInstallUrlKey, trimmed);
   }
 
   Future<void> _writeProviders(List<LlmProviderConfig> providers) async {
