@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import '../models/chat_message.dart';
 import '../models/tool/tool_access_snapshot.dart';
 import '../models/tool/tool_definition.dart';
 import '../models/tool/tool_invocation.dart';
@@ -27,10 +26,6 @@ class ToolPreparationResult {
   /// Shared access snapshot used by planner/runtime/event projection.
   final ToolAccessSnapshot? toolAccess;
 
-  /// Extra planner-visible context synthesized from the tool result when the
-  /// runtime wants to feed structured outcome details back into the next turn.
-  final List<ChatMessage> additionalContextMessages;
-
   /// Whether the runtime execution has already been surfaced to the transcript
   /// and step ledger before this result returns.
   final bool executionStarted;
@@ -39,7 +34,6 @@ class ToolPreparationResult {
     this.toolInvocation,
     this.toolAccess,
     required this.toolResult,
-    this.additionalContextMessages = const [],
     this.executionStarted = false,
   });
 
@@ -47,7 +41,6 @@ class ToolPreparationResult {
       : toolInvocation = null,
         toolAccess = null,
         toolResult = null,
-        additionalContextMessages = const [],
         executionStarted = false;
 }
 

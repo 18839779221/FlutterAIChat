@@ -19,14 +19,4 @@ abstract class ToolHandler {
 
   /// Executes the tool using normalized input.
   Future<ToolResult> execute(ToolExecutionContext context);
-
-  /// Builds optional planner-visible follow-up context from the tool result.
-  /// Most tools can rely on the empty default and let transcript replay carry
-  /// the result semantics forward.
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return const [];
-  }
 }

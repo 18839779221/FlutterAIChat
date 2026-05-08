@@ -102,46 +102,4 @@ class SearchChatHistoryToolHandler extends ToolHandler {
       maxResults: context.arguments['maxResults'] as int,
     );
   }
-
-  @override
-  List<ChatMessage> buildContextMessages({
-    required ToolResult result,
-    required ToolExecutionContext context,
-  }) {
-    return [
-      ChatMessage(
-        text: _buildContextText(result),
-        role: MessageRole.system,
-        status: MessageStatus.completed,
-      ),
-    ];
-  }
-
-  String _buildContextText(ToolResult toolResult) {
-    final buffer = StringBuffer()
-      ..writeln('以下是工具 `${toolResult.toolName}` 的执行结果，请结合这些信息回答用户。')
-      ..writeln('状态：${toolResult.status.name}');
-
-    final payload = toolResult.data;
-    if (payload['query'] is String) {
-      buffer.writeln('查询词：${payload['query']}');
-    }
-
-    final matches = payload['matches'];
-    if (matches is List && matches.isNotEmpty) {
-      buffer.writeln('命中历史消息：');
-      for (final match in matches) {
-        if (match is! Map) {
-          continue;
-        }
-        final role = (match['role'] ?? 'unknown').toString();
-        final text = (match['text'] ?? '').toString();
-        buffer.writeln('- [$role] $text');
-      }
-    } else if (toolResult.summary.isNotEmpty) {
-      buffer.writeln('结果摘要：${toolResult.summary}');
-    }
-
-    return buffer.toString().trim();
-  }
 }

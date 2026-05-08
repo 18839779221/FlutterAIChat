@@ -1,4 +1,3 @@
-import '../../models/chat_message.dart';
 import '../../models/artifact/artifact_record.dart';
 import '../../models/artifact/artifact_type.dart';
 import '../../models/tool/localized_tool_text.dart';
