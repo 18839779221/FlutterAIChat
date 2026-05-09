@@ -1,315 +1,160 @@
-# AI Chat Flutter App
+# Flutter AI Chat
 
-一个面向移动端的 Flutter AI Chat 应用，支持流式对话、多会话、本地持久化、可扩展 Tool Call、结构化消息展示，以及 Android/Web 自动化回归。
+一个基于 Flutter 的 AI Chat 应用原型，聚焦多会话聊天、流式回复、工具调用、结构化交互，以及面向长对话与多步任务的 Agent 体验。
 
-示例 APK 位于 `./FlutterAIChat.apk`。
+示例 APK 位于 [FlutterAIChat-public.apk](./FlutterAIChat-public.apk)。
 
-## 当前能力
+适合关注这些方向的读者快速了解：
 
-### 聊天与会话
-- 多会话管理，支持创建、切换、删除会话
-- 消息本地持久化，支持分页加载历史消息
-- 同一会话内支持 Session 级多轮上下文继承，planner 不再只看当前 turn transcript
-- 长对话会按 token budget 压力自动压缩为 session snapshot；最终进入模型的会话上下文固定为 `history summary + recent completed turns + current turn transcript`
-- 聊天输入区上方提供一个极轻量、无文案的上下文占用状态条；点击后可在 Bottom Sheet 查看上下文分段、预算占比与压缩状态
-- 进入会话默认定位到最新消息，向上滑动查看更早历史
-- 流式回复、手动中断、生成中自动跟随；手动上滑后可自由查看，点击回到底部后再恢复跟随
-- provider 返回的 think/reasoning 展示、自定义系统提示词
+- Flutter 多端 AI 应用怎么做出不止于“聊天壳”的交互体验
+- Tool Calling、结构化追问、恢复执行如何落到移动端 UI
+- 长对话上下文、模型接入兼容和自动化验证如何一起演进
 
-### Tool Call 与结构化输出
-- 支持工具决策、确认执行、执行结果展示、失败回退
-- 支持 `create_artifact` inline artifact 工具，可在回答中插入 HTML/SVG 可视化块，作为图表、精致表格、计算器和交互解释页面等回答增强内容
-- artifact 首次创建后会返回稳定 `sourcePath`；后续模型优先通过已有 `Read/Edit/Write` 持续编辑同一个文件，而不是每次重发完整源码
-- 同一 turn 内对同一 artifact 文件的后续 `Edit/Write` 会原位刷新同一张 artifact 卡片；跨 turn 再次编辑则在新 turn 中显示新卡片，旧卡片保留并标记为已在后续回复中更新
-- tool use UI 支持“工具专属 renderer + 通用兜底卡片”双轨渲染；`Write`、`Edit`、`web_search`、`fetch_webpage` 已接入专属卡片
-- Tool 展示边界正在继续收敛为“执行层产出阶段性事实、展示层自主消费事实”的可插拔模型；详见 [docs/architecture/tool-presentation-event-boundary.md](docs/architecture/tool-presentation-event-boundary.md)
-- `fetch_webpage` 会读取指定公共网页，并按 `url + prompt` 生成网页处理结果；卡片默认展示站点、prompt 与结果预览，原始摘录退居详情区
-- 工具确认交互已从时间线卡片内移出，改为聊天页底部统一确认区；时间线卡片只负责展示“准备做什么 / 做了什么”
-- 工具流程支持语义分型展示：上下文采集类工具默认折叠为低占用 inline step，外部动作类工具保留显式 outcome card，用户可处理失败升级为 exception card
-- 支持 `AskUserQuestion` interaction tool，可在同一个 turn 内挂起提问并在用户提交结构化答案后恢复
-- `AskUserQuestion` 支持单选、多选、自动追加 `Other`，并以 workflow 风格消息卡片承载交互
-- 支持普通 assistant 消息重新结构化为调试卡片
-- 支持结构化 trace，覆盖发送、LLM、工具确认、工具执行等关键链路
-- planner 只走 provider-native `planNextDecision()` 单一路径，legacy JSON planner 已移除
-- `ToolDefinition.descriptionForModel` 是模型侧工具描述的唯一来源，不再维护额外的 `PlannerPromptBuilder`
-- 同一个模型决策可同时包含 assistant 文本和多个 tool call，不再强制“工具调用”和“文本回复”二选一
-- turn 内多次 tool use 会持久化到 `chat_turn_steps`，后续决策统一消费 ledger summary，而不是把原始工具明细全文回填给模型
-- 中间态 assistant 文本会以 `assistantPlannerMessage` 事件落库，便于在工具执行前保留模型可见解释
-- provider-native planner 在 `ConfigurableHttpLLM` 内部可使用 streaming 做 tool-call / assistant decision 收敛，但上层仍只消费最终 `ModelTurnDecision`，不会直接感知 planner 中途 delta
-- 流式 planner 超时策略已区分 `idle timeout` 与 `overall timeout`：持续收到增量时不会仅因等待最终闭合而过早失败，但单次流式尝试仍有总上限兜底
-- Prompt 统一通过 `lib/services/prompt/` 下的 catalog / builder 组装，按 `base prompt`、`stage delta`、`runtime sections`、`user context messages`、`session context messages` 五类心智模型管理
-- 核心 prompt 同时维护英文版与中文版，默认使用英文版
-- `summary` 与标题生成等轻量调用走轻量 prompt，不复用完整主对话 prompt
-- `final answer` 改为按需阶段；无需额外整理时，不再固定追加一次模型调用
+## Preview
 
-### 自动化
-- Flutter Web 固定 origin 回归测试
-- Android Droidrun 真机冒烟测试
-- Driver 式确定性脚本与 Agent 式脚本双轨并存
-- Debug 测试案例统一维护在 `assets/debug/test_cases.json`
-- Debug 模式下可通过聊天页顶部的 `Cases` 入口查看全量案例，并将 prompt 一键填入输入框
-- LLM 接入配置改为 provider-first：`config/local_defaults.json` 和设置页都支持“提供方 + 多模型”目录，运行时从当前选中的 provider/model 解析最终请求配置
-- 运行时会根据 Base URL 自动推断 provider 协议风格：OpenAI `responses`、OpenAI `chat/completions`、Anthropic `messages`
-- `chat/completions` 续跑只会发送兼容角色集合（`system` / `user` / `assistant` / `tool`），不会把内部 `turnStatus` 等运行时事件直接透传给上游
-- 对 `AskUserQuestion`，OpenAI-compatible `chat/completions` provider 会将用户补充答案按真实 `user` 消息续跑，而不是伪装成内部 `system` 或普通工具结果
+![Flutter AI Chat app icon](./assets/icons/app_launcher_icon.png)
 
-## 架构概览
+- 可直接下载示例安装包：[FlutterAIChat-public.apk](./FlutterAIChat-public.apk)
+- 当前界面示例覆盖了联网搜索、工具工作流和 artifact 可视化回答
 
-当前架构已经从“大一统 provider 文件”拆为更清晰的分层：
+| 联网搜索与答案整理 | 工具卡片与结构化工作流 | Artifact 可视化回答 |
+| --- | --- | --- |
+| ![联网搜索示例](./assets/readme/web-search.jpg) | ![工具工作流示例](./assets/readme/tool-workflow.jpg) | ![Artifact 可视化回答示例](./assets/readme/artifact-visual-answer.jpg) |
 
-相关长期架构文档：
-- [docs/architecture/2026-04-13-agent-loop-architecture-baseline.md](/Users/zyb_wl/flutterSpace/FlutterAIChat/docs/architecture/2026-04-13-agent-loop-architecture-baseline.md)
-- [docs/architecture/agent-loop-boundaries-and-decoupling.md](/Users/zyb_wl/flutterSpace/FlutterAIChat/docs/architecture/agent-loop-boundaries-and-decoupling.md)
-- [docs/architecture/session-context-management.md](/Users/zyb_wl/flutterSpace/FlutterAIChat/docs/architecture/session-context-management.md)
+## 功能特点
 
-### UI 层
-- `lib/pages/`
-- `lib/widgets/`
+- 多会话聊天：支持创建、切换、删除会话，并保留本地聊天记录
+- 流式回复体验：支持流式生成、手动中断、生成中自动跟随与历史回看
+- 长对话上下文管理：不是简单拼接全部历史，而是按上下文预算保留近期内容并压缩较早历史
+- 工具调用工作流：支持搜索、网页读取、文件类工具和结果展示，并可在执行前确认高风险操作
+- 结构化追问与恢复：当模型需要补充信息时，可以在同一轮对话中发起问题卡片，等待用户回答后继续执行
+- 可视化回答：支持生成 inline artifact，在回答中插入 HTML / SVG 形式的图表、表格或交互式说明
+- 可配置模型接入：支持 provider-first 的多提供方、多模型配置，并可在设置页测试模型连通性
+- 可扩展 skills：支持安装、启用和停用本地 skills，为运行时 Agent 增加额外能力
 
-UI 只消费 Riverpod providers 和 controller 门面，不直接编排复杂业务。
-- 聊天时间线按稳定 timeline item / row 渲染，完成态 Markdown block 优先复用既有 row 身份，降低长列表滚动和流式更新中的轻微站位变化
-- waiting state / tool workflow / ask-user-question 的主消费入口正在收敛为 `chat_timeline_projection` 快照，而不是让多个 UI provider 分别扫描 `messages` 重建状态
+## Engineering Highlights
 
-### Provider 装配层
-- [lib/providers/chat_providers.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/providers/chat_providers.dart)
-- [lib/providers/chat_collection_providers.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/providers/chat_collection_providers.dart)
-- [lib/providers/chat_dependency_providers.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/providers/chat_dependency_providers.dart)
-- [lib/providers/chat_send_state_providers.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/providers/chat_send_state_providers.dart)
-- [lib/providers/chat_interaction_providers.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/providers/chat_interaction_providers.dart)
-- [lib/providers/chat_ui_providers.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/providers/chat_ui_providers.dart)
+- 分层式 Flutter 架构：将 UI、状态装配、聊天编排、工具执行、上下文管理和持久化解耦，便于持续扩展
+- 面向 Agent 的执行基础设施：围绕 turn / step / event 建模，支持工具确认、结构化追问、挂起恢复和过程可视化
+- 长对话上下文基础设施：内建 summary snapshot、token budget 控制和 recent-turn working set，兼顾连续性与成本
+- 面向真实接入的验证链路：提供多 provider 兼容、live contract tests、Web 固定 origin 回归和 Android 真机 smoke 脚本
 
-`chat_providers.dart` 现在主要负责 controller/provider 装配与 re-export，业务逻辑已拆出。
-- tool use 渲染通过 `toolUiRendererRegistryProvider` 分发：命中专属 renderer 时优先展示定制卡片，未命中时回退到默认通用卡片
-- inline artifact 通过时间线 projection 接入，而不是把 artifact 语义扩散到所有工具或全局 UI 状态机
-
-### Controller 层
-- [lib/controllers/chat_controller.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_controller.dart)
-- [lib/controllers/chat_send_coordinator.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_send_coordinator.dart)
-- [lib/controllers/chat_session_coordinator.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_session_coordinator.dart)
-- [lib/controllers/chat_summary_controller.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_summary_controller.dart)
-- [lib/controllers/chat_preferences_controller.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_preferences_controller.dart)
-- [lib/controllers/chat_interaction_coordinator.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/controllers/chat_interaction_coordinator.dart)
-
-职责分工：
-- `ChatController`：页面门面与跨子域协调
-- `ChatSendCoordinator`：发送事务、工具确认、流式回复生命周期
-- `ChatInteractionCoordinator`：问题卡片草稿、结构化答案提交、interaction 恢复入口
-- `ChatSessionCoordinator`：会话加载、切换、删除、分页
-- `ChatSummaryController`：会话总结与自动总结定时逻辑
-- `ChatPreferencesController`：系统提示词
-
-### Prompt 管理
-- `lib/services/prompt/prompt_catalog.dart`
-- `lib/services/prompt/prompt_builder_service.dart`
-- `lib/services/prompt/prompt_runtime_context_builder.dart`
-
-职责分工：
-- `PromptCatalog`：维护双语 prompt 文本块
-- `PromptBuilderService`：根据阶段和运行时输入组装最终 prompt
-- `PromptRuntimeContextBuilder`：将用户自定义 system prompt 等运行时信息包装为附加 section
-- `RuntimeUserContextService`：生成运行时 `userContext`，当前包含 `currentDate` 与 `AGENTS.md` 占位内容
-- `UserContextMessageBuilder`：把 runtime user context 包装成 synthetic user reminder message
-
-### Service 层
-- [lib/services/chat_service.dart](/Users/zyb_wl/flutterSpace/FlutterAIChat/lib/services/chat_service.dart)
-- `lib/services/chat_timeline_projection_service.dart`
-- `lib/services/artifact/`
-- `tool/runtime`、`trace` 等服务
-
-Service 层负责 LLM 通信、Session 上下文编排、工具编排与 trace 记录。
-
-补充边界约束：
-- `TurnHarness` 是唯一的 turn loop 主入口
-- provider/API 协议适配不属于 Agent Loop Core
-- UI 不应长期依赖扫描 `ChatMessage.payloadJson` 反推 workflow / waiting state，后续应逐步收敛为消费 turn ledger projection
-- `ChatTimelineProjectionService` 负责为时间线和 waiting-state provider 产出统一 projection snapshot，避免 UI 各处各自重建中间态
-- artifact 的刷新/过期语义也通过 projection 层处理：重启或切换 group 后，会基于持久化消息、artifact registry 和当前文件内容重建，不依赖上次运行时内存
-
-### Session 上下文层
-- `lib/services/session_context_service.dart`
-- `lib/services/session_context_projector.dart`
-- `lib/services/model_budget_registry.dart`
-- `lib/services/session_token_budget_service.dart`
-- `lib/services/session_summary_service.dart`
-- `lib/services/session_context_inspector_service.dart`
-- `lib/repositories/session_context_snapshot_repository.dart`
-- `lib/models/session/session_context_snapshot.dart`
-- `lib/models/session/model_budget_profile.dart`
-- `lib/models/session/context_compaction_config.dart`
-- `lib/models/session/context_window_snapshot.dart`
-- `lib/models/session/context_window_segment.dart`
-
-职责分工：
-- `SessionContextService`：为 planner 构建 `history summary + recent completed turns + current turn transcript`，并保证三层边界互斥
-- `SessionRuntimeMarkerService`：按 session 级持久化日期基线判断是否需要在当前 turn 前注入跨天 reminder
-- `SessionContextProjector`：把消息、tool result、interaction result 投影成模型可见上下文
-- `SessionContextInspectorService`：把当前真实 planner 上下文与预算保留区整理为 UI 可读的 `ContextWindowSnapshot`
-- `ModelBudgetRegistry`：统一解析模型预算配置，优先使用运行时 provider/model 覆盖，再回落到内置默认表与 fallback
-- `SessionTokenBudgetService`：统一按模型上下文预算做分项估算，并判断是否需要压缩
-- `SessionSummaryService`：把退出 recent working set 的较早历史滚动整理为固定栏目摘要
-- `SessionContextSnapshotRepository`：持久化读取最近 session snapshot
-
-当前压缩策略：
-- recent 原文默认只保留最近少量 completed turns，而不是整个历史消息列表
-- recent completed turns 同时受“默认 N 个”和“可用输入预算占比上限”双约束
-- 更早历史会滚动并入 summary，不会因为 turn 较早而直接丢失语义
-- 当前 turn transcript 始终单独保留，不与 recent completed turns 重叠
-- planner / final answer 额外会在 session context 之前注入 runtime `userContext`
-- 当同一 session 再次发送时若日期与最近一次注入基线不同，会在当前 user message 前追加 `<system-reminder>` 形式的日期变化提醒
-- 这些运行时 reminder 不会进入 UI timeline，也不会写入 session summary
-- tool transcript 进入 planner / final answer 上下文时会尽量保留“tool use 发起 + tool result 返回”的结构语义，而不是统一改写成摘要式 assistant 历史文本
-- 上下文窗口可视化复用同一套 SessionContext 构建结果与 token 估算逻辑，不在 UI 侧单独复算第二套上下文
-- 对超长 `tool_result`，架构上允许未来增加工具级 context transform；默认仍保持原样透传
-
-### 时间感知与 WebSearch
-- `RuntimeUserContextService` 会为 planner / final answer 注入当前日期，降低“latest 却搜成去年”的风险
-- `SessionRuntimeMarkerService` 会在跨天的下一次发送前注入 `The date has changed...` reminder，并把最新日期基线持久化到 session 级 marker
-- `web_search` 的 `descriptionForModel` 会动态注入当前月份年份，并强制要求：
-  - 搜最近信息、新闻、文档、当前事件时必须使用当前年份
-  - 最终答复末尾必须包含 `Sources:`
-  - `Sources:` 中的链接必须使用 Markdown 超链接
-
-## 消息发送链路
-
-发送入口在 `ChatInput`，发送事务主编排在 `ChatSendCoordinator`，问题型交互由 `ChatInteractionCoordinator` 编排提交恢复，模型请求与工具预处理在 `ChatService`。
-
-为了提高 turn loop 回归效率，当前测试策略也在逐步收敛到一层“模拟环境集成测试”：
-
-- fake planner / fake tool call service
-- real `TurnHarness`
-- real `AgentEventProcessor`
-- real projection providers
-
-这层测试主要用于覆盖多轮 loop、等待态、resume、tool result 到 UI projection 的关键链路；真实环境测试则继续聚焦 provider 协议兼容、平台时序与真机问题。
-
-LLM provider 真实环境验证建议走统一闭环，而不是只跑零散命令：
-
-- 先跑本地 contract：`fvm flutter test test/models/llm/configurable_http_llm_test.dart`
-- 再跑 opt-in live contract：`bash scripts/run_live_llm_contract_tests.sh beehears-responses`
-- 如果改动涉及多种 API 风格，至少补跑一组 `responses`、一组 `chat completions`、一组 `anthropic messages`
-
-当前 live suite 不只验证基础文本通路，也会验证一次真实的 `tool call -> transcript tool result -> final answer` round-trip，以便更早暴露 provider wire compatibility 问题。
-
-### 主流程
+## Agent Loop 架构
 
 ```mermaid
 flowchart TD
-    A["点击发送"] --> B["立即清空输入框"]
-    B --> C["ChatController.sendMessage(text)"]
-    C --> D["ChatSendCoordinator.sendMessage(...)"]
-    D --> E["取消旧流"]
-    E --> F["sendPhase = preparing"]
-    F --> G["立即插入用户消息"]
-    G --> H["prepareToolAssistance()"]
-    H --> I{"工具结果"}
-    I -->|无工具| J["创建 assistant 占位并开始流式回复"]
-    I -->|需确认| K["插入 actionConfirmation 卡片"]
-    I -->|需补充信息| Q["插入 askUserQuestion 卡片"]
-    I -->|直接执行| L["插入 toolResult 后继续回复"]
-    L --> J
-    K --> M["awaitingConfirmation"]
-    Q --> R["awaitingUserInteraction"]
-    R --> S["用户提交结构化答案"]
-    S --> T["恢复同一个 turn"]
-    T --> J
-    J --> N["streamingResponse"]
-    N --> O["完成/失败/中断 -> idle"]
+    A["User Input"] --> B["ChatSendCoordinator"]
+    B --> C["SessionContextService"]
+    C --> D["TurnHarness"]
+
+    subgraph Planner["Planner Layer"]
+        D --> E["AgentPlannerService"]
+        E --> F["LLM Provider Adapter"]
+        F --> G{"Decision"}
+    end
+
+    subgraph Execution["Execution Paths"]
+        G -->|Final answer| H["Assistant response"]
+        G -->|Tool calls| I["Tool Policy"]
+        G -->|Ask user| J["AskUserQuestion checkpoint"]
+        I --> K["Tool Runtime / Executor"]
+        K --> L["Tool result + transcript"]
+        J --> M["User structured answer"]
+    end
+
+    subgraph Loop["Loop Control"]
+        L --> N["TurnVerifier"]
+        M --> D
+        N -->|Continue| D
+        N -->|Complete| O["Turn closed"]
+        H --> O
+    end
 ```
 
-### 发送状态
+想看更完整的全局架构说明，可以从
+[docs/architecture/project-architecture-overview.md](./docs/architecture/project-architecture-overview.md)
+开始。
 
-发送事务统一由 `ChatSendState` 驱动：
+## Supported Tools
 
-- `idle`
-- `preparing`
-- `awaitingConfirmation`
-- `awaitingUserInteraction`
-- `executingTool`
-- `streamingResponse`
+| Tool | Category | Purpose |
+| --- | --- | --- |
+| `ask_user_question` | Interaction | 发起结构化问题卡片，在同一轮对话中等待用户补充信息后继续执行 |
+| `create_artifact` | Visualization | 生成 HTML / SVG artifact，用于图表、表格、交互式说明等可视化回答 |
+| `skill` | Extension | 调用已安装并启用的 skill，扩展 Agent 的运行时能力 |
+| `search_chat_history` | Context | 搜索当前会话的历史内容 |
+| `web_search` | Web | 搜索互联网信息并返回候选结果 |
+| `fetch_webpage` | Web | 读取指定网页，并按给定 prompt 处理网页内容 |
+| `ls` | File | 列出目录内容 |
+| `glob` | File | 按模式匹配文件路径 |
+| `grep` | File | 在工作区内搜索文本内容 |
+| `read` | File | 读取文件内容 |
+| `write` | File | 写入文件内容 |
+| `edit` | File | 对已有文件执行定向编辑 |
+| `create_reminder` | Action | 创建提醒事项 |
+| `create_calendar_event` | Action | 创建日历事件 |
+| `share_result` | Action | 分享文本结果到系统分享面板 |
 
-派生状态：
-- `sendPhaseProvider`
-- `isGeneratingProvider`
+## 技术栈
 
-### 交互规则
+- Flutter
+- Riverpod
+- SQLite / shared_preferences
+- 可配置 LLM provider adapters
+- 自定义 Tool Runtime 与 Agent Loop 编排
 
-- 点击发送后，输入框立即清空，用户消息立即上屏
-- `preparing`、`executingTool`、`streamingResponse` 阶段输入区锁定
-- `awaitingConfirmation` 阶段等待用户继续/取消
-- `awaitingUserInteraction` 阶段等待用户在消息卡片内补充结构化答案
-- `streamingResponse` 阶段再次点击发送按钮会中断当前流式输出
+## 快速开始
 
-## Tool Call 与 Trace
-
-### Tool Call 设计原则
-- Tool 定义、运行时注册、执行与展示应保持解耦
-- interaction-style tool 和 immediate tool 要分开建模，`AskUserQuestion` 不应伪装成一次普通工具执行
-- 新增 tool 时优先复用 runtime/handler 机制，而不是在多个 `switch` 里重复枚举
-- 用户可见工具操作应考虑确认策略、白名单策略与失败回退
-- `ToolDefinition` 同时承担 runtime metadata 与 planner metadata，新增 tool 时要补齐 `descriptionForModel`、`whenToUse`、`whenNotToUse`、`argumentSchema`
-- `descriptionForModel` 是 planner 暴露给模型的唯一工具说明来源，避免重复维护外部 prompt 模板
-- planner 工具可见性应来自 runtime registry 与 policy/filter，而不是硬编码工具名路由或独立白名单
-- 主编排层只依赖 provider-native `ModelTurnDecision`，不再保留 legacy planner 执行分支
-- 单个 `ModelTurnDecision` 可以同时携带 assistant 文本和 tool calls；assistant 文本既可能是中间解释，也可能是终态答复
-- 对 native tool-calling provider，tool continuation item 由 turn-step ledger 构建；interaction tool 也必须完成对应 step 并写入结构化 `resultJson`
-- `openaiChatCompletions` 会优先把普通工具续跑重建为 `assistant.tool_calls + tool` 消息；`AskUserQuestion` 则保留为用户回答语义，避免兼容层拒绝非法 role
-
-### 日志与 Trace 规范
-- 日志、trace、临时日志的统一约束见 `docs/architecture/logging.md`
-- 新增关键 feature 时，默认评估是否需要补充日志锚点与排障覆盖
-
-## 自动化
-
-### Web
-推荐固定 origin：
+本仓库优先使用 Flutter `3.29.2`。如果本机 `flutter` 版本不是 `3.29.2`，请改用 `fvm flutter`。
 
 ```bash
-fvm flutter run -d web-server --release --web-hostname 127.0.0.1 --web-port 7357
+fvm flutter pub get
+fvm flutter run
+```
 
-### Android 安装
-推荐通过项目脚本安装最新 debug 包到真机：
+常用命令：
+
+```bash
+fvm flutter analyze
+fvm flutter test
+```
+
+## 模型与运行时配置
+
+- 模型配置采用 provider-first 结构，可在设置页管理提供方和模型目录
+- 当前运行时已支持根据 Base URL 适配不同 API 风格，包括 OpenAI `responses`、OpenAI `chat/completions` 和 Anthropic `messages`
+- 本地默认配置位于 [config/local_defaults.json](./config/local_defaults.json)
+
+## 测试与自动化
+
+- Web 回归推荐固定 origin 运行，避免本地存储因 host / port 变化而失效
+- Android 提供覆盖安装脚本与 Droidrun 真机冒烟脚本
+- LLM 接入改动除了本地测试外，也支持 opt-in 的 live contract tests
+
+常用脚本：
 
 ```bash
 bash scripts/android_install_debug.sh
-```
-
-如有多台设备，可显式指定 device id：
-
-```bash
-bash scripts/android_install_debug.sh <device-id>
-```
-
-说明：
-- 脚本会先构建最新 debug APK，再执行 `adb install -r -t`
-- 默认只允许覆盖安装，不会自动回退到卸载重装
-- 如果覆盖安装失败，应优先查看原始 ADB 错误，而不是先清空应用状态
-```
-
-### Android
-
-```bash
-# 真机确定性发送冒烟
 bash scripts/android_droidrun_driver_smoke.sh
-
-# 真机 Agent 式聊天冒烟
 bash scripts/android_droidrun_chat_smoke.sh
+bash scripts/run_live_llm_contract_tests.sh minimax-openai
 ```
 
-## 开发约定
+## 文档导航
 
-- 架构发生变化时，同步更新 `README.md`
-- 项目要求、开发约束、实现守则发生变化时，同步更新 `AGENTS.md`
-- 新增 feature 时，先判断是否需要同步补充：
-  - README 的能力说明或架构说明
-  - AGENTS 的实现约束
-  - 自动化测试
-  - `docs/architecture/logging.md` 中的日志锚点与排障链路
+- 全局架构总览：[docs/architecture/project-architecture-overview.md](./docs/architecture/project-architecture-overview.md)
+- 架构基线：[docs/architecture/2026-04-13-agent-loop-architecture-baseline.md](./docs/architecture/2026-04-13-agent-loop-architecture-baseline.md)
+- Agent Loop 边界：[docs/architecture/agent-loop-boundaries-and-decoupling.md](./docs/architecture/agent-loop-boundaries-and-decoupling.md)
+- Session Context 管理：[docs/architecture/session-context-management.md](./docs/architecture/session-context-management.md)
+- Tool 展示边界：[docs/architecture/tool-presentation-event-boundary.md](./docs/architecture/tool-presentation-event-boundary.md)
+- 日志与排障：[docs/architecture/logging.md](./docs/architecture/logging.md)
+- 功能待办：[docs/feature_todo.md](./docs/feature_todo.md)
 
-## Feature Backlog
+## 当前项目定位
 
-中长期待办放在：
+这是一个仍在持续演进中的 Flutter AI 应用实验项目。它不仅关注聊天界面本身，也在持续探索：
 
-- [docs/feature_todo.md](/Users/zyb_wl/flutterSpace/FlutterAIChat/docs/feature_todo.md)
-
-当前 backlog 包括：
-- session 总结功能优化，例如超过 N 分钟无对话后自动总结本次会话
+- 多步 Agent 交互在移动端 / 多端 UI 中的呈现方式
+- 工具调用与结构化用户交互的产品体验
+- 长对话上下文管理与模型接入兼容性
+- 更可维护的 AI 应用架构与测试基础设施
