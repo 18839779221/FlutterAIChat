@@ -2,7 +2,7 @@
 
 一个基于 Flutter 的 AI Chat 应用原型，聚焦多会话聊天、流式回复、工具调用、结构化交互，以及面向长对话与多步任务的 Agent 体验。
 
-示例 APK 位于 [FlutterAIChat-public.apk](./FlutterAIChat-public.apk)。
+示例 APK 位于 [FlutterAIChat-public-release.apk](./FlutterAIChat-public-release.apk)。
 
 适合关注这些方向的读者快速了解：
 
@@ -10,11 +10,9 @@
 - Tool Calling、结构化追问、恢复执行如何落到移动端 UI
 - 长对话上下文、模型接入兼容和自动化验证如何一起演进
 
-## Preview
+## Screenshots
 
-![Flutter AI Chat app icon](./assets/icons/app_launcher_icon.png)
-
-- 可直接下载示例安装包：[FlutterAIChat-public.apk](./FlutterAIChat-public.apk)
+- 可直接下载示例安装包：[FlutterAIChat-public-release.apk](./FlutterAIChat-public-release.apk)
 - 当前界面示例覆盖了联网搜索、工具工作流和 artifact 可视化回答
 
 | 联网搜索与答案整理 | 工具卡片与结构化工作流 | Artifact 可视化回答 |
