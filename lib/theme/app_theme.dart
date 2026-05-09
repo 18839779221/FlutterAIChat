@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
 import 'app_component_theme.dart';
+import 'app_motion.dart';
 import 'app_radius.dart';
 import 'app_spacing.dart';
 import 'app_typography.dart';
@@ -12,6 +13,7 @@ class AppTheme {
     final colors = AppColors.light();
     final spacing = AppSpacing.base();
     final radius = AppRadius.base();
+    final motion = AppMotion.base();
     final colorScheme = const ColorScheme.light().copyWith(
       primary: colors.workflowRunning,
       secondary: colors.workflowSuccess,
@@ -53,6 +55,7 @@ class AppTheme {
         colors,
         spacing,
         radius,
+        motion,
       ],
     );
   }

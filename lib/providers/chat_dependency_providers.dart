@@ -16,6 +16,12 @@ import 'package:ai_chat/services/session_context_service.dart';
 import 'package:ai_chat/services/session_runtime_marker_service.dart';
 import 'package:ai_chat/services/session_summary_service.dart';
 import 'package:ai_chat/services/session_token_budget_service.dart';
+import 'package:ai_chat/services/skills/github_skill_fetcher.dart';
+import 'package:ai_chat/services/skills/github_skill_source_resolver.dart';
+import 'package:ai_chat/services/skills/skill_index_service.dart';
+import 'package:ai_chat/services/skills/skill_installer_service.dart';
+import 'package:ai_chat/services/skills/skill_runtime_service.dart';
+import 'package:ai_chat/services/skills/skill_storage_service.dart';
 import 'package:ai_chat/services/tool_presentation_block_projector.dart';
 import 'package:ai_chat/services/tool_ui_renderer_registry.dart';
 import 'package:ai_chat/services/turn_harness.dart';
@@ -136,8 +142,47 @@ final sessionContextProjectorProvider =
     Provider<SessionContextProjector>((ref) => SessionContextProjector());
 
 final runtimeUserContextServiceProvider = Provider<RuntimeUserContextService>(
-  (ref) => RuntimeUserContextService(),
+  (ref) => RuntimeUserContextService(
+    skillCatalogProvider: () async {
+      return ref.read(skillRuntimeServiceProvider).listSkillCatalogEntries();
+    },
+  ),
 );
+
+final skillStorageServiceProvider = Provider<SkillStorageService>((ref) {
+  return SkillStorageService();
+});
+
+final gitHubSkillSourceResolverProvider =
+    Provider<GitHubSkillSourceResolver>((ref) {
+  return const GitHubSkillSourceResolver();
+});
+
+final gitHubSkillFetcherProvider = Provider<GitHubSkillFetcher>((ref) {
+  return GitHubSkillFetcher();
+});
+
+final skillIndexServiceProvider = Provider<SkillIndexService>((ref) {
+  return SkillIndexService(
+    storageService: ref.watch(skillStorageServiceProvider),
+  );
+});
+
+final skillRuntimeServiceProvider = Provider<SkillRuntimeService>((ref) {
+  return SkillRuntimeService(
+    storageService: ref.watch(skillStorageServiceProvider),
+    settingsRepository: ref.watch(appSettingsRepositoryProvider),
+    indexService: ref.watch(skillIndexServiceProvider),
+  );
+});
+
+final skillInstallerServiceProvider = Provider<SkillInstallerService>((ref) {
+  return SkillInstallerService(
+    storageService: ref.watch(skillStorageServiceProvider),
+    sourceResolver: ref.watch(gitHubSkillSourceResolverProvider),
+    fetcher: ref.watch(gitHubSkillFetcherProvider),
+  );
+});
 
 final sessionRuntimeMarkerServiceProvider =
     Provider<SessionRuntimeMarkerService>((ref) {

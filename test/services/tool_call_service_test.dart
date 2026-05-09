@@ -1,8 +1,8 @@
 import 'package:ai_chat/models/artifact/artifact_record.dart';
+import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/chat_event.dart';
-import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
@@ -50,6 +50,7 @@ void main() {
       expect(result.toolResult, isNotNull);
       expect(result.toolResult!.toolName, 'debug_runtime_tool');
       expect(result.toolResult!.status, ToolExecutionStatus.success);
+      expect(result.toolResult!.summary, 'runtime handler executed');
       expect(result.toolResult!.data['topic'], 'runtime');
     });
   });
@@ -66,7 +67,7 @@ Future<ToolPolicyService> _createToolPolicyService() async {
   );
 }
 
-class _FakeRuntimeToolHandler implements ToolHandler {
+class _FakeRuntimeToolHandler extends ToolHandler {
   @override
   ToolDefinition get definition => const ToolDefinition(
         name: 'debug_runtime_tool',
@@ -75,6 +76,7 @@ class _FakeRuntimeToolHandler implements ToolHandler {
           'topic': 'string',
         },
       );
+
   @override
   Future<ToolResult> execute(ToolExecutionContext context) async {
     return ToolResult(

@@ -4,12 +4,14 @@ import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/tools/core/tool_display_names.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/latest_message_running_status_tail.dart';
 import 'package:ai_chat/widgets/chat_blocks/streaming_response_block.dart';
 import 'package:ai_chat/widgets/chat_timeline/stable_markdown_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
+import 'package:ai_chat/widgets/tool_renderers/tool_running_effects.dart';
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
 import 'package:ai_chat/widgets/markdown/code_widget.dart';
 import 'package:ai_chat/widgets/markdown/markdown_widget_impl.dart';
@@ -61,6 +63,7 @@ void main() {
       expect(find.text('Analysis'), findsOneWidget);
       expect(find.text('这是一段分析内容'), findsOneWidget);
       expect(find.byType(StableMarkdownBlock), findsOneWidget);
+      expect(find.byType(AnimatedOpacity), findsOneWidget);
     });
 
     testWidgets('collapsed final reasoning reads as quiet secondary text',
@@ -84,6 +87,43 @@ void main() {
       final label = tester.widget<Text>(find.text('思考过程'));
       expect(label.style?.fontSize, 10.8);
       expect(label.style?.fontWeight, FontWeight.w500);
+      expect(find.byType(AnimatedOpacity), findsOneWidget);
+    });
+
+    testWidgets('running tail uses the same quiet settle wrapper', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: LatestMessageRunningStatusTail(
+              statusText: '正在规划下一步',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('正在规划下一步'), findsOneWidget);
+      expect(find.byType(AnimatedOpacity), findsOneWidget);
+    });
+
+    testWidgets('running status dot keeps a restrained pulse footprint',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: RunningStatusDot(
+              color: Colors.blue,
+              isRunning: true,
+            ),
+          ),
+        ),
+      );
+
+      final animatedBuilder = tester.widget<AnimatedBuilder>(
+        find.byType(AnimatedBuilder).first,
+      );
+      expect(animatedBuilder.animation, isNotNull);
     });
 
     testWidgets('markdown typography follows hybrid reader rhythm', (
@@ -301,6 +341,7 @@ $$
       expect(text.style!.fontSize, 13.2);
       expect(text.style!.height, 1.48);
       expect(text.style!.fontFamily, 'AnthropicSans');
+      expect(find.byType(AnimatedOpacity), findsOneWidget);
     });
 
     testWidgets('markdown content is isolated by repaint boundary', (

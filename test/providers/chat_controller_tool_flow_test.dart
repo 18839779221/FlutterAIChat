@@ -527,7 +527,7 @@ void main() {
             status: ToolExecutionStatus.success,
             summary: '已创建提醒：交周报',
             data: {'title': '交周报'},
-          )
+          ),
         ),
       );
       final container = _createContainer(

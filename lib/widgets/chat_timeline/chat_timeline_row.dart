@@ -11,6 +11,8 @@ import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/chat_block_builder.dart';
 import 'package:ai_chat/services/tool_presentation_block_projector.dart';
 import 'package:ai_chat/services/tool_card_presentation_mapper.dart';
+import 'package:ai_chat/theme/app_motion.dart';
+import 'package:ai_chat/widgets/animations/message_growth_animation.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/artifact_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
@@ -40,6 +42,7 @@ class ChatTimelineRow extends ConsumerWidget {
   final ChatBlockBuilder blockBuilder;
   final int? currentGroupId;
   final ValueChanged<ChatMessage> onLongPressMessage;
+  final bool shouldAnimate;
 
   const ChatTimelineRow({
     super.key,
@@ -47,6 +50,7 @@ class ChatTimelineRow extends ConsumerWidget {
     required this.blockBuilder,
     required this.currentGroupId,
     required this.onLongPressMessage,
+    this.shouldAnimate = false,
   });
 
   @override
@@ -59,13 +63,22 @@ class ChatTimelineRow extends ConsumerWidget {
         ),
     };
 
+    // Only animate if explicitly requested (for new messages)
+    final displayRow = shouldAnimate
+        ? MessageGrowthAnimation(
+            duration: Theme.of(context).extension<AppMotion>()!.standard,
+            curve: Theme.of(context).extension<AppMotion>()!.easeOut,
+            child: row,
+          )
+        : row;
+
     if (item.runningTailText == null) {
-      return row;
+      return displayRow;
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        row,
+        displayRow,
         LatestMessageRunningStatusTail(statusText: item.runningTailText!),
       ],
     );
@@ -88,6 +101,7 @@ class ChatTimelineRow extends ConsumerWidget {
     final activeAskUserQuestion =
         ref.watch(activeAskUserQuestionMessageProvider);
     final toolUiRegistry = ref.watch(toolUiRendererRegistryProvider);
+    final motion = Theme.of(context).extension<AppMotion>()!;
 
     late final Widget blockWidget;
     switch (block.type) {
@@ -206,7 +220,26 @@ class ChatTimelineRow extends ConsumerWidget {
         );
         break;
     }
-    return blockWidget;
+
+    final shouldUseBlockTransition =
+        block.type == AssistantTurnBlockType.toolResultSummary ||
+        block.type == AssistantTurnBlockType.toolWorkflow;
+    if (!shouldUseBlockTransition) {
+      return blockWidget;
+    }
+
+    return AnimatedSwitcher(
+      duration: motion.quick,
+      switchInCurve: motion.easeOut,
+      switchOutCurve: motion.easeIn,
+      transitionBuilder: (child, animation) {
+        return FadeTransition(opacity: animation, child: child);
+      },
+      child: KeyedSubtree(
+        key: ValueKey('${block.type.name}_${block.id}_${block.text ?? ''}'),
+        child: blockWidget,
+      ),
+    );
   }
 
   Widget _buildToolResultBlockWidget({
@@ -539,8 +572,30 @@ class _MinimumVisibleToolStateSwitcherState
   @override
   Widget build(BuildContext context) {
     if (widget.visibleUntil.isAfter(DateTime.now())) {
-      return widget.runningChild;
+      return AnimatedSwitcher(
+        duration: Theme.of(context).extension<AppMotion>()!.quick,
+        switchInCurve: Theme.of(context).extension<AppMotion>()!.easeOut,
+        switchOutCurve: Theme.of(context).extension<AppMotion>()!.easeIn,
+        transitionBuilder: (child, animation) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        child: KeyedSubtree(
+          key: const ValueKey('tool-running-child'),
+          child: widget.runningChild,
+        ),
+      );
     }
-    return widget.resultChild;
+    return AnimatedSwitcher(
+      duration: Theme.of(context).extension<AppMotion>()!.quick,
+      switchInCurve: Theme.of(context).extension<AppMotion>()!.easeOut,
+      switchOutCurve: Theme.of(context).extension<AppMotion>()!.easeIn,
+      transitionBuilder: (child, animation) {
+        return FadeTransition(opacity: animation, child: child);
+      },
+      child: KeyedSubtree(
+        key: const ValueKey('tool-result-child'),
+        child: widget.resultChild,
+      ),
+    );
   }
 }

@@ -11,7 +11,7 @@ import '../core/tool_handler.dart';
 
 /// Handles validation, normalization, execution, and context building for
 /// `create_reminder`.
-class CreateReminderToolHandler implements ToolHandler {
+class CreateReminderToolHandler extends ToolHandler {
   CreateReminderToolHandler({
     required ReminderCreator reminderCreator,
     DateTime Function()? nowProvider,

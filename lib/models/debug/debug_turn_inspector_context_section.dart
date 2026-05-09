@@ -1,21 +1,18 @@
-/// Expandable raw-json section rendered in the debug inspector context tab.
+/// One expandable section inside the debug inspector context tab.
 class DebugTurnInspectorContextSection {
   final String id;
   final String title;
   final String summary;
-  final bool defaultExpanded;
   final Object? rawJson;
+  final String? rawText;
+  final bool defaultExpanded;
 
   const DebugTurnInspectorContextSection({
     required this.id,
     required this.title,
     required this.summary,
     required this.defaultExpanded,
-    required this.rawJson,
+    this.rawJson,
+    this.rawText,
   });
-
-  String? get rawText {
-    final value = rawJson;
-    return value is String ? value : null;
-  }
 }

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/artifact/artifact_record.dart';
 import 'package:ai_chat/models/chat_event.dart';
@@ -7,10 +9,14 @@ import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
 import 'package:ai_chat/models/session/session_runtime_marker.dart';
+import 'package:ai_chat/repositories/app_settings_repository.dart';
+import 'package:ai_chat/services/skills/skill_runtime_service.dart';
+import 'package:ai_chat/services/skills/skill_storage_service.dart';
 import 'package:ai_chat/services/tool_executor.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:ai_chat/tools/default_tool_runtime_registry.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   test('default runtime registry exposes ask_user_question to planner', () {
@@ -23,6 +29,40 @@ void main() {
     expect(
       definitions.map((item) => item.name),
       contains('ask_user_question'),
+    );
+  });
+
+  test('default runtime registry exposes skill tool to planner', () async {
+    final tempDir = await Directory.systemTemp.createTemp('tool-registry-skill-');
+    addTearDown(() async {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+    final storageService = SkillStorageService(
+      rootDirectoryProvider: () async => tempDir,
+    );
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final settingsRepository = AppSettingsRepository(
+      preferences,
+      localDefaultsLoader: () async => null,
+    );
+    final skillRuntimeService = SkillRuntimeService(
+      storageService: storageService,
+      settingsRepository: settingsRepository,
+    );
+
+    final registry = buildDefaultToolRuntimeRegistry(
+      toolExecutor: ToolExecutor(chatStorage: _FakeChatStorage()),
+      skillRuntimeService: skillRuntimeService,
+    );
+
+    final definitions = registry.getDefinitionsForPlatform('android');
+
+    expect(
+      definitions.map((item) => item.name),
+      contains('skill'),
     );
   });
 }

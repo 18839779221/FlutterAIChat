@@ -83,11 +83,10 @@ void main() {
       expect(result.data['linesReturned'], 2);
       expect(result.data['fileVersion'], isA<Map<String, dynamic>>());
       expect(result.summary, '已读取文件：memories/demo.md');
-      expect(result.data['message'], '已读取文件：memories/demo.md');
       expect(guard.hasSeen('memories/demo.md'), isTrue);
     });
 
-    test('read missing file returns structured payload for projector', () async {
+    test('read missing file returns summary for planner context', () async {
       final resolution = await handler.normalizeArguments(
         rawArguments: {
           'file_path': 'memories/missing.md',

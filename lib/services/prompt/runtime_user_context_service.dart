@@ -1,35 +1,43 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../models/skill/skill_catalog_entry.dart';
 import '../../models/prompt/runtime_user_context_snapshot.dart';
 
 typedef RuntimeNowProvider = DateTime Function();
 typedef AgentsMdProvider = Future<String> Function();
 typedef RuntimePlatformContextProvider = List<String> Function();
+typedef RuntimeSkillCatalogProvider = Future<List<SkillCatalogEntry>> Function();
 
 class RuntimeUserContextService {
   RuntimeUserContextService({
     RuntimeNowProvider? nowProvider,
     AgentsMdProvider? agentsMdProvider,
     RuntimePlatformContextProvider? platformContextProvider,
+    RuntimeSkillCatalogProvider? skillCatalogProvider,
   })  : _nowProvider = nowProvider ?? DateTime.now,
         _agentsMdProvider = agentsMdProvider ?? _defaultAgentsMdProvider,
         _platformContextProvider =
-            platformContextProvider ?? _defaultPlatformContextProvider;
+            platformContextProvider ?? _defaultPlatformContextProvider,
+        _skillCatalogProvider =
+            skillCatalogProvider ?? _defaultSkillCatalogProvider;
 
   final RuntimeNowProvider _nowProvider;
   final AgentsMdProvider _agentsMdProvider;
   final RuntimePlatformContextProvider _platformContextProvider;
+  final RuntimeSkillCatalogProvider _skillCatalogProvider;
 
   Future<RuntimeUserContextSnapshot> buildSnapshot() async {
     final now = _nowProvider();
     final platformSections = _platformContextProvider();
+    final skillCatalog = await _skillCatalogProvider();
     return RuntimeUserContextSnapshot(
       currentDateText: "Today's date is ${_formatIsoDate(now)}.",
       agentsMdText: (await _agentsMdProvider()).trim(),
       additionalSections: [
         if (platformSections.isNotEmpty)
           '# runtimePlatform\n${platformSections.join('\n')}',
+        if (skillCatalog.isNotEmpty) _buildSkillsListSection(skillCatalog),
       ],
     );
   }
@@ -41,6 +49,10 @@ class RuntimeUserContextService {
 
   static Future<String> _defaultAgentsMdProvider() async {
     return '';
+  }
+
+  static Future<List<SkillCatalogEntry>> _defaultSkillCatalogProvider() async {
+    return const [];
   }
 
   static List<String> _defaultPlatformContextProvider() {
@@ -126,5 +138,16 @@ class RuntimeUserContextService {
       return 'Unknown';
     }
     return months[month - 1];
+  }
+
+  static String _buildSkillsListSection(List<SkillCatalogEntry> skills) {
+    final lines = <String>[
+      'The following skills are available for use with the Skill tool:',
+      '',
+    ];
+    for (final skill in skills) {
+      lines.add('- ${skill.name}: ${skill.description}');
+    }
+    return lines.join('\n');
   }
 }

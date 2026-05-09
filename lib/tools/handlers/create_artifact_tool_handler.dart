@@ -1,4 +1,3 @@
-import '../../models/chat_message.dart';
 import '../../models/artifact/artifact_record.dart';
 import '../../models/artifact/artifact_type.dart';
 import '../../models/tool/localized_tool_text.dart';
@@ -13,7 +12,7 @@ import '../core/tool_argument_resolution.dart';
 import '../core/tool_execution_context.dart';
 import '../core/tool_handler.dart';
 
-class CreateArtifactToolHandler implements ToolHandler {
+class CreateArtifactToolHandler extends ToolHandler {
   CreateArtifactToolHandler({
     required ArtifactRepository artifactRepository,
     required ArtifactFileStorageService fileStorageService,

@@ -1,5 +1,4 @@
 import '../../models/chat_message.dart';
-import '../../models/tool/tool_result.dart';
 import '../../models/tool/tool_argument_property.dart';
 import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
@@ -10,7 +9,7 @@ import '../core/tool_execution_context.dart';
 import '../core/tool_handler.dart';
 
 /// Handles the complete runtime behavior for the `share_result` tool.
-class ShareResultToolHandler implements ToolHandler {
+class ShareResultToolHandler extends ToolHandler {
   ShareResultToolHandler({
     required ResultSharer resultSharer,
   }) : _resultSharer = resultSharer;

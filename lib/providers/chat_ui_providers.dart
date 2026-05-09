@@ -219,6 +219,8 @@ class RuntimeStreamEntriesController
   @override
   void dispose() {
     _flushTimer?.cancel();
+    _flushTimer = null;
+    _pendingEntries = null;
     super.dispose();
   }
 }

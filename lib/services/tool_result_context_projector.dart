@@ -12,6 +12,7 @@ class ToolResultContextProjector {
       'fetch_webpage' => _projectFetchWebpage(result),
       'LS' || 'Glob' || 'Grep' => _projectDiscoveryResult(result),
       'Read' || 'Write' || 'Edit' || 'create_artifact' => _projectFileResult(result),
+      'skill' => _projectSkillResult(result),
       'create_reminder' || 'create_calendar_event' || 'share_result' =>
         _projectActionResult(result),
       _ => null,
@@ -35,7 +36,7 @@ class ToolResultContextProjector {
       if (item is! Map) {
         continue;
       }
-      final map = Map<String, dynamic>.from(item as Map<dynamic, dynamic>);
+      final map = Map<String, dynamic>.from(item);
       final title = map['title']?.toString().trim();
       final url = map['url']?.toString().trim();
       final snippet = map['snippet']?.toString().trim();
@@ -96,7 +97,7 @@ class ToolResultContextProjector {
       if (item is! Map) {
         continue;
       }
-      final map = Map<String, dynamic>.from(item as Map<dynamic, dynamic>);
+      final map = Map<String, dynamic>.from(item);
       final text = map['text']?.toString().trim();
       if (text != null && text.isNotEmpty) {
         lines.add('${i + 1}. $text');
@@ -141,7 +142,7 @@ class ToolResultContextProjector {
           if (item is! Map) {
             continue;
           }
-          final map = Map<String, dynamic>.from(item as Map<dynamic, dynamic>);
+          final map = Map<String, dynamic>.from(item);
           final entryPath = map['path']?.toString().trim();
           final entryType = map['entryType']?.toString().trim() ??
               map['type']?.toString().trim();
@@ -167,7 +168,7 @@ class ToolResultContextProjector {
           if (item is! Map) {
             continue;
           }
-          final map = Map<String, dynamic>.from(item as Map<dynamic, dynamic>);
+          final map = Map<String, dynamic>.from(item);
           final matchPath = map['path']?.toString().trim();
           final lineText = map['lineText']?.toString().trim() ??
               map['text']?.toString().trim();
@@ -206,6 +207,37 @@ class ToolResultContextProjector {
       lines.add('id: $id');
     }
     return lines.join('\n');
+  }
+
+  String? _projectSkillResult(ToolResult result) {
+    final name = result.data['name']?.toString().trim();
+    final qualifiedPath = result.data['qualifiedPath']?.toString().trim();
+    final baseDirectory = result.data['baseDirectory']?.toString().trim();
+    final instructionBody = result.data['instructionBody']?.toString().trim();
+
+    if (name == null ||
+        name.isEmpty ||
+        qualifiedPath == null ||
+        qualifiedPath.isEmpty ||
+        baseDirectory == null ||
+        baseDirectory.isEmpty ||
+        instructionBody == null ||
+        instructionBody.isEmpty) {
+      return null;
+    }
+
+    return [
+      '<system-reminder>',
+      'The following skills were invoked in this session. Continue to follow these guidelines:',
+      '',
+      '### Skill: $name',
+      'Path: $qualifiedPath',
+      '',
+      'Base directory for this skill: $baseDirectory',
+      '',
+      instructionBody,
+      '</system-reminder>',
+    ].join('\n');
   }
 
   String? _projectFallback(ToolResult result) {

@@ -25,7 +25,7 @@ class _RunningStatusDotState extends State<RunningStatusDot>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 760),
+    duration: const Duration(milliseconds: 920),
   );
 
   late final CurvedAnimation _curve = CurvedAnimation(
@@ -68,9 +68,9 @@ class _RunningStatusDotState extends State<RunningStatusDot>
       animation: _curve,
       builder: (context, _) {
         final t = widget.isRunning ? _curve.value : 0.0;
-        final scale = 1 + (0.42 * t);
-        final opacity = 0.78 + (0.22 * t);
-        final glowOpacity = 0.22 + (0.28 * t);
+        final scale = 1 + (0.18 * t);
+        final opacity = 0.82 + (0.14 * t);
+        final glowOpacity = 0.12 + (0.14 * t);
 
         return Container(
           width: widget.size,
@@ -82,8 +82,8 @@ class _RunningStatusDotState extends State<RunningStatusDot>
                 ? [
                     BoxShadow(
                       color: widget.color.withValues(alpha: glowOpacity),
-                      blurRadius: 10 + (8 * t),
-                      spreadRadius: 1.2 + (1.8 * t),
+                      blurRadius: 6 + (5 * t),
+                      spreadRadius: 0.4 + (0.8 * t),
                     ),
                   ]
                 : null,
@@ -128,7 +128,7 @@ class _SubtleRunningBreathingSurfaceState
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1500),
+    duration: const Duration(milliseconds: 1800),
   );
 
   late final CurvedAnimation _curve = CurvedAnimation(
@@ -177,8 +177,8 @@ class _SubtleRunningBreathingSurfaceState
       );
     }
 
-    final minAlpha = (widget.baseColor.a - 0.055).clamp(0.0, 1.0);
-    final maxAlpha = (widget.baseColor.a + 0.07).clamp(0.0, 1.0);
+    final minAlpha = (widget.baseColor.a - 0.03).clamp(0.0, 1.0);
+    final maxAlpha = (widget.baseColor.a + 0.04).clamp(0.0, 1.0);
     final colorTween = ColorTween(
       begin: widget.baseColor.withValues(alpha: minAlpha),
       end: widget.baseColor.withValues(alpha: maxAlpha),
@@ -207,7 +207,7 @@ class RunningSweepSurface extends StatefulWidget {
     required this.child,
     required this.borderRadius,
     required this.isRunning,
-    this.duration = const Duration(milliseconds: 1100),
+    this.duration = const Duration(milliseconds: 1500),
     this.showBorder = true,
     this.sweepOpacity = 1.0,
   });
@@ -280,8 +280,8 @@ class _RunningSweepSurfaceState extends State<RunningSweepSurface>
       borderRadius: widget.borderRadius.resolve(Directionality.of(context)),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final sweepWidth = math.max(constraints.maxWidth * 0.56, 180.0);
-          final travel = constraints.maxWidth + (sweepWidth * 2.5);
+          final sweepWidth = math.max(constraints.maxWidth * 0.34, 120.0);
+          final travel = constraints.maxWidth + (sweepWidth * 2.0);
           final sweepHeight = constraints.hasBoundedHeight
               ? constraints.maxHeight * 1.56
               : 96.0;
@@ -329,13 +329,13 @@ class _RunningSweepSurfaceState extends State<RunningSweepSurface>
                               colors: [
                                 Colors.white.withValues(alpha: 0),
                                 Colors.white.withValues(
-                                  alpha: 0.18 * widget.sweepOpacity,
+                                  alpha: 0.06 * widget.sweepOpacity,
                                 ),
                                 Colors.white.withValues(
-                                  alpha: 0.42 * widget.sweepOpacity,
+                                  alpha: 0.12 * widget.sweepOpacity,
                                 ),
                                 Colors.white.withValues(
-                                  alpha: 0.18 * widget.sweepOpacity,
+                                  alpha: 0.06 * widget.sweepOpacity,
                                 ),
                                 Colors.white.withValues(alpha: 0),
                               ],

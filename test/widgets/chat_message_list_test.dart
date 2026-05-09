@@ -1,6 +1,7 @@
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/chat/tool_phase_visibility.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
+import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/debug/debug_test_case.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
@@ -16,6 +17,7 @@ import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
 import 'package:ai_chat/widgets/chat_message_list.dart';
+import 'package:ai_chat/widgets/animations/message_growth_animation.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_result_card.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_timeline_card.dart';
 import 'package:ai_chat/widgets/tool_renderers/web_search_tool_result_card.dart';
@@ -105,6 +107,38 @@ void main() {
       );
 
       expect(find.text('assistant reply'), findsOneWidget);
+    });
+
+    testWidgets(
+        'runtime create_artifact debug stream stays out of the normal timeline',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我做个 artifact',
+            role: MessageRole.user,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+        runtimeStreamEntries: [
+          RuntimeStreamEntry(
+            turnId: 'planner_runtime',
+            entryId: 'planner_runtime-tool-call-1',
+            kind: RuntimeStreamEntryKind.toolCallArguments,
+            providerCallId: 'call_artifact_1',
+            toolName: 'create_artifact',
+            createdAt: DateTime(2026, 5, 5, 10, 0, 1),
+            updatedAt: DateTime(2026, 5, 5, 10, 0, 1),
+            text: '{"source":"<div>调试流内容</div>"}',
+          ),
+        ],
+      );
+
+      expect(find.text('Analysis'), findsNothing);
+      expect(find.textContaining('调试流内容'), findsNothing);
     });
 
     testWidgets('completed final-answer reasoning stays collapsed until tapped',
@@ -335,6 +369,43 @@ void main() {
 
       expect(find.byType(ToolInlineStepRow), findsOneWidget);
       expect(find.text('已执行：搜索历史记录'), findsOneWidget);
+      expect(find.byType(AnimatedSwitcher), findsOneWidget);
+    });
+
+    testWidgets('newly appended assistant row uses restrained growth motion',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '先前消息',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+      );
+
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '先前消息',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+          ),
+          _buildMessage(
+            text: '新消息',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+      );
+
+      final animation = tester.widget<MessageGrowthAnimation>(
+        find.byType(MessageGrowthAnimation).last,
+      );
+      expect(animation.offsetY, 10);
+      expect(animation.beginScale, 0.985);
     });
 
     testWidgets(
@@ -1141,6 +1212,7 @@ void main() {
 Future<void> _pumpMessageList(
   WidgetTester tester, {
   required List<ChatMessage> messages,
+  List<RuntimeStreamEntry> runtimeStreamEntries = const [],
   TextEditingController? textController,
   FocusNode? focusNode,
   ToolUiRendererRegistry? registry,
@@ -1207,6 +1279,9 @@ Future<void> _pumpMessageList(
             isGenerating: sendPhase == ChatSendPhase.streamingResponse,
             statusText: sendStatusText,
           ),
+      ),
+      runtimeStreamEntriesProvider.overrideWith(
+        (ref) => RuntimeStreamEntriesController()..publish(runtimeStreamEntries),
       ),
       if (registry != null)
         toolUiRendererRegistryProvider.overrideWith((ref) => registry),
