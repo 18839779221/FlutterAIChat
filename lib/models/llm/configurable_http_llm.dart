@@ -573,11 +573,65 @@ class ConfigurableHttpLLM
     required StreamingDecisionAccumulator accumulator,
     void Function()? onFirstChunk,
   }) {
+    final startedAt = DateTime.now();
+    var chunkCount = 0;
+    DateTime? lastChunkAt;
+
+    void logChunkProgress(String phase) {
+      final snapshot = accumulator.debugSnapshot();
+      final assistantChars =
+          (snapshot['assistantTextLength'] as int?) ?? 0;
+      final reasoningChars = (snapshot['reasoningLength'] as int?) ?? 0;
+      final toolDrafts =
+          (snapshot['toolDrafts'] as List<dynamic>?) ?? const <dynamic>[];
+      Logger.temp(
+        _tag,
+        'planner stream $phase',
+        reason: 'diagnose create_artifact timeout on device',
+        data: {
+          'chunkCount': chunkCount,
+          'elapsedMs': DateTime.now().difference(startedAt).inMilliseconds,
+          'idleMs': lastChunkAt == null
+              ? null
+              : DateTime.now().difference(lastChunkAt!).inMilliseconds,
+          'assistantChars': assistantChars,
+          'reasoningChars': reasoningChars,
+          'toolDraftCount': toolDrafts.length,
+          'toolDraftSummary': _summarizeStreamingPlannerAttempt(snapshot),
+        },
+      );
+    }
+
+    Logger.temp(
+      _tag,
+      'planner stream start',
+      reason: 'diagnose create_artifact timeout on device',
+      data: {
+        'idleTimeoutMs': _plannerStreamIdleTimeout.inMilliseconds,
+        'overallTimeoutMs': _plannerStreamOverallTimeout.inMilliseconds,
+      },
+    );
+
     return (() async {
       var firstChunkEmitted = false;
       await for (final chunk in stream.timeout(
         _plannerStreamIdleTimeout,
         onTimeout: (sink) {
+          Logger.temp(
+            _tag,
+            'planner stream idle timeout',
+            level: LogLevel.warning,
+            reason: 'diagnose create_artifact timeout on device',
+            data: {
+              'chunkCount': chunkCount,
+              'elapsedMs': DateTime.now().difference(startedAt).inMilliseconds,
+              'idleTimeoutMs': _plannerStreamIdleTimeout.inMilliseconds,
+              'lastChunkAgoMs': lastChunkAt == null
+                  ? null
+                  : DateTime.now().difference(lastChunkAt!).inMilliseconds,
+            },
+          );
+          logChunkProgress('idle-timeout snapshot');
           sink.addError(
             TimeoutException(
               'planner stream idle timeout after '
@@ -589,15 +643,44 @@ class ConfigurableHttpLLM
         if (!firstChunkEmitted) {
           firstChunkEmitted = true;
           onFirstChunk?.call();
+          Logger.temp(
+            _tag,
+            'planner stream first chunk',
+            reason: 'diagnose create_artifact timeout on device',
+            data: {
+              'elapsedMs': DateTime.now().difference(startedAt).inMilliseconds,
+            },
+          );
         }
+        chunkCount += 1;
+        lastChunkAt = DateTime.now();
         accumulator.consume(chunk);
+        if (chunkCount <= 3 || chunkCount % 20 == 0) {
+          logChunkProgress('progress');
+        }
         _plannerRuntimeStreamListener?.call(
           accumulator.runtimeSnapshots(turnId: 'planner_runtime'),
         );
       }
+      logChunkProgress('completed');
     }()).timeout(
       _plannerStreamOverallTimeout,
       onTimeout: () {
+        Logger.temp(
+          _tag,
+          'planner stream overall timeout',
+          level: LogLevel.warning,
+          reason: 'diagnose create_artifact timeout on device',
+          data: {
+            'chunkCount': chunkCount,
+            'elapsedMs': DateTime.now().difference(startedAt).inMilliseconds,
+            'overallTimeoutMs': _plannerStreamOverallTimeout.inMilliseconds,
+            'lastChunkAgoMs': lastChunkAt == null
+                ? null
+                : DateTime.now().difference(lastChunkAt!).inMilliseconds,
+          },
+        );
+        logChunkProgress('overall-timeout snapshot');
         throw TimeoutException(
           'planner stream overall timeout after '
           '${_plannerStreamOverallTimeout.inMilliseconds}ms',

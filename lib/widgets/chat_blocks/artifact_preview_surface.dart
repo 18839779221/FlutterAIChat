@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -8,6 +10,7 @@ const double _maxArtifactPreviewScreenCount = 3;
 const String _artifactHeightChannelName = 'ArtifactHeight';
 const String artifactPreviewTruncationMessage =
     '内容较长，长按进入详情页查看完整内容。';
+const Duration _streamingDebounceDelay = Duration(seconds: 1);
 
 double clampArtifactPreviewHeight(
   double rawHeight, {
@@ -159,22 +162,87 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   double _previewHeight = _defaultArtifactPreviewHeight;
   bool _isPreviewTruncated = false;
 
+  // Debouncing state
+  Timer? _debounceTimer;
+  String? _pendingSource;
+  String? _lastRenderedSource;
+
   @override
   void initState() {
     super.initState();
     _controller = _createController();
+    _lastRenderedSource = widget.source;
   }
 
   @override
   void didUpdateWidget(covariant ArtifactPreviewSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.source != widget.source ||
-        oldWidget.isStale != widget.isStale) {
-      _errorText = null;
-      _previewHeight = _defaultArtifactPreviewHeight;
-      _isPreviewTruncated = false;
-      _controller = _createController();
+
+    // Handle stale state change immediately
+    if (oldWidget.isStale != widget.isStale && widget.isStale) {
+      _debounceTimer?.cancel();
+      _pendingSource = null;
+      return;
     }
+
+    // If source changed, debounce the update
+    if (oldWidget.source != widget.source) {
+      _pendingSource = widget.source;
+      _debounceTimer?.cancel();
+
+      // Use debouncing to reduce update frequency during streaming
+      _debounceTimer = Timer(_streamingDebounceDelay, () {
+        if (!mounted || _pendingSource == null) return;
+
+        final newSource = _pendingSource!;
+        _pendingSource = null;
+
+        // Only update if source actually changed from last render
+        if (newSource == _lastRenderedSource) return;
+
+        _lastRenderedSource = newSource;
+
+        // Try incremental update first, fall back to full rebuild
+        if (_controller != null && newSource.isNotEmpty) {
+          _updateControllerContent(newSource);
+        } else {
+          setState(() {
+            _errorText = null;
+            _previewHeight = _defaultArtifactPreviewHeight;
+            _isPreviewTruncated = false;
+            _controller = _createController();
+          });
+        }
+      });
+    }
+  }
+
+  void _updateControllerContent(String source) {
+    final controller = _controller;
+    if (controller == null) return;
+
+    try {
+      controller.loadHtmlString(buildArtifactPreviewDocument(source));
+      // Reset height state for new content
+      if (mounted) {
+        setState(() {
+          _previewHeight = _defaultArtifactPreviewHeight;
+          _isPreviewTruncated = false;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _errorText = '$error';
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    super.dispose();
   }
 
   WebViewController? _createController() {
@@ -254,21 +322,34 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
       return _buildSourceFallback(context, source);
     }
 
+    // Show loading indicator if we have pending updates
+    final isUpdating = _pendingSource != null && _pendingSource != _lastRenderedSource;
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOut,
-            height: _previewHeight,
-            color: Colors.transparent,
-            child: RepaintBoundary(
-              child: WebViewWidget(
-                controller: _controller!,
+          Stack(
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                height: _previewHeight,
+                color: Colors.transparent,
+                child: RepaintBoundary(
+                  child: WebViewWidget(
+                    controller: _controller!,
+                  ),
+                ),
               ),
-            ),
+              if (isUpdating)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: _buildStreamingIndicator(context),
+                ),
+            ],
           ),
           if (_isPreviewTruncated) _buildTruncationMessage(context),
         ],
@@ -283,6 +364,46 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
       return _defaultArtifactPreviewHeight;
     }
     return viewportHeight;
+  }
+
+  Widget _buildStreamingIndicator(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                theme.colorScheme.primary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '更新中',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildInfoMessage(BuildContext context, String text) {

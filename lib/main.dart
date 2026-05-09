@@ -37,6 +37,12 @@ import 'services/session_context_projector.dart';
 import 'services/session_context_service.dart';
 import 'services/session_summary_service.dart';
 import 'services/session_token_budget_service.dart';
+import 'services/skills/github_skill_fetcher.dart';
+import 'services/skills/github_skill_source_resolver.dart';
+import 'services/skills/skill_index_service.dart';
+import 'services/skills/skill_installer_service.dart';
+import 'services/skills/skill_runtime_service.dart';
+import 'services/skills/skill_storage_service.dart';
 import 'services/artifact/artifact_file_storage_service.dart';
 import 'tools/adapters/tool_host_adapters.dart';
 import 'tools/default_tool_runtime_registry.dart';
@@ -68,6 +74,24 @@ void main() async {
       rootDirectory: Directory(
         '${appSupportDirectory.path}/inline_artifacts',
       ),
+    );
+    final skillStorageService = SkillStorageService(
+      rootDirectoryProvider: () async => appSupportDirectory,
+    );
+    const gitHubSkillSourceResolver = GitHubSkillSourceResolver();
+    final gitHubSkillFetcher = GitHubSkillFetcher();
+    final skillIndexService = SkillIndexService(
+      storageService: skillStorageService,
+    );
+    final skillRuntimeService = SkillRuntimeService(
+      storageService: skillStorageService,
+      settingsRepository: settingsRepository,
+      indexService: skillIndexService,
+    );
+    final skillInstallerService = SkillInstallerService(
+      storageService: skillStorageService,
+      sourceResolver: gitHubSkillSourceResolver,
+      fetcher: gitHubSkillFetcher,
     );
     await artifactFileStorageService.ensureReady();
     final artifactRepository = ArtifactRepository(storage);
@@ -117,6 +141,7 @@ void main() async {
     );
     final runtimeRegistry = buildDefaultToolRuntimeRegistry(
       toolExecutor: toolExecutor,
+      skillRuntimeService: skillRuntimeService,
       createArtifactHandler: createArtifactHandler,
     );
     final toolPolicyService = ToolPolicyService(
@@ -188,6 +213,13 @@ void main() async {
         databaseProvider.overrideWithValue(storage),
         artifactFileStorageServiceProvider
             .overrideWithValue(artifactFileStorageService),
+        skillStorageServiceProvider.overrideWithValue(skillStorageService),
+        gitHubSkillSourceResolverProvider
+            .overrideWithValue(gitHubSkillSourceResolver),
+        gitHubSkillFetcherProvider.overrideWithValue(gitHubSkillFetcher),
+        skillIndexServiceProvider.overrideWithValue(skillIndexService),
+        skillRuntimeServiceProvider.overrideWithValue(skillRuntimeService),
+        skillInstallerServiceProvider.overrideWithValue(skillInstallerService),
         traceRecorderProvider.overrideWithValue(traceRecorder),
         chatServiceFactoryProvider.overrideWithValue(chatService),
         turnHarnessProvider.overrideWithValue(turnHarness),

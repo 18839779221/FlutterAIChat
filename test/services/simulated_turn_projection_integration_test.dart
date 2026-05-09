@@ -160,7 +160,7 @@ void main() {
                   'query': 'SQLite',
                   'matchCount': 1,
                 },
-              )
+              ),
             ),
           ]),
         },
@@ -209,12 +209,9 @@ void main() {
       expect(
         waitingProjection.assistantBlocks.any(
           (block) =>
-              block.workflowSteps?.any(
-                (step) =>
-                    step.toolName == 'search_chat_history' &&
-                    step.status == ToolWorkflowStepStatus.completed,
-              ) ??
-              false,
+              block.type == AssistantTurnBlockType.toolResultSummary &&
+              block.toolResult?.toolName == 'search_chat_history' &&
+              block.toolResult?.status == ToolExecutionStatus.success,
         ),
         isTrue,
       );
@@ -337,7 +334,7 @@ void main() {
                   'query': '周报',
                   'matchCount': 2,
                 },
-              )
+              ),
             ),
           ]),
           'create_reminder': Queue.of([
@@ -349,7 +346,7 @@ void main() {
                 summary: '请确认执行工具：创建提醒',
                 requiresConfirmation: true,
               ),
-              toolResult: null
+              toolResult: null,
             ),
             const ToolPreparationResult(
               toolInvocation: ToolInvocation(
@@ -363,7 +360,7 @@ void main() {
                 toolName: 'create_reminder',
                 status: ToolExecutionStatus.success,
                 summary: '已创建提醒：交周报',
-              )
+              ),
             ),
           ]),
         },
@@ -415,12 +412,9 @@ void main() {
       expect(
         waitingProjection.assistantBlocks.any(
           (block) =>
-              block.workflowSteps?.any(
-                (step) =>
-                    step.toolName == 'search_chat_history' &&
-                    step.status == ToolWorkflowStepStatus.completed,
-              ) ??
-              false,
+              block.type == AssistantTurnBlockType.toolResultSummary &&
+              block.toolResult?.toolName == 'search_chat_history' &&
+              block.toolResult?.status == ToolExecutionStatus.success,
         ),
         isTrue,
       );
@@ -546,7 +540,7 @@ void main() {
                   'query': '会议',
                   'matchCount': 1,
                 },
-              )
+              ),
             ),
           ]),
           'create_reminder': Queue.of([
@@ -558,7 +552,7 @@ void main() {
                 summary: '请确认执行工具：创建提醒',
                 requiresConfirmation: true,
               ),
-              toolResult: null
+              toolResult: null,
             ),
             const ToolPreparationResult(
               toolInvocation: ToolInvocation(
@@ -572,7 +566,7 @@ void main() {
                 toolName: 'create_reminder',
                 status: ToolExecutionStatus.success,
                 summary: '已创建提醒：准备会前材料',
-              )
+              ),
             ),
           ]),
           'create_calendar_event': Queue.of([
@@ -587,7 +581,7 @@ void main() {
                 summary: '请确认执行工具：创建日历事件',
                 requiresConfirmation: true,
               ),
-              toolResult: null
+              toolResult: null,
             ),
           ]),
         },
@@ -720,7 +714,7 @@ void main() {
                   'query': '提醒',
                   'matchCount': 1,
                 },
-              )
+              ),
             ),
           ]),
           'create_reminder': Queue.of([
@@ -732,7 +726,7 @@ void main() {
                 summary: '请确认执行工具：创建提醒',
                 requiresConfirmation: true,
               ),
-              toolResult: null
+              toolResult: null,
             ),
             const ToolPreparationResult(
               toolInvocation: ToolInvocation(
@@ -746,7 +740,7 @@ void main() {
                 toolName: 'create_reminder',
                 status: ToolExecutionStatus.success,
                 summary: '已创建提醒：提醒测试',
-              )
+              ),
             ),
           ]),
         },
@@ -882,7 +876,7 @@ void main() {
                   'query': '历史',
                   'matchCount': 1,
                 },
-              )
+              ),
             ),
             const ToolPreparationResult(
               toolInvocation: ToolInvocation(
@@ -892,7 +886,7 @@ void main() {
                 summary: '请确认执行工具：搜索历史记录',
                 requiresConfirmation: true,
               ),
-              toolResult: null
+              toolResult: null,
             ),
             const ToolPreparationResult(
               toolInvocation: ToolInvocation(
@@ -918,7 +912,7 @@ void main() {
                   'executionPolicy': 'blocked',
                   'isVisibleToPlanner': false,
                 },
-              )
+              ),
             ),
           ]),
         },
@@ -1049,7 +1043,7 @@ void main() {
                   'query': '数据库版本',
                   'matchCount': 1,
                 },
-              )
+              ),
             ),
           ]),
         },
@@ -1141,7 +1135,7 @@ void main() {
                 summary: '请确认执行工具：创建提醒',
                 requiresConfirmation: true,
               ),
-              toolResult: null
+              toolResult: null,
             ),
           ]),
         },

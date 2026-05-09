@@ -3,12 +3,15 @@ import 'dart:convert';
 import '../agent/model_tool_call.dart';
 import '../chat/runtime_stream_entry.dart';
 import '../agent/model_turn_decision.dart';
+import '../../utils/logger.dart';
 
 import 'streaming_planner_chunk.dart';
 
 /// Incrementally assembles a final [ModelTurnDecision] from provider stream
 /// chunks while keeping streaming hidden from upper planner layers.
 class StreamingDecisionAccumulator {
+  static const String _tag = 'StreamingDecisionAccumulator';
+
   final StringBuffer _assistantTextBuffer = StringBuffer();
   final StringBuffer _reasoningBuffer = StringBuffer();
   final List<_ToolCallDraft> _toolCallDrafts = <_ToolCallDraft>[];
@@ -16,6 +19,9 @@ class StreamingDecisionAccumulator {
 
   void consume(StreamingPlannerChunk chunk) {
     switch (chunk.type) {
+      case StreamingPlannerChunkType.keepalive:
+        _mergeProviderState(chunk.providerMetadata);
+        return;
       case StreamingPlannerChunkType.contentDelta:
         _mergeProviderState(chunk.providerMetadata);
         final content = _nonEmptyText(chunk.content);
@@ -49,10 +55,24 @@ class StreamingDecisionAccumulator {
         return;
       case StreamingPlannerChunkType.toolCallCompleted:
         _mergeProviderState(chunk.providerMetadata);
-        _resolveDraft(chunk).markCompleted(
+        final completedDraft = _resolveDraft(chunk);
+        completedDraft.markCompleted(
           toolCallIndex: chunk.toolCallIndex,
           providerCallId: chunk.providerCallId,
           toolName: chunk.toolName,
+        );
+        Logger.temp(
+          _tag,
+          'tool call draft completed',
+          reason: 'diagnose anthropic create_artifact decision null',
+          data: {
+            'toolName': completedDraft.toolName,
+            'providerCallId': completedDraft.providerCallId,
+            'toolCallIndex': completedDraft.toolCallIndex,
+            'rawArgumentsLength': completedDraft.rawArgumentsLength,
+            'rawArgumentsHead': completedDraft.debugHeadPreview(),
+            'rawArgumentsTail': completedDraft.debugTailPreview(),
+          },
         );
         return;
       case StreamingPlannerChunkType.streamCompleted:
@@ -68,13 +88,29 @@ class StreamingDecisionAccumulator {
 
   ModelTurnDecision? buildDecision() {
     final toolCalls = <ModelToolCall>[];
+    var droppedInvalidToolCalls = 0;
     for (final draft in _toolCallDrafts) {
       if (!draft.isCompleted || draft.toolName == null) {
         continue;
       }
       final arguments = draft.parseArguments();
       if (arguments == null) {
-        return null;
+        Logger.temp(
+          _tag,
+          'tool call arguments parse failed',
+          level: LogLevel.warning,
+          reason: 'diagnose anthropic create_artifact decision null',
+          data: {
+            'toolName': draft.toolName,
+            'providerCallId': draft.providerCallId,
+            'toolCallIndex': draft.toolCallIndex,
+            'rawArgumentsLength': draft.rawArgumentsLength,
+            'rawArgumentsHead': draft.debugHeadPreview(),
+            'rawArgumentsTail': draft.debugTailPreview(),
+          },
+        );
+        droppedInvalidToolCalls += 1;
+        continue;
       }
       toolCalls.add(
         ModelToolCall(
@@ -89,7 +125,12 @@ class StreamingDecisionAccumulator {
     final assistantMessage = _normalizeText(_assistantTextBuffer.toString());
     final visibleReasoning = _normalizeText(_reasoningBuffer.toString());
 
-    if (toolCalls.isEmpty && assistantMessage == null && visibleReasoning == null) {
+    if (toolCalls.isEmpty &&
+        assistantMessage == null &&
+        visibleReasoning == null &&
+        droppedInvalidToolCalls == _toolCallDrafts
+            .where((draft) => draft.isCompleted && draft.toolName != null)
+            .length) {
       return null;
     }
 
@@ -359,5 +400,21 @@ class _ToolCallDraft {
       return null;
     }
     return null;
+  }
+
+  String debugHeadPreview([int maxChars = 200]) {
+    final raw = _rawArgumentsBuffer.toString();
+    if (raw.length <= maxChars) {
+      return raw;
+    }
+    return raw.substring(0, maxChars);
+  }
+
+  String debugTailPreview([int maxChars = 200]) {
+    final raw = _rawArgumentsBuffer.toString();
+    if (raw.length <= maxChars) {
+      return raw;
+    }
+    return raw.substring(raw.length - maxChars);
   }
 }

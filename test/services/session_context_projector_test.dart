@@ -231,6 +231,44 @@ void main() {
       expect(message?.role, MessageRole.user);
     });
 
+    test('projects skill tool result into invoked skill reminder text', () {
+      final projector = SessionContextProjector();
+
+      final message = projector.projectEventToContext(
+        ChatEvent(
+          turnId: 1,
+          groupId: 1,
+          sequence: 1,
+          eventType: ChatEventType.toolResult,
+          role: MessageRole.system,
+          content: 'Skill loaded: verify',
+          payloadJson: const {
+            'toolName': 'skill',
+            'status': 'success',
+            'summary': 'Skill loaded: verify',
+            'data': {
+              'skillId': 'verify',
+              'name': 'verify',
+              'qualifiedPath': 'projectSettings:verify',
+              'baseDirectory': '/tmp/skills/verify',
+              'instructionBody': 'After code changes, verify by:\n1. Run tests',
+            },
+          },
+        ),
+      );
+
+      expect(message, isNotNull);
+      expect(message!.role, MessageRole.user);
+      expect(message.text, contains('<system-reminder>'));
+      expect(message.text, contains('### Skill: verify'));
+      expect(message.text, contains('Path: projectSettings:verify'));
+      expect(
+        message.text,
+        contains('Base directory for this skill: /tmp/skills/verify'),
+      );
+      expect(message.text, contains('After code changes, verify by:'));
+    });
+
     test('falls back to event content when tool error has no payload', () {
       final projector = SessionContextProjector();
 

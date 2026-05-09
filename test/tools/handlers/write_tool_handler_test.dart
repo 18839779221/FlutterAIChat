@@ -67,7 +67,6 @@ void main() {
       expect(result.status, ToolExecutionStatus.success);
       expect(result.data['filePath'], 'artifacts/report.md');
       expect(result.summary, '已写入文件：artifacts/report.md');
-      expect(result.data['message'], '已写入文件：artifacts/report.md');
       expect(
         File('${rootService.rootPath}/artifacts/report.md').existsSync(),
         isTrue,

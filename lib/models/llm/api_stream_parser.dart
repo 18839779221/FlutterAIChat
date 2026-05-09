@@ -310,6 +310,10 @@ class ApiStreamParser {
           continue;
         }
         final type = data['type'];
+        if (type == 'ping') {
+          yield const StreamingPlannerChunk.keepalive();
+          continue;
+        }
         if (type == 'content_block_start') {
           final contentBlock = data['content_block'];
           final index = data['index']?.toString();
@@ -329,6 +333,17 @@ class ApiStreamParser {
               'toolName': toolName,
               'providerMetadata': meta,
             };
+            Logger.temp(
+              _tag,
+              'anthropic content_block_start',
+              reason: 'diagnose provider-side tool arg corruption',
+              data: {
+                'index': index,
+                'blockType': _normalizeText(contentBlock['type']),
+                'providerCallId': providerCallId,
+                'toolName': toolName,
+              },
+            );
             if (contentBlock['type'] == 'tool_use') {
               yield StreamingPlannerChunk.toolCallStarted(
                 toolCallIndex: toolCallIndex,
@@ -368,6 +383,24 @@ class ApiStreamParser {
             if (rawPartialJson is! String || index == null) {
               continue;
             }
+            Logger.temp(
+              _tag,
+              'anthropic input_json_delta',
+              reason: 'diagnose provider-side trailing garbage in tool args',
+              data: {
+                'index': index,
+                'providerCallId': _normalizeText(
+                  blockMetaByIndex[index]?['providerCallId'],
+                ),
+                'toolName': _normalizeText(
+                  blockMetaByIndex[index]?['toolName'],
+                ),
+                'deltaLength': rawPartialJson.length,
+                'deltaPreview': rawPartialJson.length <= 200
+                    ? rawPartialJson
+                    : '${rawPartialJson.substring(0, 200)}...',
+              },
+            );
             final meta = blockMetaByIndex[index];
             yield StreamingPlannerChunk.toolCallArgumentsDelta(
               toolCallIndex: _normalizeInt(meta?['toolCallIndex']),
@@ -394,6 +427,16 @@ class ApiStreamParser {
           if (meta == null) {
             continue;
           }
+          Logger.temp(
+            _tag,
+            'anthropic content_block_stop',
+            reason: 'diagnose provider-side tool arg corruption',
+            data: {
+              'index': index,
+              'providerCallId': _normalizeText(meta['providerCallId']),
+              'toolName': _normalizeText(meta['toolName']),
+            },
+          );
           if (_normalizeText(meta['providerCallId']) != null ||
               _normalizeText(meta['toolName']) != null) {
             yield StreamingPlannerChunk.toolCallCompleted(

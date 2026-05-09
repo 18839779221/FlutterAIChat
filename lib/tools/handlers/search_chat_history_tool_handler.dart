@@ -17,7 +17,7 @@ typedef ChatHistorySearcher = Future<ToolResult> Function({
 });
 
 /// Handles the complete runtime behavior for the `search_chat_history` tool.
-class SearchChatHistoryToolHandler implements ToolHandler {
+class SearchChatHistoryToolHandler extends ToolHandler {
   SearchChatHistoryToolHandler({
     required ChatHistorySearcher searcher,
   }) : _searcher = searcher;

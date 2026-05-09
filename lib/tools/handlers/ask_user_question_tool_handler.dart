@@ -10,7 +10,7 @@ import '../core/tool_handler.dart';
 
 /// Planner-visible interaction tool used to collect missing user input before
 /// continuing the current turn.
-class AskUserQuestionToolHandler implements ToolHandler {
+class AskUserQuestionToolHandler extends ToolHandler {
   @override
   ToolDefinition get definition => const ToolDefinition(
         name: 'ask_user_question',

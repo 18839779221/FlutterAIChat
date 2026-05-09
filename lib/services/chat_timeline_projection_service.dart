@@ -37,6 +37,11 @@ class ChatTimelineProjectionService {
     RuntimeAssistantDraft? runtimeDraft,
     List<RuntimeStreamEntry> runtimeStreamEntries = const <RuntimeStreamEntry>[],
   }) {
+    final runtimeTurnId = _resolveActiveRuntimeTurnId(
+      messages: messages,
+      groupId: groupId,
+      runtimeDraft: runtimeDraft,
+    );
     final toolPresentationEvents = _buildToolPresentationEvents(
       messages: messages,
       groupId: groupId,
@@ -60,6 +65,7 @@ class ChatTimelineProjectionService {
         if (runtimeDraftBlock != null) runtimeDraftBlock,
       ],
       runtimeStreamEntries: runtimeStreamEntries,
+      resolvedTurnId: runtimeTurnId,
     );
     return ChatTimelineProjection(
       activeAskUserQuestionMessage: _findActiveAskUserQuestion(messages),
@@ -235,6 +241,7 @@ class ChatTimelineProjectionService {
   List<AssistantTurnBlock> _buildRuntimeArtifactBlocks({
     required List<AssistantTurnBlock> projectedAssistantBlocks,
     required List<RuntimeStreamEntry> runtimeStreamEntries,
+    required String? resolvedTurnId,
   }) {
     if (runtimeStreamEntries.isEmpty) {
       return const <AssistantTurnBlock>[];
@@ -246,10 +253,14 @@ class ChatTimelineProjectionService {
       if (preview == null) {
         continue;
       }
+      final targetTurnId = _resolveProjectedRuntimeTurnId(
+        entryTurnId: preview.turnId,
+        fallbackTurnId: resolvedTurnId,
+      );
       final alreadyResolved = projectedAssistantBlocks.any(
         (block) =>
             block.type == AssistantTurnBlockType.artifact &&
-            block.turnId == preview.turnId,
+            block.turnId == targetTurnId,
       );
       if (alreadyResolved) {
         continue;
@@ -257,7 +268,7 @@ class ChatTimelineProjectionService {
       runtimeArtifactBlocks.add(
         AssistantTurnBlock(
           id: preview.entryId,
-          turnId: preview.turnId,
+          turnId: targetTurnId,
           type: AssistantTurnBlockType.artifact,
           sequence: 99998,
           createdAt: preview.createdAt,
@@ -282,6 +293,45 @@ class ChatTimelineProjectionService {
       );
     }
     return runtimeArtifactBlocks;
+  }
+
+  String? _resolveActiveRuntimeTurnId({
+    required List<ChatMessage> messages,
+    required int? groupId,
+    required RuntimeAssistantDraft? runtimeDraft,
+  }) {
+    if (runtimeDraft != null && !_isTransientRuntimeTurnId(runtimeDraft.turnId)) {
+      return runtimeDraft.turnId;
+    }
+
+    var fallbackUserIndex = 0;
+    String? latestUserTurnId;
+    for (final message in messages) {
+      if (!message.isUser) {
+        continue;
+      }
+      fallbackUserIndex += 1;
+      latestUserTurnId = _buildTurnId(
+        groupId: groupId,
+        messageId: message.id,
+        fallbackIndex: fallbackUserIndex,
+      );
+    }
+    return latestUserTurnId;
+  }
+
+  String _resolveProjectedRuntimeTurnId({
+    required String entryTurnId,
+    required String? fallbackTurnId,
+  }) {
+    if (!_isTransientRuntimeTurnId(entryTurnId)) {
+      return entryTurnId;
+    }
+    return fallbackTurnId ?? entryTurnId;
+  }
+
+  bool _isTransientRuntimeTurnId(String turnId) {
+    return turnId == 'planner_runtime' || turnId.contains('_runtime_');
   }
 
   List<AssistantTurnBlock> _mergeBlocks({
