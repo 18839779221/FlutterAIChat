@@ -42,7 +42,7 @@ void main() {
 
     expect(find.text('Context'), findsOneWidget);
     expect(find.text('Resolved System Prompt'), findsOneWidget);
-    expect(find.text('system prompt line 1\nsystem prompt line 2'), findsOneWidget);
+    expect(find.text('core rule line 1\n\nplanner stage line 2\n\nuser prompt line 3'), findsOneWidget);
   });
 
   testWidgets('debug inspector refresh button reloads projection', (
@@ -231,7 +231,7 @@ DebugTurnInspectorProjection _buildProjection({
         title: 'Resolved System Prompt',
         summary: 'system prompt preview',
         defaultExpanded: true,
-        rawText: 'system prompt line 1\\nsystem prompt line 2',
+        rawText: 'core rule line 1\\n\\nplanner stage line 2\\n\\nuser prompt line 3',
       ),
       DebugTurnInspectorContextSection(
         id: 'planner-messages',

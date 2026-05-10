@@ -14,6 +14,8 @@ import 'package:ai_chat/providers/chat_send_state_providers.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/services/prompt/prompt_builder_service.dart';
+import 'package:ai_chat/services/prompt/prompt_stage.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/session_context_service.dart';
 
@@ -31,6 +33,7 @@ class DebugTurnInspectorProjectionService {
     ChatMessage? activeAskUserQuestionMessage,
     ChatGroup? currentGroup,
     String? systemPromptOverride,
+    PromptBuilderService? promptBuilder,
   })  : _chatTurnRepository = chatTurnRepository,
         _chatEventRepository = chatEventRepository,
         _sessionContextService = sessionContextService,
@@ -41,7 +44,8 @@ class DebugTurnInspectorProjectionService {
         _sendPhase = sendPhase,
         _activeAskUserQuestionMessage = activeAskUserQuestionMessage,
         _currentGroup = currentGroup,
-        _systemPromptOverride = systemPromptOverride;
+        _systemPromptOverride = systemPromptOverride,
+        _promptBuilder = promptBuilder ?? const PromptBuilderService();
 
   final ChatTurnRepository _chatTurnRepository;
   final ChatEventRepository _chatEventRepository;
@@ -54,6 +58,7 @@ class DebugTurnInspectorProjectionService {
   final ChatMessage? _activeAskUserQuestionMessage;
   final ChatGroup? _currentGroup;
   final String? _systemPromptOverride;
+  final PromptBuilderService _promptBuilder;
 
   Future<DebugTurnInspectorProjection> build({
     required int groupId,
@@ -93,10 +98,14 @@ class DebugTurnInspectorProjectionService {
     final transcript = effectiveSelectedTurnId == null
         ? const <ChatEvent>[]
         : await _chatEventRepository.listEventsByTurn(effectiveSelectedTurnId);
+    final userSystemPrompt =
+        (_systemPromptOverride ?? _currentGroup?.systemPrompt ?? '').trim();
     final config = ChatConfig(
-      systemPrompt:
-          (_systemPromptOverride ?? _currentGroup?.systemPrompt ?? '').trim(),
-      userSystemPrompt: '',
+      systemPrompt: _promptBuilder.buildSystemPrompt(
+        stage: PromptStage.planner,
+        userSystemPrompt: userSystemPrompt,
+      ),
+      userSystemPrompt: userSystemPrompt,
     );
     final plannerState = effectiveSelectedTurnId == null
         ? null
