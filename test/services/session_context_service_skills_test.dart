@@ -115,14 +115,19 @@ void main() {
         config: ChatConfig(systemPrompt: '你是一个助手'),
       );
 
+      expect(plannerMessages, hasLength(greaterThanOrEqualTo(3)));
       expect(
         plannerMessages.first.text,
+        contains('# currentDate'),
+      );
+      expect(
+        plannerMessages[1].text,
         contains(
           'The following skills are available for use with the Skill tool:',
         ),
       );
       expect(
-        plannerMessages.first.text,
+        plannerMessages[1].text,
         contains('- verify: Run project verification after code changes.'),
       );
 
@@ -244,7 +249,7 @@ void main() {
       final snapshot = await snapshotRepository.getLatestByGroup(groupId);
       expect(snapshot, isNotNull);
       expect(
-        firstPlannerMessages.first.text,
+        firstPlannerMessages[1].text,
         contains('- verify: Run project verification after code changes.'),
       );
 
@@ -275,11 +280,11 @@ void main() {
       );
 
       expect(
-        secondPlannerMessages.first.text,
+        secondPlannerMessages[1].text,
         contains('- edge-to-edge: Improve Android edge-to-edge handling.'),
       );
       expect(
-        secondPlannerMessages.first.text,
+        secondPlannerMessages[1].text,
         isNot(
           contains('- verify: Run project verification after code changes.'),
         ),

@@ -4,7 +4,7 @@ import '../../models/prompt/runtime_user_context_snapshot.dart';
 class UserContextMessageBuilder {
   const UserContextMessageBuilder();
 
-  ChatMessage buildMessage({
+  List<ChatMessage> buildMessages({
     required RuntimeUserContextSnapshot snapshot,
   }) {
     final sections = <String>[
@@ -26,10 +26,25 @@ class UserContextMessageBuilder {
       'Do not mention this context unless it is actually relevant.',
     ];
 
-    return ChatMessage(
-      text: '<system-reminder>\n${sections.join('\n')}\n</system-reminder>',
-      role: MessageRole.user,
-      status: MessageStatus.completed,
-    );
+    final messages = <ChatMessage>[
+      ChatMessage(
+        text: '<system-reminder>\n${sections.join('\n')}\n</system-reminder>',
+        role: MessageRole.user,
+        status: MessageStatus.completed,
+      ),
+    ];
+
+    if (snapshot.skillsSectionText.trim().isNotEmpty) {
+      messages.add(
+        ChatMessage(
+          text:
+              '<system-reminder>\n${snapshot.skillsSectionText.trim()}\n</system-reminder>',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+        ),
+      );
+    }
+
+    return messages;
   }
 }

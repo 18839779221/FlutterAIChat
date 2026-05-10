@@ -26,7 +26,7 @@ void main() {
       );
 
       final snapshot = await service.buildSnapshot();
-      final combined = snapshot.additionalSections.join('\n');
+      final combined = snapshot.skillsSectionText;
 
       expect(
         combined,
@@ -49,11 +49,11 @@ void main() {
       );
 
       final snapshot = await service.buildSnapshot();
-      final combined = snapshot.additionalSections.join('\n');
+      final combined = snapshot.skillsSectionText;
 
       expect(
         combined,
-        isNot(contains('The following skills are available for use with the Skill tool:')),
+        isEmpty,
       );
     });
   });
