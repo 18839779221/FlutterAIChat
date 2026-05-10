@@ -41,11 +41,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Context'), findsOneWidget);
-    expect(find.text('Runtime Stream Entries'), findsOneWidget);
-    expect(
-      find.textContaining('"entries": []'),
-      findsOneWidget,
-    );
+    expect(find.text('Resolved System Prompt'), findsOneWidget);
+    expect(find.text('system prompt line 1\nsystem prompt line 2'), findsOneWidget);
   });
 
   testWidgets('debug inspector refresh button reloads projection', (
@@ -91,6 +88,97 @@ void main() {
 
     expect(refreshCount, 1);
     expect(find.textContaining('"status": "completed"'), findsOneWidget);
+  });
+
+  testWidgets('context renders escaped newlines as multiline text', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      'debug.turn_inspector.last_tab_index': 2,
+    });
+    final preferences = await SharedPreferences.getInstance();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              height: 640,
+              child: DebugTurnInspectorSheet(
+                groupId: 7,
+                initialProjection: _buildProjection(),
+                projectionLoader: (groupId, selectedTurnId) async {
+                  return _buildProjection();
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('line1\nline2\nline3'), findsWidgets);
+  });
+
+  testWidgets('planner messages support per-item expand and collapse', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    SharedPreferences.setMockInitialValues({
+      'debug.turn_inspector.last_tab_index': 2,
+    });
+    final preferences = await SharedPreferences.getInstance();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              height: 700,
+              child: DebugTurnInspectorSheet(
+                groupId: 7,
+                initialProjection: _buildProjection(),
+                projectionLoader: (groupId, selectedTurnId) async {
+                  return _buildProjection();
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Message 1'), findsOneWidget);
+    expect(find.text('Message 2'), findsOneWidget);
+    expect(find.text('payloadJson'), findsNothing);
+
+    final message2Tile = find.byKey(
+      const PageStorageKey<String>('debug-message-102-1'),
+    );
+    await tester.ensureVisible(message2Tile);
+    final message2TapTarget = find.descendant(
+      of: message2Tile,
+      matching: find.byType(ListTile),
+    );
+    await tester.tapAt(tester.getTopLeft(message2TapTarget) + const Offset(24, 24));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const PageStorageKey<String>('debug-message-102-1')), findsOneWidget);
+
+    await tester.tapAt(tester.getTopLeft(message2TapTarget) + const Offset(24, 24));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const PageStorageKey<String>('debug-message-102-1')), findsOneWidget);
   });
 }
 
@@ -139,11 +227,38 @@ DebugTurnInspectorProjection _buildProjection({
     ],
     contextSections: const [
       DebugTurnInspectorContextSection(
+        id: 'resolved-system-prompt',
+        title: 'Resolved System Prompt',
+        summary: 'system prompt preview',
+        defaultExpanded: true,
+        rawText: 'system prompt line 1\\nsystem prompt line 2',
+      ),
+      DebugTurnInspectorContextSection(
         id: 'planner-messages',
         title: 'Planner Messages',
-        summary: '1 items',
+        summary: '2 items',
         defaultExpanded: true,
-        rawJson: {'messages': []},
+        rawJson: {
+          'messages': [
+            {
+              'id': 101,
+              'role': 'system',
+              'status': 'completed',
+              'timestamp': '2026-05-05T12:00:00.000',
+              'text': 'line1\\nline2\\nline3',
+            },
+            {
+              'id': 102,
+              'role': 'user',
+              'status': 'completed',
+              'timestamp': '2026-05-05T12:00:10.000',
+              'text': 'second line A\\nsecond line B',
+              'payloadJson': {
+                'prompt': 'alpha\\nbeta',
+              },
+            },
+          ],
+        },
       ),
       DebugTurnInspectorContextSection(
         id: 'transcript-events',
