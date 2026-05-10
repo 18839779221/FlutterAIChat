@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:ai_chat/models/debug/debug_turn_inspector_context_section.dart';
 import 'package:ai_chat/models/debug/debug_turn_inspector_projection.dart';
 import 'package:ai_chat/providers/debug_turn_inspector_providers.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
@@ -33,6 +34,7 @@ class _DebugTurnInspectorSheetState extends ConsumerState<DebugTurnInspectorShee
   late DebugTurnInspectorProjection _projection = widget.initialProjection;
   late final TabController _tabController;
   bool _isRefreshing = false;
+  final Set<String> _expandedMessageIds = <String>{};
 
   @override
   void initState() {
@@ -139,9 +141,10 @@ class _DebugTurnInspectorSheetState extends ConsumerState<DebugTurnInspectorShee
       toolPresentationEvents:
           ref.read(chatTimelineProjectionProvider).toolPresentationEvents,
       sendPhase: ref.read(chatSendStateProvider).phase,
-      sendStatusText: ref.read(chatSendStateProvider).statusText,
       activeAskUserQuestionMessage:
           ref.read(activeAskUserQuestionMessageProvider),
+      currentGroup: ref.read(currentGroupProvider),
+      systemPromptOverride: ref.read(systemPromptProvider),
     );
     return service.build(
       groupId: groupId,
@@ -290,15 +293,9 @@ class _DebugTurnInspectorSheetState extends ConsumerState<DebugTurnInspectorShee
                                 style: theme.textTheme.bodySmall,
                               ),
                               const SizedBox(height: 10),
-                              SelectableText(
-                                section.rawJson == null
-                                    ? (section.rawText ?? 'null')
-                                    : const JsonEncoder.withIndent('  ')
-                                        .convert(section.rawJson),
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  fontFamily: 'JetBrainsMono',
-                                  height: 1.45,
-                                ),
+                              _buildContextSectionBody(
+                                theme: theme,
+                                section: section,
                               ),
                             ],
                           ),
@@ -312,5 +309,320 @@ class _DebugTurnInspectorSheetState extends ConsumerState<DebugTurnInspectorShee
         ],
       ),
     );
+  }
+
+  Widget _buildContextSectionBody({
+    required ThemeData theme,
+    required DebugTurnInspectorContextSection section,
+  }) {
+    final rawJson = section.rawJson;
+    if (rawJson is Map<String, dynamic>) {
+      final messages = rawJson['messages'];
+      if (messages is List) {
+        return _buildMessagesSection(
+          theme: theme,
+          messages: messages,
+        );
+      }
+    }
+
+    if (rawJson != null) {
+      return _buildStructuredValue(
+        theme: theme,
+        value: rawJson,
+      );
+    }
+
+    return _buildDecodedTextBlock(
+      theme: theme,
+      text: section.rawText ?? 'null',
+    );
+  }
+
+  Widget _buildMessagesSection({
+    required ThemeData theme,
+    required List<dynamic> messages,
+  }) {
+    if (messages.isEmpty) {
+      return _buildDecodedTextBlock(
+        theme: theme,
+        text: '[]',
+      );
+    }
+
+    return Column(
+      children: List<Widget>.generate(messages.length, (index) {
+        final message = messages[index];
+        final item = message is Map ? message.cast<String, dynamic>() : null;
+        final messageId = item?['id']?.toString() ?? 'message-$index';
+        final role = item?['role']?.toString() ?? 'unknown';
+        final status = item?['status']?.toString() ?? 'unknown';
+        final timestamp = item?['timestamp']?.toString();
+        final preview = _previewMultiline(
+          _decodeEscapedText(item?['text']?.toString() ?? ''),
+        );
+        final title = 'Message ${index + 1}';
+        final subtitleParts = <String>[role, status];
+        if (timestamp != null && timestamp.isNotEmpty) {
+          subtitleParts.add(timestamp);
+        }
+        final tileKey = '$messageId-$index';
+        final isExpanded = _expandedMessageIds.contains(tileKey) || index == 0;
+
+        return Container(
+          margin: EdgeInsets.only(bottom: index == messages.length - 1 ? 0 : 12),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest.withValues(
+              alpha: 0.35,
+            ),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+          ),
+          child: ExpansionTile(
+            key: PageStorageKey<String>('debug-message-$tileKey'),
+            initiallyExpanded: isExpanded,
+            onExpansionChanged: (expanded) {
+              setState(() {
+                if (expanded) {
+                  _expandedMessageIds.add(tileKey);
+                } else {
+                  _expandedMessageIds.remove(tileKey);
+                }
+              });
+            },
+            tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            title: Text(
+              title,
+              style: theme.textTheme.titleSmall,
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 4),
+                Text(
+                  subtitleParts.join(' · '),
+                  style: theme.textTheme.labelSmall,
+                ),
+                if (preview.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    preview,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(height: 1.4),
+                  ),
+                ],
+              ],
+            ),
+            children: [
+              _buildMessageDetails(
+                theme: theme,
+                message: item ?? <String, dynamic>{'value': message},
+              ),
+            ],
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildMessageDetails({
+    required ThemeData theme,
+    required Map<String, dynamic> message,
+  }) {
+    final detailEntries = <MapEntry<String, dynamic>>[
+      if (message['role'] != null) MapEntry('role', message['role']),
+      if (message['status'] != null) MapEntry('status', message['status']),
+      if (message['timestamp'] != null) MapEntry('timestamp', message['timestamp']),
+      if (message['text'] != null) MapEntry('text', message['text']),
+      if (message['reasoningContent'] != null)
+        MapEntry('reasoningContent', message['reasoningContent']),
+      if (message['payloadJson'] != null) MapEntry('payloadJson', message['payloadJson']),
+      if (message['referenceJson'] != null)
+        MapEntry('referenceJson', message['referenceJson']),
+      ...message.entries.where(
+        (entry) => !{
+          'id',
+          'role',
+          'status',
+          'timestamp',
+          'text',
+          'reasoningContent',
+          'payloadJson',
+          'referenceJson',
+        }.contains(entry.key),
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: detailEntries.map((entry) {
+        return Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: _buildLabeledValue(
+            theme: theme,
+            label: entry.key,
+            value: entry.value,
+          ),
+        );
+      }).toList(growable: false),
+    );
+  }
+
+  Widget _buildStructuredValue({
+    required ThemeData theme,
+    required Object? value,
+    int depth = 0,
+  }) {
+    if (value is Map) {
+      final entries = value.entries.toList(growable: false);
+      if (entries.isEmpty) {
+        return _buildDecodedTextBlock(theme: theme, text: '{}');
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: entries.map((entry) {
+          return Padding(
+            padding: EdgeInsets.only(bottom: 10, left: depth * 12),
+            child: _buildLabeledValue(
+              theme: theme,
+              label: entry.key.toString(),
+              value: entry.value,
+              depth: depth,
+            ),
+          );
+        }).toList(growable: false),
+      );
+    }
+
+    if (value is List) {
+      if (value.isEmpty) {
+        return _buildDecodedTextBlock(theme: theme, text: '[]');
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: List<Widget>.generate(value.length, (index) {
+          return Padding(
+            padding: EdgeInsets.only(bottom: 10, left: depth * 12),
+            child: _buildLabeledValue(
+              theme: theme,
+              label: '[$index]',
+              value: value[index],
+              depth: depth,
+            ),
+          );
+        }),
+      );
+    }
+
+    if (value is String) {
+      return _buildDecodedTextBlock(
+        theme: theme,
+        text: value,
+      );
+    }
+
+    return _buildDecodedTextBlock(
+      theme: theme,
+      text: value == null ? 'null' : const JsonEncoder.withIndent('  ').convert(value),
+    );
+  }
+
+  Widget _buildLabeledValue({
+    required ThemeData theme,
+    required String label,
+    required Object? value,
+    int depth = 0,
+  }) {
+    final labelStyle = theme.textTheme.labelMedium?.copyWith(
+      fontFamily: 'JetBrainsMono',
+      color: theme.colorScheme.primary,
+    );
+
+    if (value is Map || value is List) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: labelStyle),
+          const SizedBox(height: 6),
+          _buildStructuredValue(
+            theme: theme,
+            value: value,
+            depth: depth + 1,
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: labelStyle),
+        const SizedBox(height: 4),
+        _buildDecodedTextBlock(
+          theme: theme,
+          text: value?.toString() ?? 'null',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDecodedTextBlock({
+    required ThemeData theme,
+    required String text,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        _decodeEscapedText(text),
+        style: theme.textTheme.bodySmall?.copyWith(
+          fontFamily: 'JetBrainsMono',
+          height: 1.5,
+        ),
+      ),
+    );
+  }
+
+  String _decodeEscapedText(String value) {
+    if (value.isEmpty) {
+      return value;
+    }
+
+    final withUnicode = value.replaceAllMapped(
+      RegExp(r'\\u([0-9a-fA-F]{4})'),
+      (match) {
+        final codePoint = int.tryParse(match.group(1)!, radix: 16);
+        return codePoint == null ? match.group(0)! : String.fromCharCode(codePoint);
+      },
+    );
+
+    return withUnicode
+        .replaceAll(r'\r\n', '\n')
+        .replaceAll(r'\n', '\n')
+        .replaceAll(r'\r', '\r')
+        .replaceAll(r'\t', '\t')
+        .replaceAll(r'\"', '"')
+        .replaceAll(r"\'", "'")
+        .replaceAll(r'\\', '\\');
+  }
+
+  String _previewMultiline(String value) {
+    final normalized = value
+        .split('\n')
+        .map((line) => line.trimRight())
+        .join('\n')
+        .trim();
+    if (normalized.length <= 180) {
+      return normalized;
+    }
+    return '${normalized.substring(0, 180)}...';
   }
 }
