@@ -34,10 +34,11 @@ class RuntimeUserContextService {
     return RuntimeUserContextSnapshot(
       currentDateText: "Today's date is ${_formatIsoDate(now)}.",
       agentsMdText: (await _agentsMdProvider()).trim(),
+      skillsSectionText:
+          skillCatalog.isNotEmpty ? _buildSkillsListSection(skillCatalog) : '',
       additionalSections: [
         if (platformSections.isNotEmpty)
           '# runtimePlatform\n${platformSections.join('\n')}',
-        if (skillCatalog.isNotEmpty) _buildSkillsListSection(skillCatalog),
       ],
     );
   }
