@@ -101,5 +101,33 @@ Prefer Android edge-to-edge guidance for this task.
       expect(result.data['baseDirectory'], contains('edge-to-edge'));
       expect(result.data['instructionBody'], contains('# Workflow'));
     });
+
+    test('execute resolves skill by declared skill name', () async {
+      final installedRoot = await storageService.installedSkillsDirectory();
+      final skillDir = Directory('${installedRoot.path}/verify-workflow');
+      await skillDir.create(recursive: true);
+      await File('${skillDir.path}/SKILL.md').writeAsString('''
+---
+name: Verify Workflow
+description: Run project verification after code changes.
+---
+# Workflow
+Run tests before claiming success.
+''');
+
+      final result = await handler.execute(
+        ToolExecutionContext(
+          groupId: 1,
+          toolName: 'skill',
+          arguments: const {'skill': 'Verify Workflow'},
+          history: const <ChatMessage>[],
+          now: DateTime(2026, 5, 9),
+        ),
+      );
+
+      expect(result.status, ToolExecutionStatus.success);
+      expect(result.data['skillId'], 'verify-workflow');
+      expect(result.data['name'], 'Verify Workflow');
+    });
   });
 }

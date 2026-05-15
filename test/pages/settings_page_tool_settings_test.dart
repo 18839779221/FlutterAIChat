@@ -9,6 +9,7 @@ import 'package:ai_chat/models/skill/skill_descriptor.dart';
 import 'package:ai_chat/services/skills/skill_runtime_service.dart';
 import 'package:ai_chat/services/skills/skill_storage_service.dart';
 import 'package:ai_chat/theme/app_theme.dart';
+import 'package:ai_chat/widgets/settings/settings_row.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -331,6 +332,59 @@ void main() {
     expect(find.text('edge-to-edge'), findsOneWidget);
     expect(find.text('Improve Android edge-to-edge handling.'), findsOneWidget);
   });
+
+  testWidgets('disabled skills remain visible in settings for re-enable', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    SharedPreferences.setMockInitialValues({});
+    final repository = AppSettingsRepository(
+      await SharedPreferences.getInstance(),
+      localDefaultsLoader: () async => null,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appSettingsRepositoryProvider.overrideWithValue(repository),
+          skillRuntimeServiceProvider.overrideWithValue(
+            _StaticSkillRuntimeService(
+              installedSkills: const [
+                SkillDescriptor(
+                  id: 'edge-to-edge',
+                  name: 'edge-to-edge',
+                  description: 'Improve Android edge-to-edge handling.',
+                  bodyText: '# Workflow\nPrefer Android edge-to-edge guidance.',
+                  skillRootPath: '/tmp/skills/edge-to-edge',
+                  entryFilePath: '/tmp/skills/edge-to-edge/SKILL.md',
+                  sourceType: SkillSourceType.localInstalled,
+                  isEnabled: false,
+                ),
+              ],
+            ),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const SettingsPage(),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('edge-to-edge'), findsOneWidget);
+    final disabledSwitch = tester.widget<Switch>(
+      find.descendant(
+        of: find.ancestor(
+          of: find.text('edge-to-edge'),
+          matching: find.byType(SettingsRow),
+        ),
+        matching: find.byType(Switch),
+      ),
+    );
+    expect(disabledSwitch.value, isFalse);
+  });
 }
 
 class _EmptySkillRuntimeService extends SkillRuntimeService {
@@ -344,11 +398,18 @@ class _EmptySkillRuntimeService extends SkillRuntimeService {
 
   @override
   Future<List<SkillDescriptor>> listAvailableSkills() async => const [];
+
+  @override
+  Future<List<SkillDescriptor>> listInstalledSkills() async => const [];
 }
 
 class _StaticSkillRuntimeService extends SkillRuntimeService {
-  _StaticSkillRuntimeService({required this.skills})
-      : super(
+  _StaticSkillRuntimeService({
+    List<SkillDescriptor>? skills,
+    List<SkillDescriptor>? installedSkills,
+  })  : skills = skills ?? installedSkills ?? const [],
+        installedSkills = installedSkills ?? skills ?? const [],
+        super(
           storageService: SkillStorageService(
             rootDirectoryProvider: () async =>
                 throw UnimplementedError('not used in this test'),
@@ -356,7 +417,11 @@ class _StaticSkillRuntimeService extends SkillRuntimeService {
         );
 
   final List<SkillDescriptor> skills;
+  final List<SkillDescriptor> installedSkills;
 
   @override
   Future<List<SkillDescriptor>> listAvailableSkills() async => skills;
+
+  @override
+  Future<List<SkillDescriptor>> listInstalledSkills() async => installedSkills;
 }

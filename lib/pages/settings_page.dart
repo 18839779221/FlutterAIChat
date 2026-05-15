@@ -93,7 +93,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _loadSkills() async {
-    final skills = await ref.read(skillRuntimeServiceProvider).listAvailableSkills();
+    final skills = await ref.read(skillRuntimeServiceProvider).listInstalledSkills();
     if (!mounted) {
       return;
     }

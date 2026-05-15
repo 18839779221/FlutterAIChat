@@ -1,9 +1,16 @@
 import '../models/tool/tool_result.dart';
+import '../models/skill/invoked_skill_context.dart';
+import 'skills/invoked_skill_reminder_builder.dart';
 
 /// Projects structured tool results into planner-visible context text.
 /// The transcript payload remains the semantic source; summary text is UI-only.
 class ToolResultContextProjector {
-  const ToolResultContextProjector();
+  const ToolResultContextProjector({
+    InvokedSkillReminderBuilder invokedSkillReminderBuilder =
+        const InvokedSkillReminderBuilder(),
+  }) : _invokedSkillReminderBuilder = invokedSkillReminderBuilder;
+
+  final InvokedSkillReminderBuilder _invokedSkillReminderBuilder;
 
   String? projectToContextText(ToolResult result) {
     final projected = switch (result.toolName.trim()) {
@@ -226,18 +233,15 @@ class ToolResultContextProjector {
       return null;
     }
 
-    return [
-      '<system-reminder>',
-      'The following skills were invoked in this session. Continue to follow these guidelines:',
-      '',
-      '### Skill: $name',
-      'Path: $qualifiedPath',
-      '',
-      'Base directory for this skill: $baseDirectory',
-      '',
-      instructionBody,
-      '</system-reminder>',
-    ].join('\n');
+    return _invokedSkillReminderBuilder.build(
+      InvokedSkillContext(
+        skillId: result.data['skillId']?.toString().trim() ?? '',
+        name: name,
+        qualifiedPath: qualifiedPath,
+        baseDirectory: baseDirectory,
+        instructionBody: instructionBody,
+      ),
+    );
   }
 
   String? _projectFallback(ToolResult result) {

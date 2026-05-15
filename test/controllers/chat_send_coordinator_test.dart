@@ -12,13 +12,18 @@ import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
+import 'package:ai_chat/models/skill/skill_descriptor.dart';
+import 'package:ai_chat/models/skill/skill_catalog_entry.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
+import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/services/agent_planner_service.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_timeline_projection_service.dart';
+import 'package:ai_chat/services/skills/skill_runtime_service.dart';
+import 'package:ai_chat/services/skills/skill_storage_service.dart';
 import 'package:ai_chat/services/turn_harness.dart';
 import 'package:ai_chat/services/turn_verifier.dart';
 import 'package:ai_chat/services/tool_call_service.dart';
@@ -27,6 +32,7 @@ import 'package:ai_chat/services/transcript_builder_service.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
@@ -69,7 +75,7 @@ void main() {
           ),
         ],
       );
-      final container = _createContainer(
+      final container = await _createContainer(
         databaseHelper: databaseHelper,
         harness: harness,
       );
@@ -101,6 +107,78 @@ void main() {
           .lastWhere((message) => message.role == MessageRole.assistant);
       expect(persistedAssistant.text, '你好，世界');
       expect(persistedAssistant.status, MessageStatus.completed);
+    });
+
+    test('explicit slash skill injects reminder before real user message in transcript', () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.finalAnswer,
+            role: MessageRole.assistant,
+            content: '已按 verify workflow 继续处理。',
+          ),
+        ],
+      );
+      final container = await _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+        skillRuntimeService: _CatalogSkillRuntimeService(
+          availableCatalog: const [
+            SkillCatalogEntry(
+              id: 'verify',
+              name: 'verify',
+              description: 'Run project verification after code changes.',
+              qualifiedPath: 'projectSettings:verify',
+              isEnabled: true,
+            ),
+          ],
+          skillByLookup: const {
+            'verify': _SkillFixture(
+              id: 'verify',
+              name: 'verify',
+              description: 'Run project verification after code changes.',
+              bodyText: 'After code changes, run tests before claiming success.',
+              skillRootPath: '/tmp/skills/verify',
+              entryFilePath: '/tmp/skills/verify/SKILL.md',
+            ),
+          },
+        ),
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      await container.read(chatSendCoordinatorProvider).sendMessage(
+            '/verify 请检查这次改动',
+            scheduleAutoSummary: () {},
+            cancelActiveStream:
+                container.read(chatControllerProvider).cancelStreamSubscription,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(harness.recordedTurns.single.userInput, '请检查这次改动');
+      final runtimeContext = harness.recordedTurns.single.providerStateJson?['runtime_context']
+          as Map<String, dynamic>?;
+      expect(runtimeContext, isNotNull);
+      expect(
+        runtimeContext?['explicit_skill_reminder'],
+        contains('### Skill: verify'),
+      );
+
+      final userMessages = container
+          .read(messagesProvider)
+          .where((message) => message.role == MessageRole.user)
+          .toList(growable: false);
+      expect(userMessages, hasLength(1));
+      expect(userMessages.single.text, '请检查这次改动');
     });
 
     test('final answer stays after tool-use blocks in the projected timeline',
@@ -159,7 +237,7 @@ void main() {
           ),
         ],
       );
-      final container = _createContainer(
+      final container = await _createContainer(
         databaseHelper: databaseHelper,
         harness: harness,
       );
@@ -258,7 +336,7 @@ void main() {
           ),
         ],
       );
-      final container = _createContainer(
+      final container = await _createContainer(
         databaseHelper: databaseHelper,
         harness: harness,
       );
@@ -343,7 +421,7 @@ void main() {
           ),
         ],
       );
-      final container = _createContainer(
+      final container = await _createContainer(
         databaseHelper: databaseHelper,
         harness: harness,
       );
@@ -405,7 +483,7 @@ void main() {
         afterEventsGate: afterEventsGate,
         runTurnFailureCode: 'max_iterations_reached',
       );
-      final container = _createContainer(
+      final container = await _createContainer(
         databaseHelper: databaseHelper,
         harness: harness,
       );
@@ -470,7 +548,7 @@ void main() {
         ],
         afterEventsGate: afterEventsGate,
       );
-      final container = _createContainer(
+      final container = await _createContainer(
         databaseHelper: databaseHelper,
         harness: harness,
       );
@@ -520,7 +598,7 @@ void main() {
         events: const [],
         afterEventsGate: afterEventsGate,
       );
-      final container = _createContainer(
+      final container = await _createContainer(
         databaseHelper: databaseHelper,
         harness: harness,
       );
@@ -558,7 +636,7 @@ void main() {
         events: const [],
         afterEventsGate: afterEventsGate,
       );
-      final container = _createContainer(
+      final container = await _createContainer(
         databaseHelper: databaseHelper,
         harness: harness,
       );
@@ -652,7 +730,7 @@ void main() {
         ],
         resumeAfterConfirmationFinalStatus: ChatTurnStatus.completed,
       );
-      final container = _createContainer(
+      final container = await _createContainer(
         databaseHelper: databaseHelper,
         harness: harness,
       );
@@ -748,7 +826,7 @@ void main() {
         ],
         resumeAfterQuestionAnsweredFinalStatus: ChatTurnStatus.completed,
       );
-      final container = _createContainer(
+      final container = await _createContainer(
         databaseHelper: databaseHelper,
         harness: harness,
       );
@@ -855,16 +933,34 @@ DatabaseHelper _createTestDatabaseHelper() {
   );
 }
 
-ProviderContainer _createContainer({
+Future<ProviderContainer> _createContainer({
   required DatabaseHelper databaseHelper,
   required TurnHarness harness,
-}) {
+  SkillRuntimeService? skillRuntimeService,
+}) async {
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
+  final settingsRepository = AppSettingsRepository(
+    preferences,
+    localDefaultsLoader: () async => null,
+  );
   return ProviderContainer(
     overrides: [
       databaseProvider.overrideWith((ref) => databaseHelper),
+      sharedPreferencesProvider.overrideWith((ref) => preferences),
+      appSettingsRepositoryProvider.overrideWith((ref) => settingsRepository),
       chatServiceProvider
           .overrideWith((ref) => ChatService(llm: _NoopBaseLLM())),
       turnHarnessProvider.overrideWith((ref) => harness),
+      if (skillRuntimeService != null)
+        skillRuntimeServiceProvider.overrideWith((ref) => skillRuntimeService),
+      if (skillRuntimeService == null)
+        skillRuntimeServiceProvider.overrideWith(
+          (ref) => _CatalogSkillRuntimeService(
+            availableCatalog: const [],
+            skillByLookup: const {},
+          ),
+        ),
       scrollControllerProvider.overrideWith((ref) => ScrollController()),
       textControllerProvider.overrideWith((ref) => TextEditingController()),
       focusNodeProvider.overrideWith((ref) => FocusNode()),
@@ -904,6 +1000,7 @@ Future<void> _waitForSendPhase(
 class _FakeTurnHarness extends TurnHarness {
   final DatabaseHelper databaseHelper;
   final List<ChatEvent> events;
+  final List<ChatTurn> recordedTurns = [];
   final Completer<void>? afterEventsGate;
   final String? runTurnFailureCode;
   final List<ChatEvent> resumeAfterConfirmationEvents;
@@ -940,6 +1037,7 @@ class _FakeTurnHarness extends TurnHarness {
     required ChatTurn turn,
     required ChatConfig config,
   }) async* {
+    recordedTurns.add(turn);
     for (final event in events) {
       yield ChatEvent(
         turnId: turn.id ?? event.turnId,
@@ -1036,6 +1134,65 @@ class _FakeTurnHarness extends TurnHarness {
         errorMessage: 'resume_after_question_failed',
       );
     }
+  }
+}
+
+class _CatalogSkillRuntimeService extends SkillRuntimeService {
+  _CatalogSkillRuntimeService({
+    required this.availableCatalog,
+    required this.skillByLookup,
+  }) : super(
+          storageService: SkillStorageService(
+            rootDirectoryProvider: () async =>
+                throw UnimplementedError('not used in this test'),
+          ),
+        );
+
+  final List<SkillCatalogEntry> availableCatalog;
+  final Map<String, _SkillFixture> skillByLookup;
+
+  @override
+  Future<List<SkillCatalogEntry>> listSkillCatalogEntries() async => availableCatalog;
+
+  @override
+  Future<SkillDescriptor?> loadSkillById(String skillId) async {
+    final normalized = skillId.trim().toLowerCase();
+    final fixture = skillByLookup[normalized];
+    if (fixture == null) {
+      return null;
+    }
+    return fixture.toDescriptor();
+  }
+}
+
+class _SkillFixture {
+  const _SkillFixture({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.bodyText,
+    required this.skillRootPath,
+    required this.entryFilePath,
+  });
+
+  final String id;
+  final String name;
+  final String description;
+  final String bodyText;
+  final String skillRootPath;
+  final String entryFilePath;
+
+  SkillDescriptor toDescriptor() {
+    return SkillDescriptor(
+      id: id,
+      name: name,
+      description: description,
+      bodyText: bodyText,
+      skillRootPath: skillRootPath,
+      entryFilePath: entryFilePath,
+      sourceType: SkillSourceType.localInstalled,
+      isEnabled: true,
+    );
   }
 }
 

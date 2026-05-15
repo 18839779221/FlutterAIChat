@@ -6,6 +6,7 @@ import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
+import 'package:ai_chat/models/skill/invoked_skill_context.dart';
 import 'package:ai_chat/models/skill/skill_catalog_entry.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
@@ -289,6 +290,90 @@ void main() {
           contains('- verify: Run project verification after code changes.'),
         ),
       );
+
+      await storage.deleteGroup(groupId);
+    });
+
+    test('explicit skill reminder userMessage is preserved before real user input', () async {
+      final storage = DatabaseHelper(
+        databaseName: 'session_context_service_explicit_skill_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(title: 'Session Context Explicit Skill'),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '请检查这次改动',
+        ),
+      );
+
+      const invoked = InvokedSkillContext(
+        skillId: 'verify',
+        name: 'verify',
+        qualifiedPath: 'projectSettings:verify',
+        baseDirectory: '/tmp/skills/verify',
+        instructionBody: 'After code changes, run tests before claiming success.',
+      );
+
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: ChatEventRepository(storage),
+        snapshotRepository: snapshotRepository,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetResolver: (_) => const SessionModelBudget(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw UnimplementedError(),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+        runtimeUserContextService: RuntimeUserContextService(
+          nowProvider: () => DateTime(2026, 5, 9, 10, 0),
+          agentsMdProvider: () async => '',
+          platformContextProvider: () => const [],
+          skillCatalogProvider: () async => const [],
+        ),
+      );
+
+      final plannerMessages = await service.buildPlannerMessages(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: [
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content:
+                '<system-reminder>\nThe following skills were invoked in this session. Continue to follow these guidelines:\n\n### Skill: verify\nPath: projectSettings:verify\n\nBase directory for this skill: /tmp/skills/verify\n\nAfter code changes, run tests before claiming success.\n</system-reminder>',
+            payloadJson: invoked.toJson(),
+          ),
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 2,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '请检查这次改动',
+          ),
+        ],
+        config: ChatConfig(systemPrompt: '你是一个助手'),
+      );
+
+      final combined = plannerMessages.map((message) => message.text).join('\n\n');
+      final skillIndex = combined.indexOf('### Skill: verify');
+      final userIndex = combined.indexOf('请检查这次改动');
+      expect(skillIndex, isNonNegative);
+      expect(userIndex, greaterThan(skillIndex));
 
       await storage.deleteGroup(groupId);
     });

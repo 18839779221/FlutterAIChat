@@ -81,5 +81,42 @@ Prefer Android edge-to-edge guidance for this task.
       expect(descriptor!.bodyText, contains('# Workflow'));
       expect(descriptor.entryFilePath, contains('SKILL.md'));
     });
+
+    test('lists installed skills even when a skill is disabled', () async {
+      await settingsRepository.disableSkillId('edge-to-edge');
+      final service = SkillRuntimeService(
+        storageService: storageService,
+        settingsRepository: settingsRepository,
+      );
+
+      final installed = await service.listInstalledSkills();
+
+      expect(installed, hasLength(1));
+      expect(installed.single.id, 'edge-to-edge');
+      expect(installed.single.isEnabled, isFalse);
+    });
+
+    test('loads skill by declared name as well as normalized id', () async {
+      final installedRoot = await storageService.installedSkillsDirectory();
+      final skillDir = Directory('${installedRoot.path}/verify-workflow');
+      await skillDir.create(recursive: true);
+      await File('${skillDir.path}/SKILL.md').writeAsString('''
+---
+name: Verify Workflow
+description: Run project verification after code changes.
+---
+# Workflow
+Run tests before claiming success.
+''');
+      final service = SkillRuntimeService(
+        storageService: storageService,
+        settingsRepository: settingsRepository,
+      );
+
+      final descriptor = await service.loadSkillById('Verify Workflow');
+
+      expect(descriptor, isNotNull);
+      expect(descriptor!.id, 'verify-workflow');
+    });
   });
 }

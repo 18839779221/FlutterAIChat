@@ -15,9 +15,15 @@ class SkillRuntimeService {
   final SkillIndexService _indexService;
   final AppSettingsRepository? _settingsRepository;
 
-  Future<List<SkillDescriptor>> listAvailableSkills() async {
+  /// Lists every installed skill for settings and management surfaces.
+  Future<List<SkillDescriptor>> listInstalledSkills() async {
     final index = await _loadEnabledIndex();
-    return index.descriptors.where((skill) => skill.isEnabled).toList(growable: false);
+    return index.descriptors;
+  }
+
+  Future<List<SkillDescriptor>> listAvailableSkills() async {
+    final installed = await listInstalledSkills();
+    return installed.where((skill) => skill.isEnabled).toList(growable: false);
   }
 
   Future<List<SkillCatalogEntry>> listSkillCatalogEntries() async {
@@ -40,9 +46,12 @@ class SkillRuntimeService {
     if (normalized.isEmpty) {
       return null;
     }
+    final normalizedId = _normalizeLookupKey(normalized);
     final skills = await listAvailableSkills();
     for (final skill in skills) {
-      if (skill.id == normalized) {
+      if (skill.id == normalized ||
+          _normalizeLookupKey(skill.id) == normalizedId ||
+          _normalizeLookupKey(skill.name) == normalizedId) {
         return skill;
       }
     }
@@ -69,5 +78,11 @@ class SkillRuntimeService {
     final disabledSkillIds = await _loadDisabledSkillIds();
     final enabledSkillIds = await _resolveEnabledSkillIds(disabledSkillIds);
     return _indexService.loadIndex(enabledSkillIds: enabledSkillIds);
+  }
+
+  String _normalizeLookupKey(String value) {
+    final lower = value.trim().toLowerCase();
+    final normalized = lower.replaceAll(RegExp(r'[^a-z0-9]+'), '-');
+    return normalized.replaceAll(RegExp(r'-+'), '-').replaceAll(RegExp(r'^-|-$'), '');
   }
 }
