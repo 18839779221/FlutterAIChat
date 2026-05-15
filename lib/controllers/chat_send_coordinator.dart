@@ -7,6 +7,7 @@ import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
+import 'package:ai_chat/models/skill/invoked_skill_context.dart';
 import 'package:ai_chat/models/trace/chat_trace_event.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
@@ -17,6 +18,8 @@ import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/session_runtime_marker_service.dart';
+import 'package:ai_chat/services/skills/explicit_skill_invocation_parser.dart';
+import 'package:ai_chat/services/skills/invoked_skill_reminder_builder.dart';
 import 'package:ai_chat/services/turn_harness.dart';
 import 'package:ai_chat/utils/logger.dart';
 import 'package:flutter/foundation.dart';
@@ -118,8 +121,16 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       }
     }
 
+    final explicitSkillParser = ExplicitSkillInvocationParser(
+      skillRuntimeService: _ref.read(skillRuntimeServiceProvider),
+    );
+    final explicitSkill = await explicitSkillParser.parse(text);
+    final sanitizedText = explicitSkill.cleanedUserText.trim().isEmpty
+        ? text
+        : explicitSkill.cleanedUserText;
+
     final userMessage = ChatMessage(
-      text: text,
+      text: sanitizedText,
       role: MessageRole.user,
       status: MessageStatus.completed,
     );
@@ -159,13 +170,14 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         throw StateError('turnHarnessProvider is required');
       }
       await _sendMessageWithAgentLoop(
-        text: text,
+        text: sanitizedText,
         currentGroupId: currentGroupId,
         userMessage: userMessage,
         turnId: turnId,
         harness: turnHarness,
         runtimeMarkerPreparation: runtimeMarkerPreparation,
         runtimeMarkerService: runtimeMarkerService,
+        explicitInvokedSkill: explicitSkill.invokedSkill,
         scheduleAutoSummary: scheduleAutoSummary,
       );
     } catch (e, stackTrace) {
@@ -210,6 +222,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     required TurnHarness harness,
     required SessionRuntimeMarkerPreparation runtimeMarkerPreparation,
     required SessionRuntimeMarkerService runtimeMarkerService,
+    required InvokedSkillContext? explicitInvokedSkill,
     required VoidCallback scheduleAutoSummary,
   }) async {
     final dbHelper = _ref.read(databaseProvider);
@@ -219,8 +232,10 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       groupId: currentGroupId,
       status: ChatTurnStatus.running,
       userInput: text,
-      providerStateJson: runtimeMarkerService.buildTurnRuntimeContext(
-        runtimeMarkerPreparation,
+      providerStateJson: _buildTurnRuntimeContext(
+        runtimeMarkerService: runtimeMarkerService,
+        runtimeMarkerPreparation: runtimeMarkerPreparation,
+        explicitInvokedSkill: explicitInvokedSkill,
       ),
     );
     final turnRecordId = await turnRepository.createTurn(createdTurn);
@@ -328,6 +343,28 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         }
       },
     );
+  }
+
+  Map<String, dynamic> _buildTurnRuntimeContext({
+    required SessionRuntimeMarkerService runtimeMarkerService,
+    required SessionRuntimeMarkerPreparation runtimeMarkerPreparation,
+    required InvokedSkillContext? explicitInvokedSkill,
+  }) {
+    final context = runtimeMarkerService.buildTurnRuntimeContext(
+      runtimeMarkerPreparation,
+    );
+    if (explicitInvokedSkill == null) {
+      return context;
+    }
+    final reminder = const InvokedSkillReminderBuilder().build(explicitInvokedSkill);
+    final runtimeContext =
+        Map<String, dynamic>.from(context[SessionRuntimeMarkerService.runtimeContextKey] as Map);
+    runtimeContext['explicit_skill_reminder'] = reminder;
+    runtimeContext['explicit_skill_context'] = explicitInvokedSkill.toJson();
+    return {
+      ...context,
+      SessionRuntimeMarkerService.runtimeContextKey: runtimeContext,
+    };
   }
 
   Future<void> _appendVisibleSendFailureMessage({

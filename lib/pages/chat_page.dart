@@ -235,7 +235,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       toolPresentationEvents:
           ref.read(chatTimelineProjectionProvider).toolPresentationEvents,
       sendPhase: ref.read(chatSendStateProvider).phase,
-      sendStatusText: ref.read(chatSendStateProvider).statusText,
       activeAskUserQuestionMessage:
           ref.read(activeAskUserQuestionMessageProvider),
     );

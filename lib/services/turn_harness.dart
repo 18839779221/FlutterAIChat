@@ -4,6 +4,7 @@ import '../models/agent/chat_turn_step.dart';
 import '../models/agent/model_turn_decision.dart';
 import '../models/agent/agent_loop_limits.dart';
 import '../models/chat_event.dart';
+import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/interaction/ask_user_question_request.dart';
 import '../models/interaction/ask_user_question_response.dart';
@@ -21,6 +22,7 @@ import 'turn_verifier.dart';
 import 'tool_call_service.dart';
 import 'transcript_builder_service.dart';
 import 'session_context_service.dart';
+import 'session_runtime_marker_service.dart';
 
 class TurnHarness {
   static const _tag = 'TurnHarness';
@@ -83,6 +85,14 @@ class TurnHarness {
       _tag,
       'runTurn start turnId=$turnId groupId=${turn.groupId} iteration=${turn.iterationCount} toolCalls=${turn.toolCallCount} userInput=${_preview(turn.userInput)}',
     );
+    final explicitSkillReminder = _extractExplicitSkillReminderMessage(turn);
+    if (explicitSkillReminder != null) {
+      yield await _eventRepository.appendUserMessage(
+        turnId: turnId,
+        groupId: turn.groupId,
+        content: explicitSkillReminder.text,
+      );
+    }
     yield await _eventRepository.appendUserMessage(
         turnId: turnId,
         groupId: turn.groupId,
@@ -93,6 +103,23 @@ class TurnHarness {
       turn: turn,
       config: config,
       consecutiveFailures: 0,
+    );
+  }
+
+  ChatMessage? _extractExplicitSkillReminderMessage(ChatTurn? turn) {
+    final runtimeContext = turn?.providerStateJson?[
+        SessionRuntimeMarkerService.runtimeContextKey];
+    if (runtimeContext is! Map) {
+      return null;
+    }
+    final reminder = runtimeContext['explicit_skill_reminder'];
+    if (reminder is! String || reminder.trim().isEmpty) {
+      return null;
+    }
+    return ChatMessage(
+      text: reminder,
+      role: MessageRole.user,
+      status: MessageStatus.completed,
     );
   }
 
