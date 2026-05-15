@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/llm/llm_provider_config.dart';
+import '../models/speech/speech_input_config.dart';
 
 class LlmLocalDefaults {
   /// Default provider selected during the first local seed.
@@ -19,11 +20,15 @@ class LlmLocalDefaults {
   /// Extra runtime config shared with non-LLM integrations such as tools.
   final Map<String, dynamic> additionalConfig;
 
+  /// Optional speech input config injected for development and test instances.
+  final SpeechInputConfig? speechInput;
+
   const LlmLocalDefaults({
     this.defaultProviderId,
     this.defaultModelId,
     this.providers = const [],
     this.additionalConfig = const {},
+    this.speechInput,
   });
 
   factory LlmLocalDefaults.fromJson(Map<String, dynamic> json) {
@@ -55,10 +60,12 @@ class LlmLocalDefaults {
       defaultModelId: normalize(json['default_model_id']),
       providers: providers,
       additionalConfig: _readAdditionalConfig(json),
+      speechInput: _readSpeechInput(json),
     );
   }
 
-  bool get isEmpty => providers.isEmpty && additionalConfig.isEmpty;
+  bool get isEmpty =>
+      providers.isEmpty && additionalConfig.isEmpty && speechInput == null;
 
   static Map<String, dynamic> _readAdditionalConfig(Map<String, dynamic> json) {
     final webSearch = json['web_search'];
@@ -83,6 +90,16 @@ class LlmLocalDefaults {
       if (tavilyApiKey != null) 'web_search.tavily_api_key': tavilyApiKey,
       if (tavilyBaseUrl != null) 'web_search.tavily_base_url': tavilyBaseUrl,
     };
+  }
+
+  static SpeechInputConfig? _readSpeechInput(Map<String, dynamic> json) {
+    final speechInput = json['speechInput'];
+    if (speechInput is! Map) {
+      return null;
+    }
+    return SpeechInputConfig.fromJson(
+      Map<String, dynamic>.from(speechInput),
+    );
   }
 }
 

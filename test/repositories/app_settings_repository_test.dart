@@ -1,5 +1,6 @@
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/models/llm/llm_provider_model.dart';
+import 'package:ai_chat/models/speech/speech_input_config.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -198,6 +199,74 @@ void main() {
         config.additionalConfig['web_search.tavily_base_url'],
         'https://api.tavily.com/search',
       );
+    });
+
+    test('loads speech input config from local defaults', () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final repository = AppSettingsRepository(
+        preferences,
+        localDefaultsLoader: () async => const LlmLocalDefaults(
+          defaultProviderId: 'aigocode',
+          defaultModelId: 'gpt-5.4',
+          providers: [
+            LlmProviderConfig(
+              id: 'aigocode',
+              name: 'AIGoCode',
+              apiKey: 'local-key',
+              baseUrl: 'https://local.example/v1',
+              models: [
+                LlmProviderModel(id: 'gpt-5.4', name: 'GPT-5.4'),
+              ],
+            ),
+          ],
+          speechInput: SpeechInputConfig(
+            enabled: true,
+            provider: 'aliyun',
+            endpoint: 'wss://speech.example/ws',
+            apiKey: 'speech-key',
+            sampleRate: 16000,
+            languageHints: ['zh', 'en'],
+          ),
+        ),
+      );
+
+      final config = await repository.getSpeechInputConfig();
+
+      expect(config, isNotNull);
+      expect(config!.enabled, isTrue);
+      expect(config.provider, 'aliyun');
+      expect(config.endpoint, 'wss://speech.example/ws');
+      expect(config.apiKey, 'speech-key');
+      expect(config.sampleRate, 16000);
+      expect(config.languageHints, const ['zh', 'en']);
+    });
+
+    test('returns null when speech input config is absent', () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final repository = AppSettingsRepository(
+        preferences,
+        localDefaultsLoader: () async => const LlmLocalDefaults(
+          defaultProviderId: 'aigocode',
+          defaultModelId: 'gpt-5.4',
+          providers: [
+            LlmProviderConfig(
+              id: 'aigocode',
+              name: 'AIGoCode',
+              apiKey: 'local-key',
+              baseUrl: 'https://local.example/v1',
+              models: [
+                LlmProviderModel(id: 'gpt-5.4', name: 'GPT-5.4'),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final config = await repository.getSpeechInputConfig();
+
+      expect(config, isNull);
     });
   });
 }

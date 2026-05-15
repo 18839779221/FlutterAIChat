@@ -1,6 +1,10 @@
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
+import 'package:ai_chat/models/skill/skill_catalog_entry.dart';
+import 'package:ai_chat/models/speech/speech_input_config.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
+import 'package:ai_chat/services/audio/audio_capture_service.dart';
+import 'package:ai_chat/services/audio/record_audio_capture_service.dart';
 import 'package:ai_chat/services/artifact/artifact_file_storage_service.dart';
 import 'package:ai_chat/services/artifact/artifact_turn_resolver.dart';
 import 'package:ai_chat/services/chat_service.dart';
@@ -22,6 +26,9 @@ import 'package:ai_chat/services/skills/skill_index_service.dart';
 import 'package:ai_chat/services/skills/skill_installer_service.dart';
 import 'package:ai_chat/services/skills/skill_runtime_service.dart';
 import 'package:ai_chat/services/skills/skill_storage_service.dart';
+import 'package:ai_chat/services/speech/aliyun_realtime_asr_client.dart';
+import 'package:ai_chat/services/speech/aliyun_speech_to_text_service.dart';
+import 'package:ai_chat/services/speech/speech_to_text_service.dart';
 import 'package:ai_chat/services/tool_presentation_block_projector.dart';
 import 'package:ai_chat/services/tool_ui_renderer_registry.dart';
 import 'package:ai_chat/services/turn_harness.dart';
@@ -51,6 +58,51 @@ final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
 
 final appSettingsRepositoryProvider = Provider<AppSettingsRepository>((ref) {
   throw UnimplementedError('需要在 main.dart 中覆盖 AppSettingsRepository');
+});
+
+final speechInputConfigProvider = FutureProvider<SpeechInputConfig?>((ref) async {
+  return ref.read(appSettingsRepositoryProvider).getSpeechInputConfig();
+});
+
+final audioCaptureServiceProvider = Provider<AudioCaptureService?>((ref) {
+  final config = ref.watch(speechInputConfigProvider).valueOrNull;
+  if (config == null || !config.isValid) {
+    return null;
+  }
+  final service = RecordAudioCaptureService();
+  ref.onDispose(service.dispose);
+  return service;
+});
+
+final aliyunRealtimeAsrClientProvider = Provider<AliyunRealtimeAsrClient?>(
+  (ref) {
+    final config = ref.watch(speechInputConfigProvider).valueOrNull;
+    if (config == null || !config.isValid) {
+      return null;
+    }
+    if (config.provider != 'aliyun') {
+      return null;
+    }
+
+    final client = DashScopeAliyunRealtimeAsrClient(config: config);
+    ref.onDispose(() {
+      client.close();
+    });
+    return client;
+  },
+);
+
+final speechToTextServiceProvider = Provider<SpeechToTextService?>((ref) {
+  final client = ref.watch(aliyunRealtimeAsrClientProvider);
+  final configAsync = ref.watch(speechInputConfigProvider);
+  final config = configAsync.valueOrNull;
+  if (client == null || config == null || !config.isValid) {
+    return null;
+  }
+  if (config.provider != 'aliyun') {
+    return null;
+  }
+  return AliyunSpeechToTextService(client: client);
 });
 
 final traceRecorderProvider = Provider<ChatTraceRecorder>((ref) {
@@ -148,6 +200,10 @@ final runtimeUserContextServiceProvider = Provider<RuntimeUserContextService>(
     },
   ),
 );
+
+final enabledSkillCatalogProvider = FutureProvider<List<SkillCatalogEntry>>((ref) {
+  return ref.read(skillRuntimeServiceProvider).listSkillCatalogEntries();
+});
 
 final skillStorageServiceProvider = Provider<SkillStorageService>((ref) {
   return SkillStorageService();
