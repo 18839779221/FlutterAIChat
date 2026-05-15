@@ -1,9 +1,18 @@
+import 'dart:async';
+import 'dart:typed_data';
+
+import 'package:ai_chat/controllers/voice_input_controller.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
+import 'package:ai_chat/models/skill/skill_catalog_entry.dart';
+import 'package:ai_chat/models/speech/speech_input_config.dart';
 import 'package:ai_chat/models/session/context_window_segment.dart';
 import 'package:ai_chat/models/session/context_window_snapshot.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
+import 'package:ai_chat/services/audio/audio_capture_service.dart';
+import 'package:ai_chat/services/speech/speech_to_text_service.dart';
+import 'package:ai_chat/theme/app_colors.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_input.dart';
 import 'package:flutter/material.dart';
@@ -40,6 +49,125 @@ void main() {
         .widget<TextField>(find.byKey(const ValueKey('chat-input-field')));
     expect(textField.minLines, 1);
     expect(textField.maxLines, 4);
+    expect(find.byKey(const ValueKey('chat-input-voice-button')), findsNothing);
+  });
+
+  testWidgets('chat input shows voice button when voice input controller is available', (
+    tester,
+  ) async {
+    final harness = _VoiceControllerHarness.create();
+    final container = ProviderContainer(
+      overrides: [
+        textControllerProvider.overrideWithValue(
+          harness.controller.textController,
+        ),
+        voiceInputControllerProvider.overrideWithValue(
+          harness.controller,
+        ),
+      ],
+    );
+    addTearDown(() async {
+      container.dispose();
+      harness.controller.dispose();
+      await harness.controller.close();
+    });
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('chat-input-voice-button')), findsOneWidget);
+  });
+
+  testWidgets('chat input updates the shared text field while listening', (
+    tester,
+  ) async {
+    final harness = _VoiceControllerHarness.create();
+    final container = ProviderContainer(
+      overrides: [
+        textControllerProvider.overrideWithValue(
+          harness.controller.textController,
+        ),
+        voiceInputControllerProvider.overrideWithValue(
+          harness.controller,
+        ),
+      ],
+    );
+    addTearDown(() async {
+      container.dispose();
+      harness.controller.dispose();
+      await harness.controller.close();
+    });
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+    await harness.controller.pressStart();
+    harness.speech.emitPartial('明天上午十点');
+    await tester.pump();
+
+    final textField = tester.widget<TextField>(
+      find.byKey(const ValueKey('chat-input-field')),
+    );
+    expect(textField.controller!.text, '明天上午十点');
+    expect(find.byKey(const ValueKey('chat-input-voice-draft')), findsNothing);
+  });
+
+  testWidgets('chat input shows active recording visuals while listening', (
+    tester,
+  ) async {
+    final harness = _VoiceControllerHarness.create();
+    final container = ProviderContainer(
+      overrides: [
+        textControllerProvider.overrideWithValue(
+          harness.controller.textController,
+        ),
+        voiceInputControllerProvider.overrideWithValue(
+          harness.controller,
+        ),
+      ],
+    );
+    addTearDown(() async {
+      container.dispose();
+      harness.controller.dispose();
+      await harness.controller.close();
+    });
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+
+    await harness.controller.pressStart();
+    await tester.pump();
+
+    expect(find.text('正在聆听'), findsOneWidget);
+
+    final colors = Theme.of(
+      tester.element(find.byType(ChatInput)),
+    ).extension<AppColors>()!;
+    final micContainer = tester.widget<Container>(
+      find.byKey(const ValueKey('chat-input-voice-button-shell')),
+    );
+    final micDecoration = micContainer.decoration! as BoxDecoration;
+    expect(micDecoration.color, colors.workflowRunning.withValues(alpha: 0.16));
   });
 
   testWidgets('chat input keeps second row reserved for context usage info', (
@@ -266,6 +394,52 @@ void main() {
     await tester.tap(find.byType(FilledButton));
     expect(cancelCount, 1);
   });
+
+  testWidgets('chat input shows slash skill suggestions and inserts selected skill token', (
+    tester,
+  ) async {
+    final container = ProviderContainer(
+      overrides: [
+        enabledSkillCatalogProvider.overrideWith(
+          (ref) async => const [
+            SkillCatalogEntry(
+              id: 'verify',
+              name: 'verify',
+              description: 'Run project verification after code changes.',
+              qualifiedPath: 'projectSettings:verify',
+              isEnabled: true,
+            ),
+          ],
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.enterText(find.byKey(const ValueKey('chat-input-field')), '/ver');
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('chat-input-skill-suggestions')), findsOneWidget);
+    expect(find.text('verify'), findsOneWidget);
+
+    await tester.tap(find.text('verify'));
+    await tester.pump();
+
+    final textField = tester.widget<TextField>(
+      find.byKey(const ValueKey('chat-input-field')),
+    );
+    expect(textField.controller?.text, '/verify ');
+  });
 }
 
 class _SpyChatController extends ChatController {
@@ -364,4 +538,90 @@ ContextWindowSnapshot _contextSnapshot(double ratio) {
     recentCompletedTurnCount: 0,
     segments: const <ContextWindowSegment>[],
   );
+}
+
+class _VoiceControllerHarness {
+  final VoiceInputController controller;
+  final _FakeSpeechToTextService speech;
+  final _FakeAudioCaptureService audio;
+
+  _VoiceControllerHarness._({
+    required this.controller,
+    required this.speech,
+    required this.audio,
+  });
+
+  factory _VoiceControllerHarness.create() {
+    final speech = _FakeSpeechToTextService();
+    final audio = _FakeAudioCaptureService();
+    final controller = VoiceInputController(
+      textController: TextEditingController(),
+      speechInputConfig: const SpeechInputConfig(
+        enabled: true,
+        provider: 'aliyun',
+        endpoint: 'wss://speech.example/ws',
+        apiKey: 'speech-key',
+        sampleRate: 16000,
+        languageHints: ['zh', 'en'],
+      ),
+      speechToTextService: speech,
+      audioCaptureService: audio,
+    );
+    return _VoiceControllerHarness._(
+      controller: controller,
+      speech: speech,
+      audio: audio,
+    );
+  }
+}
+
+class _FakeSpeechToTextService implements SpeechToTextService {
+  final StreamController<String> _partialController =
+      StreamController<String>.broadcast();
+  final StreamController<String> _finalController =
+      StreamController<String>.broadcast();
+  final StreamController<Object> _errorController =
+      StreamController<Object>.broadcast();
+
+  @override
+  Stream<Object> get errors => _errorController.stream;
+
+  @override
+  Stream<String> get finalResults => _finalController.stream;
+
+  @override
+  Stream<String> get partialResults => _partialController.stream;
+
+  @override
+  Future<void> close() async {}
+
+  void emitPartial(String text) {
+    _partialController.add(text);
+  }
+
+  @override
+  Future<void> finishSession() async {}
+
+  @override
+  Future<void> sendAudioFrame(Uint8List frame) async {}
+
+  @override
+  Future<void> startSession() async {}
+}
+
+class _FakeAudioCaptureService implements AudioCaptureService {
+  @override
+  Stream<Uint8List> get audioFrames => const Stream<Uint8List>.empty();
+
+  @override
+  Future<void> dispose() async {}
+
+  @override
+  Future<bool> requestPermission() async => true;
+
+  @override
+  Future<void> start({required int sampleRate}) async {}
+
+  @override
+  Future<void> stop() async {}
 }

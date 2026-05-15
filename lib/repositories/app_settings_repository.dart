@@ -6,6 +6,7 @@ import '../models/llm/llm_config.dart';
 import '../models/llm/llm_provider_config.dart';
 import '../models/llm/llm_provider_model.dart';
 import '../models/llm/llm_selection_state.dart';
+import '../models/speech/speech_input_config.dart';
 import 'llm_local_defaults.dart';
 
 class AppSettingsRepository {
@@ -197,6 +198,11 @@ class AppSettingsRepository {
   Future<String> getModel() async {
     final config = await getLlmConfig();
     return config.model;
+  }
+
+  Future<SpeechInputConfig?> getSpeechInputConfig() async {
+    final localDefaults = await _getLocalDefaults();
+    return localDefaults?.speechInput;
   }
 
   Future<LLMConfig> getLlmConfig() async {

@@ -7,6 +7,7 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/session/context_window_snapshot.dart';
 import 'package:ai_chat/models/debug/debug_test_case.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
+import 'package:ai_chat/controllers/voice_input_controller.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/services/chat_service.dart';
@@ -45,6 +46,29 @@ final focusNodeProvider = Provider<FocusNode>((ref) {
   final focusNode = FocusNode();
   ref.onDispose(() => focusNode.dispose());
   return focusNode;
+});
+
+final voiceInputControllerProvider = Provider<VoiceInputController?>((ref) {
+  final speechInputConfig = ref.watch(speechInputConfigProvider).valueOrNull;
+  final speechToTextService = ref.watch(speechToTextServiceProvider);
+  final audioCaptureService = ref.watch(audioCaptureServiceProvider);
+  if (speechInputConfig == null ||
+      speechToTextService == null ||
+      audioCaptureService == null) {
+    return null;
+  }
+
+  final controller = VoiceInputController(
+    textController: ref.watch(textControllerProvider),
+    speechInputConfig: speechInputConfig,
+    speechToTextService: speechToTextService,
+    audioCaptureService: audioCaptureService,
+  );
+  ref.onDispose(controller.dispose);
+  ref.onDispose(() {
+    unawaited(controller.close());
+  });
+  return controller;
 });
 
 final debugTestCaseLoaderProvider = Provider<DebugTestCaseLoader>((ref) {

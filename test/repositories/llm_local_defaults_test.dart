@@ -86,5 +86,47 @@ void main() {
       expect(defaults.providers.single.models.single.id, 'gpt-5.4');
       expect(defaults.isEmpty, isFalse);
     });
+
+    test('parses speech input config with defaults', () {
+      final defaults = LlmLocalDefaults.fromJson({
+        'speechInput': {
+          'enabled': true,
+          'provider': 'aliyun',
+          'endpoint': 'wss://speech.example/ws',
+          'apiKey': 'speech-key',
+        },
+      });
+
+      expect(defaults.speechInput, isNotNull);
+      expect(defaults.speechInput!.enabled, isTrue);
+      expect(defaults.speechInput!.provider, 'aliyun');
+      expect(defaults.speechInput!.endpoint, 'wss://speech.example/ws');
+      expect(defaults.speechInput!.apiKey, 'speech-key');
+      expect(defaults.speechInput!.sampleRate, 16000);
+      expect(defaults.speechInput!.languageHints, const ['zh', 'en']);
+      expect(defaults.speechInput!.isValid, isTrue);
+    });
+
+    test('treats incomplete speech input config as invalid but readable', () {
+      final defaults = LlmLocalDefaults.fromJson({
+        'speechInput': {
+          'enabled': true,
+          'provider': 'aliyun',
+          'endpoint': '   ',
+          'apiKey': '',
+          'sampleRate': 8000,
+          'languageHints': ['zh'],
+        },
+      });
+
+      expect(defaults.speechInput, isNotNull);
+      expect(defaults.speechInput!.enabled, isTrue);
+      expect(defaults.speechInput!.provider, 'aliyun');
+      expect(defaults.speechInput!.endpoint, isEmpty);
+      expect(defaults.speechInput!.apiKey, isEmpty);
+      expect(defaults.speechInput!.sampleRate, 8000);
+      expect(defaults.speechInput!.languageHints, const ['zh']);
+      expect(defaults.speechInput!.isValid, isFalse);
+    });
   });
 }

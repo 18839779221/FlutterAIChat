@@ -9,11 +9,14 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/skill/skill_catalog_entry.dart';
+import 'package:ai_chat/models/speech/speech_input_config.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
 import 'package:ai_chat/models/session/session_runtime_marker.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
+import 'package:ai_chat/repositories/llm_local_defaults.dart';
 import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/services/speech/aliyun_realtime_asr_client.dart';
 import 'package:ai_chat/services/skills/skill_runtime_service.dart';
 import 'package:ai_chat/services/skills/skill_storage_service.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
@@ -133,6 +136,66 @@ void main() {
       plannerMessages[1].text,
       contains('- edge-to-edge: Improve Android edge-to-edge handling.'),
     );
+  });
+
+  test('speechInputConfigProvider resolves config from app settings repository',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    final repository = AppSettingsRepository(
+      await SharedPreferences.getInstance(),
+      localDefaultsLoader: () async => const LlmLocalDefaults(
+        speechInput: SpeechInputConfig(
+          enabled: true,
+          provider: 'aliyun',
+          endpoint: 'wss://speech.example/ws',
+          apiKey: 'speech-key',
+          sampleRate: 16000,
+          languageHints: ['zh', 'en'],
+        ),
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        appSettingsRepositoryProvider.overrideWithValue(repository),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final config = await container.read(speechInputConfigProvider.future);
+
+    expect(config, isNotNull);
+    expect(config!.provider, 'aliyun');
+    expect(config.endpoint, 'wss://speech.example/ws');
+    expect(config.apiKey, 'speech-key');
+  });
+
+  test('aliyunRealtimeAsrClientProvider builds realtime client for aliyun config',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    final repository = AppSettingsRepository(
+      await SharedPreferences.getInstance(),
+      localDefaultsLoader: () async => const LlmLocalDefaults(
+        speechInput: SpeechInputConfig(
+          enabled: true,
+          provider: 'aliyun',
+          endpoint: 'wss://speech.example/ws',
+          apiKey: 'speech-key',
+          sampleRate: 16000,
+          languageHints: ['zh', 'en'],
+        ),
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        appSettingsRepositoryProvider.overrideWithValue(repository),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(speechInputConfigProvider.future);
+    final client = container.read(aliyunRealtimeAsrClientProvider);
+
+    expect(client, isA<DashScopeAliyunRealtimeAsrClient>());
   });
 }
 
