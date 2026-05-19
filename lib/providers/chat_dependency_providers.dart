@@ -213,6 +213,7 @@ final sessionContextServiceProvider = Provider<SessionContextService>((ref) {
     tokenBudgetService: ref.watch(sessionTokenBudgetServiceProvider),
     summaryService: ref.watch(sessionSummaryServiceProvider),
     chatService: ref.watch(chatServiceProvider),
+    runtimeUserContextService: ref.watch(runtimeUserContextServiceProvider),
   );
 });
 

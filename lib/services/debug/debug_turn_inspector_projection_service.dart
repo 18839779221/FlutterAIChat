@@ -2,6 +2,7 @@ import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
 import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/chat_event.dart';
+import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/trace/chat_trace_event.dart';
@@ -10,11 +11,11 @@ import 'package:ai_chat/models/debug/debug_turn_inspector_projection.dart';
 import 'package:ai_chat/models/debug/debug_turn_inspector_timeline_entry.dart';
 import 'package:ai_chat/models/debug/debug_turn_option.dart';
 import 'package:ai_chat/providers/chat_send_state_providers.dart';
-import 'package:ai_chat/models/chat_message.dart' show compareChatMessagesForTimeline;
-import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/services/prompt/prompt_builder_service.dart';
+import 'package:ai_chat/services/prompt/prompt_stage.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/session_context_service.dart';
 
@@ -29,8 +30,10 @@ class DebugTurnInspectorProjectionService {
     List<ToolPresentationEvent> toolPresentationEvents =
         const <ToolPresentationEvent>[],
     ChatSendPhase? sendPhase,
-    String? sendStatusText,
     ChatMessage? activeAskUserQuestionMessage,
+    ChatGroup? currentGroup,
+    String? systemPromptOverride,
+    PromptBuilderService? promptBuilder,
   })  : _chatTurnRepository = chatTurnRepository,
         _chatEventRepository = chatEventRepository,
         _sessionContextService = sessionContextService,
@@ -39,8 +42,10 @@ class DebugTurnInspectorProjectionService {
         _runtimeStreamEntries = runtimeStreamEntries,
         _toolPresentationEvents = toolPresentationEvents,
         _sendPhase = sendPhase,
-        _sendStatusText = sendStatusText,
-        _activeAskUserQuestionMessage = activeAskUserQuestionMessage;
+        _activeAskUserQuestionMessage = activeAskUserQuestionMessage,
+        _currentGroup = currentGroup,
+        _systemPromptOverride = systemPromptOverride,
+        _promptBuilder = promptBuilder ?? const PromptBuilderService();
 
   final ChatTurnRepository _chatTurnRepository;
   final ChatEventRepository _chatEventRepository;
@@ -50,8 +55,10 @@ class DebugTurnInspectorProjectionService {
   final List<RuntimeStreamEntry> _runtimeStreamEntries;
   final List<ToolPresentationEvent> _toolPresentationEvents;
   final ChatSendPhase? _sendPhase;
-  final String? _sendStatusText;
   final ChatMessage? _activeAskUserQuestionMessage;
+  final ChatGroup? _currentGroup;
+  final String? _systemPromptOverride;
+  final PromptBuilderService _promptBuilder;
 
   Future<DebugTurnInspectorProjection> build({
     required int groupId,
@@ -91,17 +98,25 @@ class DebugTurnInspectorProjectionService {
     final transcript = effectiveSelectedTurnId == null
         ? const <ChatEvent>[]
         : await _chatEventRepository.listEventsByTurn(effectiveSelectedTurnId);
-    final plannerMessages = effectiveSelectedTurnId == null
-        ? const <ChatMessage>[]
-        : await _sessionContextService.buildPlannerMessages(
+    final userSystemPrompt =
+        (_systemPromptOverride ?? _currentGroup?.systemPrompt ?? '').trim();
+    final config = ChatConfig(
+      systemPrompt: _promptBuilder.buildSystemPrompt(
+        stage: PromptStage.planner,
+        userSystemPrompt: userSystemPrompt,
+      ),
+      userSystemPrompt: userSystemPrompt,
+    );
+    final plannerState = effectiveSelectedTurnId == null
+        ? null
+        : await _sessionContextService.buildPlannerContextState(
             groupId: groupId,
             currentTurnId: effectiveSelectedTurnId,
             currentTurnTranscript: transcript,
-            config: ChatConfig(
-              systemPrompt: '',
-              userSystemPrompt: '',
-            ),
+            config: config,
           );
+    final plannerMessages =
+        plannerState?.plannerMessages ?? const <ChatMessage>[];
 
     return DebugTurnInspectorProjection(
       turnOptions: turnOptions,
@@ -119,6 +134,7 @@ class DebugTurnInspectorProjectionService {
         plannerMessages: plannerMessages,
       ),
       contextSections: _buildContextSections(
+        resolvedSystemPrompt: plannerState?.resolvedSystemPrompt,
         plannerMessages: plannerMessages,
         transcript: transcript,
         turn: activeTurn,
@@ -214,7 +230,7 @@ class DebugTurnInspectorProjectionService {
         entries.add(
           DebugTurnTimelineEntry(
             id:
-                'trace-${traceTurnId}-${event.timestamp.microsecondsSinceEpoch}-${event.stage.name}',
+                'trace-$traceTurnId-${event.timestamp.microsecondsSinceEpoch}-${event.stage.name}',
             timestamp: event.timestamp,
             kind: 'trace.${event.stage.name}.${event.status.name}',
             title: event.stage.name,
@@ -231,16 +247,26 @@ class DebugTurnInspectorProjectionService {
   }
 
   List<DebugTurnInspectorContextSection> _buildContextSections({
+    required String? resolvedSystemPrompt,
     required List<ChatMessage> plannerMessages,
     required List<ChatEvent> transcript,
     required ChatTurn? turn,
   }) {
     return [
       DebugTurnInspectorContextSection(
+        id: 'resolved-system-prompt',
+        title: 'Resolved System Prompt',
+        summary: (resolvedSystemPrompt == null || resolvedSystemPrompt.isEmpty)
+            ? 'empty'
+            : _preview(resolvedSystemPrompt),
+        defaultExpanded: true,
+        rawText: resolvedSystemPrompt ?? '',
+      ),
+      DebugTurnInspectorContextSection(
         id: 'planner-messages',
         title: 'Planner Messages',
         summary: '${plannerMessages.length} items',
-        defaultExpanded: true,
+        defaultExpanded: false,
         rawJson: {
           'messages': plannerMessages
               .map(

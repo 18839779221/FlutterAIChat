@@ -7,7 +7,7 @@ void main() {
   group('UserContextMessageBuilder', () {
     test('renders snapshot into synthetic user reminder message', () {
       const builder = UserContextMessageBuilder();
-      final message = builder.buildMessage(
+      final messages = builder.buildMessages(
         snapshot: const RuntimeUserContextSnapshot(
           currentDateText: "Today's date is 2026-04-24.",
           agentsMdText: 'Project instructions here.',
@@ -16,6 +16,7 @@ void main() {
           ],
         ),
       );
+      final message = messages.single;
 
       expect(message.role, MessageRole.user);
       expect(message.text, contains('<system-reminder>'));
@@ -24,38 +25,44 @@ void main() {
       expect(message.text, contains('# runtimePlatform'));
     });
 
-    test('preserves skills list reminder block inside system reminder', () {
+    test('emits skills list reminder as a separate system reminder message', () {
       const builder = UserContextMessageBuilder();
-      final message = builder.buildMessage(
+      final messages = builder.buildMessages(
         snapshot: const RuntimeUserContextSnapshot(
           currentDateText: "Today's date is 2026-05-09.",
           agentsMdText: '',
-          additionalSections: [
-            'The following skills are available for use with the Skill tool:\n\n- verify: Run project verification after code changes.'
-          ],
+          skillsSectionText:
+              'The following skills are available for use with the Skill tool:\n\n- verify: Run project verification after code changes.',
         ),
       );
 
-      expect(message.role, MessageRole.user);
-      expect(message.text, contains('<system-reminder>'));
+      expect(messages, hasLength(2));
+      expect(messages.first.text, contains('# currentDate'));
       expect(
-        message.text,
+        messages.first.text,
+        isNot(contains('The following skills are available for use with the Skill tool:')),
+      );
+      expect(messages.last.role, MessageRole.user);
+      expect(messages.last.text, contains('<system-reminder>'));
+      expect(
+        messages.last.text,
         contains('The following skills are available for use with the Skill tool:'),
       );
       expect(
-        message.text,
+        messages.last.text,
         contains('- verify: Run project verification after code changes.'),
       );
     });
 
     test('omits empty sections from reminder body', () {
       const builder = UserContextMessageBuilder();
-      final message = builder.buildMessage(
+      final messages = builder.buildMessages(
         snapshot: const RuntimeUserContextSnapshot(
           currentDateText: "Today's date is 2026-04-24.",
           agentsMdText: '',
         ),
       );
+      final message = messages.single;
 
       expect(message.text, isNot(contains('# agentsMd')));
       expect(message.text, contains('# currentDate'));

@@ -8,15 +8,22 @@ import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
+import 'package:ai_chat/models/skill/skill_catalog_entry.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
 import 'package:ai_chat/models/session/session_runtime_marker.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
+import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/services/skills/skill_runtime_service.dart';
+import 'package:ai_chat/services/skills/skill_storage_service.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('chatServiceProvider delegates to chatServiceFactoryProvider override',
       () {
     final expected = ChatService(llm: _NoopBaseLLM());
@@ -47,10 +54,20 @@ void main() {
 
   test('contextWindowSnapshotProvider resolves inspector-backed snapshot', () async {
     final expected = ChatService(llm: _NoopBaseLLM());
+    SharedPreferences.setMockInitialValues({});
     final container = ProviderContainer(
       overrides: [
         chatServiceFactoryProvider.overrideWith((ref) => expected),
         databaseProvider.overrideWithValue(_ContextSnapshotChatStorage()),
+        appSettingsRepositoryProvider.overrideWithValue(
+          AppSettingsRepository(
+            await SharedPreferences.getInstance(),
+            localDefaultsLoader: () async => null,
+          ),
+        ),
+        skillRuntimeServiceProvider.overrideWithValue(
+          _StaticSkillRuntimeService(catalog: const []),
+        ),
       ],
     );
     addTearDown(container.dispose);
@@ -64,6 +81,58 @@ void main() {
     final snapshot = await container.read(contextWindowSnapshotProvider.future);
     expect(snapshot, isNotNull);
     expect(snapshot!.segments, isNotEmpty);
+  });
+
+  test(
+      'sessionContextServiceProvider wires runtime skill catalog into planner messages',
+      () async {
+    final expected = ChatService(llm: _NoopBaseLLM());
+    final container = ProviderContainer(
+      overrides: [
+        chatServiceFactoryProvider.overrideWith((ref) => expected),
+        databaseProvider.overrideWithValue(_PlannerMessageChatStorage()),
+        skillRuntimeServiceProvider.overrideWithValue(
+          _StaticSkillRuntimeService(
+            catalog: const [
+              SkillCatalogEntry(
+                id: 'edge-to-edge',
+                name: 'edge-to-edge',
+                description: 'Improve Android edge-to-edge handling.',
+                qualifiedPath: '/tmp/skills/edge-to-edge',
+                isEnabled: true,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final plannerMessages =
+        await container.read(sessionContextServiceProvider).buildPlannerMessages(
+              groupId: 1,
+              currentTurnId: 1,
+              currentTurnTranscript: [
+                ChatEvent(
+                  turnId: 1,
+                  groupId: 1,
+                  sequence: 1,
+                  eventType: ChatEventType.userMessage,
+                  role: MessageRole.user,
+                  content: '检查 skill list 是否注入',
+                ),
+              ],
+              config: ChatConfig(systemPrompt: '你是一个助手'),
+            );
+
+    expect(
+      plannerMessages[1].text,
+      contains('The following skills are available for use with the Skill tool:'),
+    );
+    expect(
+      plannerMessages[1].text,
+      contains('- edge-to-edge: Improve Android edge-to-edge handling.'),
+    );
   });
 }
 
@@ -279,4 +348,39 @@ class _ContextSnapshotChatStorage extends _NoopChatStorage {
       ),
     ];
   }
+}
+
+class _PlannerMessageChatStorage extends _NoopChatStorage {
+  final ChatTurn _turn = ChatTurn(
+    id: 1,
+    groupId: 1,
+    status: ChatTurnStatus.running,
+    userInput: '检查 skill list 是否注入',
+  );
+
+  @override
+  Future<ChatTurn?> getTurn(int id) async => id == 1 ? _turn : null;
+
+  @override
+  Future<List<ChatTurn>> getTurnsByGroup(int groupId) async {
+    if (groupId != 1) {
+      return const [];
+    }
+    return [_turn];
+  }
+}
+
+class _StaticSkillRuntimeService extends SkillRuntimeService {
+  _StaticSkillRuntimeService({required this.catalog})
+      : super(
+          storageService: SkillStorageService(
+            rootDirectoryProvider: () async =>
+                throw UnimplementedError('not used in test'),
+          ),
+        );
+
+  final List<SkillCatalogEntry> catalog;
+
+  @override
+  Future<List<SkillCatalogEntry>> listSkillCatalogEntries() async => catalog;
 }
