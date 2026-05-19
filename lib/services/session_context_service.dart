@@ -32,7 +32,7 @@ class SessionContextBuildResult {
   final String modelName;
   final String resolvedSystemPrompt;
   final int systemPromptTokens;
-  final ChatMessage runtimeUserContextMessage;
+  final List<ChatMessage> runtimeUserContextMessages;
   final int runtimeUserContextTokens;
   final SessionContextSnapshot? activeSnapshot;
   final List<SessionContextTurnSegment> recentSegments;
@@ -44,7 +44,7 @@ class SessionContextBuildResult {
     required this.modelName,
     required this.resolvedSystemPrompt,
     required this.systemPromptTokens,
-    required this.runtimeUserContextMessage,
+    required this.runtimeUserContextMessages,
     required this.runtimeUserContextTokens,
     required this.activeSnapshot,
     required this.recentSegments,
@@ -54,7 +54,7 @@ class SessionContextBuildResult {
   });
 
   List<ChatMessage> get plannerMessages => [
-        runtimeUserContextMessage,
+        ...runtimeUserContextMessages,
         if (activeSnapshot != null)
           ChatMessage(
             text: activeSnapshot!.summaryText,
@@ -122,7 +122,7 @@ class SessionContextService {
       config: config,
     );
     return [
-      state.runtimeUserContextMessage,
+      ...state.runtimeUserContextMessages,
       if (state.activeSnapshot != null)
         _contextProjector.projectSnapshotToContext(state.activeSnapshot!.summaryText),
       ...state.recentSegments.expand((segment) => segment.messages),
@@ -162,7 +162,7 @@ class SessionContextService {
       historyTurns: completedTurns,
       groupedEvents: groupedHistoryEvents,
     );
-    final userContextMessage = _userContextMessageBuilder.buildMessage(
+    final userContextMessages = _userContextMessageBuilder.buildMessages(
       snapshot: await _runtimeUserContextService.buildSnapshot(),
     );
     final currentItems = <ModelContextItem>[
@@ -176,7 +176,7 @@ class SessionContextService {
     final systemPromptTokens =
         _tokenBudgetService.estimateTextTokens(resolvedSystemPrompt);
     final runtimeUserContextTokens =
-        _tokenBudgetService.estimateMessagesTokens([userContextMessage]);
+        _tokenBudgetService.estimateMessagesTokens(userContextMessages);
     final fixedPrefixTokens = systemPromptTokens + runtimeUserContextTokens;
     final currentTurnTokens =
         _tokenBudgetService.estimateMessagesTokens(normalizedCurrentMessages);
@@ -225,7 +225,7 @@ class SessionContextService {
       modelName: modelName,
       resolvedSystemPrompt: resolvedSystemPrompt,
       systemPromptTokens: systemPromptTokens,
-      runtimeUserContextMessage: userContextMessage,
+      runtimeUserContextMessages: userContextMessages,
       runtimeUserContextTokens: runtimeUserContextTokens,
       activeSnapshot: activeSummary,
       recentSegments: recentSegments,

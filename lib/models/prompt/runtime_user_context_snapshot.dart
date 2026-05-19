@@ -7,12 +7,16 @@ class RuntimeUserContextSnapshot {
   /// Project-level AGENTS.md-derived guidance for the current runtime.
   final String agentsMdText;
 
+  /// Optional skills reminder block injected as a dedicated user reminder.
+  final String skillsSectionText;
+
   /// Optional extra runtime sections that may be appended later.
   final List<String> additionalSections;
 
   const RuntimeUserContextSnapshot({
     required this.currentDateText,
     required this.agentsMdText,
+    this.skillsSectionText = '',
     this.additionalSections = const [],
   });
 }
