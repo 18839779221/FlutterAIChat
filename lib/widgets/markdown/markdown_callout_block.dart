@@ -1,4 +1,4 @@
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_typography.dart';
 import 'package:flutter/material.dart';
 
@@ -130,7 +130,7 @@ class _CalloutTone {
 
   static _CalloutTone resolve(BuildContext context, String type) {
     final theme = Theme.of(context);
-    final colors = theme.extension<AppColors>()!;
+    final colors = theme.extension<AppThemeSpec>()!;
     final isDark = theme.brightness == Brightness.dark;
     final normalized = type.trim().toUpperCase();
 

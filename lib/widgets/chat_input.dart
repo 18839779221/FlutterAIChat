@@ -1,4 +1,4 @@
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/theme/app_typography.dart';
@@ -62,7 +62,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final voiceInputController = ref.watch(voiceInputControllerProvider);
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final contextWindowSnapshot = ref.watch(contextWindowSnapshotProvider);
     final skillCatalog = ref.watch(enabledSkillCatalogProvider);
     final voiceState = voiceInputController?.state;
@@ -456,7 +456,7 @@ class _SlashSkillSuggestions extends StatelessWidget {
   Widget build(BuildContext context) {
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
 
     return Container(
       key: const ValueKey('chat-input-skill-suggestions'),

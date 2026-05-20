@@ -6,7 +6,7 @@
 
 **Architecture:** 本计划只触碰 `FlutterMarkdownImpl` 及其直接相关测试，必要时新增一个仅服务 `flutter_markdown` 的 reader token helper。实现不处理 `markdown_widget`，不新增公式/图表/Mermaid，不改变消息模型或聊天页整体布局。
 
-**Tech Stack:** Flutter 3.29.2、`flutter_markdown`、Flutter widget tests、项目现有 `AppTypography` / `AppColors` / `AppSpacing` / `AppTheme`。
+**Tech Stack:** Flutter 3.29.2、`flutter_markdown`、Flutter widget tests、项目现有 `AppTypography` / `AppThemeSpec` / `AppSpacing` / `AppTheme`。
 
 ---
 
@@ -149,7 +149,7 @@ git commit -m "test: lock hybrid markdown reader rhythm"
 新增文件：
 
 ```dart
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_typography.dart';
 import 'package:flutter/material.dart';
 
@@ -162,7 +162,7 @@ class FlutterMarkdownReaderTokens {
   /// Builds the document-first style sheet used by completed assistant answers.
   static MarkdownReaderStyles build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = theme.extension<AppColors>()!;
+    final colors = theme.extension<AppThemeSpec>()!;
     final bodyColor = theme.colorScheme.onSurface;
     final secondaryColor = theme.colorScheme.onSurface.withValues(alpha: 0.82);
     final quoteBorderColor = colors.workflowRunning.withValues(alpha: 0.18);

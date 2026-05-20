@@ -324,28 +324,36 @@ class ToolCompletionAnimation extends StatefulWidget {
 - 缩放：1.0 → 1.02
 
 ```dart
-class FocusBreathingInput extends StatefulWidget {
+class FocusBreathingInput extends StatelessWidget {
+  const FocusBreathingInput({
+    super.key,
+    required this.child,
+    required this.focusNode,
+  });
+
   final Widget child;
   final FocusNode focusNode;
-  
+
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final theme = AppThemeSpec.of(context);
+    final motion = theme.core.motion;
+    final radius = theme.core.radius;
     final isFocused = focusNode.hasFocus;
-    
+
     return AnimatedScale(
       scale: isFocused ? 1.02 : 1.0,
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOutCubic,
+      duration: motion.quick,
+      curve: motion.easeOut,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOutCubic,
+        duration: motion.quick,
+        curve: motion.easeOut,
         decoration: BoxDecoration(
-          color: colors.assistantSurface.withValues(alpha: 0.96),
-          borderRadius: BorderRadius.circular(24),
+          color: theme.assistantSurface.withValues(alpha: 0.96),
+          borderRadius: BorderRadius.circular(radius.lg),
           boxShadow: [
             BoxShadow(
-              color: colors.primaryText.withValues(
+              color: theme.primaryText.withValues(
                 alpha: isFocused ? 0.12 : 0.065,
               ),
               blurRadius: isFocused ? 28 : 20,
@@ -606,10 +614,13 @@ duration: const Duration(milliseconds: 1200),  // 标准扫描周期
 // 优化 reasoning_section.dart
 Widget _buildCollapsibleContent({
   required BuildContext context,
-  required AppColors colors,
-  required AppSpacing spacing,
   required String normalized,
 }) {
+  final theme = AppThemeSpec.of(context);
+  final colors = theme;
+  final spacing = theme.core.spacing;
+  final motion = theme.core.motion;
+
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
@@ -623,19 +634,19 @@ Widget _buildCollapsibleContent({
               Expanded(
                 child: Text('思考过程', ...),
               ),
-              AnimatedRotation(  // 添加箭头旋转动画
+              AnimatedRotation(
                 turns: _isExpanded ? 0.5 : 0,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOutCubic,
+                duration: motion.standard,
+                curve: motion.easeInOut,
                 child: Icon(Icons.keyboard_arrow_down, ...),
               ),
             ],
           ),
         ),
       ),
-      AnimatedSize(  // 添加高度动画
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOutCubic,
+      AnimatedSize(
+        duration: motion.standard,
+        curve: motion.easeInOut,
         alignment: Alignment.topCenter,
         child: _isExpanded
             ? Padding(

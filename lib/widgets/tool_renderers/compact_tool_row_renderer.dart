@@ -4,7 +4,7 @@ import '../../models/chat/tool_workflow_step.dart';
 import '../../models/chat_message.dart';
 import '../../models/tool/tool_result.dart';
 import '../../services/tool_ui_renderer_registry.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/app_theme_spec.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import 'tool_running_effects.dart';
@@ -50,7 +50,7 @@ class CompactToolRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
 

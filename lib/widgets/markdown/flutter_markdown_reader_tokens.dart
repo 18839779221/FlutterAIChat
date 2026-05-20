@@ -1,4 +1,4 @@
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_typography.dart';
 import 'package:flutter/material.dart';
 
@@ -11,7 +11,7 @@ class FlutterMarkdownReaderTokens {
   /// Builds the document-first styles used by completed assistant answers.
   static MarkdownReaderStyles build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = theme.extension<AppColors>()!;
+    final colors = theme.extension<AppThemeSpec>()!;
     final bodyColor = theme.colorScheme.onSurface;
     final secondaryColor = bodyColor.withValues(alpha: 0.82);
     final quoteBorderColor = colors.workflowRunning.withValues(alpha: 0.18);

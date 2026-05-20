@@ -1,6 +1,6 @@
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:flutter/material.dart';
@@ -26,7 +26,7 @@ class AskUserQuestionResultCard extends StatelessWidget {
         ? AskUserQuestionResponse.fromJson(submittedAnswers).answersByQuestionId
         : const <String, String>{};
 
-    final colors = Theme.of(context).extension<AppColors>() ?? AppColors.light();
+    final colors = Theme.of(context).extension<AppThemeSpec>() ?? AppThemeSpec.light();
     final spacing = Theme.of(context).extension<AppSpacing>() ?? AppSpacing.base();
     final radius = Theme.of(context).extension<AppRadius>() ?? AppRadius.base();
 

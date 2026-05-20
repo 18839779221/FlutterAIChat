@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/chat/tool_workflow_step.dart';
 import '../../models/tool/tool_result.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/app_theme_spec.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import 'tool_running_effects.dart';
@@ -35,7 +35,7 @@ class ResearchToolCardShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
     final hasExpandedChild = expandedChild != null;
@@ -185,7 +185,7 @@ class ResearchWorkflowItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
 
@@ -313,7 +313,7 @@ String aggregateWorkflowStatusLabel(List<ToolWorkflowStep> steps) {
 }
 
 Color workflowStatusColor(BuildContext context, ToolWorkflowStep? step) {
-  final colors = Theme.of(context).extension<AppColors>()!;
+  final colors = Theme.of(context).extension<AppThemeSpec>()!;
   switch (step?.status) {
     case ToolWorkflowStepStatus.completed:
       return colors.workflowSuccess;
@@ -384,7 +384,7 @@ Color aggregateWorkflowStatusColor(
 }
 
 Color resultStatusColor(BuildContext context, ToolResult result) {
-  final colors = Theme.of(context).extension<AppColors>()!;
+  final colors = Theme.of(context).extension<AppThemeSpec>()!;
   return result.status == ToolExecutionStatus.success
       ? colors.workflowSuccess
       : colors.workflowWarning;

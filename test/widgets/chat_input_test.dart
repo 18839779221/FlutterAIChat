@@ -12,7 +12,7 @@ import 'package:ai_chat/models/session/context_window_snapshot.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/audio/audio_capture_service.dart';
 import 'package:ai_chat/services/speech/speech_to_text_service.dart';
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_input.dart';
 import 'package:flutter/material.dart';
@@ -162,7 +162,7 @@ void main() {
 
     final colors = Theme.of(
       tester.element(find.byType(ChatInput)),
-    ).extension<AppColors>()!;
+    ).extension<AppThemeSpec>()!;
     final micContainer = tester.widget<Container>(
       find.byKey(const ValueKey('chat-input-voice-button-shell')),
     );
