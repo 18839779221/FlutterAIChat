@@ -1,4 +1,4 @@
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:flutter/material.dart';
 import 'package:markdown_widget/markdown_widget.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -31,7 +31,7 @@ class _MarkdownWidgetImplState extends State<MarkdownWidgetImpl> {
   MarkdownConfig _getMarkdownConfig(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final colors = theme.extension<AppColors>()!;
+    final colors = theme.extension<AppThemeSpec>()!;
     final bodyColor = theme.colorScheme.onSurface;
     final secondaryColor = bodyColor.withValues(alpha: 0.84);
     final linkColor = theme.colorScheme.primary;

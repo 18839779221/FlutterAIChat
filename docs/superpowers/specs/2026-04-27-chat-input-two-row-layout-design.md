@@ -91,7 +91,7 @@ class ContextWindowUsageIndicator extends StatelessWidget {
 
 把 `ContextWindowStatusBar._resolveValueColor` 提取为顶层函数或独立工具文件：
 
-- 建议：新增 `lib/widgets/context_window/context_window_usage_color.dart`，导出 `Color resolveContextWindowUsageColor(AppColors colors, ContextWindowSnapshot snapshot)`；
+- 建议：新增 `lib/widgets/context_window/context_window_usage_color.dart`，导出 `Color resolveContextWindowUsageColor(AppThemeSpec colors, ContextWindowSnapshot snapshot)`；
 - 仅由新组件 `ContextWindowUsageIndicator` 使用（旧 `ContextWindowStatusBar` 将被删除，见 4.4）；
 - 避免两处重复阈值逻辑。
 

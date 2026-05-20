@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../models/session/context_window_snapshot.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/app_theme_spec.dart';
 
 /// Returns the semantic usage accent color for the current context window fill.
 Color resolveContextWindowUsageColor(
-  AppColors colors,
+  AppThemeSpec colors,
   ContextWindowSnapshot snapshot,
 ) {
   final ratio = snapshot.totalWindowUsageRatio.clamp(0.0, 1.0);

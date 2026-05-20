@@ -30,7 +30,7 @@
   - 如需要，补齐 tool workflow 与主消息系统的一致性。
 - Potentially Modify: `lib/widgets/chat_blocks/structured_output_block.dart`
   - 如需要，补齐 structured output 与主消息系统的一致性。
-- Modify: `lib/theme/app_colors.dart`
+- Modify: `lib/theme/app_theme_spec.dart`
   - 收敛表面角色，强化聊天页专用色阶语义。
 - Modify: `lib/theme/app_spacing.dart`
   - 调整 spacing 节奏，支撑更高级的垂直 rhythm。
@@ -98,7 +98,7 @@ Expected: 当前实现不能通过上述约束。
 ## Task 2: 重构主题 token，支撑聊天主页新层级
 
 **Files:**
-- Modify: `lib/theme/app_colors.dart`
+- Modify: `lib/theme/app_theme_spec.dart`
 - Modify: `lib/theme/app_spacing.dart`
 - Modify: `lib/theme/app_radius.dart`
 - Modify: `lib/theme/app_component_theme.dart`
@@ -123,13 +123,13 @@ Expected: 当前实现不能通过上述约束。
 
 - 记录人工验证项，至少包含：
   - `AppTheme` 是否提供深色聊天页语义
-  - `AppColors.dark()` 是否能区分 page / chrome / composer / reading surface
+  - `AppThemeSpec.dark()` 是否能区分 page / chrome / composer / reading surface
 
 - [ ] **Step 3: 实现 token 收敛**
 
 具体改动方向：
 
-- `app_colors.dart`
+- `app_theme_spec.dart`
   - 保留语义化命名
   - 增加或重命名为更贴近页面层级的 surface token
   - 弱化“按具体卡片类型命名”的割裂感
@@ -164,7 +164,7 @@ Expected:
 - [ ] **Step 5: Commit**
 
 ```bash
-git add lib/theme/app_colors.dart lib/theme/app_spacing.dart lib/theme/app_radius.dart lib/theme/app_component_theme.dart lib/theme/app_theme.dart
+git add lib/theme/app_theme_spec.dart lib/theme/app_spacing.dart lib/theme/app_radius.dart lib/theme/app_component_theme.dart lib/theme/app_theme.dart
 git commit -m "feat: refine chat page theme tokens"
 ```
 

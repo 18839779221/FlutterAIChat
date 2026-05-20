@@ -6,7 +6,7 @@
 
 **Architecture:** 新增 `CalloutBlockSyntax` 在 Markdown parser 阶段识别 `> [!TYPE] 可选标题`，生成自定义 `callout` AST element；新增 `MarkdownCalloutBuilder` 和 `MarkdownCalloutBlock` 完整渲染语义块。`FlutterMarkdownImpl` 只接入自定义 block syntax 和 builder，不改消息模型，不处理 `markdown_widget` 表格路径。
 
-**Tech Stack:** Flutter 3.29.2、`flutter_markdown 0.6.23`、`markdown 7.3.0`、Flutter widget tests、项目现有 `AppTypography` / `AppColors` / `FlutterMarkdownReaderTokens`。
+**Tech Stack:** Flutter 3.29.2、`flutter_markdown 0.6.23`、`markdown 7.3.0`、Flutter widget tests、项目现有 `AppTypography` / `AppThemeSpec` / `FlutterMarkdownReaderTokens`。
 
 ---
 
@@ -256,7 +256,7 @@ Expected: FAIL。组件尚不存在。
   - `rawType`
   - `title`
   - `child`
-- 使用 `Theme.of(context).extension<AppColors>()!` 和 `AppTypography`。
+- 使用 `Theme.of(context).extension<AppThemeSpec>()!` 和 `AppTypography`。
 - 外层 `DecoratedBox` + `Padding`。
 - header 使用 `Row`：
   - 小 icon，优先 Material Icons：`info_outline` / `tips_and_updates_outlined` / `warning_amber_rounded` / `check_circle_outline` / `link_outlined`。

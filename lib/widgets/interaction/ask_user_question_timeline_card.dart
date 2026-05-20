@@ -1,6 +1,6 @@
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:flutter/material.dart';
@@ -21,7 +21,7 @@ class AskUserQuestionTimelineCard extends StatelessWidget {
       return const SizedBox.shrink();
     }
     final request = AskUserQuestionRequest.fromJson(payload);
-    final colors = Theme.of(context).extension<AppColors>() ?? AppColors.light();
+    final colors = Theme.of(context).extension<AppThemeSpec>() ?? AppThemeSpec.light();
     final spacing = Theme.of(context).extension<AppSpacing>() ?? AppSpacing.base();
     final radius = Theme.of(context).extension<AppRadius>() ?? AppRadius.base();
     final firstQuestion = request.questions.first;

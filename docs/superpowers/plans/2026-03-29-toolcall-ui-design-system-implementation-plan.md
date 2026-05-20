@@ -29,7 +29,7 @@
 **设计系统 / 主题**
 - 修改：`lib/main.dart`
 - 新增：`lib/theme/app_theme.dart`
-- 新增：`lib/theme/app_colors.dart`
+- 新增：`lib/theme/app_theme_spec.dart`
 - 新增：`lib/theme/app_spacing.dart`
 - 新增：`lib/theme/app_radius.dart`
 - 新增：`lib/theme/app_component_theme.dart`
@@ -84,7 +84,7 @@
 
 **文件：**
 - 新增：`lib/theme/app_theme.dart`
-- 新增：`lib/theme/app_colors.dart`
+- 新增：`lib/theme/app_theme_spec.dart`
 - 新增：`lib/theme/app_spacing.dart`
 - 新增：`lib/theme/app_radius.dart`
 - 新增：`lib/theme/app_component_theme.dart`

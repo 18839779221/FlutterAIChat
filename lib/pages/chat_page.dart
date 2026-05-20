@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../theme/app_colors.dart';
+import '../theme/app_theme_spec.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../providers/chat_providers.dart';
@@ -46,7 +46,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final isLoadingMore = ref.watch(isLoadingMoreProvider);
     final pendingConfirmation = ref.watch(activePendingToolConfirmationProvider);
     final spacing = Theme.of(context).extension<AppSpacing>()!;
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final chatController = ref.read(chatControllerProvider);
 
     return Scaffold(
@@ -188,7 +188,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).extension<AppColors>()!.chatBackground,
+      backgroundColor: Theme.of(context).extension<AppThemeSpec>()!.chatBackground,
       builder: (sheetContext) => DebugTestCaseSheet(
         cases: library.allCases,
         onSelected: (item) {
@@ -214,7 +214,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).extension<AppColors>()!.chatBackground,
+      backgroundColor: Theme.of(context).extension<AppThemeSpec>()!.chatBackground,
       builder: (_) => ContextWindowBottomSheet(snapshot: snapshot),
     );
   }
@@ -407,7 +407,7 @@ class _HeaderButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
     final backgroundColor = colors.assistantSurface.withValues(
       alpha: filled ? 0.93 : 0.89,

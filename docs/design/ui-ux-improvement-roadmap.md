@@ -11,10 +11,12 @@
 ### ✅ 已有优势
 
 #### 1. 完善的设计Token体系
-- **AppColors**: 语义化颜色系统，支持浅色/深色主题
+- **AppThemeSpec**: 主题真源，统一承载浅色/深色设计语言
 - **AppSpacing**: 统一的间距规范（xxs: 4px → xl: 20px）
 - **AppRadius**: 圆角规范（sm: 10px → pill: 999px）
 - **AppTypography**: 字体系统（UI字体、文档字体）
+- **AppMotion**: 动效时长与曲线规范
+- **AppComponentTheme**: 组件默认样式装配层
 
 #### 2. 清晰的组件架构
 ```

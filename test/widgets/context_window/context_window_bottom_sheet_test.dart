@@ -1,6 +1,6 @@
 import 'package:ai_chat/models/session/context_window_segment.dart';
 import 'package:ai_chat/models/session/context_window_snapshot.dart';
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/widgets/context_window/context_window_bottom_sheet.dart';
@@ -16,7 +16,7 @@ void main() {
       MaterialApp(
         theme: ThemeData(
           extensions: [
-            AppColors.light(),
+            AppThemeSpec.light(),
             AppSpacing.base(),
             AppRadius.base(),
           ],
@@ -44,7 +44,7 @@ void main() {
       MaterialApp(
         theme: ThemeData(
           extensions: [
-            AppColors.light(),
+            AppThemeSpec.light(),
             AppSpacing.base(),
             AppRadius.base(),
           ],

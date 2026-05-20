@@ -1,7 +1,7 @@
 import 'package:ai_chat/models/chat/tool_card_presentation_variant.dart';
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/services/tool_card_presentation_mapper.dart';
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:flutter/material.dart';
@@ -26,7 +26,7 @@ class ToolWorkflowCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
 
@@ -180,7 +180,7 @@ class ToolWorkflowCard extends StatelessWidget {
     return step.showsConfirmationActions;
   }
 
-  Color _statusColor(AppColors colors, ToolWorkflowStepStatus status) {
+  Color _statusColor(AppThemeSpec colors, ToolWorkflowStepStatus status) {
     switch (status) {
       case ToolWorkflowStepStatus.completed:
         return colors.workflowSuccess;

@@ -1,4 +1,4 @@
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_motion.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/theme/app_typography.dart';
@@ -15,7 +15,7 @@ class LatestMessageRunningStatusTail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final motion = Theme.of(context).extension<AppMotion>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
 

@@ -1,4 +1,4 @@
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_typography.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -27,7 +27,7 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final content = Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       child: DecoratedBox(
@@ -115,7 +115,7 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
 
   Color _codeCanvasColor(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = theme.extension<AppColors>()!;
+    final colors = theme.extension<AppThemeSpec>()!;
     final isDark = theme.brightness == Brightness.dark;
     return isDark
         ? colors.toolWorkflowSurface.withValues(alpha: 0.62)
@@ -160,7 +160,7 @@ class _CopyButtonState extends State<_CopyButton> {
               color: _isCopied
                   ? const Color(0xFF7FBE95)
                   : Theme.of(context)
-                      .extension<AppColors>()!
+                      .extension<AppThemeSpec>()!
                       .secondaryText
                       .withValues(alpha: 0.68),
             ),
@@ -189,7 +189,7 @@ class CodeSegmentWidget extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
       decoration: BoxDecoration(
         color: Theme.of(context)
-            .extension<AppColors>()!
+            .extension<AppThemeSpec>()!
             .toolWorkflowSurface
             .withValues(alpha: 0.42),
         borderRadius: BorderRadius.circular(5),
@@ -198,7 +198,7 @@ class CodeSegmentWidget extends StatelessWidget {
         code,
         style: AppTypography.codeStyle(
           color: Theme.of(context)
-              .extension<AppColors>()!
+              .extension<AppThemeSpec>()!
               .primaryText
               .withValues(alpha: 0.9),
           fontSize: 12.5,

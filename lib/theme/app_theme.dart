@@ -1,61 +1,65 @@
 import 'package:flutter/material.dart';
 
-import 'app_colors.dart';
 import 'app_component_theme.dart';
-import 'app_motion.dart';
-import 'app_radius.dart';
-import 'app_spacing.dart';
-import 'app_typography.dart';
+import 'app_theme_spec.dart';
 
 /// Central app theme entry point.
 class AppTheme {
   static ThemeData light() {
-    final colors = AppColors.light();
-    final spacing = AppSpacing.base();
-    final radius = AppRadius.base();
-    final motion = AppMotion.base();
-    final colorScheme = const ColorScheme.light().copyWith(
-      primary: colors.workflowRunning,
-      secondary: colors.workflowSuccess,
-      surface: colors.assistantSurface,
-      onSurface: colors.primaryText,
+    return fromSpec(AppThemeSpec.light());
+  }
+
+  static ThemeData dark() {
+    return fromSpec(AppThemeSpec.dark());
+  }
+
+  static ThemeData fromSpec(AppThemeSpec spec) {
+    final colorScheme = (spec.brightness == Brightness.dark
+            ? const ColorScheme.dark()
+            : const ColorScheme.light())
+        .copyWith(
+      primary: spec.workflowRunning,
+      secondary: spec.workflowSuccess,
+      surface: spec.assistantSurface,
+      onSurface: spec.primaryText,
       onPrimary: Colors.white,
       onSecondary: Colors.white,
-      outlineVariant: colors.divider,
+      outlineVariant: spec.divider,
     );
 
     return ThemeData(
       useMaterial3: true,
-      fontFamily: AppTypography.uiFontFamily,
+      fontFamily: spec.core.typography.uiFontFamily,
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: colors.chatBackground,
-      textTheme: Typography.blackMountainView.apply(
-        bodyColor: colors.primaryText,
-        displayColor: colors.primaryText,
+      scaffoldBackgroundColor: spec.chatBackground,
+      textTheme: (spec.brightness == Brightness.dark
+              ? Typography.whiteMountainView
+              : Typography.blackMountainView)
+          .apply(
+        bodyColor: spec.primaryText,
+        displayColor: spec.primaryText,
       ),
-      canvasColor: colors.settingsPanelBackground,
+      canvasColor: spec.settingsPanelBackground,
       splashFactory: NoSplash.splashFactory,
       highlightColor: Colors.transparent,
       hoverColor: Colors.transparent,
       inputDecorationTheme: AppComponentTheme.inputDecorationTheme(
-        colors,
-        radius,
-        spacing,
+        spec,
       ),
-      cardTheme: AppComponentTheme.cardTheme(colors, radius),
-      dividerColor: colors.divider,
-      iconTheme: IconThemeData(color: colors.primaryText),
+      cardTheme: AppComponentTheme.cardTheme(spec),
+      dividerColor: spec.divider,
+      iconTheme: IconThemeData(color: spec.primaryText),
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
-        foregroundColor: colors.primaryText,
+        foregroundColor: spec.primaryText,
         elevation: 0,
         scrolledUnderElevation: 0,
       ),
       extensions: <ThemeExtension<dynamic>>[
-        colors,
-        spacing,
-        radius,
-        motion,
+        spec,
+        spec.core.spacing,
+        spec.core.radius,
+        spec.core.motion,
       ],
     );
   }
