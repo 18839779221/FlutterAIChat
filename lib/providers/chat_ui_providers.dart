@@ -107,7 +107,7 @@ final contextWindowSnapshotProvider =
     return null;
   }
   final config = ChatConfig(
-    systemPrompt: ref.watch(systemPromptProvider) ?? '',
+    systemPrompt: '',
     userSystemPrompt: ref.watch(systemPromptProvider) ?? '',
   );
   return ref
