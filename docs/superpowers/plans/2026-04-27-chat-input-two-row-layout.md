@@ -6,7 +6,7 @@
 
 **Architecture:** UI 侧局部重构。新增纯展示组件 `ContextWindowUsageIndicator` 与共享颜色函数 `resolveContextWindowUsageColor`；`ChatInput` 改为 `Column(TextField, Row(Spacer, Indicator, SendButton))`。不新增/改动 provider、controller、service；不触达 `ContextWindowSnapshot` 模型及上游服务。
 
-**Tech Stack:** Flutter 3.29.2 (prefer `fvm flutter`), flutter_riverpod, Material Theme extensions（`AppColors/AppSpacing/AppRadius`），`flutter_test`。
+**Tech Stack:** Flutter 3.29.2 (prefer `fvm flutter`), flutter_riverpod, Material Theme extensions（`AppThemeSpec/AppSpacing/AppRadius`），`flutter_test`。
 
 **关键参考文档：** `docs/superpowers/specs/2026-04-27-chat-input-two-row-layout-design.md`
 
@@ -37,13 +37,13 @@
 ```dart
 import 'package:ai_chat/models/session/context_window_segment.dart';
 import 'package:ai_chat/models/session/context_window_snapshot.dart';
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/widgets/context_window/context_window_usage_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  final colors = AppColors.light();
+  final colors = AppThemeSpec.light();
 
   ContextWindowSnapshot snapshot(double ratio) {
     return ContextWindowSnapshot(
@@ -91,7 +91,7 @@ Expected: 编译失败，提示 `context_window_usage_color.dart` 或 `resolveCo
 import 'package:flutter/material.dart';
 
 import '../../models/session/context_window_snapshot.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/app_theme_spec.dart';
 
 /// 根据 context 使用率返回圆环/进度条 valueColor。
 ///
@@ -100,7 +100,7 @@ import '../../theme/app_colors.dart';
 /// - `ratio >= compressionTriggerRatio * 0.85`   → workflowRunning @0.64
 /// - 其他                                         → secondaryText   @0.48
 Color resolveContextWindowUsageColor(
-  AppColors colors,
+  AppThemeSpec colors,
   ContextWindowSnapshot snapshot,
 ) {
   final ratio = snapshot.totalWindowUsageRatio.clamp(0.0, 1.0);
@@ -149,7 +149,7 @@ git commit -m "feat: extract shared context window usage color helper"
 ```dart
 import 'package:ai_chat/models/session/context_window_segment.dart';
 import 'package:ai_chat/models/session/context_window_snapshot.dart';
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/widgets/context_window/context_window_usage_indicator.dart';
@@ -175,7 +175,7 @@ Widget _host(Widget child) {
   return MaterialApp(
     theme: ThemeData(
       extensions: <ThemeExtension<dynamic>>[
-        AppColors.light(),
+        AppThemeSpec.light(),
         AppSpacing.base(),
         AppRadius.base(),
       ],
@@ -256,7 +256,7 @@ void main() {
     final ring = tester.widget<CircularProgressIndicator>(
       find.byType(CircularProgressIndicator),
     );
-    final expected = AppColors.light().workflowWarning.withValues(alpha: 0.72);
+    final expected = AppThemeSpec.light().workflowWarning.withValues(alpha: 0.72);
     expect((ring.valueColor as AlwaysStoppedAnimation<Color>).value.value,
         expected.value);
   });
@@ -276,7 +276,7 @@ Expected: 编译失败，`context_window_usage_indicator.dart` 或 `ContextWindo
 import 'package:flutter/material.dart';
 
 import '../../models/session/context_window_snapshot.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/app_theme_spec.dart';
 import 'context_window_usage_color.dart';
 
 /// 底部工具栏右下角的 context 使用率指示器。
@@ -297,7 +297,7 @@ class ContextWindowUsageIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final ratio = snapshot.totalWindowUsageRatio.clamp(0.0, 1.0);
     final valueColor = resolveContextWindowUsageColor(colors, snapshot);
     final percent = (ratio * 100).round();
@@ -742,4 +742,4 @@ git commit -m "docs: reflect chat input ring-only usage indicator"
 
 1. **Spec coverage：** 逐节对照 spec 第 4 节—— 4.1 布局（Task 3）、4.2 新组件（Task 2）、4.3 颜色共享（Task 1）、4.4 删除旧组件与测试（Task 4）、4.5 空状态（Task 3 Step 2 的 `maybeWhen` + Task 5 用例）、4.6 数据流（Task 3）；第 7 节测试计划分散在 Task 1/2/5；第 9 节交付物清单全部命中（除可选 README 更新归 Task 6）。
 2. **Placeholder 扫描：** 无 TBD/TODO/"etc."/"similar to"。所有代码块为完整可复制内容。
-3. **类型一致性：** `ContextWindowSnapshot` 字段名（`totalWindowUsageRatio`、`compressionTriggerRatio`）在三处使用一致；`resolveContextWindowUsageColor(AppColors, ContextWindowSnapshot)` 签名在 Task 1 定义、Task 2 消费一致；`ContextWindowUsageIndicator` 仅接受 `snapshot` + `onTap`（Task 2 定义、Task 3 消费一致）；`ValueKey('context-window-usage-indicator')` 在组件内部与测试中一致；`ValueKey('chat-input-bottom-bar')` 在 Task 3 布局与 Task 5 测试一致。
+3. **类型一致性：** `ContextWindowSnapshot` 字段名（`totalWindowUsageRatio`、`compressionTriggerRatio`）在三处使用一致；`resolveContextWindowUsageColor(AppThemeSpec, ContextWindowSnapshot)` 签名在 Task 1 定义、Task 2 消费一致；`ContextWindowUsageIndicator` 仅接受 `snapshot` + `onTap`（Task 2 定义、Task 3 消费一致）；`ValueKey('context-window-usage-indicator')` 在组件内部与测试中一致；`ValueKey('chat-input-bottom-bar')` 在 Task 3 布局与 Task 5 测试一致。

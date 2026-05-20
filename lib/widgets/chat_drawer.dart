@@ -1,5 +1,5 @@
 import 'package:ai_chat/constants/route_constant.dart';
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:flutter/cupertino.dart';
@@ -22,7 +22,7 @@ class ChatDrawer extends ConsumerWidget {
     final chatController = ref.read(chatControllerProvider);
 
     final ThemeData theme = Theme.of(context);
-    final colors = theme.extension<AppColors>()!;
+    final colors = theme.extension<AppThemeSpec>()!;
     final spacing = theme.extension<AppSpacing>()!;
     final radius = theme.extension<AppRadius>()!;
     final showDraftGroup = currentGroup != null && currentGroup.id == null;
@@ -285,7 +285,7 @@ class _DrawerGroupTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
 

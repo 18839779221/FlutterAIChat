@@ -1,7 +1,7 @@
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:flutter/material.dart';
@@ -32,7 +32,7 @@ class AskUserQuestionCard extends ConsumerWidget {
     final question = request.questions[questionIndex];
     final selected = draft.selectedOptionLabelsByQuestionId[question.id] ?? const [];
     final hasOther = selected.contains('Other');
-    final colors = Theme.of(context).extension<AppColors>() ?? AppColors.light();
+    final colors = Theme.of(context).extension<AppThemeSpec>() ?? AppThemeSpec.light();
     final spacing = Theme.of(context).extension<AppSpacing>() ?? AppSpacing.base();
     final radius = Theme.of(context).extension<AppRadius>() ?? AppRadius.base();
     final canSubmit = request.questions.every(
@@ -237,7 +237,7 @@ class _QuestionOptionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>() ?? AppColors.light();
+    final colors = Theme.of(context).extension<AppThemeSpec>() ?? AppThemeSpec.light();
     final spacing = Theme.of(context).extension<AppSpacing>() ?? AppSpacing.base();
     final radius = Theme.of(context).extension<AppRadius>() ?? AppRadius.base();
 

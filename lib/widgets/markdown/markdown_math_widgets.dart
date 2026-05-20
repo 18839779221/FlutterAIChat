@@ -1,4 +1,4 @@
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_typography.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
@@ -43,7 +43,7 @@ class MarkdownBlockMath extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final fallbackStyle = _fallbackStyle(context);
     final mathStyle = fallbackStyle.copyWith(
@@ -77,7 +77,7 @@ class MarkdownBlockMath extends StatelessWidget {
 }
 
 TextStyle _fallbackStyle(BuildContext context) {
-  final colors = Theme.of(context).extension<AppColors>()!;
+  final colors = Theme.of(context).extension<AppThemeSpec>()!;
   return AppTypography.documentStyle(
     color: colors.primaryText.withValues(alpha: 0.88),
     fontSize: 13,

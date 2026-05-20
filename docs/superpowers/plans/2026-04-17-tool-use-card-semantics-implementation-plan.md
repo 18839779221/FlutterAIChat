@@ -49,7 +49,7 @@
   - Refactor from generic form card into workflow-style interaction card.
 - `lib/widgets/chat_message_list.dart`
   - Route tool workflow and tool result blocks through the semantic mapper and variant widgets.
-- `lib/theme/app_colors.dart`
+- `lib/theme/app_theme_spec.dart`
   - Add any missing semantic roles needed for outcome and exception surfaces without breaking current themes.
 - `test/services/chat_block_builder_test.dart`
 - `test/widgets/chat_message_list_test.dart`
@@ -235,7 +235,7 @@ git commit -m "feat: map tool events to semantic card variants"
 - Create: `lib/widgets/chat_blocks/tool_inline_step_row.dart`
 - Create: `lib/widgets/chat_blocks/tool_outcome_card.dart`
 - Create: `lib/widgets/chat_blocks/tool_exception_card.dart`
-- Modify: `lib/theme/app_colors.dart`
+- Modify: `lib/theme/app_theme_spec.dart`
 - Modify: `lib/widgets/chat_blocks/tool_result_summary_row.dart`
 - Test: `test/widgets/chat_blocks/tool_inline_step_row_test.dart`
 - Test: `test/widgets/chat_blocks/tool_outcome_card_test.dart`
@@ -291,7 +291,7 @@ Add:
 - stronger but still restrained outcome card
 - exception card with readable explanation and fallback emphasis
 
-Any new colors added to `AppColors` must stay aligned with the existing calm palette.
+Any new colors added to `AppThemeSpec` must stay aligned with the existing calm palette.
 
 - [ ] **Step 4: Turn the old result-summary widget into a compatibility wrapper**
 
@@ -321,7 +321,7 @@ git add \
   lib/widgets/chat_blocks/tool_inline_step_row.dart \
   lib/widgets/chat_blocks/tool_outcome_card.dart \
   lib/widgets/chat_blocks/tool_exception_card.dart \
-  lib/theme/app_colors.dart \
+  lib/theme/app_theme_spec.dart \
   lib/widgets/chat_blocks/tool_result_summary_row.dart \
   test/widgets/chat_blocks/tool_inline_step_row_test.dart \
   test/widgets/chat_blocks/tool_outcome_card_test.dart \
@@ -457,7 +457,7 @@ git commit -m "feat: route tool blocks through semantic variants"
 
 **Files:**
 - Modify: `lib/widgets/interaction/ask_user_question_card.dart`
-- Modify: `lib/theme/app_colors.dart`
+- Modify: `lib/theme/app_theme_spec.dart`
 - Test: `test/widgets/interaction/ask_user_question_card_test.dart`
 - Test: `test/widgets/chat_message_list_test.dart`
 
@@ -506,7 +506,7 @@ Expected: PASS.
 ```bash
 git add \
   lib/widgets/interaction/ask_user_question_card.dart \
-  lib/theme/app_colors.dart \
+  lib/theme/app_theme_spec.dart \
   test/widgets/interaction/ask_user_question_card_test.dart \
   test/widgets/chat_message_list_test.dart
 git commit -m "feat: refresh ask user question interaction card"

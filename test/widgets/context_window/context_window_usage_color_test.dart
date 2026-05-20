@@ -1,11 +1,11 @@
 import 'package:ai_chat/models/session/context_window_segment.dart';
 import 'package:ai_chat/models/session/context_window_snapshot.dart';
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/widgets/context_window/context_window_usage_color.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  final colors = AppColors.light();
+  final colors = AppThemeSpec.light();
 
   ContextWindowSnapshot snapshot(double ratio) {
     return ContextWindowSnapshot(

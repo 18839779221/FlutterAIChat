@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../theme/app_colors.dart';
+import '../../theme/app_theme_spec.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
@@ -47,7 +47,7 @@ class FileChangePreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
     final lines = _buildLines();
@@ -195,7 +195,7 @@ class _PreviewLineRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final background = _backgroundColor(colors);
     final textColor = _textColor(colors);
@@ -249,7 +249,7 @@ class _PreviewLineRow extends StatelessWidget {
     }
   }
 
-  Color _backgroundColor(AppColors colors) {
+  Color _backgroundColor(AppThemeSpec colors) {
     switch (line.kind) {
       case _FileChangeLineKind.added:
         return colors.workflowSuccess.withValues(alpha: 0.11);
@@ -260,7 +260,7 @@ class _PreviewLineRow extends StatelessWidget {
     }
   }
 
-  Color _textColor(AppColors colors) {
+  Color _textColor(AppThemeSpec colors) {
     switch (line.kind) {
       case _FileChangeLineKind.added:
         return colors.workflowSuccess;

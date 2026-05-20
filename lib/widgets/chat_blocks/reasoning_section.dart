@@ -1,4 +1,4 @@
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/theme/app_typography.dart';
 import 'package:flutter/material.dart';
@@ -43,7 +43,7 @@ class _ReasoningSectionState extends State<ReasoningSection> {
     if (normalized.isEmpty) {
       return const SizedBox.shrink();
     }
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
 
     return Padding(
@@ -94,7 +94,7 @@ class _ReasoningSectionState extends State<ReasoningSection> {
 
   Widget _buildFinalAnswerCollapsedShell({
     required BuildContext context,
-    required AppColors colors,
+    required AppThemeSpec colors,
     required AppSpacing spacing,
     required String normalized,
   }) {
@@ -114,7 +114,7 @@ class _ReasoningSectionState extends State<ReasoningSection> {
 
   Widget _buildCollapsibleContent({
     required BuildContext context,
-    required AppColors colors,
+    required AppThemeSpec colors,
     required AppSpacing spacing,
     required String normalized,
   }) {
@@ -164,7 +164,7 @@ class _ReasoningSectionState extends State<ReasoningSection> {
   }
 
   Widget _buildExpandedContent({
-    required AppColors colors,
+    required AppThemeSpec colors,
     required AppSpacing spacing,
     required String normalized,
   }) {
@@ -193,7 +193,7 @@ class _ReasoningSectionState extends State<ReasoningSection> {
     );
   }
 
-  Color _backgroundColor(AppColors colors) {
+  Color _backgroundColor(AppThemeSpec colors) {
     switch (widget.variant) {
       case ReasoningSectionVariant.toolUseInline:
         return colors.assistantSurface.withValues(alpha: 0.22);
@@ -202,7 +202,7 @@ class _ReasoningSectionState extends State<ReasoningSection> {
     }
   }
 
-  Color _railColor(AppColors colors) {
+  Color _railColor(AppThemeSpec colors) {
     switch (widget.variant) {
       case ReasoningSectionVariant.toolUseInline:
         return colors.secondaryText.withValues(alpha: 0.28);

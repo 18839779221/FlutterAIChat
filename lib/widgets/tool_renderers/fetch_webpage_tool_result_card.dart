@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/tool/tool_result.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/app_theme_spec.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import '../markdown/flutter_markdown_impl.dart';
@@ -66,7 +66,7 @@ class FetchWebpageToolResultCard extends StatelessWidget {
     required Map<String, dynamic> data,
     required String url,
   }) async {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
 

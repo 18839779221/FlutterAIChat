@@ -1,49 +1,47 @@
 import 'package:flutter/material.dart';
 
-import 'app_colors.dart';
-import 'app_radius.dart';
-import 'app_spacing.dart';
+import 'app_theme_spec.dart';
 
 /// Shared component defaults so pages read as one design system.
 class AppComponentTheme {
   static InputDecorationTheme inputDecorationTheme(
-    AppColors colors,
-    AppRadius radius,
-    AppSpacing spacing,
+    AppThemeSpec spec,
   ) {
+    final colors = spec.semantic;
+    final radius = spec.core.radius;
+    final spacing = spec.core.spacing;
     return InputDecorationTheme(
       filled: true,
-      fillColor: colors.assistantSurface,
+      fillColor: colors.surfaces.readingSurface,
       contentPadding: EdgeInsets.symmetric(
         horizontal: spacing.md,
         vertical: spacing.sm,
       ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radius.lg),
-        borderSide: BorderSide(color: colors.divider),
+        borderSide: BorderSide(color: colors.interaction.subtleBorder),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radius.lg),
-        borderSide: BorderSide(color: colors.divider),
+        borderSide: BorderSide(color: colors.interaction.subtleBorder),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radius.lg),
-        borderSide: BorderSide(color: colors.workflowRunning, width: 1.2),
+        borderSide: BorderSide(color: colors.state.running, width: 1.2),
       ),
     );
   }
 
-  static CardThemeData cardTheme(
-    AppColors colors,
-    AppRadius radius,
-  ) {
+  static CardThemeData cardTheme(AppThemeSpec spec) {
+    final colors = spec.semantic;
+    final radius = spec.core.radius;
     return CardThemeData(
-      color: colors.assistantSurface,
+      color: colors.surfaces.readingSurface,
       elevation: 0,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(radius.md),
-        side: BorderSide(color: colors.divider),
+        side: BorderSide(color: colors.interaction.subtleBorder),
       ),
     );
   }
