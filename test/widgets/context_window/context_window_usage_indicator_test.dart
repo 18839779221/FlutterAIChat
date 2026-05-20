@@ -1,6 +1,6 @@
 import 'package:ai_chat/models/session/context_window_segment.dart';
 import 'package:ai_chat/models/session/context_window_snapshot.dart';
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/widgets/context_window/context_window_usage_indicator.dart';
@@ -26,7 +26,7 @@ Widget _host(Widget child) {
   return MaterialApp(
     theme: ThemeData(
       extensions: <ThemeExtension<dynamic>>[
-        AppColors.light(),
+        AppThemeSpec.light(),
         AppSpacing.base(),
         AppRadius.base(),
       ],
@@ -111,7 +111,7 @@ void main() {
     final ring = tester.widget<CircularProgressIndicator>(
       find.byType(CircularProgressIndicator),
     );
-    final expected = AppColors.light().workflowWarning.withValues(alpha: 0.72);
+    final expected = AppThemeSpec.light().workflowWarning.withValues(alpha: 0.72);
     expect(
       (ring.valueColor as AlwaysStoppedAnimation<Color>).value.toARGB32(),
       expected.toARGB32(),

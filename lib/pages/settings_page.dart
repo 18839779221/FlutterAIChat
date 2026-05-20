@@ -7,7 +7,7 @@ import '../models/skill/skill_descriptor.dart';
 import '../models/tool/tool_policy.dart';
 import '../providers/chat_providers.dart';
 import '../services/llm_model_test_service.dart';
-import '../theme/app_colors.dart';
+import '../theme/app_theme_spec.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../widgets/settings/settings_group_section.dart';
@@ -172,7 +172,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final result = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).extension<AppColors>()!.chatBackground,
+      backgroundColor: Theme.of(context).extension<AppThemeSpec>()!.chatBackground,
       builder: (_) => SkillInstallSheet(initialUrl: _latestSkillInstallUrl),
     );
     if (result == null || result.trim().isEmpty) {
@@ -315,7 +315,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
     final provider = _currentProvider;
@@ -641,7 +641,7 @@ class _SelectionSheet<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final spacing = Theme.of(context).extension<AppSpacing>()!;
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final maxHeight = MediaQuery.of(context).size.height * 0.7;
 
     return SafeArea(

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/session/context_window_segment.dart';
 import '../../models/session/context_window_snapshot.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/app_theme_spec.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 
@@ -16,7 +16,7 @@ class ContextWindowBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
     final plannerVisibleSegments = snapshot.segments
@@ -109,7 +109,7 @@ class _SummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
 
@@ -161,7 +161,7 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
 
@@ -197,7 +197,7 @@ class _SegmentRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
 
     return Padding(
@@ -241,7 +241,7 @@ class _DetailLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
 
     return Padding(

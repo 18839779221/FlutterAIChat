@@ -1,4 +1,4 @@
-import 'package:ai_chat/theme/app_colors.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:flutter/material.dart';
@@ -18,7 +18,7 @@ class SettingsSegmentedControl<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
 

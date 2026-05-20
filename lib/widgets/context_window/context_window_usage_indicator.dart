@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/session/context_window_snapshot.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/app_theme_spec.dart';
 import '../../theme/app_typography.dart';
 import 'context_window_usage_color.dart';
 
@@ -24,7 +24,7 @@ class ContextWindowUsageIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final ratio = snapshot.totalWindowUsageRatio.clamp(0.0, 1.0);
     final percent = (ratio * 100).round();
     final accent = resolveContextWindowUsageColor(colors, snapshot);

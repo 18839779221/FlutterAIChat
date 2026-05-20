@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/tool/tool_result.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/app_theme_spec.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import 'research_tool_card_shell.dart';
@@ -62,7 +62,7 @@ class WebSearchToolResultCard extends StatelessWidget {
     String query,
     List<Map<String, dynamic>> results,
   ) async {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
 
@@ -141,7 +141,7 @@ class _SearchResultItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
     final host = _resolvedHost(item);
@@ -247,7 +247,7 @@ class _FaviconBadgeState extends State<_FaviconBadge> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final host = widget.host.trim();
     final fallback = Container(
       width: 18,
