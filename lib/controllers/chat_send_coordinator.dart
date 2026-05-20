@@ -430,7 +430,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
 
   ChatConfig _buildChatConfig() {
     return ChatConfig(
-      systemPrompt: _ref.read(systemPromptProvider) ?? '',
+      systemPrompt: '',
       userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
     );
   }
