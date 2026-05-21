@@ -94,10 +94,10 @@ class TurnHarness {
       );
     }
     yield await _eventRepository.appendUserMessage(
-        turnId: turnId,
-        groupId: turn.groupId,
-        content: turn.userInput,
-      );
+      turnId: turnId,
+      groupId: turn.groupId,
+      content: turn.userInput,
+    );
 
     yield* _continueTurnLoop(
       turn: turn,
@@ -107,8 +107,8 @@ class TurnHarness {
   }
 
   ChatMessage? _extractExplicitSkillReminderMessage(ChatTurn? turn) {
-    final runtimeContext = turn?.providerStateJson?[
-        SessionRuntimeMarkerService.runtimeContextKey];
+    final runtimeContext =
+        turn?.providerStateJson?[SessionRuntimeMarkerService.runtimeContextKey];
     if (runtimeContext is! Map) {
       return null;
     }
@@ -148,7 +148,9 @@ class TurnHarness {
           groupId: currentTurn.groupId,
           invocation: invocation,
           trustTool: trustTool,
-          onExecutionStarted: ({required invocation, required toolAccess}) async {
+          currentTurnEvents: await _eventRepository.listEventsByTurn(turnId),
+          onExecutionStarted: (
+              {required invocation, required toolAccess}) async {
             final toolPayload = _buildToolInvocationPayload(
               invocation: invocation,
               toolAccess: toolAccess,
@@ -178,7 +180,8 @@ class TurnHarness {
           controller.add(event);
         }
 
-        final refreshedTurn = await _turnRepository.getTurn(turnId) ?? currentTurn;
+        final refreshedTurn =
+            await _turnRepository.getTurn(turnId) ?? currentTurn;
         final failedToolExecution = execution.toolResult == null ||
             execution.toolResult!.status == ToolExecutionStatus.failure;
         if (failedToolExecution &&
@@ -270,10 +273,10 @@ class TurnHarness {
           errorMessage: 'max_tool_calls_reached',
         );
         yield await _eventRepository.appendTurnStatus(
-            turnId: turnId,
-            groupId: currentTurn.groupId,
-            content: 'max_tool_calls_reached',
-          );
+          turnId: turnId,
+          groupId: currentTurn.groupId,
+          content: 'max_tool_calls_reached',
+        );
         break;
       }
       final maxDuration = _limits.maxDuration;
@@ -284,10 +287,10 @@ class TurnHarness {
           errorMessage: 'max_duration_reached',
         );
         yield await _eventRepository.appendTurnStatus(
-            turnId: turnId,
-            groupId: currentTurn.groupId,
-            content: 'max_duration_reached',
-          );
+          turnId: turnId,
+          groupId: currentTurn.groupId,
+          content: 'max_duration_reached',
+        );
         break;
       }
       final maxIterations = _limits.maxIterations;
@@ -298,10 +301,10 @@ class TurnHarness {
           errorMessage: 'max_iterations_reached',
         );
         yield await _eventRepository.appendTurnStatus(
-            turnId: turnId,
-            groupId: currentTurn.groupId,
-            content: 'max_iterations_reached',
-          );
+          turnId: turnId,
+          groupId: currentTurn.groupId,
+          content: 'max_iterations_reached',
+        );
         break;
       }
 
@@ -371,19 +374,19 @@ class TurnHarness {
           !(decision.isTerminal && decision.toolCalls.isEmpty);
       if (shouldPersistPlannerMessage) {
         yield await _eventRepository.appendAssistantPlannerMessage(
-            turnId: turnId,
-            groupId: runtimeTurn.groupId,
-            content: plannerAssistantMessage,
-            payloadJson: {
-              'diagnosticCode': decision.diagnosticCode,
-              'isTerminal': decision.isTerminal,
-              if ((decision.providerState['response_id'] ?? '')
-                  .toString()
-                  .trim()
-                  .isNotEmpty)
-                'responseId': decision.providerState['response_id'],
-            },
-          );
+          turnId: turnId,
+          groupId: runtimeTurn.groupId,
+          content: plannerAssistantMessage,
+          payloadJson: {
+            'diagnosticCode': decision.diagnosticCode,
+            'isTerminal': decision.isTerminal,
+            if ((decision.providerState['response_id'] ?? '')
+                .toString()
+                .trim()
+                .isNotEmpty)
+              'responseId': decision.providerState['response_id'],
+          },
+        );
       }
       final decisionResponseId = _resolveDecisionResponseId(decision);
       if (decision.toolCalls.isNotEmpty) {
@@ -398,32 +401,32 @@ class TurnHarness {
         }
         await _turnRepository.incrementIteration(turnId);
         yield await _eventRepository.appendTurnStatus(
-            turnId: turnId,
-            groupId: runtimeTurn.groupId,
-            content: _decisionStatusContent(decision),
-          );
+          turnId: turnId,
+          groupId: runtimeTurn.groupId,
+          content: _decisionStatusContent(decision),
+        );
 
         DecisionToolExecutionSummary? executionSummary;
-        final sharedStepId = _stepRepository == null ||
-                decision.toolCalls.length != 1
-            ? null
-            : await _stepRepository!.createStep(
-                ChatTurnStep(
-                  turnId: turnId,
-                  stepIndex: steps.length + 1,
-                  providerResponseId: decisionResponseId,
-                  providerCallId: decision.toolCalls.length == 1
-                      ? decision.toolCalls.single.providerCallId
-                      : null,
-                  toolName: decision.toolCalls.length == 1
-                      ? decision.toolCalls.single.toolName
-                      : decision.toolCalls.map((c) => c.toolName).join(','),
-                  toolArgsJson: decision.toolCalls.length == 1
-                      ? decision.toolCalls.single.arguments
-                      : const {},
-                  status: ChatTurnStepStatus.planned,
-                ),
-              );
+        final sharedStepId =
+            _stepRepository == null || decision.toolCalls.length != 1
+                ? null
+                : await _stepRepository!.createStep(
+                    ChatTurnStep(
+                      turnId: turnId,
+                      stepIndex: steps.length + 1,
+                      providerResponseId: decisionResponseId,
+                      providerCallId: decision.toolCalls.length == 1
+                          ? decision.toolCalls.single.providerCallId
+                          : null,
+                      toolName: decision.toolCalls.length == 1
+                          ? decision.toolCalls.single.toolName
+                          : decision.toolCalls.map((c) => c.toolName).join(','),
+                      toolArgsJson: decision.toolCalls.length == 1
+                          ? decision.toolCalls.single.arguments
+                          : const {},
+                      status: ChatTurnStepStatus.planned,
+                    ),
+                  );
         await for (final update
             in _decisionToolCallExecutor.executeDecisionToolCalls(
           turn: runtimeTurn,
@@ -477,10 +480,10 @@ class TurnHarness {
           yield reasoningEvent;
         }
         yield await _eventRepository.appendTurnStatus(
-            turnId: turnId,
-            groupId: runtimeTurn.groupId,
-            content: _decisionStatusContent(decision),
-          );
+          turnId: turnId,
+          groupId: runtimeTurn.groupId,
+          content: _decisionStatusContent(decision),
+        );
         Logger.i(
           _tag,
           'planner chose final response path for turnId=$turnId responsePreview=${_preview(decision.assistantMessage ?? '')}',
@@ -492,10 +495,10 @@ class TurnHarness {
             'planner_request_failed short-circuits final-answer streaming for turnId=$turnId',
           );
           yield await _eventRepository.appendFinalAnswer(
-              turnId: turnId,
-              groupId: runtimeTurn.groupId,
-              content: decision.assistantMessage ?? '规划请求失败',
-            );
+            turnId: turnId,
+            groupId: runtimeTurn.groupId,
+            content: decision.assistantMessage ?? '规划请求失败',
+          );
           await _turnRepository.markFailed(
             turnId,
             errorMessage: decision.diagnosticCode ?? 'planner_request_failed',
@@ -534,10 +537,10 @@ class TurnHarness {
             },
           );
           yield await _eventRepository.appendFinalAnswer(
-              turnId: turnId,
-              groupId: runtimeTurn.groupId,
-              content: latestAssistantText,
-            );
+            turnId: turnId,
+            groupId: runtimeTurn.groupId,
+            content: latestAssistantText,
+          );
           await _turnRepository.markCompleted(
             turnId,
             stopReason: verifyResult.reason,
@@ -547,10 +550,10 @@ class TurnHarness {
         }
 
         yield await _eventRepository.appendTurnStatus(
-            turnId: turnId,
-            groupId: runtimeTurn.groupId,
-            content: verifyResult.reason,
-          );
+          turnId: turnId,
+          groupId: runtimeTurn.groupId,
+          content: verifyResult.reason,
+        );
         Logger.w(
           _tag,
           'stop verifier requested another iteration for turnId=$turnId reason=${verifyResult.reason}',
@@ -581,10 +584,10 @@ class TurnHarness {
         errorMessage: 'planner_no_terminal_decision',
       );
       yield await _eventRepository.appendTurnStatus(
-          turnId: turnId,
-          groupId: runtimeTurn.groupId,
-          content: 'planner_no_terminal_decision',
-        );
+        turnId: turnId,
+        groupId: runtimeTurn.groupId,
+        content: 'planner_no_terminal_decision',
+      );
       break;
     }
   }

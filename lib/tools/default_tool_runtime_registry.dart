@@ -1,5 +1,6 @@
 import '../services/tool_executor.dart';
 import '../services/skills/skill_runtime_service.dart';
+import '../repositories/app_settings_repository.dart';
 import 'core/tool_runtime_registry.dart';
 import 'handlers/ask_user_question_tool_handler.dart';
 import 'handlers/create_calendar_event_tool_handler.dart';
@@ -22,13 +23,17 @@ import 'handlers/write_tool_handler.dart';
 ToolRuntimeRegistry buildDefaultToolRuntimeRegistry({
   required ToolExecutor toolExecutor,
   SkillRuntimeService? skillRuntimeService,
+  AppSettingsRepository? appSettingsRepository,
   CreateArtifactToolHandler? createArtifactHandler,
 }) {
   return ToolRuntimeRegistry(
     handlers: [
       if (createArtifactHandler != null) createArtifactHandler,
       if (skillRuntimeService != null)
-        SkillToolHandler(skillRuntimeService: skillRuntimeService),
+        SkillToolHandler(
+          skillRuntimeService: skillRuntimeService,
+          settingsRepository: appSettingsRepository,
+        ),
       AskUserQuestionToolHandler(),
       SearchChatHistoryToolHandler(
         searcher: ({

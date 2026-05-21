@@ -6,6 +6,7 @@ import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/llm_factory.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
@@ -351,6 +352,72 @@ class ChatSendLiveTestHarness {
     await sendUserMessage(scenario.userMessage);
   }
 
+  Future<ChatSendLiveAutoRunResult> runScenarioWithAutoContinuation(
+    ScenarioCase scenario, {
+    int maxContinuations = 4,
+    bool autoConfirmTools = true,
+  }) async {
+    await runScenario(scenario);
+    return autoContinueCurrentTurn(
+      maxContinuations: maxContinuations,
+      autoConfirmTools: autoConfirmTools,
+    );
+  }
+
+  Future<ChatSendLiveAutoRunResult> autoContinueCurrentTurn({
+    int maxContinuations = 4,
+    bool autoConfirmTools = true,
+  }) async {
+    final checkpoints = <ChatSendLiveStateSnapshot>[];
+    for (var continuation = 0; continuation <= maxContinuations; continuation += 1) {
+      final state = await snapshotState();
+      checkpoints.add(state);
+      final status = state.latestTurn?.status;
+      if (status == null ||
+          status == ChatTurnStatus.completed ||
+          status == ChatTurnStatus.failed ||
+          status == ChatTurnStatus.cancelled ||
+          status == ChatTurnStatus.maxIterationsReached) {
+        return ChatSendLiveAutoRunResult(checkpoints: checkpoints);
+      }
+
+      if (status == ChatTurnStatus.awaitingUserInteraction) {
+        final promptMessage = activeAskUserQuestionMessage();
+        if (promptMessage == null) {
+          throw StateError(
+            'Turn is awaiting user interaction but no active question message exists.',
+          );
+        }
+        await submitQuestionAnswers(
+          message: promptMessage,
+          response: _buildFirstOptionResponse(promptMessage),
+        );
+        continue;
+      }
+
+      if (status == ChatTurnStatus.awaitingToolConfirmation) {
+        if (!autoConfirmTools) {
+          return ChatSendLiveAutoRunResult(checkpoints: checkpoints);
+        }
+        final pendingConfirmation = activePendingToolConfirmation();
+        if (pendingConfirmation == null) {
+          throw StateError(
+            'Turn is awaiting tool confirmation but no pending confirmation exists.',
+          );
+        }
+        await confirmToolInvocation(
+          message: pendingConfirmation.message,
+          trustTool: true,
+        );
+        continue;
+      }
+
+      throw StateError('Unsupported live auto-continuation status: $status');
+    }
+
+    return ChatSendLiveAutoRunResult(checkpoints: checkpoints);
+  }
+
   ChatMessage? activeAskUserQuestionMessage() {
     return container.read(activeAskUserQuestionMessageProvider);
   }
@@ -408,6 +475,61 @@ class ChatSendLiveTestHarness {
       id: groupId,
       title: 'Headless Live Test',
     );
+  }
+
+  AskUserQuestionResponse _buildFirstOptionResponse(ChatMessage message) {
+    final payload = message.payloadJson;
+    if (payload == null) {
+      throw StateError('Ask-user prompt message is missing payloadJson.');
+    }
+    final request = AskUserQuestionRequest.fromJson(payload);
+    final answersByQuestionId = <String, String>{};
+    final selectedOptionLabelsByQuestionId = <String, List<String>>{};
+
+    for (final question in request.questions) {
+      final firstOption = question.options.firstOrNull;
+      if (firstOption == null) {
+        throw StateError(
+          'Question ${question.id} has no selectable options for auto continuation.',
+        );
+      }
+      answersByQuestionId[question.id] = firstOption.label;
+      selectedOptionLabelsByQuestionId[question.id] = [firstOption.label];
+    }
+
+    return AskUserQuestionResponse(
+      answersByQuestionId: answersByQuestionId,
+      selectedOptionLabelsByQuestionId: selectedOptionLabelsByQuestionId,
+      freeTextAnswersByQuestionId: const {},
+    );
+  }
+}
+
+class ChatSendLiveAutoRunResult {
+  final List<ChatSendLiveStateSnapshot> checkpoints;
+
+  const ChatSendLiveAutoRunResult({
+    required this.checkpoints,
+  });
+
+  ChatSendLiveStateSnapshot get finalState => checkpoints.last;
+
+  ChatSendLiveStateSnapshot? get firstAwaitingUserInteractionState {
+    for (final state in checkpoints) {
+      if (state.latestTurn?.status == ChatTurnStatus.awaitingUserInteraction) {
+        return state;
+      }
+    }
+    return null;
+  }
+
+  ChatSendLiveStateSnapshot? get firstAwaitingToolConfirmationState {
+    for (final state in checkpoints) {
+      if (state.latestTurn?.status == ChatTurnStatus.awaitingToolConfirmation) {
+        return state;
+      }
+    }
+    return null;
   }
 }
 

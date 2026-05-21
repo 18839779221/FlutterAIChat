@@ -1483,7 +1483,8 @@ void main() {
         ]),
       );
       expect(
-        emitted.lastWhere((event) => event.eventType == ChatEventType.toolError)
+        emitted
+            .lastWhere((event) => event.eventType == ChatEventType.toolError)
             .content,
         'tool_execution_failed',
       );
@@ -1861,7 +1862,8 @@ void main() {
         isEmpty,
       );
       expect(
-        emitted.lastWhere((event) => event.eventType == ChatEventType.turnStatus)
+        emitted
+            .lastWhere((event) => event.eventType == ChatEventType.turnStatus)
             .content,
         'planner_no_terminal_decision',
       );
@@ -1871,7 +1873,8 @@ void main() {
       expect(persistedTurn.errorMessage, 'planner_no_terminal_decision');
     });
 
-    test('builds planner messages from session context on later loop iterations',
+    test(
+        'builds planner messages from session context on later loop iterations',
         () async {
       final eventRepository = _InMemoryChatEventRepository();
       final turnRepository = _InMemoryChatTurnRepository();
@@ -1966,7 +1969,8 @@ void main() {
         ['ctx-call-1', 'ctx-call-2'],
       );
       expect(
-        emitted.lastWhere((event) => event.eventType == ChatEventType.finalAnswer)
+        emitted
+            .lastWhere((event) => event.eventType == ChatEventType.finalAnswer)
             .content,
         '数据库版本是 7。',
       );
@@ -2214,7 +2218,8 @@ void main() {
         hasLength(2),
       );
       expect(
-        emitted.lastWhere((event) => event.eventType == ChatEventType.finalAnswer)
+        emitted
+            .lastWhere((event) => event.eventType == ChatEventType.finalAnswer)
             .content,
         '数据库版本已确认，并已记录到 notes/version.md。',
       );
@@ -2230,7 +2235,8 @@ void main() {
         ['call_1', 'call_2'],
       );
       expect(
-        persistedSteps.every((step) => step.status == ChatTurnStepStatus.completed),
+        persistedSteps
+            .every((step) => step.status == ChatTurnStepStatus.completed),
         isTrue,
       );
 
@@ -2240,7 +2246,8 @@ void main() {
         persistedTurn.providerStateJson,
         equals(const {'response_id': 'resp_3'}),
       );
-      expect(persistedTurn.providerStyle, ChatTurnProviderStyle.openaiResponses);
+      expect(
+          persistedTurn.providerStyle, ChatTurnProviderStyle.openaiResponses);
       expect(persistedTurn.modelName, 'gpt-5.4');
     });
 
@@ -2383,7 +2390,8 @@ void main() {
         ]),
       );
       expect(
-        resumed.lastWhere((event) => event.eventType == ChatEventType.finalAnswer)
+        resumed
+            .lastWhere((event) => event.eventType == ChatEventType.finalAnswer)
             .content,
         '建议采用 SQLite 作为当前方案。',
       );
@@ -3191,7 +3199,9 @@ void main() {
       final persistedSteps = await stepRepository.listSteps(turnId);
       expect(persistedSteps, hasLength(3));
       expect(
-        persistedSteps.map((step) => step.providerCallId).toList(growable: false),
+        persistedSteps
+            .map((step) => step.providerCallId)
+            .toList(growable: false),
         ['call_1', 'call_2', 'call_3'],
       );
       expect(
@@ -3356,7 +3366,6 @@ class _QueuedNativeDecisionLLM implements BaseLLM {
     required String prompt,
   }) async =>
       '';
-
 }
 
 class _AssertingLoopPlannerLLM implements BaseLLM {
@@ -3479,7 +3488,8 @@ class _AssertingQuestionLoopPlannerLLM implements BaseLLM {
 
     if (planCalls == 1) {
       expect(joinedText, contains('帮我确定存储方案'));
-      expect(availableTools.map((tool) => tool.name), contains('ask_user_question'));
+      expect(availableTools.map((tool) => tool.name),
+          contains('ask_user_question'));
       return const ModelTurnDecision(
         toolCalls: [
           ModelToolCall(
@@ -3621,6 +3631,7 @@ class _FakeToolCallService extends ToolCallService {
     required ToolInvocation invocation,
     bool trustTool = false,
     String? turnId,
+    List<ChatEvent> currentTurnEvents = const <ChatEvent>[],
     ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
     if (onExecutionStarted != null && executeResult.executionStarted) {
@@ -3658,6 +3669,7 @@ class _SequencedToolCallService extends ToolCallService {
     required ToolInvocation invocation,
     bool trustTool = false,
     String? turnId,
+    List<ChatEvent> currentTurnEvents = const <ChatEvent>[],
     ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
     final result = executeResults.removeFirst();
@@ -3697,6 +3709,7 @@ class _ThrowingToolCallService extends ToolCallService {
     required ToolInvocation invocation,
     bool trustTool = false,
     String? turnId,
+    List<ChatEvent> currentTurnEvents = const <ChatEvent>[],
     ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
     if (onExecutionStarted != null) {
@@ -3734,7 +3747,8 @@ class _InMemoryChatTurnRepository extends ChatTurnRepository {
 
   @override
   Future<List<ChatTurn>> getTurnsByGroup(int groupId) async {
-    final matching = turns.values.where((turn) => turn.groupId == groupId).toList();
+    final matching =
+        turns.values.where((turn) => turn.groupId == groupId).toList();
     matching.sort((left, right) {
       final leftId = left.id ?? 0;
       final rightId = right.id ?? 0;
@@ -4315,7 +4329,6 @@ class _NoopBaseLLM implements BaseLLM {
 
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async => '';
-
 }
 
 class _NoopChatStorage implements ChatStorage {

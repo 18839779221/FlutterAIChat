@@ -1926,6 +1926,7 @@ class _FakeChatService extends ChatService {
     required ToolInvocation invocation,
     bool trustTool = false,
     String? turnId,
+    List<ChatEvent> currentTurnEvents = const <ChatEvent>[],
     ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
     confirmedTrustFlags.add(trustTool);
@@ -2126,7 +2127,6 @@ class _NoopBaseLLM implements BaseLLM {
 
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async => '';
-
 }
 
 class _FakeChatSendCoordinator implements ChatSendCoordinator {

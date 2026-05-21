@@ -18,9 +18,15 @@ class ToolResultContextProjector {
       'search_chat_history' => _projectSearchChatHistory(result),
       'fetch_webpage' => _projectFetchWebpage(result),
       'LS' || 'Glob' || 'Grep' => _projectDiscoveryResult(result),
-      'Read' || 'Write' || 'Edit' || 'create_artifact' => _projectFileResult(result),
+      'Read' ||
+      'Write' ||
+      'Edit' ||
+      'create_artifact' =>
+        _projectFileResult(result),
       'skill' => _projectSkillResult(result),
-      'create_reminder' || 'create_calendar_event' || 'share_result' =>
+      'create_reminder' ||
+      'create_calendar_event' ||
+      'share_result' =>
         _projectActionResult(result),
       _ => null,
     };
@@ -240,6 +246,14 @@ class ToolResultContextProjector {
         qualifiedPath: qualifiedPath,
         baseDirectory: baseDirectory,
         instructionBody: instructionBody,
+        instructionBodyTruncated:
+            result.data['instructionBodyTruncated'] == true,
+        originalInstructionLength:
+            result.data['originalInstructionLength'] is int
+                ? result.data['originalInstructionLength'] as int
+                : int.tryParse(
+                    result.data['originalInstructionLength']?.toString() ?? '',
+                  ),
       ),
     );
   }

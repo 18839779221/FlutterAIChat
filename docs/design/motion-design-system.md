@@ -1043,8 +1043,9 @@ class AnimationSettings {
 ## 参考资源
 
 ### 内部文档
-- [主题系统](../theme/README.md)
-- [组件库](../components/README.md)
+- `lib/theme/app_theme.dart`
+- `lib/theme/app_colors.dart`
+- `lib/theme/app_motion.dart`
 - [性能优化指南](../architecture/performance.md)
 
 ### 外部参考
