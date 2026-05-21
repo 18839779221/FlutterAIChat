@@ -24,58 +24,58 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
     required this.components,
   });
 
-  factory AppThemeSpec.light() => AppThemeSpec.primary();
+  factory AppThemeSpec.light() => AppThemeSpec.claude();
 
-  factory AppThemeSpec.dark() => AppThemeSpec.paperOlive();
+  factory AppThemeSpec.dark() => AppThemeSpec.olivePaper();
 
-  factory AppThemeSpec.primary() {
+  factory AppThemeSpec.claude() {
     const surfaces = AppSurfaceSemanticTokens(
-      pageBackground: Color(0xFFF3F1EC),
-      panelBackground: Color(0xFFE3E4DE),
-      readingSurface: Color(0xFFECE7DE),
-      userBubbleSurface: Color(0xFFD6DBD2),
-      toolInlineSurface: Color(0xFFDDE4D8),
-      toolResultSurface: Color(0xFFE1E8DE),
-      dangerSurface: Color(0xFFEEE2D7),
-      structuralSurface: Color(0xFFE6E1D6),
+      pageBackground: Color(0xFFF5F4EE),
+      panelBackground: Color(0xFFF0EEE6),
+      readingSurface: Color(0xFFFAF9F5),
+      userBubbleSurface: Color(0xFFEDEAE0),
+      toolInlineSurface: Color(0xFFF5F2EA),
+      toolResultSurface: Color(0xFFF2F1EB),
+      dangerSurface: Color(0xFFFBF1E8),
+      structuralSurface: Color(0xFFFAF9F5),
     );
     const text = AppTextSemanticTokens(
-      primary: Color(0xFF182019),
-      secondary: Color(0xFF596259),
-      tertiary: Color(0xFF7A837A),
+      primary: Color(0xFF1F1F1E),
+      secondary: Color(0xFF3D3D3A),
+      tertiary: Color(0xFF75726A),
       inverse: Colors.white,
     );
     const state = AppStateSemanticTokens(
-      running: Color(0xFF35594A),
+      running: Color(0xFFC96442),
       success: Color(0xFF2F6A4F),
       warning: Color(0xFF9A6C37),
-      error: Color(0xFFB85B44),
-      info: Color(0xFF4B6C8A),
+      error: Color(0xFFBE2222),
+      info: Color(0xFF8A5A44),
     );
     const interactions = AppInteractionSemanticTokens(
-      border: Color(0x2E20281F),
-      focus: Color(0xFF35594A),
-      subtleBorder: Color(0x2E20281F),
+      border: Color(0xFFD9D6CC),
+      focus: Color(0xFFC96442),
+      subtleBorder: Color(0xFFE8E6DC),
     );
 
     return AppThemeSpec(
-      id: 'primary',
-      displayName: 'Primary',
+      id: 'claude',
+      displayName: 'Claude',
       brightness: Brightness.light,
       core: AppCoreTokens(
         colors: AppColorTokens(
-          black: Color(0xFF182019),
+          black: Color(0xFF1F1F1E),
           white: Colors.white,
-          paper: Color(0xFFF3F1EC),
-          ink: Color(0xFF182019),
-          mutedInk: Color(0xFF596259),
+          paper: Color(0xFFF5F4EE),
+          ink: Color(0xFF1F1F1E),
+          mutedInk: Color(0xFF3D3D3A),
           shadow: Color(0x22000000),
         ),
-        typography: AppTypographyTokens(
-          uiFontFamily: AppTypography.uiFontFamily,
-          codeFontFamily: AppTypography.codeFontFamily,
-          documentPackagedCjkFamily:
-              AppTypography.documentPackagedCjkFamily,
+        typography: const AppTypographyTokens(
+          uiFontFamily: 'AnthropicSans',
+          documentFontFamily: 'SourceSerif4',
+          codeFontFamily: 'JetBrainsMono',
+          documentPackagedCjkFamily: AppTypography.documentPackagedCjkFamily,
           documentFontFallback: AppTypography.documentFontFallback,
         ),
         spacing: AppSpacing.base(),
@@ -109,61 +109,61 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
     );
   }
 
-  factory AppThemeSpec.paperOlive() {
+  factory AppThemeSpec.olivePaper() {
     const surfaces = AppSurfaceSemanticTokens(
-      pageBackground: Color(0xFF111417),
-      panelBackground: Color(0xFF191D20),
-      readingSurface: Color(0xFF15181C),
-      userBubbleSurface: Color(0xFF243545),
-      toolInlineSurface: Color(0xFF1B232B),
-      toolResultSurface: Color(0xFF16201B),
-      dangerSurface: Color(0xFF241C19),
-      structuralSurface: Color(0xFF191C20),
+      pageBackground: Color(0xFFF3F1EC),
+      panelBackground: Color(0xFFE3E4DE),
+      readingSurface: Color(0xFFECE7DE),
+      userBubbleSurface: Color(0xFFD6DBD2),
+      toolInlineSurface: Color(0xFFDDE4D8),
+      toolResultSurface: Color(0xFFE1E8DE),
+      dangerSurface: Color(0xFFEEE2D7),
+      structuralSurface: Color(0xFFE6E1D6),
     );
     const text = AppTextSemanticTokens(
-      primary: Color(0xFFF0F3F6),
-      secondary: Color(0xFFB2BCC8),
-      tertiary: Color(0xFF87919C),
-      inverse: Color(0xFF111417),
+      primary: Color(0xFF182019),
+      secondary: Color(0xFF596259),
+      tertiary: Color(0xFF73796F),
+      inverse: Colors.white,
     );
     const state = AppStateSemanticTokens(
-      running: Color(0xFF7D9CCB),
-      success: Color(0xFF76B08C),
-      warning: Color(0xFFD29A5A),
-      error: Color(0xFFE0876D),
-      info: Color(0xFF86A5D8),
+      running: Color(0xFF35594A),
+      success: Color(0xFF2F6A4F),
+      warning: Color(0xFF9A6C37),
+      error: Color(0xFFB5483C),
+      info: Color(0xFF4B6C8A),
     );
     const interactions = AppInteractionSemanticTokens(
-      border: Color(0x24FFFFFF),
-      focus: Color(0xFF7D9CCB),
-      subtleBorder: Color(0x24FFFFFF),
+      border: Color(0x664F5F55),
+      focus: Color(0xFF35594A),
+      subtleBorder: Color(0x2E20281F),
     );
 
     return AppThemeSpec(
-      id: 'paper-olive',
-      displayName: 'Paper Olive',
-      brightness: Brightness.dark,
+      id: 'olive-paper',
+      displayName: 'Olive Paper',
+      brightness: Brightness.light,
       core: AppCoreTokens(
         colors: AppColorTokens(
-          black: Color(0xFFF0F3F6),
-          white: Color(0xFF111417),
-          paper: Color(0xFF111417),
-          ink: Color(0xFFF0F3F6),
-          mutedInk: Color(0xFFB2BCC8),
-          shadow: Color(0x33000000),
+          black: Color(0xFF182019),
+          white: Colors.white,
+          paper: Color(0xFFF3F1EC),
+          ink: Color(0xFF182019),
+          mutedInk: Color(0xFF596259),
+          shadow: Color(0x22000000),
         ),
-        typography: AppTypographyTokens(
-          uiFontFamily: AppTypography.uiFontFamily,
-          codeFontFamily: AppTypography.codeFontFamily,
-          documentPackagedCjkFamily:
-              AppTypography.documentPackagedCjkFamily,
+        typography: const AppTypographyTokens(
+          uiFontFamily: 'AnthropicSans',
+          documentFontFamily: 'SourceSerif4',
+          codeFontFamily: 'JetBrainsMono',
+          documentPackagedCjkFamily: AppTypography.documentPackagedCjkFamily,
           documentFontFallback: AppTypography.documentFontFallback,
         ),
         spacing: AppSpacing.base(),
         radius: AppRadius.base(),
         motion: AppMotion.base(),
         elevation: AppElevationTokens(
-          shadowColor: Color(0x33000000),
+          shadowColor: Color(0x1F000000),
         ),
         stroke: const AppStrokeTokens(
           thin: 1,
@@ -188,6 +188,22 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
         markdown: const MarkdownTokens(),
       ),
     );
+  }
+
+  static List<AppThemeSpec> builtInThemes() {
+    return <AppThemeSpec>[
+      AppThemeSpec.claude(),
+      AppThemeSpec.olivePaper(),
+    ];
+  }
+
+  static AppThemeSpec? resolveById(String id) {
+    for (final theme in builtInThemes()) {
+      if (theme.id == id) {
+        return theme;
+      }
+    }
+    return null;
   }
 
   static AppThemeSpec of(BuildContext context) {
@@ -293,12 +309,14 @@ class AppColorTokens {
 @immutable
 class AppTypographyTokens {
   final String uiFontFamily;
+  final String documentFontFamily;
   final String codeFontFamily;
   final String documentPackagedCjkFamily;
   final List<String> documentFontFallback;
 
   const AppTypographyTokens({
     required this.uiFontFamily,
+    required this.documentFontFamily,
     required this.codeFontFamily,
     required this.documentPackagedCjkFamily,
     required this.documentFontFallback,

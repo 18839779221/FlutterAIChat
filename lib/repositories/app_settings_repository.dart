@@ -6,6 +6,7 @@ import '../models/llm/llm_config.dart';
 import '../models/llm/llm_provider_config.dart';
 import '../models/llm/llm_provider_model.dart';
 import '../models/llm/llm_selection_state.dart';
+import '../models/skill/duplicate_skill_invocation_mode.dart';
 import '../models/speech/speech_input_config.dart';
 import 'llm_local_defaults.dart';
 
@@ -18,6 +19,9 @@ class AppSettingsRepository {
   static const String _blockedToolNamesKey = 'tool.blocked_names';
   static const String _disabledSkillIdsKey = 'skills.disabled_ids';
   static const String _latestSkillInstallUrlKey = 'skills.latest_install_url';
+  static const String _duplicateSkillInvocationModeKey =
+      'skills.duplicate_invocation_mode';
+  static const String _themeIdKey = 'appearance.theme_id';
   static const String _legacyApiKeyKey = 'llm.api_key';
   static const String _legacyBaseUrlKey = 'llm.base_url';
   static const String _legacyModelKey = 'llm.model';
@@ -157,6 +161,18 @@ class AppSettingsRepository {
   Future<void> saveSelectionState(LlmSelectionState selection) async {
     final normalized = await _normalizeSelection(selection);
     await _writeSelection(normalized);
+  }
+
+  Future<String?> getThemeId() async {
+    final value = _preferences.getString(_themeIdKey)?.trim();
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return value;
+  }
+
+  Future<void> saveThemeId(String themeId) async {
+    await _preferences.setString(_themeIdKey, themeId.trim());
   }
 
   Future<void> selectProviderAndModel({
@@ -403,6 +419,25 @@ class AppSettingsRepository {
       return;
     }
     await _preferences.setString(_latestSkillInstallUrlKey, trimmed);
+  }
+
+  Future<DuplicateSkillInvocationMode> getDuplicateSkillInvocationMode() async {
+    final raw = _preferences.getString(_duplicateSkillInvocationModeKey)?.trim();
+    if (raw == null || raw.isEmpty) {
+      return DuplicateSkillInvocationMode.reuse;
+    }
+    for (final mode in DuplicateSkillInvocationMode.values) {
+      if (mode.name == raw) {
+        return mode;
+      }
+    }
+    return DuplicateSkillInvocationMode.reuse;
+  }
+
+  Future<void> saveDuplicateSkillInvocationMode(
+    DuplicateSkillInvocationMode mode,
+  ) async {
+    await _preferences.setString(_duplicateSkillInvocationModeKey, mode.name);
   }
 
   Future<void> _writeProviders(List<LlmProviderConfig> providers) async {

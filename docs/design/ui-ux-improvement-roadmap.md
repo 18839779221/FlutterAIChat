@@ -10,7 +10,7 @@
 
 ### ✅ 已有优势
 
-#### 1. 完善的设计Token体系
+#### 1. 完善的设计 Token 体系
 - **AppThemeSpec**: 主题真源，统一承载浅色/深色设计语言
 - **AppSpacing**: 统一的间距规范（xxs: 4px → xl: 20px）
 - **AppRadius**: 圆角规范（sm: 10px → pill: 999px）
@@ -37,6 +37,7 @@ lib/
   - 进度条动画（ProgressiveBar）
 - 基础容器动画（AnimatedContainer）
 - Reasoning区域折叠交互
+- `AppMotion` 已在 `AppTheme` 中统一注入
 
 #### 4. 优秀的视觉设计
 - 自然色调的背景渐变
@@ -63,7 +64,7 @@ lib/
 
 **解决方案**：
 - ✅ 已创建 `motion-design-system.md` 规范文档
-- 🔲 待实现 `AppMotion` 主题扩展
+- ✅ 已实现 `AppMotion` 主题扩展
 - 🔲 待创建可复用动画组件库
 
 ---
@@ -288,20 +289,22 @@ AnimatedGradient(
 
 #### 任务清单
 - [x] 创建动画设计规范文档
-- [ ] 实现 `AppMotion` 主题扩展
+- [x] 实现 `AppMotion` 主题扩展
 - [ ] 创建可复用动画组件库
   - [ ] `FadeSlideIn` - 渐入滑动组件
   - [ ] `AnimatedElevation` - 高度动画组件
   - [ ] `StaggeredList` - 错位列表组件
   - [ ] `StreamingCursor` - 打字光标组件
-- [ ] 更新 `AppTheme` 集成 `AppMotion`
+- [x] 更新 `AppTheme` 集成 `AppMotion`
 
 #### 交付物
 ```
 lib/
 ├── theme/
-│   ├── app_motion.dart          # 新增：动画规范
-│   └── app_theme.dart           # 更新：集成AppMotion
+│   ├── app_motion.dart          # 已落地：动画规范
+│   ├── app_theme_spec.dart      # 当前主题真源（Claude / Olive Paper）
+│   ├── app_theme_controller.dart # 运行时主题切换与持久化
+│   └── app_theme.dart           # 已更新：集成 AppMotion
 └── widgets/
     └── animations/              # 新增：动画组件库
         ├── fade_slide_in.dart
@@ -311,7 +314,7 @@ lib/
 ```
 
 #### 验收标准
-- [ ] 所有动画时长和曲线使用 `AppMotion` 规范
+- [ ] 所有新增动画时长和曲线统一收敛到 `AppMotion`
 - [ ] 动画组件有完整的文档和示例
 - [ ] 通过性能测试（60fps，无jank）
 
@@ -510,8 +513,9 @@ lib/
 ## 参考文档
 
 - [动效设计系统](./motion-design-system.md)
-- [主题系统文档](../theme/README.md)
-- [组件库文档](../components/README.md)
+- `lib/theme/app_theme.dart`
+- `lib/theme/app_colors.dart`
+- `lib/theme/app_motion.dart`
 - [性能优化指南](../architecture/performance.md)
 
 ---
