@@ -22,6 +22,7 @@ import 'adapters/anthropic_messages_adapter.dart';
 import 'adapters/api_style_adapter.dart';
 import 'adapters/chat_completions_adapter.dart';
 import 'adapters/responses_adapter.dart';
+import 'adapters/sdk_chat_completions_adapter.dart';
 import 'api_protocol_resolver.dart';
 import 'api_stream_parser.dart';
 import 'base_llm.dart';
@@ -53,7 +54,14 @@ class ConfigurableHttpLLM
   static const int _defaultMainFlowNetworkRetryAttempts = 5;
 
   static const Map<ApiStyle, ApiStyleAdapter> _defaultAdapters = {
-    ApiStyle.chatCompletions: ChatCompletionsAdapter(),
+    ApiStyle.chatCompletions: SdkChatCompletionsAdapter(),
+    ApiStyle.responses: ResponsesAdapter(),
+    ApiStyle.anthropicMessages: AnthropicMessagesAdapter(),
+  };
+
+  /// Legacy adapters that bypass `openai_dart` SDK, kept as fallback.
+  static const Map<ApiStyle, ApiStyleAdapter> _legacyAdapters = {
+    ApiStyle.chatCompletions: LegacyChatCompletionsAdapter(),
     ApiStyle.responses: ResponsesAdapter(),
     ApiStyle.anthropicMessages: AnthropicMessagesAdapter(),
   };
@@ -67,7 +75,7 @@ class ConfigurableHttpLLM
   final Duration _plannerStreamIdleTimeout;
   final Duration _plannerStreamOverallTimeout;
   final int _mainFlowNetworkRetryAttempts;
-  final Map<ApiStyle, ApiStyleAdapter> _adapters;
+  Map<ApiStyle, ApiStyleAdapter> _adapters;
   final OpenAIChatCompletionsToolLoopAdapter _chatCompletionsToolLoopAdapter;
   final OpenAIResponsesToolLoopAdapter _responsesToolLoopAdapter;
   final AnthropicMessagesToolLoopAdapter _anthropicMessagesToolLoopAdapter;
@@ -151,6 +159,16 @@ class ConfigurableHttpLLM
       throw StateError('No ApiStyleAdapter registered for $apiStyle');
     }
     return adapter;
+  }
+
+  /// Switch the Chat Completions adapter between SDK and legacy modes.
+  ///
+  /// [type] should be `'sdk'` or `'legacy'`. Any other value defaults to SDK.
+  void setChatCompletionsAdapter(String type) {
+    final adapter = type == 'legacy'
+        ? const LegacyChatCompletionsAdapter()
+        : SdkChatCompletionsAdapter();
+    _adapters = Map.of(_adapters)..[ApiStyle.chatCompletions] = adapter;
   }
 
   @override

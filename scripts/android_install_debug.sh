@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-EXPECTED_FLUTTER_VERSION="3.29.2"
+EXPECTED_FLUTTER_VERSION="3.35.7"
 APK_PATH="$ROOT_DIR/build/app/outputs/flutter-apk/app-debug.apk"
 
 usage() {

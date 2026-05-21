@@ -103,7 +103,7 @@ flowchart TD
 
 ## 快速开始
 
-本仓库优先使用 Flutter `3.29.2`。如果本机 `flutter` 版本不是 `3.29.2`，请改用 `fvm flutter`。
+本仓库优先使用 Flutter `3.35.7`（Dart `3.9.2`）。如果本机 `flutter` 版本不是 `3.35.7`，请改用 `fvm flutter`。
 
 ```bash
 fvm flutter pub get
