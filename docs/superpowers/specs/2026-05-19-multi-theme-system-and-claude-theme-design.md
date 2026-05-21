@@ -14,7 +14,7 @@
 2. **信息层级糊在一起**：13 个语义色中有 5 个面板色挤在同一个低对比米色域内，user / assistant / tool / structured / exception 视觉上难以快速区分；warning/exception 没有"跳出感"。
 3. **阅读体验不足**：Markdown 正文 13.2px / 行高 1.52，对长答案偏小偏紧，远离 Claude.ai (16/1.7) 等长文阅读基准。
 
-更重要的是，**主题切换链路本身并不存在**：`AppTheme.light()` 是孤立工厂，没有 `dark()`、没有 ThemeController、没有用户入口。`AppColors.dark()` 已写但从未被装配。`AppTypography` 也不是 ThemeExtension，只是三个 builder，导致 100+ 个 `fontSize` / `height` 字面量散落各处。
+更重要的是，当时的核心问题是**主题切换链路本身并不存在**：`AppTheme.light()` 是孤立工厂，没有 ThemeController、没有用户入口。`AppTypography` 也不是 ThemeExtension，只是三个 builder，导致 100+ 个 `fontSize` / `height` 字面量散落各处。
 
 因此本次工作的本质**不是换皮，而是建立"主题作为一等公民"的系统**：
 
@@ -31,7 +31,7 @@
 
 ### 必须达成
 
-- 用户可在设置页"外观"分区选择主题；首期只有 **Claude** 一个内置主题（其他主题位为占位）
+- 用户可在设置页"外观"分区选择主题；首期内置 **Claude** 与 **Olive Paper** 两套主题
 - Claude 主题完整覆盖：暖中性米底色、衬线长文阅读体、用户保留气泡、Assistant 改文档流、品牌橙作为唯一强调色
 - 主题切换是真正的运行时切换，无须重启 App
 - 9 维度的所有视觉 token 全部经过 `AppThemeSpec`，不存在"换主题但有元素不跟随"的情况
@@ -40,7 +40,8 @@
 ### 不做
 
 - 深色模式
-- 第二个内置主题（结构留好，待产品方向定后再加）
+  - 本期仍不做；当前第二套主题是另一套浅色设计语言，不是 dark theme
+- 第三个及以上内置主题（结构留好，待产品方向定后再加）
 - 用户自定义主题 / 上传配色
 - 布局结构、交互流程改动
 - 动效曲线 / 时长重新设计
@@ -74,11 +75,8 @@
 
 ```
 lib/theme/
-  app_theme_spec.dart          # 主题接口（abstract class）
+  app_theme_spec.dart          # 主题真源与内建主题工厂
   app_theme_controller.dart    # 运行时持有当前主题 + 切换 API
-  themes/
-    claude_theme.dart          # 第一个内置主题
-    _registry.dart             # 列出所有可选主题（首期只有 Claude）
   tokens/
     surface_palette.dart       # 维度 1
     workflow_accents.dart      # 维度 2
@@ -89,8 +87,7 @@ lib/theme/
     app_radius.dart            # 维度 7（扩展）
     app_motion.dart            # 维度 8（扩展）
     reader_sub_theme.dart      # 维度 9
-  app_colors.dart              # 兼容层（语义重映射到 SurfacePalette + WorkflowAccents + TextTones + Borders）
-  app_typography.dart          # 兼容层（旧 builder 转发到新角色）
+  app_typography.dart          # 字体辅助封装
   app_theme.dart               # 由 AppThemeSpec 生成 Material ThemeData
 ```
 
@@ -120,28 +117,15 @@ abstract class AppThemeSpec {
 - 持久化：通过现有 storage 层保存用户选择
 - 默认主题：首启动 = Claude
 
-### 4.4 与现有 AppColors 的兼容关系
+### 4.4 与旧主题层的关系
 
-`AppColors` 现有 13 字段不删，保留作为兼容层：
+最终实现不保留 `AppColors` 兼容层，而是直接完成调用点迁移：
 
-```dart
-class AppColors extends ThemeExtension<AppColors> {
-  factory AppColors.fromSpec(AppThemeSpec spec) => AppColors(
-    chatBackground: spec.surfaces.chatBackground,
-    assistantSurface: spec.surfaces.assistantSurface,
-    userBubbleSurface: spec.surfaces.userBubbleSurface,
-    // ... 其余 10 个语义色全部从 spec 派生
-    workflowRunning: spec.accents.running,
-    workflowSuccess: spec.accents.success,
-    workflowWarning: spec.accents.warning,
-    primaryText: spec.text.primary,
-    secondaryText: spec.text.secondary,
-    divider: spec.borders.divider,
-  );
-}
-```
+- `Theme.of(context).extension<AppThemeSpec>()!`
+- `AppThemeSpec.of(context)`
+- `spec.core` / `spec.semantic` / `spec.components`
 
-这样所有现存 `Theme.of(context).extension<AppColors>()` 调用点（~50 个文件）无须改一行代码即可跟主题切换。
+这保证主题系统只有一个真源，避免未来设计继续被旧字段语义带偏。
 
 ### 4.5 AppTypography 的兼容关系
 
@@ -287,7 +271,7 @@ class AppTypographySpec {
 
 - 在 `settings_page.dart` 顶部新增"外观"分组
 - 子项："主题"（segmented control 风格 / 卡片预览风格，二选一在实现期决定）
-- 首期只显示 Claude（选中态 + "当前"角标），保留至少 1 个占位卡（"即将上线"，disabled）
+- 首期显示 Claude 与 Olive Paper 两套主题，均可直接切换
 - 点击切换实时生效，无需重启
 
 ### 6.5 硬编码收编
@@ -337,7 +321,7 @@ class AppTypographySpec {
 ## 8. 测试策略
 
 - 已有的 `test/` 中 UI 相关测试需更新快照
-- 新增：`test/theme/app_theme_spec_test.dart` — 验证 `AppColors.fromSpec(ClaudeTheme)` 输出等于硬编码期望值
+- 新增：`test/theme/app_theme_controller_test.dart` — 验证默认主题、切换与持久化
 - 新增：`test/theme/theme_controller_test.dart` — 验证切换、持久化、首启动默认主题
 - 视觉回归：在四个 stage 结束点各做一次手工截图对照（chat / 含工具调用 / settings / artifact）
 
@@ -348,7 +332,7 @@ class AppTypographySpec {
 | 100+ 字号字面量收编工作量被低估 | 分两批：本次只做 7 个高频文件，其余作为后续 cleanup task |
 | 两套 Markdown 渲染器并存，迁移成本高 | Stage 3 单独切片，先迁 reader tokens，渲染器统一作为独立子项 |
 | 用户实际看到的 Claude 风格与示意图差异感知大 | 每个 stage 末手工截图对照设计示意，必要时回调取值 |
-| 旧 `AppColors` 13 字段语义重映射出现色彩"跑偏"（如 toolExceptionSurface 用作其他用途） | 改造前对每个字段 grep 所有调用点，逐个 review 语义是否仍匹配 |
+| 旧主题调用点迁移不彻底，导致局部仍绕过 `AppThemeSpec` | 改造前后 grep 主题入口与字面量，确保无旧入口残留 |
 | 主题持久化失败导致用户进 App 看到非预期主题 | 默认 fallback 始终是 ClaudeTheme |
 
 ## 10. 验收标准
@@ -362,4 +346,4 @@ class AppTypographySpec {
 - [ ] 7 个高频硬编码文件已收编
 - [ ] 跑 `flutter test` 全绿
 - [ ] 至少一组完整对话 + 工具调用的手工截图与设计示意一致
-- [ ] 无任何"旧 AppColors 字段被引用但未跟主题切换"的链路
+- [ ] 无任何绕过 `AppThemeSpec` 的旧主题入口残留

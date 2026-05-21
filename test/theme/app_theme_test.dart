@@ -21,10 +21,11 @@ void main() {
     final spec = AppTheme.light().extension<AppThemeSpec>();
 
     expect(theme.colorScheme.brightness, Brightness.light);
-    expect(theme.scaffoldBackgroundColor, const Color(0xFFF3F1EC));
+    expect(theme.scaffoldBackgroundColor, const Color(0xFFF5F4EE));
     expect(spec, isNotNull);
-    expect(spec!.chatBackground, const Color(0xFFF3F1EC));
-    expect(spec.settingsPanelBackground, const Color(0xFFE3E4DE));
-    expect(spec.toolWorkflowSurface, const Color(0xFFDDE4D8));
+    expect(spec!.id, 'claude');
+    expect(spec.chatBackground, const Color(0xFFF5F4EE));
+    expect(spec.settingsPanelBackground, const Color(0xFFF0EEE6));
+    expect(spec.toolWorkflowSurface, const Color(0xFFF5F2EA));
   });
 }

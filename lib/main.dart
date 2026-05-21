@@ -47,6 +47,7 @@ import 'services/artifact/artifact_file_storage_service.dart';
 import 'tools/adapters/tool_host_adapters.dart';
 import 'tools/default_tool_runtime_registry.dart';
 import 'tools/handlers/create_artifact_tool_handler.dart';
+import 'theme/app_theme_controller.dart';
 import 'theme/app_theme.dart';
 
 void main() async {
@@ -142,6 +143,7 @@ void main() async {
     final runtimeRegistry = buildDefaultToolRuntimeRegistry(
       toolExecutor: toolExecutor,
       skillRuntimeService: skillRuntimeService,
+      appSettingsRepository: settingsRepository,
       createArtifactHandler: createArtifactHandler,
     );
     final toolPolicyService = ToolPolicyService(
@@ -254,11 +256,12 @@ class MyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final activeTheme = ref.watch(appThemeControllerProvider);
     return MaterialApp(
       routes: getRouteMap(),
       initialRoute: RouteConstant.chatPage,
       title: 'AI Chat',
-      theme: AppTheme.light(),
+      theme: AppTheme.fromSpec(activeTheme),
     );
   }
 
