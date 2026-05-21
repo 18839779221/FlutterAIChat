@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../models/chat_event.dart';
 import '../models/tool/tool_access_snapshot.dart';
 import '../models/tool/tool_definition.dart';
 import '../models/tool/tool_invocation.dart';
@@ -55,7 +56,7 @@ class ToolCallService {
     ToolPolicyService? toolPolicyService,
     ChatTraceRecorder? traceRecorder,
     ToolHostAdapters hostAdapters = const ToolHostAdapters(),
-  }) : _runtimeRegistry = runtimeRegistry ??
+  })  : _runtimeRegistry = runtimeRegistry ??
             buildDefaultToolRuntimeRegistry(toolExecutor: toolExecutor),
         _orchestrator = ToolOrchestratorService(
           runtimeRegistry: runtimeRegistry ??
@@ -76,6 +77,7 @@ class ToolCallService {
     required ToolInvocation invocation,
     bool trustTool = false,
     String? turnId,
+    List<ChatEvent> currentTurnEvents = const <ChatEvent>[],
     ToolExecutionStartedCallback? onExecutionStarted,
   }) {
     return _orchestrator.executeToolInvocation(
@@ -83,6 +85,7 @@ class ToolCallService {
       invocation: invocation,
       trustTool: trustTool,
       turnId: turnId,
+      currentTurnEvents: currentTurnEvents,
       onExecutionStarted: onExecutionStarted,
     );
   }

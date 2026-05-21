@@ -1,3 +1,4 @@
+import '../../models/chat_event.dart';
 import '../../models/chat_message.dart';
 import '../adapters/tool_host_adapters.dart';
 
@@ -15,6 +16,12 @@ class ToolExecutionContext {
   /// Conversation history available to the tool when needed.
   final List<ChatMessage> history;
 
+  /// Append-only events already recorded for the current turn.
+  ///
+  /// Tool handlers use these execution facts for runtime guards such as
+  /// duplicate skill invocation checks. This is not the UI timeline.
+  final List<ChatEvent> currentTurnEvents;
+
   /// Stable execution timestamp used by handlers that normalize relative time.
   final DateTime now;
 
@@ -26,8 +33,10 @@ class ToolExecutionContext {
     required this.toolName,
     required Map<String, dynamic> arguments,
     required List<ChatMessage> history,
+    List<ChatEvent> currentTurnEvents = const <ChatEvent>[],
     required this.now,
     this.hostAdapters = const ToolHostAdapters(),
   })  : arguments = Map<String, dynamic>.unmodifiable(arguments),
-        history = List<ChatMessage>.unmodifiable(history);
+        history = List<ChatMessage>.unmodifiable(history),
+        currentTurnEvents = List<ChatEvent>.unmodifiable(currentTurnEvents);
 }

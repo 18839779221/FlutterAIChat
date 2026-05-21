@@ -2,7 +2,6 @@ import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
-import 'package:ai_chat/models/debug/debug_turn_inspector_projection.dart';
 import 'package:ai_chat/models/debug/debug_turn_inspector_timeline_entry.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/trace/chat_trace_event.dart';

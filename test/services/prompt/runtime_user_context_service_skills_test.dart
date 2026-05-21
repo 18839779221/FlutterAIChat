@@ -1,5 +1,6 @@
 import 'package:ai_chat/models/skill/skill_catalog_entry.dart';
 import 'package:ai_chat/services/prompt/runtime_user_context_service.dart';
+import 'package:ai_chat/services/skills/skill_context_formatter.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -30,7 +31,8 @@ void main() {
 
       expect(
         combined,
-        contains('The following skills are available for use with the Skill tool:'),
+        contains(
+            'The following skills are available for use with the Skill tool:'),
       );
       expect(
         combined,
@@ -55,6 +57,44 @@ void main() {
         combined,
         isEmpty,
       );
+    });
+
+    test('truncates skills list reminder with stable ordering', () async {
+      final service = RuntimeUserContextService(
+        nowProvider: () => DateTime(2026, 5, 9, 10, 0),
+        skillContextFormatter: const SkillContextFormatter(maxCatalogItems: 2),
+        skillCatalogProvider: () async => const [
+          SkillCatalogEntry(
+            id: 'zeta',
+            name: 'zeta',
+            description: 'Last skill.',
+            qualifiedPath: '/tmp/skills/zeta',
+            isEnabled: true,
+          ),
+          SkillCatalogEntry(
+            id: 'alpha',
+            name: 'alpha',
+            description: 'First skill.',
+            qualifiedPath: '/tmp/skills/alpha',
+            isEnabled: true,
+          ),
+          SkillCatalogEntry(
+            id: 'beta',
+            name: 'beta',
+            description: 'Second skill.',
+            qualifiedPath: '/tmp/skills/beta',
+            isEnabled: true,
+          ),
+        ],
+      );
+
+      final snapshot = await service.buildSnapshot();
+      final combined = snapshot.skillsSectionText;
+
+      expect(combined, contains('- alpha: First skill.'));
+      expect(combined, contains('- beta: Second skill.'));
+      expect(combined, contains('... 1 more skill omitted.'));
+      expect(combined, isNot(contains('zeta')));
     });
   });
 }
