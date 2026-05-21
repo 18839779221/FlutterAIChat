@@ -6,9 +6,9 @@ import 'package:ai_chat/services/chat_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  const adapter = ChatCompletionsAdapter();
+  const adapter = LegacyChatCompletionsAdapter();
 
-  group('ChatCompletionsAdapter.buildHeaders', () {
+  group('LegacyChatCompletionsAdapter.buildHeaders', () {
     test('uses Bearer auth', () {
       final headers = adapter.buildHeaders(
         const LLMConfig(apiKey: 'k1', apiUrl: 'u', model: 'm'),
@@ -18,7 +18,7 @@ void main() {
     });
   });
 
-  group('ChatCompletionsAdapter.buildChatPayload', () {
+  group('LegacyChatCompletionsAdapter.buildChatPayload', () {
     test('prepends configured system prompt and serialises plain messages', () {
       final payload = adapter.buildChatPayload(
         messages: [
@@ -117,7 +117,7 @@ void main() {
     });
   });
 
-  group('ChatCompletionsAdapter.buildPlannerPayload', () {
+  group('LegacyChatCompletionsAdapter.buildPlannerPayload', () {
     test('emits tool declarations and keeps transcript messages', () {
       final payload = adapter.buildPlannerPayload(
         messages: [
@@ -161,9 +161,49 @@ void main() {
       expect(payload.containsKey('tools'), isFalse);
       expect(payload.containsKey('tool_choice'), isFalse);
     });
+
+    test(
+        'omits parallel_tool_calls for deepseek models '
+        '(DeepSeek API rejects this field with 400)', () {
+      final payload = adapter.buildPlannerPayload(
+        messages: [ChatMessage(text: 'hi', role: MessageRole.user)],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'deepseek-chat',
+        availableTools: const [
+          PlannerToolOption(
+            name: 'search',
+            description: 'search',
+            inputSchema: {'type': 'object'},
+          ),
+        ],
+        parallelToolCalls: true,
+      );
+
+      expect(payload.containsKey('parallel_tool_calls'), isFalse);
+      expect(payload.containsKey('tools'), isTrue);
+      expect(payload['tool_choice'], 'auto');
+    });
+
+    test('includes parallel_tool_calls for non-deepseek models', () {
+      final payload = adapter.buildPlannerPayload(
+        messages: [ChatMessage(text: 'hi', role: MessageRole.user)],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'gpt-4o',
+        availableTools: const [
+          PlannerToolOption(
+            name: 'search',
+            description: 'search',
+            inputSchema: {'type': 'object'},
+          ),
+        ],
+        parallelToolCalls: true,
+      );
+
+      expect(payload['parallel_tool_calls'], true);
+    });
   });
 
-  group('ChatCompletionsAdapter.parsePlannerChoice', () {
+  group('LegacyChatCompletionsAdapter.parsePlannerChoice', () {
     test('parses assistant tool_calls into PlannerToolChoice.callTool', () {
       final choice = adapter.parsePlannerChoice({
         'choices': [
@@ -221,7 +261,7 @@ void main() {
     });
   });
 
-  group('ChatCompletionsAdapter.extractNonStreamText', () {
+  group('LegacyChatCompletionsAdapter.extractNonStreamText', () {
     test('returns the first choice message content', () {
       final text = adapter.extractNonStreamText({
         'choices': [

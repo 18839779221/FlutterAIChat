@@ -18,6 +18,7 @@ class AppSettingsRepository {
   static const String _blockedToolNamesKey = 'tool.blocked_names';
   static const String _disabledSkillIdsKey = 'skills.disabled_ids';
   static const String _latestSkillInstallUrlKey = 'skills.latest_install_url';
+  static const String _chatCompletionsAdapterKey = 'llm.chat_completions_adapter';
   static const String _legacyApiKeyKey = 'llm.api_key';
   static const String _legacyBaseUrlKey = 'llm.base_url';
   static const String _legacyModelKey = 'llm.model';
@@ -403,6 +404,15 @@ class AppSettingsRepository {
       return;
     }
     await _preferences.setString(_latestSkillInstallUrlKey, trimmed);
+  }
+
+  /// Returns the Chat Completions adapter type: `'sdk'` (default) or `'legacy'`.
+  Future<String> getChatCompletionsAdapterType() async {
+    return _preferences.getString(_chatCompletionsAdapterKey) ?? 'sdk';
+  }
+
+  Future<void> setChatCompletionsAdapterType(String type) async {
+    await _preferences.setString(_chatCompletionsAdapterKey, type);
   }
 
   Future<void> _writeProviders(List<LlmProviderConfig> providers) async {

@@ -9,8 +9,8 @@ This is a Flutter-based AI chat application with multi-group conversations, loca
 ## Development Commands
 
 ### Flutter Version
-- Prefer Flutter `3.29.2` in this repository
-- If the locally active `flutter` is not `3.29.2`, use `fvm flutter` for all Flutter commands
+- Prefer Flutter `3.35.7` in this repository
+- If the locally active `flutter` is not `3.35.7`, use `fvm flutter` for all Flutter commands
 - Recommended command forms:
   - `fvm flutter pub get`
   - `fvm flutter test`
@@ -19,7 +19,7 @@ This is a Flutter-based AI chat application with multi-group conversations, loca
 
 ### Running the App
 ```bash
-# If active flutter == 3.29.2
+# If active flutter == 3.35.7
 flutter run
 
 # Otherwise
@@ -34,12 +34,12 @@ fvm flutter run
   - The script builds the latest debug APK, then installs with `adb install -r -t` only
   - It must not fall back to uninstall/reinstall automatically; if overwrite install fails, preserve the failure and inspect it
   - If you need to run the steps manually, prefer `flutter build apk --debug` then `adb install -r -t build/app/outputs/flutter-apk/app-debug.apk`
-  - If the active flutter is not `3.29.2`, prefer the same build step with `fvm flutter`
+  - If the active flutter is not `3.35.7`, prefer the same build step with `fvm flutter`
 - When reinstalling on an Android real device, prefer overwrite install over uninstall/reinstall so app state is preserved unless a clean install is explicitly needed
 
 ### Installing Dependencies
 ```bash
-# If active flutter == 3.29.2
+# If active flutter == 3.35.7
 flutter pub get
 
 # Otherwise
@@ -48,7 +48,7 @@ fvm flutter pub get
 
 ### Linting
 ```bash
-# If active flutter == 3.29.2
+# If active flutter == 3.35.7
 flutter analyze
 
 # Otherwise
@@ -57,7 +57,7 @@ fvm flutter analyze
 
 ### Testing
 ```bash
-# If active flutter == 3.29.2
+# If active flutter == 3.35.7
 flutter test
 
 # Otherwise
@@ -128,14 +128,14 @@ fvm flutter test
 ### Building
 ```bash
 # Android
-# If active flutter == 3.29.2
+# If active flutter == 3.35.7
 flutter build apk
 
 # Otherwise
 fvm flutter build apk
 
 # iOS
-# If active flutter == 3.29.2
+# If active flutter == 3.35.7
 flutter build ios
 
 # Otherwise

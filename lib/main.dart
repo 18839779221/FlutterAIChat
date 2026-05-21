@@ -63,9 +63,12 @@ void main() async {
     late final TurnHarness turnHarness;
     traceRecorder = ChatTraceRecorder();
     await storage.testDatabaseConnection();
+    final chatCompletionsAdapterType =
+        await settingsRepository.getChatCompletionsAdapterType();
     final llm = LLMFactory.createLLM(
       LLMType.configurable,
       settingsRepository: settingsRepository,
+      chatCompletionsAdapterType: chatCompletionsAdapterType,
     );
     final modelBudgetRegistry = ModelBudgetRegistry();
     final fileToolAdapters = await buildDefaultFileToolHostAdapters();

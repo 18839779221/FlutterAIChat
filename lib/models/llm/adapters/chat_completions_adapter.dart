@@ -12,9 +12,12 @@ import '../llm_config.dart';
 import 'adapter_utils.dart';
 import 'api_style_adapter.dart';
 
-/// Adapter for the OpenAI-compatible Chat Completions protocol.
-class ChatCompletionsAdapter extends ApiStyleAdapter {
-  const ChatCompletionsAdapter();
+/// Legacy adapter for the OpenAI-compatible Chat Completions protocol.
+///
+/// Kept as a fallback when the SDK-backed [SdkChatCompletionsAdapter]
+/// encounters issues with specific providers.
+class LegacyChatCompletionsAdapter extends ApiStyleAdapter {
+  const LegacyChatCompletionsAdapter();
 
   @override
   ApiStyle get style => ApiStyle.chatCompletions;
@@ -81,7 +84,11 @@ class ChatCompletionsAdapter extends ApiStyleAdapter {
     if (tools.isNotEmpty) {
       payload['tools'] = tools;
       payload['tool_choice'] = 'auto';
-      payload['parallel_tool_calls'] = parallelToolCalls;
+      // DeepSeek API rejects `parallel_tool_calls` with a 400 error;
+      // only include it for providers that accept it (e.g. OpenAI).
+      if (!_isDeepSeekModel(modelName)) {
+        payload['parallel_tool_calls'] = parallelToolCalls;
+      }
     }
     _applyCacheHints(payload, requestOptions.cache);
     return payload;
@@ -186,6 +193,11 @@ class ChatCompletionsAdapter extends ApiStyleAdapter {
     if (cache.retention != null && cache.retention!.trim().isNotEmpty) {
       payload['prompt_cache_retention'] = cache.retention!.trim();
     }
+  }
+
+  /// DeepSeek API rejects `parallel_tool_calls`; detect by model name prefix.
+  static bool _isDeepSeekModel(String modelName) {
+    return modelName.trim().toLowerCase().startsWith('deepseek');
   }
 
   PlannerToolChoice? _parseToolCall(Map<String, dynamic> message) {

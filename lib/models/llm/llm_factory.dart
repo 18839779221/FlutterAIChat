@@ -8,10 +8,18 @@ enum LLMType {
 }
 
 class LLMFactory {
-  static BaseLLM createLLM(LLMType type, {required AppSettingsRepository settingsRepository}) {
+  static BaseLLM createLLM(
+    LLMType type, {
+    required AppSettingsRepository settingsRepository,
+    String chatCompletionsAdapterType = 'sdk',
+  }) {
     switch (type) {
       case LLMType.configurable:
-        return ConfigurableHttpLLM(settingsRepository: settingsRepository);
+        final llm = ConfigurableHttpLLM(settingsRepository: settingsRepository);
+        if (chatCompletionsAdapterType != 'sdk') {
+          llm.setChatCompletionsAdapter(chatCompletionsAdapterType);
+        }
+        return llm;
       case LLMType.chatGPT:
         throw UnimplementedError('ChatGPT模型尚未实现');
     }
