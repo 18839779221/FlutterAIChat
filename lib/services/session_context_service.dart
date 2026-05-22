@@ -5,6 +5,7 @@ import '../models/context/model_context_item.dart';
 import '../models/context/planner_context_carrier.dart';
 import '../models/session/context_compaction_config.dart';
 import '../models/session/session_context_snapshot.dart';
+import '../models/tool/tool_result.dart';
 import '../repositories/chat_event_repository.dart';
 import '../repositories/chat_turn_repository.dart';
 import '../repositories/session_context_snapshot_repository.dart';
@@ -16,6 +17,7 @@ import 'session_runtime_marker_service.dart';
 import 'session_context_projector.dart';
 import 'session_summary_service.dart';
 import 'session_token_budget_service.dart';
+import 'tool_result_context_projector.dart';
 
 class SessionContextTurnSegment {
   final int turnId;
@@ -90,6 +92,7 @@ class SessionContextService {
     required ChatService chatService,
     RuntimeUserContextService? runtimeUserContextService,
     UserContextMessageBuilder? userContextMessageBuilder,
+    ToolResultContextProjector? toolResultContextProjector,
   })  : _chatTurnRepository = chatTurnRepository,
         _chatEventRepository = chatEventRepository,
         _snapshotRepository = snapshotRepository,
@@ -100,7 +103,9 @@ class SessionContextService {
         _runtimeUserContextService =
             runtimeUserContextService ?? RuntimeUserContextService(),
         _userContextMessageBuilder =
-            userContextMessageBuilder ?? const UserContextMessageBuilder();
+            userContextMessageBuilder ?? const UserContextMessageBuilder(),
+        _toolResultContextProjector =
+            toolResultContextProjector ?? const ToolResultContextProjector();
 
   final ChatTurnRepository _chatTurnRepository;
   final ChatEventRepository _chatEventRepository;
@@ -111,6 +116,7 @@ class SessionContextService {
   final ChatService _chatService;
   final RuntimeUserContextService _runtimeUserContextService;
   final UserContextMessageBuilder _userContextMessageBuilder;
+  final ToolResultContextProjector _toolResultContextProjector;
 
   Future<List<ChatMessage>> buildPlannerMessages({
     required int groupId,
@@ -127,7 +133,8 @@ class SessionContextService {
     return [
       ...state.runtimeUserContextMessages,
       if (state.activeSnapshot != null)
-        _contextProjector.projectSnapshotToContext(state.activeSnapshot!.summaryText),
+        _contextProjector
+            .projectSnapshotToContext(state.activeSnapshot!.summaryText),
       ...state.recentSegments.expand((segment) => segment.messages),
       ...state.currentTurnMessages,
     ];
@@ -384,7 +391,7 @@ class SessionContextService {
         case ChatEventType.userInteractionResult:
           final providerCallId =
               event.payloadJson?['providerCallId']?.toString().trim();
-          final content = (event.content ?? '').trim();
+          final content = _toolResultCarrierContent(event);
           if (providerCallId == null ||
               providerCallId.isEmpty ||
               content.isEmpty) {
@@ -413,6 +420,35 @@ class SessionContextService {
       }
     }
     return carriers;
+  }
+
+  String _toolResultCarrierContent(ChatEvent event) {
+    final payload = event.payloadJson;
+    if (payload != null &&
+        (event.eventType == ChatEventType.toolResult ||
+            event.eventType == ChatEventType.toolError)) {
+      final projected = _toolResultContextProjector
+          .projectToContextText(ToolResult.fromJson(payload))
+          ?.trim();
+      if (projected != null && projected.isNotEmpty) {
+        return projected;
+      }
+      final result = ToolResult.fromJson(payload);
+      return _emptyToolResultContent(result);
+    }
+    return (event.content ?? '').trim();
+  }
+
+  String _emptyToolResultContent(ToolResult result) {
+    final toolName =
+        result.toolName.trim().isEmpty ? 'tool' : result.toolName.trim();
+    if (result.status == ToolExecutionStatus.failure) {
+      final error = result.errorMessage?.trim();
+      return error == null || error.isEmpty
+          ? '$toolName failed without a structured error.'
+          : '$toolName failed: $error';
+    }
+    return '$toolName completed with empty result.';
   }
 
   List<SessionContextTurnSegment> _selectRecentCompletedTurns({
@@ -545,8 +581,8 @@ class SessionContextService {
   }
 
   ChatMessage? _extractDateReminderMessage(ChatTurn? turn) {
-    final runtimeContext = turn?.providerStateJson?[
-        SessionRuntimeMarkerService.runtimeContextKey];
+    final runtimeContext =
+        turn?.providerStateJson?[SessionRuntimeMarkerService.runtimeContextKey];
     if (runtimeContext is! Map) {
       return null;
     }

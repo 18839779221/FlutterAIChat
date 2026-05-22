@@ -9,7 +9,6 @@ import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/session/context_compaction_config.dart';
 import 'package:ai_chat/models/session/model_budget_profile.dart';
-import 'package:ai_chat/models/session/session_context_snapshot.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/repositories/session_context_snapshot_repository.dart';
@@ -35,7 +34,9 @@ void main() {
         databaseName: 'session_context_service_date_reminder_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Date Reminder', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+        ChatGroup(
+            title: 'Session Context Date Reminder',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -101,7 +102,9 @@ void main() {
         databaseName: 'session_context_service_no_eager_summary_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context No Eager Summary', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+        ChatGroup(
+            title: 'Session Context No Eager Summary',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -195,7 +198,9 @@ void main() {
         databaseName: 'session_context_service_compress_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Compress', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+        ChatGroup(
+            title: 'Session Context Compress',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -299,7 +304,9 @@ void main() {
         databaseName: 'session_context_service_recent_working_set_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Recent Working Set', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+        ChatGroup(
+            title: 'Session Context Recent Working Set',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -421,7 +428,9 @@ void main() {
             'session_context_service_no_duplicate_current_turn_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Current Turn Boundary', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+        ChatGroup(
+            title: 'Session Context Current Turn Boundary',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -502,7 +511,9 @@ void main() {
         databaseName: 'session_context_service_recent_ratio_limit_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Recent Ratio Limit', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+        ChatGroup(
+            title: 'Session Context Recent Ratio Limit',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -619,7 +630,9 @@ void main() {
             'session_context_service_summary_failure_fallback_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Summary Failure Fallback', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+        ChatGroup(
+            title: 'Session Context Summary Failure Fallback',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -810,9 +823,236 @@ void main() {
     });
 
     test(
-        'buildPlannerCarriers skips UI-only events (textDelta / reasoningDelta / '
-        'assistantPlannerMessage) when no snapshot is present',
+        'buildPlannerCarriers projects structured web search payload into tool result carrier',
         () async {
+      final storage = DatabaseHelper(
+        databaseName: 'session_context_service_web_search_carrier_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(
+          title: 'web search carrier',
+          lockedProviderStyle: ChatTurnProviderStyle.anthropicMessages,
+        ),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final eventRepository = ChatEventRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '搜索 Claude 最新新闻',
+        ),
+      );
+
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetResolver: (_) => const SessionModelBudget(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw UnimplementedError(),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      );
+
+      final carriers = await service.buildPlannerCarriers(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: [
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '搜索 Claude 最新新闻',
+          ),
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 2,
+            eventType: ChatEventType.assistantTurnSnapshot,
+            role: MessageRole.assistant,
+            payloadJson: const {
+              'apiStyle': 'anthropicMessages',
+              'rawAssistantMessage': {
+                'role': 'assistant',
+                'content': [
+                  {
+                    'type': 'tool_use',
+                    'id': 'call_web_1',
+                    'name': 'web_search',
+                    'input': {'query': 'Claude latest news 2026'},
+                  },
+                ],
+              },
+            },
+          ),
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 3,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: '已执行联网搜索',
+            payloadJson: const {
+              'toolName': 'web_search',
+              'status': 'success',
+              'summary': '已执行联网搜索',
+              'providerCallId': 'call_web_1',
+              'data': {
+                'query': 'Claude latest news 2026',
+                'results': [
+                  {
+                    'title': 'Claude Updates by Anthropic',
+                    'url': 'https://example.com/claude-updates',
+                    'snippet': 'Claude shipped new enterprise features.',
+                  },
+                ],
+              },
+            },
+          ),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+      );
+
+      final toolResults = carriers
+          .whereType<SyntheticCarrier>()
+          .where((c) => c.role == SyntheticRole.toolResult)
+          .toList();
+      expect(toolResults, hasLength(1));
+      expect(toolResults.single.toolCallId, 'call_web_1');
+      expect(toolResults.single.content, contains('web_search query'));
+      expect(toolResults.single.content, contains('Claude latest news 2026'));
+      expect(
+        toolResults.single.content,
+        contains('https://example.com/claude-updates'),
+      );
+      expect(
+        toolResults.single.content,
+        contains('Claude shipped new enterprise features.'),
+      );
+      expect(toolResults.single.content, isNot(equals('已执行联网搜索')));
+
+      await storage.deleteGroup(groupId);
+    });
+
+    test(
+        'buildPlannerCarriers does not use UI summary when tool payload is empty',
+        () async {
+      final storage = DatabaseHelper(
+        databaseName: 'session_context_service_empty_tool_result_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(
+          title: 'empty tool result carrier',
+          lockedProviderStyle: ChatTurnProviderStyle.anthropicMessages,
+        ),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final eventRepository = ChatEventRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '搜索 Claude 最新新闻',
+        ),
+      );
+
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetResolver: (_) => const SessionModelBudget(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw UnimplementedError(),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      );
+
+      final carriers = await service.buildPlannerCarriers(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: [
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '搜索 Claude 最新新闻',
+          ),
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 2,
+            eventType: ChatEventType.assistantTurnSnapshot,
+            role: MessageRole.assistant,
+            payloadJson: const {
+              'apiStyle': 'anthropicMessages',
+              'rawAssistantMessage': {
+                'role': 'assistant',
+                'content': [
+                  {
+                    'type': 'tool_use',
+                    'id': 'call_web_empty',
+                    'name': 'web_search',
+                    'input': {'query': 'Claude latest news 2026'},
+                  },
+                ],
+              },
+            },
+          ),
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 3,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: '已执行联网搜索',
+            payloadJson: const {
+              'toolName': 'web_search',
+              'status': 'success',
+              'summary': '已执行联网搜索',
+              'providerCallId': 'call_web_empty',
+              'data': {},
+            },
+          ),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+      );
+
+      final toolResult = carriers
+          .whereType<SyntheticCarrier>()
+          .singleWhere((c) => c.role == SyntheticRole.toolResult);
+      expect(toolResult.toolCallId, 'call_web_empty');
+      expect(toolResult.content, isNot(equals('已执行联网搜索')));
+      expect(toolResult.content, 'web_search completed with empty result.');
+
+      await storage.deleteGroup(groupId);
+    });
+
+    test(
+        'buildPlannerCarriers skips UI-only events (textDelta / reasoningDelta / '
+        'assistantPlannerMessage) when no snapshot is present', () async {
       final storage = DatabaseHelper(
         databaseName: 'session_context_service_carriers_no_snapshot_test.db',
       );
@@ -936,5 +1176,4 @@ class _FakeBaseLlm implements BaseLLM {
 
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async => '';
-
 }
