@@ -151,6 +151,31 @@ class StreamingDecisionAccumulator {
     );
   }
 
+  /// Snapshot of the current accumulator state, exposed for adapters that
+  /// need to assemble a provider-shaped raw assistant message from streamed
+  /// fragments (see [ApiStyleAdapter.assembleRawFromStreamingSnapshot]).
+  ///
+  /// Read-only by design — accumulator continues to be the sole writer.
+  StreamingDecisionAccumulatorSnapshot currentSnapshot() {
+    final text = _assistantTextBuffer.toString();
+    final reasoning = _reasoningBuffer.toString();
+    return StreamingDecisionAccumulatorSnapshot(
+      text: text.isEmpty ? null : text,
+      reasoning: reasoning.isEmpty ? null : reasoning,
+      toolCalls: [
+        for (final draft in _toolCallDrafts)
+          StreamingToolCallDraft(
+            id: draft.providerCallId,
+            toolName: draft.toolName,
+            argumentsBuffer: draft.rawArgumentsText,
+            sequence: draft.sequence,
+            isDone: draft.isCompleted,
+          ),
+      ],
+      providerState: Map<String, dynamic>.unmodifiable(_providerState),
+    );
+  }
+
   /// Returns a compact debug snapshot for logging when stream assembly fails.
   Map<String, dynamic> debugSnapshot() {
     return {
@@ -417,4 +442,36 @@ class _ToolCallDraft {
     }
     return raw.substring(raw.length - maxChars);
   }
+}
+
+/// Read-only view of the accumulator state at a point in time.
+class StreamingDecisionAccumulatorSnapshot {
+  final String? text;
+  final String? reasoning;
+  final List<StreamingToolCallDraft> toolCalls;
+  final Map<String, dynamic> providerState;
+
+  const StreamingDecisionAccumulatorSnapshot({
+    required this.text,
+    required this.reasoning,
+    required this.toolCalls,
+    required this.providerState,
+  });
+}
+
+/// Read-only view of one in-progress tool call.
+class StreamingToolCallDraft {
+  final String? id;
+  final String? toolName;
+  final String argumentsBuffer;
+  final int sequence;
+  final bool isDone;
+
+  const StreamingToolCallDraft({
+    required this.id,
+    required this.toolName,
+    required this.argumentsBuffer,
+    required this.sequence,
+    required this.isDone,
+  });
 }
