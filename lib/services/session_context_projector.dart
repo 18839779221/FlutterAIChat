@@ -53,9 +53,9 @@ class SessionContextProjector {
                 message.text,
                 timestamp: message.timestamp,
               ),
-            MessageRole.assistant => ModelContextItem.assistantMessage(
-                message.text,
-                timestamp: message.timestamp,
+            MessageRole.assistant => throw StateError(
+                'assistant role unexpected in projectMessagesToContextItems — '
+                'round-trip uses assistantTurnSnapshot via buildPlannerCarriers',
               ),
           },
         )

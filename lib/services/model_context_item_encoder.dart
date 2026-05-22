@@ -29,7 +29,6 @@ class ModelContextItemEncoder {
         'modelContextType': item.type.name,
         if (item.toolName != null) 'toolName': item.toolName,
         if (item.providerCallId != null) 'providerCallId': item.providerCallId,
-        if (item.arguments != null) 'arguments': item.arguments,
       },
     );
   }
@@ -38,31 +37,7 @@ class ModelContextItemEncoder {
     switch (item.type) {
       case ModelContextItemType.systemMessage:
       case ModelContextItemType.userMessage:
-      case ModelContextItemType.assistantMessage:
         return item.text;
-      case ModelContextItemType.assistantToolUse:
-        final toolName = item.toolName?.trim();
-        final parts = <String>[
-          if (toolName != null && toolName.isNotEmpty) toolName,
-        ];
-        final arguments = item.arguments;
-        if (arguments != null) {
-          for (final key in const [
-            'file_path',
-            'url',
-            'query',
-            'title',
-            'dueAt',
-            'startAt',
-          ]) {
-            final value = arguments[key];
-            if (value is String && value.trim().isNotEmpty) {
-              parts.add('$key=${value.trim()}');
-            }
-          }
-        }
-        final detail = parts.isNotEmpty ? parts.join(' ') : item.text.trim();
-        return '[assistant tool_use] $detail';
       case ModelContextItemType.userToolResult:
         return '[user tool_result] ${item.text.trim()}';
     }
