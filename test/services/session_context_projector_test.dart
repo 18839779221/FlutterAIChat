@@ -49,12 +49,8 @@ void main() {
 
       expect(messages.map((m) => m.text).join('\n'), contains('数据库版本是 9'));
       expect(messages.map((m) => m.text).join('\n'), contains('目标平台仅 Android'));
-      expect(
-        messages.map((m) => m.text).join('\n'),
-        contains('[assistant tool_use]'),
-      );
-      expect(messages.map((m) => m.text).join('\n'), contains('read'));
-      expect(messages.map((m) => m.role.name), ['user', 'user', 'assistant']);
+      // assistantToolCall no longer projects (round-trip uses snapshot)
+      expect(messages.map((m) => m.role.name), ['user', 'user']);
     });
 
     test('projects tool result from structured payload instead of summary-only text', () {
@@ -87,58 +83,26 @@ void main() {
       expect(message?.role, MessageRole.user);
     });
 
-    test('projects assistant tool call into tagged tool-use context message', () {
+    test('assistant events project to null (round-trip uses snapshot)', () {
       final projector = SessionContextProjector();
-      final item = projector.projectEventToContextItem(
-        ChatEvent(
-          turnId: 1,
-          groupId: 1,
-          sequence: 1,
-          eventType: ChatEventType.assistantToolCall,
-          role: MessageRole.assistant,
-          content: '准备执行工具：编辑文件',
-          payloadJson: const {
-            'toolName': 'Edit',
-            'providerCallId': 'call_edit_1',
-            'arguments': {
-              'file_path': 'my_hobbies.md',
-              'old_string': '篮球',
-              'new_string': '篮球\n游戏',
-            },
-          },
-        ),
-      );
-
-      final message = projector.projectEventToContext(
-        ChatEvent(
-          turnId: 1,
-          groupId: 1,
-          sequence: 1,
-          eventType: ChatEventType.assistantToolCall,
-          role: MessageRole.assistant,
-          content: '准备执行工具：编辑文件',
-          payloadJson: const {
-            'toolName': 'Edit',
-            'providerCallId': 'call_edit_1',
-            'arguments': {
-              'file_path': 'my_hobbies.md',
-              'old_string': '篮球',
-              'new_string': '篮球\n游戏',
-            },
-          },
-        ),
-      );
-
-      expect(item, isNotNull);
-      expect(item!.type, ModelContextItemType.assistantToolUse);
-      expect(item.toolName, 'Edit');
-      expect(item.providerCallId, 'call_edit_1');
-      expect(message, isNotNull);
-      expect(message!.role, MessageRole.assistant);
-      expect(message.payloadJson?['providerCallId'], 'call_edit_1');
-      expect(message.text, contains('[assistant tool_use]'));
-      expect(message.text, contains('Edit'));
-      expect(message.text, contains('my_hobbies.md'));
+      for (final type in [
+        ChatEventType.assistantToolCall,
+        ChatEventType.assistantPlannerMessage,
+        ChatEventType.assistantQuestionPrompt,
+      ]) {
+        final item = projector.projectEventToContextItem(
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: type,
+            role: MessageRole.assistant,
+            content: 'anything',
+            payloadJson: const {'providerCallId': 'c1', 'toolName': 'X'},
+          ),
+        );
+        expect(item, isNull, reason: '$type should not project');
+      }
     });
 
     test(
@@ -324,33 +288,7 @@ void main() {
         () {
       final projector = SessionContextProjector();
 
-      final items = projector.projectEventsToContextItems([
-        ChatEvent(
-          turnId: 1,
-          groupId: 1,
-          sequence: 1,
-          eventType: ChatEventType.assistantToolCall,
-          role: MessageRole.assistant,
-          content: '准备执行工具：AskUserQuestion',
-          payloadJson: const {
-            'toolName': 'AskUserQuestion',
-            'providerCallId': 'call_ask_1',
-            'arguments': {
-              'questions': [
-                {'question': '目标平台？', 'header': 'platform'},
-              ],
-            },
-          },
-        ),
-        ChatEvent(
-          turnId: 1,
-          groupId: 1,
-          sequence: 2,
-          eventType: ChatEventType.assistantQuestionPrompt,
-          role: MessageRole.assistant,
-          content: '目标平台？',
-          payloadJson: const {'providerCallId': 'call_ask_1'},
-        ),
+      final item = projector.projectEventToContextItem(
         ChatEvent(
           turnId: 1,
           groupId: 1,
@@ -360,33 +298,11 @@ void main() {
           content: '用户回答：Android',
           payloadJson: const {'providerCallId': 'call_ask_1'},
         ),
-      ]);
-
-      expect(items.map((i) => i.type).toList(), [
-        ModelContextItemType.assistantToolUse,
-        ModelContextItemType.userToolResult,
-      ]);
-      expect(items[1].providerCallId, 'call_ask_1');
-      expect(items[1].text, contains('Android'));
-    });
-
-    test(
-        'falls back to user message for userInteractionResult without providerCallId',
-        () {
-      final projector = SessionContextProjector();
-
-      final item = projector.projectEventToContextItem(
-        ChatEvent(
-          turnId: 1,
-          groupId: 1,
-          sequence: 1,
-          eventType: ChatEventType.userInteractionResult,
-          role: MessageRole.system,
-          content: '用户回答：Android',
-        ),
       );
 
-      expect(item?.type, ModelContextItemType.userMessage);
+      expect(item?.type, ModelContextItemType.userToolResult);
+      expect(item?.providerCallId, 'call_ask_1');
+      expect(item?.text, contains('Android'));
     });
 
     test('projects snapshot text as a system context message', () {
