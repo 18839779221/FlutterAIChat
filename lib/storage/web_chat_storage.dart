@@ -58,6 +58,15 @@ class WebChatStorage implements ChatStorage {
   }
 
   @override
+  Future<ChatGroup?> getGroupById(int id) async {
+    final groups = await getAllGroups();
+    for (final g in groups) {
+      if (g.id == id) return g;
+    }
+    return null;
+  }
+
+  @override
   Future<void> updateGroupLastMessageTime(int groupId) async {
     final groups = await _readGroups();
     final updated = groups.map((group) {

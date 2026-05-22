@@ -7,6 +7,7 @@ import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/skill/skill_catalog_entry.dart';
 import 'package:ai_chat/models/speech/speech_input_config.dart';
@@ -209,7 +210,9 @@ class _NoopBaseLLM extends BaseLLM {
   Future<String> summarizeConversation(List<ChatMessage> messages) async => '';
   @override
   Future<ModelTurnDecision?> planTurnDecision({
-    required List<ChatMessage> messages,
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
     void Function(LlmRetryProgress progress)? onRetryScheduled,
@@ -265,6 +268,9 @@ class _NoopChatStorage implements ChatStorage {
 
   @override
   Future<ChatGroup?> getLatestGroup() async => null;
+
+  @override
+  Future<ChatGroup?> getGroupById(int id) async => null;
 
   @override
   Future<SessionContextSnapshot?> getLatestSessionContextSnapshotByGroup(

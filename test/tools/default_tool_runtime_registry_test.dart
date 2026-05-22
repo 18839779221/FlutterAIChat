@@ -120,6 +120,9 @@ class _FakeChatStorage implements ChatStorage {
   Future<ChatGroup?> getLatestGroup() async => null;
 
   @override
+  Future<ChatGroup?> getGroupById(int id) async => null;
+
+  @override
   Future<SessionContextSnapshot?> getLatestSessionContextSnapshotByGroup(
     int groupId,
   ) async =>

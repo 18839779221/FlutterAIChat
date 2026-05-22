@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
@@ -54,9 +55,11 @@ void main() {
 
       expect(
         () => llm.planTurnDecision(
-          messages: [
-            ChatMessage(text: '继续', role: MessageRole.user),
+          carriers: [
+            SyntheticCarrier.user('继续'),
           ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
           config: ChatConfig(systemPrompt: ''),
           availableTools: const [],
         ),
@@ -75,9 +78,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '继续', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('继续'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -102,9 +107,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '继续', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('继续'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -135,9 +142,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '请写文件', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('请写文件'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -213,9 +222,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '请写文件', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('请写文件'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -268,9 +279,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '请创建美食页面', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('请创建美食页面'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -336,9 +349,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '请创建 artifact', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('请创建 artifact'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -392,9 +407,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '直接回答', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('直接回答'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -466,9 +483,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '查数据库版本', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('查数据库版本'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -558,9 +577,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '帮我查 OpenAI 最新发布', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('帮我查 OpenAI 最新发布'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -631,9 +652,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '直接回答', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('直接回答'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -681,9 +704,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '直接回答', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('直接回答'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -744,9 +769,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '直接回答', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('直接回答'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -776,9 +803,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '继续', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('继续'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -822,9 +851,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '直接回答', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('直接回答'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -854,9 +885,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '继续', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('继续'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -909,9 +942,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '直接回答', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('直接回答'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -954,9 +989,11 @@ void main() {
 
       await expectLater(
         () => llm.planTurnDecision(
-          messages: [
-            ChatMessage(text: '直接回答', role: MessageRole.user),
+          carriers: [
+            SyntheticCarrier.user('直接回答'),
           ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
           config: ChatConfig(systemPrompt: ''),
           availableTools: const [],
         ),
@@ -998,9 +1035,11 @@ void main() {
 
       await expectLater(
         () => llm.planTurnDecision(
-          messages: [
-            ChatMessage(text: '直接回答', role: MessageRole.user),
+          carriers: [
+            SyntheticCarrier.user('直接回答'),
           ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
           config: ChatConfig(systemPrompt: ''),
           availableTools: const [],
         ),
@@ -1041,9 +1080,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '继续', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('继续'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
         onRetryScheduled: progressEvents.add,
@@ -1077,9 +1118,11 @@ void main() {
 
       await expectLater(
         () => llm.planTurnDecision(
-          messages: [
-            ChatMessage(text: '继续', role: MessageRole.user),
+          carriers: [
+            SyntheticCarrier.user('继续'),
           ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
           config: ChatConfig(systemPrompt: ''),
           availableTools: const [],
           onRetryScheduled: progressEvents.add,
@@ -1127,12 +1170,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(
-            text: '请读取 https://example.com/article',
-            role: MessageRole.user,
-          ),
+        carriers: const [
+          SyntheticCarrier.user('请读取 https://example.com/article'),
         ],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -1193,9 +1235,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '帮我查 OpenAI 最新发布', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('帮我查 OpenAI 最新发布'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -1254,9 +1298,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '查数据库版本', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('查数据库版本'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -1308,9 +1354,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '今晚 8 点提醒我', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('今晚 8 点提醒我'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -1362,9 +1410,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '查数据库版本', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('查数据库版本'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -1437,9 +1487,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '查数据库版本并继续下一步', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('查数据库版本并继续下一步'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -1498,9 +1550,11 @@ void main() {
       );
 
       await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '继续', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('继续'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -1547,9 +1601,11 @@ void main() {
       );
 
       await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '请先问我需要哪个方案', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('请先问我需要哪个方案'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -1596,9 +1652,11 @@ void main() {
       );
 
       final decision = await llm.planTurnDecision(
-        messages: [
-          ChatMessage(text: '继续搜索', role: MessageRole.user),
+        carriers: [
+          SyntheticCarrier.user('继续搜索'),
         ],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(

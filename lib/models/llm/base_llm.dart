@@ -4,6 +4,8 @@ import '../agent/model_turn_decision.dart';
 import '../chat/runtime_stream_entry.dart';
 import '../agent/planner_tool_option.dart';
 import '../chat_message.dart';
+import '../chat_turn.dart';
+import '../context/planner_context_carrier.dart';
 
 class LlmRetryProgress {
   final String label;
@@ -57,9 +59,16 @@ abstract class BaseLLM {
     throw UnimplementedError('processWebpageContent is not implemented');
   }
 
-  /// Planner decision built from append-only transcript context.
+  /// Planner decision built from carrier-shaped planner context.
+  ///
+  /// The carriers are produced by `SessionContextService.buildPlannerCarriers`
+  /// and validated by `PlannerInvariantValidator` before reaching the adapter.
+  /// Adapters splice [RawAssistantCarrier]s verbatim and materialize
+  /// [SyntheticCarrier]s using provider-specific role mappings.
   Future<ModelTurnDecision?> planTurnDecision({
-    required List<ChatMessage> messages,
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
     void Function(LlmRetryProgress progress)? onRetryScheduled,

@@ -11,6 +11,7 @@ import '../models/session/session_runtime_marker.dart';
 abstract class ChatStorage {
   Future<int> insertGroup(ChatGroup group);
   Future<List<ChatGroup>> getAllGroups();
+  Future<ChatGroup?> getGroupById(int id);
   Future<ChatGroup?> getLatestGroup();
   Future<void> updateGroupLastMessageTime(int groupId);
   Future<void> updateGroupSystemPrompt(int groupId, String? systemPrompt);

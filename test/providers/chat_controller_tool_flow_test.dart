@@ -7,6 +7,7 @@ import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
@@ -1968,6 +1969,7 @@ class _FakeTurnHarness extends TurnHarness {
           toolCallService: ToolCallService(
             toolExecutor: ToolExecutor(chatStorage: databaseHelper),
           ),
+          chatStorage: databaseHelper,
         );
 
   @override
@@ -2107,7 +2109,9 @@ class _NoopBaseLLM implements BaseLLM {
 
   @override
   Future<ModelTurnDecision?> planTurnDecision({
-    required List<ChatMessage> messages,
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
     void Function(LlmRetryProgress progress)? onRetryScheduled,
