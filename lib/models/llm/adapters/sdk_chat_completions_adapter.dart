@@ -67,44 +67,6 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
   }
 
   @override
-  Map<String, dynamic> buildPlannerPayload({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required String modelName,
-    required List<PlannerToolOption> availableTools,
-    required bool parallelToolCalls,
-    LlmRequestOptions requestOptions = const LlmRequestOptions(),
-  }) {
-    final normalizedMessages = normalizeMessagesWithConfiguredSystemPrompt(
-      messages,
-      config.systemPrompt,
-    );
-    final sdkMessages = _messageConverter.convert(normalizedMessages);
-
-    final tools = availableTools
-        .map(
-          (tool) => oai.Tool.function(
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.inputSchema,
-          ),
-        )
-        .toList(growable: false);
-
-    final includeParallel = tools.isNotEmpty && !_isDeepSeekModel(modelName);
-    final request = oai.ChatCompletionCreateRequest(
-      model: modelName,
-      messages: sdkMessages,
-      maxCompletionTokens: requestOptions.maxOutputTokens,
-      tools: tools.isNotEmpty ? tools : null,
-      toolChoice: tools.isNotEmpty ? oai.ToolChoice.auto() : null,
-      parallelToolCalls: includeParallel ? parallelToolCalls : null,
-    );
-
-    return _cleanNulls(request.toJson());
-  }
-
-  @override
   PlannerToolChoice? parsePlannerChoice(Map<String, dynamic> payload) {
     try {
       final completion = oai.ChatCompletion.fromJson(payload);

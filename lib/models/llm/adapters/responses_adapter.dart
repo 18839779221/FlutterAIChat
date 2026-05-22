@@ -59,41 +59,6 @@ class ResponsesAdapter extends ApiStyleAdapter {
   }
 
   @override
-  Map<String, dynamic> buildPlannerPayload({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required String modelName,
-    required List<PlannerToolOption> availableTools,
-    required bool parallelToolCalls,
-    LlmRequestOptions requestOptions = const LlmRequestOptions(),
-  }) {
-    final payload = buildChatPayload(
-      messages: messages,
-      config: config,
-      modelName: modelName,
-      stream: false,
-      requestOptions: requestOptions,
-    );
-    final tools = availableTools
-        .map(
-          (tool) => {
-            'type': 'function',
-            'name': tool.name,
-            'description': tool.description,
-            'parameters': tool.inputSchema,
-          },
-        )
-        .toList(growable: false);
-    if (tools.isNotEmpty) {
-      payload['tools'] = tools;
-      payload['tool_choice'] = 'auto';
-      payload['parallel_tool_calls'] = parallelToolCalls;
-    }
-    _applyCacheHints(payload, requestOptions.cache);
-    return payload;
-  }
-
-  @override
   PlannerToolChoice? parsePlannerChoice(Map<String, dynamic> payload) {
     final output = payload['output'];
     if (output is List) {

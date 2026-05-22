@@ -152,33 +152,6 @@ void main() {
     });
   });
 
-  group('AnthropicMessagesAdapter.buildPlannerPayload', () {
-    test('emits anthropic-style tools and tool_choice', () {
-      final payload = adapter.buildPlannerPayload(
-        messages: [ChatMessage(text: 'q', role: MessageRole.user)],
-        config: ChatConfig(systemPrompt: ''),
-        modelName: 'claude',
-        availableTools: const [
-          PlannerToolOption(
-            name: 'search',
-            description: 'd',
-            inputSchema: {'type': 'object'},
-          ),
-        ],
-        parallelToolCalls: true,
-      );
-      expect(payload['tool_choice'], {'type': 'auto'});
-      expect((payload['tools'] as List).first, {
-        'name': 'search',
-        'description': 'd',
-        'input_schema': {'type': 'object'},
-      });
-      final messages = payload['messages'] as List<dynamic>;
-      expect(messages.length, 1);
-      expect(messages.first['role'], 'user');
-    });
-  });
-
   group('AnthropicMessagesAdapter.parsePlannerChoice', () {
     test('parses tool_use block into callTool', () {
       final choice = adapter.parsePlannerChoice({
