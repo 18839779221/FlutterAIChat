@@ -3,12 +3,14 @@ import 'dart:convert';
 import '../../agent/planner_tool_choice.dart';
 import '../../agent/planner_tool_option.dart';
 import '../../chat_message.dart';
+import '../../context/planner_context_carrier.dart';
 import '../llm_cache_request_options.dart';
 import '../llm_cache_strategy.dart';
 import '../llm_request_options.dart';
 import '../../../services/chat_service.dart';
 import '../api_protocol_resolver.dart';
 import '../llm_config.dart';
+import '../streaming_decision_accumulator.dart';
 import 'adapter_utils.dart';
 import 'api_style_adapter.dart';
 
@@ -236,5 +238,31 @@ class ResponsesAdapter extends ApiStyleAdapter {
     if (cache.retention != null && cache.retention!.trim().isNotEmpty) {
       payload['prompt_cache_retention'] = cache.retention!.trim();
     }
+  }
+
+  @override
+  Map<String, dynamic>? extractRawAssistantMessage(
+    Map<String, dynamic> responsePayload,
+  ) {
+    throw UnimplementedError('Task 9 implements this');
+  }
+
+  @override
+  Map<String, dynamic>? assembleRawFromStreamingSnapshot(
+    StreamingDecisionAccumulatorSnapshot snapshot,
+  ) {
+    throw UnimplementedError('Task 9 implements this');
+  }
+
+  @override
+  Map<String, dynamic> buildPlannerPayloadFromCarriers({
+    required List<PlannerContextCarrier> carriers,
+    required ChatConfig config,
+    required String modelName,
+    required List<PlannerToolOption> availableTools,
+    required bool parallelToolCalls,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
+  }) {
+    throw UnimplementedError('Task 14 implements this');
   }
 }

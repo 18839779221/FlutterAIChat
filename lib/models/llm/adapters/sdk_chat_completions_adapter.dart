@@ -8,8 +8,10 @@ import '../../agent/model_turn_decision.dart';
 import '../../agent/planner_tool_choice.dart';
 import '../../agent/planner_tool_option.dart';
 import '../../chat_message.dart';
+import '../../context/planner_context_carrier.dart';
 import '../llm_config.dart';
 import '../llm_request_options.dart';
+import '../streaming_decision_accumulator.dart';
 import 'adapter_utils.dart';
 import 'api_style_adapter.dart';
 import '../api_protocol_resolver.dart';
@@ -193,6 +195,32 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
     } catch (_) {
       return null;
     }
+  }
+
+  @override
+  Map<String, dynamic>? extractRawAssistantMessage(
+    Map<String, dynamic> responsePayload,
+  ) {
+    throw UnimplementedError('Task 7 implements this');
+  }
+
+  @override
+  Map<String, dynamic>? assembleRawFromStreamingSnapshot(
+    StreamingDecisionAccumulatorSnapshot snapshot,
+  ) {
+    throw UnimplementedError('Task 7 implements this');
+  }
+
+  @override
+  Map<String, dynamic> buildPlannerPayloadFromCarriers({
+    required List<PlannerContextCarrier> carriers,
+    required ChatConfig config,
+    required String modelName,
+    required List<PlannerToolOption> availableTools,
+    required bool parallelToolCalls,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
+  }) {
+    throw UnimplementedError('Task 12 implements this');
   }
 
   bool _isDeepSeekModel(String modelName) {
