@@ -136,50 +136,6 @@ class SessionContextProjector {
           content,
           timestamp: event.createdAt,
         );
-      case ChatEventType.assistantQuestionPrompt:
-        final promptProviderCallId =
-            event.payloadJson?['providerCallId']?.toString().trim();
-        if (promptProviderCallId != null && promptProviderCallId.isNotEmpty) {
-          return null;
-        }
-        final content = event.content?.trim() ?? '';
-        if (content.isEmpty) {
-          return null;
-        }
-        return ModelContextItem.assistantMessage(
-          content,
-          timestamp: event.createdAt,
-        );
-      case ChatEventType.assistantPlannerMessage:
-      case ChatEventType.finalAnswer:
-        final content = event.content?.trim() ?? '';
-        if (content.isEmpty) {
-          return null;
-        }
-        return ModelContextItem.assistantMessage(
-          content,
-          timestamp: event.createdAt,
-        );
-      case ChatEventType.assistantToolCall:
-      case ChatEventType.assistantToolConfirmation:
-        final payload = event.payloadJson;
-        final toolName = payload?['toolName']?.toString().trim();
-        final summary =
-            payload?['summary']?.toString().trim() ?? event.content?.trim() ?? '';
-        if (summary.isEmpty && (toolName == null || toolName.isEmpty)) {
-          return null;
-        }
-        return ModelContextItem.assistantToolUse(
-          text: summary,
-          toolName: toolName,
-          providerCallId: payload?['providerCallId']?.toString().trim(),
-          arguments: payload?['arguments'] is Map
-              ? Map<String, dynamic>.from(
-                  payload!['arguments'] as Map<dynamic, dynamic>,
-                )
-              : null,
-          timestamp: event.createdAt,
-        );
       case ChatEventType.toolResult:
       case ChatEventType.toolError:
         final payload = event.payloadJson;
@@ -200,13 +156,21 @@ class SessionContextProjector {
           providerCallId: payload?['providerCallId']?.toString().trim(),
           timestamp: event.createdAt,
         );
+      case ChatEventType.assistantPlannerMessage:
+      case ChatEventType.assistantQuestionPrompt:
+      case ChatEventType.assistantToolCall:
+      case ChatEventType.assistantToolConfirmation:
       case ChatEventType.assistantReasoningDelta:
       case ChatEventType.assistantTextDelta:
       case ChatEventType.assistantTextFinal:
       case ChatEventType.assistantTurnSnapshot:
       case ChatEventType.toolExecutionStarted:
       case ChatEventType.turnStatus:
+      case ChatEventType.finalAnswer:
       case ChatEventType.error:
+        // Assistant-track events live only in the UI rendering pipeline now;
+        // round-trip uses assistantTurnSnapshot via SessionContextService
+        // .buildPlannerCarriers (spec 2026-05-22).
         return null;
     }
   }
