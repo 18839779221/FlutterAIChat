@@ -302,6 +302,71 @@ void main() {
     expect(find.text('当前会话已锁定 provider，新建会话方可切换'), findsOneWidget);
   });
 
+  testWidgets('provider picker stays enabled for unsent draft group', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    SharedPreferences.setMockInitialValues({});
+    final repository = AppSettingsRepository(
+      await SharedPreferences.getInstance(),
+      localDefaultsLoader: () async => const LlmLocalDefaults(
+        defaultProviderId: 'aigocode',
+        defaultModelId: 'gpt-5.4',
+        providers: [
+          LlmProviderConfig(
+            id: 'aigocode',
+            name: 'AIGoCode',
+            apiKey: 'test-key',
+            baseUrl: 'https://example.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-5.4', name: ''),
+            ],
+          ),
+          LlmProviderConfig(
+            id: 'openai',
+            name: 'OpenAI',
+            apiKey: 'test-key-2',
+            baseUrl: 'https://api.openai.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-4o', name: ''),
+            ],
+          ),
+        ],
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        appSettingsRepositoryProvider.overrideWithValue(repository),
+        skillRuntimeServiceProvider
+            .overrideWithValue(_EmptySkillRuntimeService()),
+      ],
+    );
+    container.read(currentGroupProvider.notifier).state = ChatGroup(
+      title: 'Draft',
+      lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const SettingsPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final providerButton = tester.widget<OutlinedButton>(
+      find.byKey(const Key('provider-switcher')),
+    );
+    expect(providerButton.onPressed, isNotNull);
+    expect(find.text('当前会话已锁定 provider，新建会话方可切换'), findsNothing);
+  });
+
   testWidgets('model picker supports scrolling for long model lists', (
     tester,
   ) async {
