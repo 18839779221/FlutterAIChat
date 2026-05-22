@@ -123,12 +123,34 @@ class SessionContextProjector {
         if (content.isEmpty) {
           return null;
         }
+        final providerCallId =
+            event.payloadJson?['providerCallId']?.toString().trim();
+        if (providerCallId != null && providerCallId.isNotEmpty) {
+          return ModelContextItem.userToolResult(
+            text: content,
+            providerCallId: providerCallId,
+            timestamp: event.createdAt,
+          );
+        }
         return ModelContextItem.userMessage(
           content,
           timestamp: event.createdAt,
         );
-      case ChatEventType.assistantPlannerMessage:
       case ChatEventType.assistantQuestionPrompt:
+        final promptProviderCallId =
+            event.payloadJson?['providerCallId']?.toString().trim();
+        if (promptProviderCallId != null && promptProviderCallId.isNotEmpty) {
+          return null;
+        }
+        final content = event.content?.trim() ?? '';
+        if (content.isEmpty) {
+          return null;
+        }
+        return ModelContextItem.assistantMessage(
+          content,
+          timestamp: event.createdAt,
+        );
+      case ChatEventType.assistantPlannerMessage:
       case ChatEventType.finalAnswer:
         final content = event.content?.trim() ?? '';
         if (content.isEmpty) {
@@ -181,6 +203,7 @@ class SessionContextProjector {
       case ChatEventType.assistantReasoningDelta:
       case ChatEventType.assistantTextDelta:
       case ChatEventType.assistantTextFinal:
+      case ChatEventType.assistantTurnSnapshot:
       case ChatEventType.toolExecutionStarted:
       case ChatEventType.turnStatus:
       case ChatEventType.error:

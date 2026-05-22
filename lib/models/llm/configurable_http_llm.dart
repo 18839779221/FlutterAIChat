@@ -158,6 +158,7 @@ class ConfigurableHttpLLM
     if (adapter == null) {
       throw StateError('No ApiStyleAdapter registered for $apiStyle');
     }
+    Logger.i(_tag, 'adapter selected style=$apiStyle impl=${adapter.runtimeType}');
     return adapter;
   }
 

@@ -377,6 +377,7 @@ class AgentPlannerService {
       case ChatEventType.assistantTextFinal:
       case ChatEventType.assistantToolCall:
       case ChatEventType.assistantToolConfirmation:
+      case ChatEventType.assistantTurnSnapshot:
       case ChatEventType.toolExecutionStarted:
       case ChatEventType.turnStatus:
       case ChatEventType.error:

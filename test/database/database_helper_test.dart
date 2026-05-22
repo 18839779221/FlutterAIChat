@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
 import 'package:ai_chat/models/session/session_runtime_marker.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -109,7 +110,7 @@ void main() {
     );
 
     final groupId =
-        await helper.insertGroup(ChatGroup(title: 'agent loop schema group'));
+        await helper.insertGroup(ChatGroup(title: 'agent loop schema group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
     final turnId = await db.insert('chat_turns', {
       'group_id': groupId,
       'status': 'running',
@@ -177,7 +178,7 @@ void main() {
     final helper =
         DatabaseHelper(databaseName: 'database_helper_snapshot_roundtrip.db');
     final groupId =
-        await helper.insertGroup(ChatGroup(title: 'session snapshot group'));
+        await helper.insertGroup(ChatGroup(title: 'session snapshot group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
 
     final snapshotId = await helper.insertSessionContextSnapshot(
       SessionContextSnapshot(
@@ -217,7 +218,7 @@ void main() {
     final helper =
         DatabaseHelper(databaseName: 'database_helper_runtime_marker.db');
     final groupId =
-        await helper.insertGroup(ChatGroup(title: 'runtime marker group'));
+        await helper.insertGroup(ChatGroup(title: 'runtime marker group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
 
     final markerId = await helper.insertSessionRuntimeMarker(
       SessionRuntimeMarker(

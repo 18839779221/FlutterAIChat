@@ -11,6 +11,7 @@ enum ChatEventType {
   assistantToolCall,
   assistantToolConfirmation,
   assistantQuestionPrompt,
+  assistantTurnSnapshot,
   toolExecutionStarted,
   toolResult,
   userInteractionResult,

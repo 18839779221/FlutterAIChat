@@ -1,4 +1,5 @@
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/providers/chat_ui_providers.dart';
@@ -77,9 +78,12 @@ class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
       final groups = _ref.read(groupsProvider);
       final systemPrompt = _ref.read(systemPromptProvider);
 
+      // Task 20 wires this from the active LLMConfig at creation time.
+      // For now, default to Chat Completions until UI handoff lands.
       final newGroup = ChatGroup(
         title: '新对话 ${groups.length + 1}',
         systemPrompt: systemPrompt,
+        lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
       );
 
       _ref.read(currentGroupProvider.notifier).state = newGroup;

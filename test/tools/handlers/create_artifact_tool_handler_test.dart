@@ -8,6 +8,7 @@ import 'package:ai_chat/services/artifact/artifact_source_sanitizer.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/tools/core/tool_execution_context.dart';
 import 'package:ai_chat/tools/handlers/create_artifact_tool_handler.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -64,7 +65,7 @@ void main() {
         databaseName: 'create_artifact_handler_test_v12.db',
       );
       final groupId =
-          await storage.insertGroup(ChatGroup(title: 'artifact handler group'));
+          await storage.insertGroup(ChatGroup(title: 'artifact handler group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
       final repository = ArtifactRepository(storage);
       final handler = CreateArtifactToolHandler(
         artifactRepository: repository,

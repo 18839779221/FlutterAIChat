@@ -34,7 +34,7 @@ void main() {
         databaseName: 'session_context_service_state_builder_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context State'),
+        ChatGroup(title: 'Session Context State', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -113,7 +113,7 @@ void main() {
         databaseName: 'session_context_service_builder_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context'),
+        ChatGroup(title: 'Session Context', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -238,7 +238,7 @@ void main() {
         databaseName: 'session_context_service_provider_continuation_filter_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Continuation Filter'),
+        ChatGroup(title: 'Session Context Continuation Filter', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -367,7 +367,7 @@ void main() {
         databaseName: 'session_context_service_date_reminder_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Date Reminder'),
+        ChatGroup(title: 'Session Context Date Reminder', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -433,7 +433,7 @@ void main() {
         databaseName: 'session_context_service_no_eager_summary_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context No Eager Summary'),
+        ChatGroup(title: 'Session Context No Eager Summary', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -527,7 +527,7 @@ void main() {
         databaseName: 'session_context_service_compress_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Compress'),
+        ChatGroup(title: 'Session Context Compress', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -631,7 +631,7 @@ void main() {
         databaseName: 'session_context_service_recent_working_set_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Recent Working Set'),
+        ChatGroup(title: 'Session Context Recent Working Set', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -755,7 +755,7 @@ void main() {
             'session_context_service_tool_transcript_fidelity_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Tool Transcript Fidelity'),
+        ChatGroup(title: 'Session Context Tool Transcript Fidelity', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -864,7 +864,7 @@ void main() {
             'session_context_service_no_duplicate_current_turn_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Current Turn Boundary'),
+        ChatGroup(title: 'Session Context Current Turn Boundary', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -945,7 +945,7 @@ void main() {
         databaseName: 'session_context_service_recent_ratio_limit_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Recent Ratio Limit'),
+        ChatGroup(title: 'Session Context Recent Ratio Limit', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -1062,7 +1062,7 @@ void main() {
             'session_context_service_summary_failure_fallback_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Summary Failure Fallback'),
+        ChatGroup(title: 'Session Context Summary Failure Fallback', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);

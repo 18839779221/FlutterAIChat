@@ -45,7 +45,7 @@ class DatabaseHelper implements ChatStorage {
 
       return await openDatabase(
         path,
-        version: 12,
+        version: 13,
         onCreate: (Database db, int version) async {
           Logger.i(_tag, '创建数据库表...');
           // 创建分组表
@@ -56,7 +56,8 @@ class DatabaseHelper implements ChatStorage {
               created_at INTEGER NOT NULL,
               last_message_at INTEGER NOT NULL,
               system_prompt TEXT,
-              is_summarized INTEGER NOT NULL DEFAULT 0
+              is_summarized INTEGER NOT NULL DEFAULT 0,
+              locked_provider_style TEXT NOT NULL
             )
           ''');
 
@@ -231,6 +232,46 @@ class DatabaseHelper implements ChatStorage {
           }
           if (oldVersion < 12) {
             await _createArtifactRegistryTable(db);
+          }
+          if (oldVersion < 13) {
+            // v13: drop all conversation tables and rebuild with
+            // locked_provider_style column + assistantTurnSnapshot event
+            // type support. App is pre-launch — no data preservation needed.
+            Logger.i(_tag, 'v13 migration: drop and recreate conversation tables');
+            await db.execute('DROP TABLE IF EXISTS chat_events');
+            await db.execute('DROP TABLE IF EXISTS chat_turn_steps');
+            await db.execute('DROP TABLE IF EXISTS chat_turns');
+            await db.execute('DROP TABLE IF EXISTS messages');
+            await db.execute('DROP TABLE IF EXISTS session_context_snapshots');
+            await db.execute('DROP TABLE IF EXISTS chat_groups');
+            await db.execute('''
+              CREATE TABLE chat_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                last_message_at INTEGER NOT NULL,
+                system_prompt TEXT,
+                is_summarized INTEGER NOT NULL DEFAULT 0,
+                locked_provider_style TEXT NOT NULL
+              )
+            ''');
+            await db.execute('''
+              CREATE TABLE messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                role TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'initial',
+                reasoning_content TEXT,
+                content_type TEXT NOT NULL DEFAULT 'plainText',
+                payload_json TEXT,
+                reference_json TEXT,
+                FOREIGN KEY (group_id) REFERENCES chat_groups (id) ON DELETE CASCADE
+              )
+            ''');
+            await _createAgentLoopTables(db);
+            await _createSessionContextSnapshotTable(db);
           }
         },
       );

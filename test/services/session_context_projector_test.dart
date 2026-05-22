@@ -319,6 +319,76 @@ void main() {
       expect(message?.role, MessageRole.user);
     });
 
+    test(
+        'projects AskUserQuestion answer as user tool_result when providerCallId is present',
+        () {
+      final projector = SessionContextProjector();
+
+      final items = projector.projectEventsToContextItems([
+        ChatEvent(
+          turnId: 1,
+          groupId: 1,
+          sequence: 1,
+          eventType: ChatEventType.assistantToolCall,
+          role: MessageRole.assistant,
+          content: '准备执行工具：AskUserQuestion',
+          payloadJson: const {
+            'toolName': 'AskUserQuestion',
+            'providerCallId': 'call_ask_1',
+            'arguments': {
+              'questions': [
+                {'question': '目标平台？', 'header': 'platform'},
+              ],
+            },
+          },
+        ),
+        ChatEvent(
+          turnId: 1,
+          groupId: 1,
+          sequence: 2,
+          eventType: ChatEventType.assistantQuestionPrompt,
+          role: MessageRole.assistant,
+          content: '目标平台？',
+          payloadJson: const {'providerCallId': 'call_ask_1'},
+        ),
+        ChatEvent(
+          turnId: 1,
+          groupId: 1,
+          sequence: 3,
+          eventType: ChatEventType.userInteractionResult,
+          role: MessageRole.system,
+          content: '用户回答：Android',
+          payloadJson: const {'providerCallId': 'call_ask_1'},
+        ),
+      ]);
+
+      expect(items.map((i) => i.type).toList(), [
+        ModelContextItemType.assistantToolUse,
+        ModelContextItemType.userToolResult,
+      ]);
+      expect(items[1].providerCallId, 'call_ask_1');
+      expect(items[1].text, contains('Android'));
+    });
+
+    test(
+        'falls back to user message for userInteractionResult without providerCallId',
+        () {
+      final projector = SessionContextProjector();
+
+      final item = projector.projectEventToContextItem(
+        ChatEvent(
+          turnId: 1,
+          groupId: 1,
+          sequence: 1,
+          eventType: ChatEventType.userInteractionResult,
+          role: MessageRole.system,
+          content: '用户回答：Android',
+        ),
+      );
+
+      expect(item?.type, ModelContextItemType.userMessage);
+    });
+
     test('projects snapshot text as a system context message', () {
       final projector = SessionContextProjector();
 

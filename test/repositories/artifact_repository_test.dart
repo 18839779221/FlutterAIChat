@@ -2,6 +2,7 @@ import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/artifact/artifact_record.dart';
 import 'package:ai_chat/models/artifact/artifact_type.dart';
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/repositories/artifact_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -19,7 +20,7 @@ void main() {
           DatabaseHelper(databaseName: 'artifact_repository_test_v12.db');
       final repository = ArtifactRepository(storage);
       final groupId =
-          await storage.insertGroup(ChatGroup(title: 'artifact repo group'));
+          await storage.insertGroup(ChatGroup(title: 'artifact repo group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
 
       await repository.upsertRecord(
         ArtifactRecord(

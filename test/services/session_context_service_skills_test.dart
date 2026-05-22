@@ -37,7 +37,7 @@ void main() {
         databaseName: 'session_context_service_skills_projection_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Skills Projection'),
+        ChatGroup(title: 'Session Context Skills Projection', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -155,7 +155,7 @@ void main() {
         databaseName: 'session_context_service_skills_rebuild_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Skills Rebuild'),
+        ChatGroup(title: 'Session Context Skills Rebuild', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -305,7 +305,7 @@ void main() {
         databaseName: 'session_context_service_explicit_skill_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Explicit Skill'),
+        ChatGroup(title: 'Session Context Explicit Skill', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final snapshotRepository = SessionContextSnapshotRepository(storage);
@@ -391,7 +391,7 @@ void main() {
         databaseName: 'session_context_service_skill_truncation_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Skill Truncation'),
+        ChatGroup(title: 'Session Context Skill Truncation', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final currentTurnId = await turnRepository.createTurn(
