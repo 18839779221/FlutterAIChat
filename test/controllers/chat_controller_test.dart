@@ -10,11 +10,16 @@ import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
 import 'package:ai_chat/models/session/session_runtime_marker.dart';
+import 'package:ai_chat/models/llm/llm_provider_config.dart';
+import 'package:ai_chat/models/llm/llm_provider_model.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
+import 'package:ai_chat/repositories/app_settings_repository.dart';
+import 'package:ai_chat/repositories/llm_local_defaults.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   test('controller initialization does not attach scroll listeners directly',
@@ -131,9 +136,74 @@ void main() {
       await runCase('deleteGroup', (c) => c.deleteGroup(1));
     });
     test('selectGroup cancels', () async {
-      final group = ChatGroup(id: 1, title: '新对话 1', systemPrompt: '', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+      final group = ChatGroup(
+          id: 1,
+          title: '新对话 1',
+          systemPrompt: '',
+          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
       await runCase('selectGroup', (c) => c.selectGroup(group));
     });
+  });
+
+  test('createNewGroup locks provider style from current settings', () async {
+    SharedPreferences.setMockInitialValues({});
+    final settingsRepository = AppSettingsRepository(
+      await SharedPreferences.getInstance(),
+      localDefaultsLoader: () async => const LlmLocalDefaults(
+        defaultProviderId: 'claude',
+        defaultModelId: 'claude-sonnet',
+        providers: [
+          LlmProviderConfig(
+            id: 'claude',
+            name: 'Claude',
+            apiKey: 'test-key',
+            baseUrl: 'https://example.com/v1/messages',
+            models: [
+              LlmProviderModel(id: 'claude-sonnet', name: 'Claude Sonnet'),
+            ],
+          ),
+        ],
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
+        databaseProvider.overrideWithValue(_FakeChatStorage()),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(chatSessionCoordinatorProvider).createNewGroup();
+
+    expect(
+      container.read(currentGroupProvider)?.lockedProviderStyle,
+      ChatTurnProviderStyle.anthropicMessages,
+    );
+  });
+
+  test(
+      'createNewGroup falls back to chat completions when settings are unavailable',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    final container = ProviderContainer(
+      overrides: [
+        appSettingsRepositoryProvider.overrideWithValue(
+          AppSettingsRepository(
+            await SharedPreferences.getInstance(),
+            localDefaultsLoader: () async => null,
+          ),
+        ),
+        databaseProvider.overrideWithValue(_FakeChatStorage()),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(chatSessionCoordinatorProvider).createNewGroup();
+
+    expect(
+      container.read(currentGroupProvider)?.lockedProviderStyle,
+      ChatTurnProviderStyle.openaiChatCompletions,
+    );
   });
 }
 

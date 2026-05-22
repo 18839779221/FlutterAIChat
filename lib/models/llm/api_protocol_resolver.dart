@@ -1,7 +1,22 @@
+import 'package:ai_chat/models/chat_turn.dart';
+
 enum ApiStyle {
   chatCompletions,
   responses,
   anthropicMessages,
+}
+
+extension ApiStyleChatTurnProviderStyle on ApiStyle {
+  ChatTurnProviderStyle toChatTurnProviderStyle() {
+    switch (this) {
+      case ApiStyle.chatCompletions:
+        return ChatTurnProviderStyle.openaiChatCompletions;
+      case ApiStyle.responses:
+        return ChatTurnProviderStyle.openaiResponses;
+      case ApiStyle.anthropicMessages:
+        return ChatTurnProviderStyle.anthropicMessages;
+    }
+  }
 }
 
 class ApiProtocolResolver {

@@ -5,6 +5,7 @@ import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/chat_turn.dart';
 import '../providers/chat_providers.dart';
 
 class ChatDrawer extends ConsumerWidget {
@@ -133,6 +134,8 @@ class ChatDrawer extends ConsumerWidget {
                   return _DrawerGroupTile(
                     title: currentGroup.title,
                     subtitle: '新对话',
+                    providerLabel:
+                        _providerLabel(currentGroup.lockedProviderStyle),
                     isSelected: true,
                     enabled: false,
                   );
@@ -145,6 +148,7 @@ class ChatDrawer extends ConsumerWidget {
                 return _DrawerGroupTile(
                   title: group.title,
                   subtitle: '最后消息：${_formatDateTime(group.lastMessageAt)}',
+                  providerLabel: _providerLabel(group.lockedProviderStyle),
                   isSelected: isSelected,
                   enabled: !isSendInFlight,
                   onTap: isSendInFlight
@@ -264,11 +268,23 @@ class ChatDrawer extends ConsumerWidget {
       return '刚刚';
     }
   }
+
+  String _providerLabel(ChatTurnProviderStyle style) {
+    switch (style) {
+      case ChatTurnProviderStyle.anthropicMessages:
+        return 'Claude';
+      case ChatTurnProviderStyle.openaiResponses:
+        return 'GPT';
+      case ChatTurnProviderStyle.openaiChatCompletions:
+        return 'DeepSeek';
+    }
+  }
 }
 
 class _DrawerGroupTile extends StatelessWidget {
   final String title;
   final String subtitle;
+  final String providerLabel;
   final bool isSelected;
   final bool enabled;
   final VoidCallback? onTap;
@@ -277,6 +293,7 @@ class _DrawerGroupTile extends StatelessWidget {
   const _DrawerGroupTile({
     required this.title,
     required this.subtitle,
+    required this.providerLabel,
     required this.isSelected,
     required this.enabled,
     this.onTap,
@@ -319,13 +336,40 @@ class _DrawerGroupTile extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          subtitle: Text(
-            subtitle,
-            style: TextStyle(
-              color: colors.secondaryText,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
+          subtitle: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: colors.secondaryText,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              SizedBox(width: spacing.xs),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: spacing.xs,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.structuredSurface,
+                  borderRadius: BorderRadius.circular(radius.sm),
+                ),
+                child: Text(
+                  providerLabel,
+                  style: TextStyle(
+                    color: colors.secondaryText,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ),
           enabled: enabled,
           onTap: onTap,
