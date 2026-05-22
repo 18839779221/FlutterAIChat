@@ -369,6 +369,18 @@ class TurnHarness {
         decision: decision,
       );
       final runtimeTurn = await _turnRepository.getTurn(turnId) ?? currentTurn;
+      // Persist the provider's raw assistant message for round-trip replay
+      // (spec 2026-05-22). One event per planner iteration with content.
+      final rawAssistantMessage = decision.providerState['raw_assistant_message'];
+      if (rawAssistantMessage is Map<String, dynamic> &&
+          decision.providerStyle != null) {
+        yield await _eventRepository.appendAssistantTurnSnapshot(
+          turnId: turnId,
+          groupId: runtimeTurn.groupId,
+          apiStyle: decision.providerStyle!,
+          rawAssistantMessageJson: rawAssistantMessage,
+        );
+      }
       final plannerAssistantMessage = (decision.assistantMessage ?? '').trim();
       final shouldPersistPlannerMessage = plannerAssistantMessage.isNotEmpty &&
           !(decision.isTerminal && decision.toolCalls.isEmpty);
