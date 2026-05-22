@@ -1,5 +1,6 @@
 import '../models/chat_event.dart';
 import '../models/chat_message.dart';
+import '../models/chat_turn.dart';
 import '../models/interaction/ask_user_question_request.dart';
 import '../models/interaction/ask_user_question_response.dart';
 import '../models/tool/tool_invocation.dart';
@@ -229,6 +230,29 @@ class ChatEventRepository {
       eventType: ChatEventType.assistantTextFinal,
       role: MessageRole.assistant,
       content: content,
+    );
+  }
+
+  /// Persists the provider's raw assistant message for round-trip replay on
+  /// the next outbound planner request. One event per planner iteration that
+  /// produced any provider content. UI rendering uses the fragmented events
+  /// (textDelta / reasoningDelta / toolCall), not this snapshot.
+  Future<ChatEvent> appendAssistantTurnSnapshot({
+    required int turnId,
+    required int groupId,
+    required ChatTurnProviderStyle apiStyle,
+    required Map<String, dynamic> rawAssistantMessageJson,
+  }) {
+    return _appendEvent(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.assistantTurnSnapshot,
+      role: MessageRole.assistant,
+      content: '',
+      payloadJson: {
+        'apiStyle': apiStyle.name,
+        'rawAssistantMessage': rawAssistantMessageJson,
+      },
     );
   }
 
