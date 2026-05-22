@@ -1,4 +1,5 @@
 import 'package:ai_chat/database/database_helper.dart';
+import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
@@ -147,6 +148,62 @@ void main() {
           'call_03',
           'call_04',
         ]),
+      );
+
+      await storage.deleteGroup(groupId);
+    });
+
+    test('appendAssistantTurnSnapshot persists apiStyle + raw message JSON',
+        () async {
+      final storage = DatabaseHelper(
+        databaseName: 'chat_event_repository_snapshot_test.db',
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final repository = ChatEventRepository(storage);
+      final groupId = await storage.insertGroup(
+        ChatGroup(
+          title: 'snapshot group',
+          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        ),
+      );
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: 'hello',
+        ),
+      );
+
+      final raw = {
+        'role': 'assistant',
+        'content': 'Let me search',
+        'reasoning_content': 'think first',
+        'tool_calls': [
+          {
+            'id': 'call_1',
+            'type': 'function',
+            'function': {'name': 'search', 'arguments': '{"q":"x"}'},
+          },
+        ],
+      };
+
+      final event = await repository.appendAssistantTurnSnapshot(
+        turnId: turnId,
+        groupId: groupId,
+        apiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        rawAssistantMessageJson: raw,
+      );
+
+      expect(event.eventType, ChatEventType.assistantTurnSnapshot);
+      expect(event.role, MessageRole.assistant);
+      expect(event.payloadJson?['apiStyle'], 'openaiChatCompletions');
+      expect(event.payloadJson?['rawAssistantMessage'], raw);
+
+      final stored = await repository.listEventsByTurn(turnId);
+      expect(stored, hasLength(1));
+      expect(
+        stored.single.payloadJson?['rawAssistantMessage'],
+        raw,
       );
 
       await storage.deleteGroup(groupId);
