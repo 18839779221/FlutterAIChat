@@ -1,5 +1,9 @@
+import 'package:ai_chat/models/agent/planner_tool_option.dart';
+import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/llm/adapters/anthropic_messages_adapter.dart';
 import 'package:ai_chat/models/llm/streaming_decision_accumulator.dart';
+import 'package:ai_chat/services/chat_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -107,6 +111,86 @@ void main() {
         ),
       );
       expect(raw, isNull);
+    });
+  });
+
+  group('AnthropicMessagesAdapter.buildPlannerPayloadFromCarriers', () {
+    const adapter = AnthropicMessagesAdapter();
+
+    test('system 提到顶层, user/toolResult/raw 落到 messages 数组', () {
+      const raw = {
+        'role': 'assistant',
+        'content': [
+          {'type': 'text', 'text': 'Let me search'},
+          {
+            'type': 'tool_use',
+            'id': 'toolu_1',
+            'name': 'search',
+            'input': {'q': 'x'},
+          },
+        ],
+      };
+      final payload = adapter.buildPlannerPayloadFromCarriers(
+        carriers: const [
+          SyntheticCarrier.system('agent'),
+          SyntheticCarrier.user('please'),
+          RawAssistantCarrier(
+            apiStyle: ChatTurnProviderStyle.anthropicMessages,
+            rawJson: raw,
+          ),
+          SyntheticCarrier.toolResult(toolCallId: 'toolu_1', content: 'OK'),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'claude-3-5-sonnet',
+        availableTools: const [],
+        parallelToolCalls: false,
+      );
+      expect(payload['system'], 'agent');
+      final messages = payload['messages'] as List;
+      expect(messages, hasLength(3));
+      expect(messages[0]['role'], 'user');
+      expect((messages[0]['content'] as List).first['text'], 'please');
+      expect(messages[1], raw);
+      expect(messages[2]['role'], 'user');
+      final toolResultBlock = (messages[2]['content'] as List).first as Map;
+      expect(toolResultBlock['type'], 'tool_result');
+      expect(toolResultBlock['tool_use_id'], 'toolu_1');
+      expect(toolResultBlock['content'], 'OK');
+    });
+
+    test('多 system carrier 拼接', () {
+      final payload = adapter.buildPlannerPayloadFromCarriers(
+        carriers: const [
+          SyntheticCarrier.system('first'),
+          SyntheticCarrier.system('second'),
+          SyntheticCarrier.user('hi'),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'claude-3-5-sonnet',
+        availableTools: const [],
+        parallelToolCalls: false,
+      );
+      expect(payload['system'], 'first\n\nsecond');
+    });
+
+    test('tools 转 input_schema 形状', () {
+      final payload = adapter.buildPlannerPayloadFromCarriers(
+        carriers: const [SyntheticCarrier.user('hi')],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'claude-3-5-sonnet',
+        availableTools: const [
+          PlannerToolOption(
+            name: 'search',
+            description: 'web search',
+            inputSchema: {'type': 'object'},
+          ),
+        ],
+        parallelToolCalls: false,
+      );
+      final tools = payload['tools'] as List;
+      expect(tools.first['name'], 'search');
+      expect(tools.first['description'], 'web search');
+      expect(tools.first['input_schema'], {'type': 'object'});
     });
   });
 }

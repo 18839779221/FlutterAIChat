@@ -291,7 +291,58 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
     required bool parallelToolCalls,
     LlmRequestOptions requestOptions = const LlmRequestOptions(),
   }) {
-    throw UnimplementedError('Task 13 implements this');
+    String? systemText;
+    final messages = <Map<String, dynamic>>[];
+
+    for (final carrier in carriers) {
+      switch (carrier) {
+        case SyntheticCarrier(role: SyntheticRole.system, :final content):
+          systemText = systemText == null ? content : '$systemText\n\n$content';
+
+        case SyntheticCarrier(role: SyntheticRole.user, :final content):
+          messages.add({
+            'role': 'user',
+            'content': [
+              {'type': 'text', 'text': content},
+            ],
+          });
+
+        case SyntheticCarrier(
+              role: SyntheticRole.toolResult,
+              :final toolCallId,
+              :final content,
+            ):
+          messages.add({
+            'role': 'user',
+            'content': [
+              {
+                'type': 'tool_result',
+                'tool_use_id': toolCallId,
+                'content': content,
+              },
+            ],
+          });
+
+        case RawAssistantCarrier(:final rawJson):
+          messages.add(Map<String, dynamic>.from(rawJson));
+      }
+    }
+
+    final tools = availableTools
+        .map((t) => <String, dynamic>{
+              'name': t.name,
+              'description': t.description,
+              'input_schema': t.inputSchema,
+            })
+        .toList(growable: false);
+
+    return <String, dynamic>{
+      'model': modelName,
+      if (systemText != null) 'system': systemText,
+      'messages': messages,
+      'max_tokens': requestOptions.maxOutputTokens ?? 4096,
+      if (tools.isNotEmpty) 'tools': tools,
+    };
   }
 
   void _applyCacheHints(
