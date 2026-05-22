@@ -201,14 +201,41 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
   Map<String, dynamic>? extractRawAssistantMessage(
     Map<String, dynamic> responsePayload,
   ) {
-    throw UnimplementedError('Task 7 implements this');
+    final choices = responsePayload['choices'];
+    if (choices is! List || choices.isEmpty) return null;
+    final first = choices.first;
+    if (first is! Map) return null;
+    final message = first['message'];
+    if (message is! Map) return null;
+    return Map<String, dynamic>.from(message);
   }
 
   @override
   Map<String, dynamic>? assembleRawFromStreamingSnapshot(
     StreamingDecisionAccumulatorSnapshot snapshot,
   ) {
-    throw UnimplementedError('Task 7 implements this');
+    final hasContent = (snapshot.text ?? '').isNotEmpty;
+    final hasReasoning = (snapshot.reasoning ?? '').isNotEmpty;
+    final hasToolCalls = snapshot.toolCalls.isNotEmpty;
+    if (!hasContent && !hasReasoning && !hasToolCalls) return null;
+
+    return <String, dynamic>{
+      'role': 'assistant',
+      if (hasContent) 'content': snapshot.text,
+      if (hasReasoning) 'reasoning_content': snapshot.reasoning,
+      if (hasToolCalls)
+        'tool_calls': [
+          for (final tc in snapshot.toolCalls)
+            {
+              if (tc.id != null) 'id': tc.id,
+              'type': 'function',
+              'function': {
+                'name': tc.toolName ?? '',
+                'arguments': tc.argumentsBuffer,
+              },
+            },
+        ],
+    };
   }
 
   @override
