@@ -1,5 +1,6 @@
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/theme/app_theme.dart';
@@ -49,6 +50,53 @@ void main() {
     });
 
     expect(gradientContainers, findsNothing);
+  });
+
+  testWidgets('chat drawer shows each group locked provider label', (
+    tester,
+  ) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+      ],
+    );
+    container.read(groupsProvider.notifier).setGroups([
+      ChatGroup(
+        id: 1,
+        title: 'Claude session',
+        lockedProviderStyle: ChatTurnProviderStyle.anthropicMessages,
+      ),
+      ChatGroup(
+        id: 2,
+        title: 'GPT session',
+        lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
+      ),
+    ]);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: ChatDrawer(),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Claude'), findsOneWidget);
+    expect(find.text('GPT'), findsOneWidget);
   });
 }
 

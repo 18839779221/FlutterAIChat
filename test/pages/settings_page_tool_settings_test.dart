@@ -1,4 +1,6 @@
 import 'package:ai_chat/models/tool/tool_policy.dart';
+import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/skill/duplicate_skill_invocation_mode.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/models/llm/llm_provider_model.dart';
@@ -102,7 +104,8 @@ void main() {
     expect(find.text('Olive Paper'), findsOneWidget);
   });
 
-  testWidgets('model access section renders compact provider and model pickers', (tester) async {
+  testWidgets('model access section renders compact provider and model pickers',
+      (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -231,6 +234,72 @@ void main() {
     final selection = await repository.getSelectionState();
     expect(selection.selectedProviderId, 'openai');
     expect(selection.selectedModelId, 'gpt-4.1');
+  });
+
+  testWidgets('provider picker is disabled when current group is locked', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    SharedPreferences.setMockInitialValues({});
+    final repository = AppSettingsRepository(
+      await SharedPreferences.getInstance(),
+      localDefaultsLoader: () async => const LlmLocalDefaults(
+        defaultProviderId: 'aigocode',
+        defaultModelId: 'gpt-5.4',
+        providers: [
+          LlmProviderConfig(
+            id: 'aigocode',
+            name: 'AIGoCode',
+            apiKey: 'test-key',
+            baseUrl: 'https://example.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-5.4', name: ''),
+            ],
+          ),
+          LlmProviderConfig(
+            id: 'openai',
+            name: 'OpenAI',
+            apiKey: 'test-key-2',
+            baseUrl: 'https://api.openai.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-4o', name: ''),
+            ],
+          ),
+        ],
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        appSettingsRepositoryProvider.overrideWithValue(repository),
+        skillRuntimeServiceProvider
+            .overrideWithValue(_EmptySkillRuntimeService()),
+      ],
+    );
+    container.read(currentGroupProvider.notifier).state = ChatGroup(
+      id: 1,
+      title: 'Locked',
+      lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const SettingsPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final providerButton = tester.widget<OutlinedButton>(
+      find.byKey(const Key('provider-switcher')),
+    );
+    expect(providerButton.onPressed, isNull);
+    expect(find.text('当前会话已锁定 provider，新建会话方可切换'), findsOneWidget);
   });
 
   testWidgets('model picker supports scrolling for long model lists', (
@@ -383,7 +452,8 @@ void main() {
     expect(find.text('关闭时重复调用直接复用已加载结果，不再向用户显示失败。'), findsOneWidget);
   });
 
-  testWidgets('skills section toggles duplicate invocation reload mode', (tester) async {
+  testWidgets('skills section toggles duplicate invocation reload mode',
+      (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -445,7 +515,8 @@ void main() {
     );
   });
 
-  testWidgets('disabled skills remain visible in settings for re-enable', (tester) async {
+  testWidgets('disabled skills remain visible in settings for re-enable',
+      (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 

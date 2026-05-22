@@ -99,7 +99,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _loadSkills() async {
-    final skills = await ref.read(skillRuntimeServiceProvider).listInstalledSkills();
+    final skills =
+        await ref.read(skillRuntimeServiceProvider).listInstalledSkills();
     if (!mounted) {
       return;
     }
@@ -143,7 +144,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _removeTrustedTool(String toolName) async {
-    await ref.read(appSettingsRepositoryProvider).removeTrustedToolName(toolName);
+    await ref
+        .read(appSettingsRepositoryProvider)
+        .removeTrustedToolName(toolName);
     if (!mounted) {
       return;
     }
@@ -193,7 +196,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final result = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).extension<AppThemeSpec>()!.chatBackground,
+      backgroundColor:
+          Theme.of(context).extension<AppThemeSpec>()!.chatBackground,
       builder: (_) => SkillInstallSheet(initialUrl: _latestSkillInstallUrl),
     );
     if (result == null || result.trim().isEmpty) {
@@ -203,8 +207,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       _isInstallingSkill = true;
     });
     try {
-      await ref.read(appSettingsRepositoryProvider).saveLatestSkillInstallUrl(result);
-      await ref.read(skillInstallerServiceProvider).installFromGitHubUrl(result);
+      await ref
+          .read(appSettingsRepositoryProvider)
+          .saveLatestSkillInstallUrl(result);
+      await ref
+          .read(skillInstallerServiceProvider)
+          .installFromGitHubUrl(result);
       await _loadSettings();
       if (!mounted) {
         return;
@@ -342,6 +350,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final provider = _currentProvider;
     final model = _currentModel;
     final activeTheme = ref.watch(appThemeControllerProvider);
+    final currentGroup = ref.watch(currentGroupProvider);
+    final isProviderLocked = currentGroup?.lockedProviderStyle != null;
     return Scaffold(
       appBar: AppBar(
         title: const Text('设置'),
@@ -363,10 +373,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     children: [
                       Text(
                         'Precision Settings',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: colors.primaryText,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: colors.primaryText,
+                                ),
                       ),
                       SizedBox(height: spacing.xs),
                       Text(
@@ -395,11 +406,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       SizedBox(height: spacing.md),
                       SettingsRow(
                         title: '当前提供方',
-                        subtitle: provider?.name ?? '暂无提供方',
+                        subtitle: isProviderLocked
+                            ? '当前会话已锁定 provider，新建会话方可切换'
+                            : provider?.name ?? '暂无提供方',
                         trailing: Tooltip(
-                          message: '选择提供方',
+                          message:
+                              isProviderLocked ? '当前会话已锁定 provider' : '选择提供方',
                           child: OutlinedButton.icon(
-                            onPressed: _providers.isEmpty ? null : _openProviderPicker,
+                            key: const Key('provider-switcher'),
+                            onPressed: isProviderLocked || _providers.isEmpty
+                                ? null
+                                : _openProviderPicker,
                             icon: const Icon(Icons.unfold_more),
                             label: const Text('选择'),
                           ),
@@ -412,9 +429,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         trailing: Tooltip(
                           message: '选择模型',
                           child: OutlinedButton.icon(
-                            onPressed: provider == null || provider.models.isEmpty
-                                ? null
-                                : _openModelPicker,
+                            onPressed:
+                                provider == null || provider.models.isEmpty
+                                    ? null
+                                    : _openModelPicker,
                             icon: const Icon(Icons.unfold_more),
                             label: const Text('选择'),
                           ),
@@ -438,12 +456,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           SizedBox(width: spacing.md),
                           Expanded(
                             child: FilledButton(
-                              onPressed: _isTestingModel ? null : _testCurrentModel,
+                              onPressed:
+                                  _isTestingModel ? null : _testCurrentModel,
                               child: _isTestingModel
                                   ? const SizedBox(
                                       width: 18,
                                       height: 18,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
                                     )
                                   : const Text('测试当前模型'),
                             ),
@@ -471,12 +491,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         children: [
                           Expanded(
                             child: OutlinedButton(
-                              onPressed: _isInstallingSkill ? null : _openSkillInstallSheet,
+                              onPressed: _isInstallingSkill
+                                  ? null
+                                  : _openSkillInstallSheet,
                               child: _isInstallingSkill
                                   ? const SizedBox(
                                       width: 18,
                                       height: 18,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
                                     )
                                   : const Text('安装 Skill'),
                             ),
@@ -509,9 +532,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       else if (_skills.isEmpty)
                         Text(
                           '当前没有已安装 skills。',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: colors.secondaryText,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: colors.secondaryText,
+                                  ),
                         )
                       else
                         ..._skills.map(
@@ -522,11 +546,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                 subtitle: skill.description,
                                 trailing: Switch(
                                   value: skill.isEnabled,
-                                  onChanged: (value) => _toggleSkill(skill, value),
+                                  onChanged: (value) =>
+                                      _toggleSkill(skill, value),
                                 ),
                               ),
                               if (skill != _skills.last)
-                                Divider(color: colors.divider, height: spacing.md * 2),
+                                Divider(
+                                    color: colors.divider,
+                                    height: spacing.md * 2),
                             ],
                           ),
                         ),
@@ -541,7 +568,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     children: [
                       SettingsRow(
                         title: '默认执行模式',
-                        subtitle: _toolExecutionModeDescription(_toolExecutionMode),
+                        subtitle:
+                            _toolExecutionModeDescription(_toolExecutionMode),
                         trailing: SettingsSegmentedControl<ToolExecutionMode>(
                           value: _toolExecutionMode,
                           options: const {
@@ -566,7 +594,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           children: [
                             Text(
                               '自动执行白名单',
-                              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleSmall
+                                  ?.copyWith(
                                     color: colors.primaryText,
                                     fontWeight: FontWeight.w700,
                                   ),
@@ -574,7 +605,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             SizedBox(height: spacing.xxs),
                             Text(
                               '将可信指令直接放行，降低重复确认。',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
                                     color: colors.secondaryText,
                                   ),
                             ),
@@ -582,19 +616,24 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             if (_trustedToolNames.isEmpty)
                               Text(
                                 '当前没有已信任工具。',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
                                       color: colors.secondaryText,
                                     ),
                               )
                             else
                               ..._trustedToolNames.map(
                                 (toolName) => SettingsRow(
-                                  padding: EdgeInsets.symmetric(vertical: spacing.xxs),
+                                  padding: EdgeInsets.symmetric(
+                                      vertical: spacing.xxs),
                                   title: toolName,
                                   subtitle: '已加入免确认白名单',
                                   trailing: IconButton(
                                     tooltip: '移除 $toolName',
-                                    icon: const Icon(Icons.remove_circle_outline),
+                                    icon:
+                                        const Icon(Icons.remove_circle_outline),
                                     color: colors.secondaryText,
                                     onPressed: () {
                                       _removeTrustedTool(toolName);
@@ -804,7 +843,7 @@ class _SelectionSheet<T> extends StatelessWidget {
                                 color: colors.workflowRunning,
                                 shape: BoxShape.circle,
                               ),
-                              )
+                            )
                           : const SizedBox(width: 8, height: 8),
                       title: Text(labelBuilder(item)),
                       onTap: () => Navigator.of(context).pop(item),

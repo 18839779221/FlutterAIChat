@@ -1,5 +1,6 @@
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/providers/chat_ui_providers.dart';
@@ -77,13 +78,11 @@ class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
     try {
       final groups = _ref.read(groupsProvider);
       final systemPrompt = _ref.read(systemPromptProvider);
-
-      // Task 20 wires this from the active LLMConfig at creation time.
-      // For now, default to Chat Completions until UI handoff lands.
+      final lockedProviderStyle = await _resolveCurrentProviderStyle();
       final newGroup = ChatGroup(
         title: '新对话 ${groups.length + 1}',
         systemPrompt: systemPrompt,
-        lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        lockedProviderStyle: lockedProviderStyle,
       );
 
       _ref.read(currentGroupProvider.notifier).state = newGroup;
@@ -92,6 +91,21 @@ class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
       _ref.read(isInitializingProvider.notifier).state = false;
     } catch (e) {
       Logger.e(_tag, '创建新分组失败', e);
+    }
+  }
+
+  Future<ChatTurnProviderStyle> _resolveCurrentProviderStyle() async {
+    try {
+      final config =
+          await _ref.read(appSettingsRepositoryProvider).getLlmConfig();
+      final apiStyle = const ApiProtocolResolver().resolveStyle(config.apiUrl);
+      return apiStyle.toChatTurnProviderStyle();
+    } catch (e) {
+      Logger.w(
+        _tag,
+        '无法读取当前 provider style，新会话回落到 Chat Completions: $e',
+      );
+      return ChatTurnProviderStyle.openaiChatCompletions;
     }
   }
 
