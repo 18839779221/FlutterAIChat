@@ -206,6 +206,7 @@ void main() async {
       ),
       turnVerifier: TurnVerifier(),
       toolCallService: toolCallService,
+      chatStorage: storage,
       sessionContextService: sessionContextService,
     );
 

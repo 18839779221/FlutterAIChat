@@ -5,6 +5,7 @@ import 'package:ai_chat/models/agent/model_turn_decision.dart';
 import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
@@ -75,6 +76,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(llm.lastConfig?.systemPrompt, contains('next best action'));
@@ -126,6 +130,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(llm.lastToolOptions, isNotNull);
@@ -154,6 +161,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(
@@ -198,6 +208,9 @@ void main() {
           steps: const [],
           config: ChatConfig(systemPrompt: ''),
           limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
         ),
         throwsA(
           isA<StateError>().having(
@@ -235,6 +248,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(result, isNotNull);
@@ -254,6 +270,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(result, isNotNull);
@@ -332,6 +351,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(llm.lastConfig?.systemPrompt, contains('next best action'));
@@ -434,6 +456,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(
@@ -491,6 +516,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(
@@ -592,6 +620,9 @@ void main() {
         ],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(decision, isNotNull);
@@ -645,6 +676,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(decision, isNotNull);
@@ -745,6 +779,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(
@@ -792,6 +829,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(decision, isNotNull);
@@ -830,6 +870,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(decision, isNotNull);
@@ -869,6 +912,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(decision, isNotNull);
@@ -920,6 +966,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(decision, isNotNull);
@@ -989,6 +1038,9 @@ void main() {
         ],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(decision, isNotNull);
@@ -1059,6 +1111,9 @@ void main() {
         ],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(decision, isNotNull);
@@ -1133,6 +1188,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(decision, isNotNull);
@@ -1186,6 +1244,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(llm.lastToolOptions, isNotNull);
@@ -1258,6 +1319,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       final projectedTexts =
@@ -1333,6 +1397,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       final projectedTexts =
@@ -1424,6 +1491,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       final projectedTexts =
@@ -1551,6 +1621,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       final toolResultTexts = llm.lastMessages
@@ -1717,6 +1790,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       final projectedText =
@@ -1772,6 +1848,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(result, isNotNull);
@@ -1816,6 +1895,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(decision?.assistantMessage, 'ok');
@@ -1872,12 +1954,31 @@ class _NativeDecisionLLM implements BaseLLM {
 
   @override
   Future<ModelTurnDecision?> planTurnDecision({
-    required List<ChatMessage> messages,
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
-    lastMessages = List<ChatMessage>.from(messages);
+    // Convert carriers to ChatMessages for legacy test assertions.
+    lastMessages = [
+      for (final c in carriers)
+        if (c is SyntheticCarrier)
+          ChatMessage(
+            text: c.content,
+            role: switch (c.role) {
+              SyntheticRole.system => MessageRole.system,
+              SyntheticRole.user => MessageRole.user,
+              SyntheticRole.toolResult => MessageRole.user,
+            },
+          )
+        else if (c is RawAssistantCarrier)
+          ChatMessage(
+            text: (c.rawJson['content'] as String?) ?? '',
+            role: MessageRole.assistant,
+          ),
+    ];
     lastConfig = config;
     lastToolOptions = List<PlannerToolOption>.from(availableTools);
     return decision;
@@ -1907,7 +2008,9 @@ class _NativeNullPlannerLLM implements BaseLLM {
 
   @override
   Future<ModelTurnDecision?> planTurnDecision({
-    required List<ChatMessage> messages,
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
     void Function(LlmRetryProgress progress)? onRetryScheduled,
@@ -1940,7 +2043,9 @@ class _ThrowingNativePlannerLLM implements BaseLLM {
 
   @override
   Future<ModelTurnDecision?> planTurnDecision({
-    required List<ChatMessage> messages,
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
     void Function(LlmRetryProgress progress)? onRetryScheduled,
@@ -1982,7 +2087,9 @@ class _RuntimeStreamingDecisionLLM
 
   @override
   Future<ModelTurnDecision?> planTurnDecision({
-    required List<ChatMessage> messages,
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
     void Function(LlmRetryProgress progress)? onRetryScheduled,

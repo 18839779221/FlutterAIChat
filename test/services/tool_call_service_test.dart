@@ -101,6 +101,8 @@ class _FakeRuntimeToolHandler extends ToolHandler {
 }
 
 class _FakeChatStorage implements ChatStorage {
+  @override
+  Future<ChatGroup?> getGroupById(int id) async => null;
   final List<ChatMessage> messages;
 
   const _FakeChatStorage({required this.messages});

@@ -16,6 +16,8 @@ import '../chat/runtime_stream_entry.dart';
 import '../agent/planner_tool_option.dart';
 import '../chat_message.dart';
 import '../chat_turn.dart';
+import '../context/planner_context_carrier.dart';
+import '../chat_turn.dart';
 import '../session/model_budget_profile.dart';
 import '../../services/session_summary_service.dart';
 import 'adapters/anthropic_messages_adapter.dart';
@@ -31,6 +33,7 @@ import 'llm_cache_strategy.dart';
 import 'llm_config.dart';
 import 'llm_request_options.dart';
 import 'llm_usage_extractor.dart';
+import 'planner_invariant_validator.dart';
 import 'streaming_decision_accumulator.dart';
 import 'streaming_planner_chunk.dart';
 import 'tool_loop/anthropic_messages_tool_loop_adapter.dart';
@@ -291,15 +294,28 @@ class ConfigurableHttpLLM
 
   @override
   Future<ModelTurnDecision?> planTurnDecision({
-    required List<ChatMessage> messages,
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     try {
+      const PlannerInvariantValidator().validate(
+        carriers: carriers,
+        activeApiStyle: activeApiStyle,
+        currentTurnRunning: currentTurnRunning,
+      );
       final runtimeConfig = await _settingsRepository.getLlmConfig();
       _validateRuntimeConfig(runtimeConfig);
       final apiStyle = _protocolResolver.resolveStyle(runtimeConfig.apiUrl);
+      if (_toProviderStyle(apiStyle) != activeApiStyle) {
+        throw InconsistentProviderStateError(
+          'runtime apiStyle=$apiStyle resolves to ${_toProviderStyle(apiStyle)} '
+          'but active session-locked style is $activeApiStyle',
+        );
+      }
       final adapter = _adapterFor(apiStyle);
       final modelName = _resolveModelName(runtimeConfig, config);
       final requestOptions = _requestOptionsFor(
@@ -313,11 +329,11 @@ class ConfigurableHttpLLM
         modelName: modelName,
         purpose: LlmRequestPurpose.planner,
         requestOptions: requestOptions,
-        messageCount: messages.length,
-        messages: messages,
+        messageCount: carriers.length,
+        messages: const [],
       );
-      Map<String, dynamic> payload = adapter.buildPlannerPayload(
-        messages: messages,
+      Map<String, dynamic> payload = adapter.buildPlannerPayloadFromCarriers(
+        carriers: carriers,
         config: config,
         modelName: modelName,
         availableTools: availableTools,

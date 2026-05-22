@@ -16,6 +16,7 @@ import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
@@ -161,7 +162,8 @@ void main() {
           executeResult: const ToolPreparationResult.noTool(),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -236,7 +238,8 @@ void main() {
         ),
         decisionToolCallExecutor: _FakeDecisionToolCallExecutor(),
         limits: const AgentLoopLimits(maxIterations: 4),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -339,7 +342,8 @@ void main() {
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -469,7 +473,8 @@ void main() {
           executeResult: const ToolPreparationResult.noTool(),
         ),
         decisionToolCallExecutor: fakeExecutor,
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -610,7 +615,8 @@ void main() {
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -684,7 +690,8 @@ void main() {
         ),
         limits:
             const AgentLoopLimits(maxIterations: 4, maxConsecutiveFailures: 1),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -743,7 +750,8 @@ void main() {
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .resumeAfterConfirmation(
@@ -843,7 +851,8 @@ void main() {
         ),
         limits:
             const AgentLoopLimits(maxIterations: 4, maxConsecutiveFailures: 2),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -949,7 +958,8 @@ void main() {
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 5),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -1076,7 +1086,8 @@ void main() {
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -1146,7 +1157,8 @@ void main() {
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .resumeAfterConfirmation(
@@ -1226,7 +1238,8 @@ void main() {
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 2),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .resumeAfterConfirmation(
@@ -1311,7 +1324,8 @@ void main() {
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 2),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       await harness
           .resumeAfterConfirmation(
@@ -1384,7 +1398,8 @@ void main() {
           error: StateError('resume_failed'),
         ),
         limits: const AgentLoopLimits(maxIterations: 2),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       await expectLater(
         harness
@@ -1458,7 +1473,8 @@ void main() {
           ),
         ),
         limits: const AgentLoopLimits(maxConsecutiveFailures: 1),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .resumeAfterConfirmation(
@@ -1514,7 +1530,8 @@ void main() {
         toolCallService: _FakeToolCallService(
           executeResult: const ToolPreparationResult.noTool(),
         ),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       await expectLater(
         harness
@@ -1608,7 +1625,8 @@ void main() {
           },
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -1699,7 +1717,8 @@ void main() {
         turnVerifier: _AlwaysStopVerifier(),
         toolCallService: toolCallService,
         limits: const AgentLoopLimits(maxIterations: 4),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .resumeAfterQuestionAnswered(
@@ -1835,7 +1854,8 @@ void main() {
           ),
         ]),
         limits: const AgentLoopLimits(maxIterations: 4),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -1945,7 +1965,8 @@ void main() {
         ]),
         sessionContextService: sessionContextService,
         limits: const AgentLoopLimits(maxIterations: 4),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -2047,7 +2068,8 @@ void main() {
           ),
         ]),
         limits: const AgentLoopLimits(maxIterations: 4),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -2203,7 +2225,8 @@ void main() {
           chatService: ChatService(llm: llm),
         ),
         limits: const AgentLoopLimits(maxIterations: 5),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -2326,7 +2349,8 @@ void main() {
           chatService: ChatService(llm: llm),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final suspended = await harness
           .runTurn(
@@ -2435,7 +2459,8 @@ void main() {
           executeResult: const ToolPreparationResult.noTool(),
         ),
         limits: const AgentLoopLimits(maxIterations: 1),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -2511,7 +2536,8 @@ void main() {
           executeResult: const ToolPreparationResult.noTool(),
         ),
         limits: const AgentLoopLimits(),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -2560,7 +2586,8 @@ void main() {
           executeResult: const ToolPreparationResult.noTool(),
         ),
         limits: const AgentLoopLimits(maxToolCallsPerTurn: 3),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -2609,7 +2636,8 @@ void main() {
           executeResult: const ToolPreparationResult.noTool(),
         ),
         limits: const AgentLoopLimits(maxDuration: Duration(minutes: 1)),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -2690,7 +2718,8 @@ void main() {
           ),
         ]),
         limits: const AgentLoopLimits(maxIterations: 4),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -2745,7 +2774,8 @@ void main() {
           executeResult: const ToolPreparationResult.noTool(),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -2840,7 +2870,8 @@ void main() {
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       await harness
           .runTurn(
@@ -2927,7 +2958,8 @@ void main() {
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       await harness
           .runTurn(
@@ -3007,7 +3039,8 @@ void main() {
           ),
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -3172,7 +3205,8 @@ void main() {
           ),
         ]),
         limits: const AgentLoopLimits(maxIterations: 4),
-      );
+        chatStorage: _NoopChatStorage(),
+);
 
       final emitted = await harness
           .runTurn(
@@ -3260,7 +3294,9 @@ class _FakePlannerService extends AgentPlannerService {
     required List<ChatTurnStep> steps,
     required ChatConfig config,
     required AgentLoopLimits limits,
-    List<ChatMessage>? plannerMessages,
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
   }) async {
     capturedTranscripts.add(List<ChatEvent>.from(transcript));
     return _decisionFromAction(actions.removeFirst());
@@ -3282,7 +3318,9 @@ class _NativeDecisionPlannerService extends AgentPlannerService {
     required List<ChatTurnStep> steps,
     required ChatConfig config,
     required AgentLoopLimits limits,
-    List<ChatMessage>? plannerMessages,
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
   }) async {
     nativeDecisionCalls += 1;
     final decision = decisions.removeFirst();
@@ -3313,11 +3351,13 @@ class _RecordingDecisionPlannerService extends AgentPlannerService {
     required List<ChatTurnStep> steps,
     required ChatConfig config,
     required AgentLoopLimits limits,
-    List<ChatMessage>? plannerMessages,
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
   }) async {
     planCalls += 1;
     capturedPlannerMessages.add(
-      plannerMessages == null ? null : List<ChatMessage>.from(plannerMessages),
+      carriers.isEmpty ? null : [for (final c in carriers) if (c is SyntheticCarrier) ChatMessage(text: c.content, role: c.role == SyntheticRole.user ? MessageRole.user : c.role == SyntheticRole.system ? MessageRole.system : MessageRole.user) else if (c is RawAssistantCarrier) ChatMessage(text: (c.rawJson['content'] as String?) ?? '', role: MessageRole.assistant)],
     );
     final decision = decisions.removeFirst();
     if (!fillMissingRuntimeMetadata) {
@@ -3345,7 +3385,9 @@ class _QueuedNativeDecisionLLM implements BaseLLM {
 
   @override
   Future<ModelTurnDecision?> planTurnDecision({
-    required List<ChatMessage> messages,
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
     void Function(LlmRetryProgress progress)? onRetryScheduled,
@@ -3379,13 +3421,21 @@ class _AssertingLoopPlannerLLM implements BaseLLM {
 
   @override
   Future<ModelTurnDecision?> planTurnDecision({
-    required List<ChatMessage> messages,
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     planCalls += 1;
-    final joinedText = messages.map((message) => message.text).join('\n');
+    final joinedText = carriers
+        .map((c) => c is SyntheticCarrier
+            ? c.content
+            : c is RawAssistantCarrier
+                ? ((c.rawJson['content'] as String?) ?? '')
+                : '')
+        .join('\n');
 
     if (planCalls == 1) {
       expect(joinedText, contains('历史结论：数据库版本线索在发布记录里。'));
@@ -3478,13 +3528,21 @@ class _AssertingQuestionLoopPlannerLLM implements BaseLLM {
 
   @override
   Future<ModelTurnDecision?> planTurnDecision({
-    required List<ChatMessage> messages,
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
     planCalls += 1;
-    final joinedText = messages.map((message) => message.text).join('\n');
+    final joinedText = carriers
+        .map((c) => c is SyntheticCarrier
+            ? c.content
+            : c is RawAssistantCarrier
+                ? ((c.rawJson['content'] as String?) ?? '')
+                : '')
+        .join('\n');
 
     if (planCalls == 1) {
       expect(joinedText, contains('帮我确定存储方案'));
@@ -4313,7 +4371,9 @@ class _NoopBaseLLM implements BaseLLM {
 
   @override
   Future<ModelTurnDecision?> planTurnDecision({
-    required List<ChatMessage> messages,
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
     void Function(LlmRetryProgress progress)? onRetryScheduled,
@@ -4382,6 +4442,13 @@ class _NoopChatStorage implements ChatStorage {
 
   @override
   Future<ChatGroup?> getLatestGroup() => throw UnimplementedError();
+
+  @override
+  Future<ChatGroup?> getGroupById(int id) async => ChatGroup(
+        id: id,
+        title: 'stub',
+        lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+      );
 
   @override
   Future<SessionContextSnapshot?> getLatestSessionContextSnapshotByGroup(

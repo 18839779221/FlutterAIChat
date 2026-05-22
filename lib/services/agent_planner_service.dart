@@ -9,6 +9,7 @@ import '../models/chat/runtime_stream_entry.dart';
 import '../models/chat_event.dart';
 import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
+import '../models/context/planner_context_carrier.dart';
 import '../models/llm/base_llm.dart';
 import '../models/tool/tool_access_snapshot.dart';
 import '../models/tool/tool_definition.dart';
@@ -67,7 +68,9 @@ class AgentPlannerService {
     required List<ChatTurnStep> steps,
     required ChatConfig config,
     required AgentLoopLimits limits,
-    List<ChatMessage>? plannerMessages,
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
   }) async {
     final visibleToolAccess = await _resolveVisibleToolAccess(turn.userInput);
     final visibleTools = visibleToolAccess
@@ -87,11 +90,6 @@ class AgentPlannerService {
       userSystemPrompt: _resolveUserSystemPrompt(config),
       promptLocale: config.promptLocale,
     );
-    final messages = plannerMessages ??
-        transcript
-            .map(_eventToMessage)
-            .whereType<ChatMessage>()
-            .toList(growable: false);
 
     try {
       if (_llm is PlannerRuntimeStreamingCapable) {
@@ -103,7 +101,9 @@ class AgentPlannerService {
         'planner decision start turnId=${turn.id} iteration=${turn.iterationCount} toolCalls=${turn.toolCallCount} transcriptEvents=${transcript.length} stepCount=${steps.length} userInput=${_preview(turn.userInput)}',
       );
       final decision = await _llm.planTurnDecision(
-        messages: messages,
+        carriers: carriers,
+        activeApiStyle: activeApiStyle,
+        currentTurnRunning: currentTurnRunning,
         config: plannerConfig,
         availableTools: plannerToolOptions,
         onRetryScheduled: _onPlannerRetryScheduled,

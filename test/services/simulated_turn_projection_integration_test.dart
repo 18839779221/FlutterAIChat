@@ -13,6 +13,7 @@ import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
@@ -1501,6 +1502,7 @@ TurnHarness _createHarness({
     ),
     turnVerifier: _AlwaysStopVerifier(),
     toolCallService: toolCallService,
+    chatStorage: databaseHelper,
     limits: limits,
   );
 }
@@ -1580,12 +1582,30 @@ class _QueuedDecisionLLM extends BaseLLM {
 
   @override
   Future<ModelTurnDecision?> planTurnDecision({
-    required List<ChatMessage> messages,
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
     required ChatConfig config,
     required List availableTools,
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
-    capturedMessages.add(List<ChatMessage>.unmodifiable(messages));
+    capturedMessages.add(List<ChatMessage>.unmodifiable([
+      for (final c in carriers)
+        if (c is SyntheticCarrier)
+          ChatMessage(
+            text: c.content,
+            role: c.role == SyntheticRole.user
+                ? MessageRole.user
+                : c.role == SyntheticRole.system
+                    ? MessageRole.system
+                    : MessageRole.user,
+          )
+        else if (c is RawAssistantCarrier)
+          ChatMessage(
+            text: (c.rawJson['content'] as String?) ?? '',
+            role: MessageRole.assistant,
+          ),
+    ]));
     if (_decisions.isEmpty) {
       throw StateError('No queued decisions left');
     }

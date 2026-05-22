@@ -14,6 +14,7 @@ import '../models/tool/tool_result.dart';
 import '../repositories/chat_event_repository.dart';
 import '../repositories/chat_turn_repository.dart';
 import '../repositories/chat_turn_step_repository.dart';
+import '../storage/chat_storage.dart';
 import '../utils/logger.dart';
 import 'agent_planner_service.dart';
 import 'chat_service.dart';
@@ -36,6 +37,7 @@ class TurnHarness {
   final DecisionToolCallExecutor _decisionToolCallExecutor;
   final AgentLoopLimits _limits;
   final SessionContextService? _sessionContextService;
+  final ChatStorage _chatStorage;
 
   TurnHarness({
     required AgentPlannerService plannerService,
@@ -45,6 +47,7 @@ class TurnHarness {
     required TranscriptBuilderService transcriptBuilderService,
     required TurnVerifier turnVerifier,
     required ToolCallService toolCallService,
+    required ChatStorage chatStorage,
     SessionContextService? sessionContextService,
     DecisionToolCallExecutor? decisionToolCallExecutor,
     AgentLoopLimits limits = const AgentLoopLimits(),
@@ -55,6 +58,7 @@ class TurnHarness {
         _transcriptBuilderService = transcriptBuilderService,
         _turnVerifier = turnVerifier,
         _toolCallService = toolCallService,
+        _chatStorage = chatStorage,
         _decisionToolCallExecutor = decisionToolCallExecutor ??
             DefaultDecisionToolCallExecutor(
               turnRepository: turnRepository,
@@ -330,21 +334,32 @@ class TurnHarness {
       final steps = _stepRepository == null
           ? <ChatTurnStep>[]
           : await _stepRepository!.listSteps(turnId);
-      final plannerMessages = _sessionContextService == null
-          ? null
-          : await _sessionContextService!.buildPlannerMessages(
-              groupId: currentTurn.groupId,
-              currentTurnId: turnId,
-              currentTurnTranscript: transcript,
-              config: config,
-            );
+      if (_sessionContextService == null) {
+        throw StateError(
+          'SessionContextService is required for carrier-based planner path',
+        );
+      }
+      final carriers = await _sessionContextService!.buildPlannerCarriers(
+        groupId: currentTurn.groupId,
+        currentTurnId: turnId,
+        currentTurnTranscript: transcript,
+        config: config,
+      );
+      final group = await _chatStorage.getGroupById(currentTurn.groupId);
+      if (group == null) {
+        throw StateError(
+          'Group ${currentTurn.groupId} not found while planning turn $turnId',
+        );
+      }
       final decision = await _plannerService.planNextDecision(
             turn: currentTurn,
             transcript: transcript,
             steps: steps,
             config: config,
             limits: _limits,
-            plannerMessages: plannerMessages,
+            carriers: carriers,
+            activeApiStyle: group.lockedProviderStyle,
+            currentTurnRunning: true,
           ) ??
           const ModelTurnDecision(
             toolCalls: [],

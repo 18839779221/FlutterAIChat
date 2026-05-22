@@ -4,6 +4,7 @@ import 'package:ai_chat/models/agent/agent_loop_limits.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/tool/tool_argument_property.dart';
 import 'package:ai_chat/models/tool/tool_argument_schema.dart';
@@ -31,6 +32,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(llm.lastToolNames, contains('fetch_webpage'));
@@ -52,6 +56,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(llm.lastToolNames, contains('web_search'));
@@ -73,6 +80,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(llm.lastToolNames, contains('create_reminder'));
@@ -99,6 +109,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
+        carriers: const [],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
       );
 
       expect(result, isNotNull);
@@ -212,7 +225,9 @@ class _CapturingStructuredPlannerLLM implements BaseLLM {
 
   @override
   Future<ModelTurnDecision?> planTurnDecision({
-    required List<ChatMessage> messages,
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
     required ChatConfig config,
     required List<PlannerToolOption> availableTools,
     void Function(LlmRetryProgress progress)? onRetryScheduled,

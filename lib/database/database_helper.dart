@@ -451,6 +451,23 @@ class DatabaseHelper implements ChatStorage {
     }
   }
 
+  Future<ChatGroup?> getGroupById(int id) async {
+    try {
+      final db = await database;
+      final maps = await db.query(
+        'chat_groups',
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (maps.isEmpty) return null;
+      return ChatGroup.fromMap(maps.first);
+    } catch (e) {
+      Logger.e(_tag, '获取分组失败 id=$id', e);
+      rethrow;
+    }
+  }
+
   Future<ChatGroup?> getLatestGroup() async {
     try {
       final db = await database;

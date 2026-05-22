@@ -248,6 +248,7 @@ class ChatSendLiveTestHarness {
       ),
       turnVerifier: TurnVerifier(),
       toolCallService: toolCallService,
+      chatStorage: databaseHelper,
       sessionContextService: sessionContextService,
     );
 
