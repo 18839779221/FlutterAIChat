@@ -247,7 +247,56 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
     required bool parallelToolCalls,
     LlmRequestOptions requestOptions = const LlmRequestOptions(),
   }) {
-    throw UnimplementedError('Task 12 implements this');
+    final messages = <Map<String, dynamic>>[];
+
+    for (final carrier in carriers) {
+      switch (carrier) {
+        case SyntheticCarrier(role: SyntheticRole.system, :final content):
+          messages.add({'role': 'system', 'content': content});
+
+        case SyntheticCarrier(role: SyntheticRole.user, :final content):
+          messages.add({'role': 'user', 'content': content});
+
+        case SyntheticCarrier(
+              role: SyntheticRole.toolResult,
+              :final toolCallId,
+              :final content,
+            ):
+          messages.add({
+            'role': 'tool',
+            'tool_call_id': toolCallId,
+            'content': content,
+          });
+
+        case RawAssistantCarrier(:final rawJson):
+          // Verbatim splice — this is the whole point of the architecture.
+          messages.add(Map<String, dynamic>.from(rawJson));
+      }
+    }
+
+    final tools = availableTools
+        .map((t) => <String, dynamic>{
+              'type': 'function',
+              'function': {
+                'name': t.name,
+                'description': t.description,
+                'parameters': t.inputSchema,
+              },
+            })
+        .toList(growable: false);
+
+    final includeParallel = tools.isNotEmpty && !_isDeepSeekModel(modelName);
+    return <String, dynamic>{
+      'model': modelName,
+      'messages': messages,
+      if (requestOptions.maxOutputTokens != null)
+        'max_completion_tokens': requestOptions.maxOutputTokens,
+      if (tools.isNotEmpty) ...{
+        'tools': tools,
+        'tool_choice': 'auto',
+      },
+      if (includeParallel) 'parallel_tool_calls': parallelToolCalls,
+    };
   }
 
   bool _isDeepSeekModel(String modelName) {

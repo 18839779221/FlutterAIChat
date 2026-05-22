@@ -1,5 +1,9 @@
+import 'package:ai_chat/models/agent/planner_tool_option.dart';
+import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/llm/adapters/sdk_chat_completions_adapter.dart';
 import 'package:ai_chat/models/llm/streaming_decision_accumulator.dart';
+import 'package:ai_chat/services/chat_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -106,6 +110,99 @@ void main() {
         providerState: {},
       );
       expect(adapter.assembleRawFromStreamingSnapshot(snapshot), isNull);
+    });
+  });
+
+  group('SdkChatCompletionsAdapter.buildPlannerPayloadFromCarriers', () {
+    const adapter = SdkChatCompletionsAdapter();
+
+    test('raw assistant 在 messages 中逐字节相等', () {
+      const raw = {
+        'role': 'assistant',
+        'content': 'Let me search',
+        'reasoning_content': 'think first',
+        'tool_calls': [
+          {
+            'id': 'call_1',
+            'type': 'function',
+            'function': {'name': 'search', 'arguments': '{"q":"x"}'},
+          },
+        ],
+      };
+      final payload = adapter.buildPlannerPayloadFromCarriers(
+        carriers: const [
+          SyntheticCarrier.system('You are an agent.'),
+          SyntheticCarrier.user('please search x'),
+          RawAssistantCarrier(
+            apiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+            rawJson: raw,
+          ),
+          SyntheticCarrier.toolResult(toolCallId: 'call_1', content: 'OK'),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'deepseek-chat',
+        availableTools: const [],
+        parallelToolCalls: false,
+      );
+      final messages = payload['messages'] as List;
+      expect(messages, hasLength(4));
+      expect(messages[0], {'role': 'system', 'content': 'You are an agent.'});
+      expect(messages[1], {'role': 'user', 'content': 'please search x'});
+      expect(messages[2], raw);
+      expect(messages[3], {
+        'role': 'tool',
+        'tool_call_id': 'call_1',
+        'content': 'OK',
+      });
+    });
+
+    test('deepseek 模型不带 parallel_tool_calls 字段', () {
+      final payload = adapter.buildPlannerPayloadFromCarriers(
+        carriers: const [SyntheticCarrier.user('hi')],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'deepseek-chat',
+        availableTools: const [
+          PlannerToolOption(
+            name: 'search',
+            description: 's',
+            inputSchema: {'type': 'object'},
+          ),
+        ],
+        parallelToolCalls: true,
+      );
+      expect(payload.containsKey('parallel_tool_calls'), isFalse);
+      expect(payload['tools'], isA<List>());
+      expect(payload['tool_choice'], 'auto');
+    });
+
+    test('非 deepseek 模型带 parallel_tool_calls 字段', () {
+      final payload = adapter.buildPlannerPayloadFromCarriers(
+        carriers: const [SyntheticCarrier.user('hi')],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'gpt-4o',
+        availableTools: const [
+          PlannerToolOption(
+            name: 'search',
+            description: 's',
+            inputSchema: {'type': 'object'},
+          ),
+        ],
+        parallelToolCalls: true,
+      );
+      expect(payload['parallel_tool_calls'], true);
+    });
+
+    test('no tools → 不带 tools / tool_choice / parallel_tool_calls', () {
+      final payload = adapter.buildPlannerPayloadFromCarriers(
+        carriers: const [SyntheticCarrier.user('hi')],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'gpt-4o',
+        availableTools: const [],
+        parallelToolCalls: true,
+      );
+      expect(payload.containsKey('tools'), isFalse);
+      expect(payload.containsKey('tool_choice'), isFalse);
+      expect(payload.containsKey('parallel_tool_calls'), isFalse);
     });
   });
 }
