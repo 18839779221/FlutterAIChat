@@ -1,4 +1,5 @@
 import '../chat_turn.dart';
+import '../llm/raw_assistant_token_estimator.dart';
 
 /// Role of a synthetic (our-side) carrier.
 ///
@@ -65,10 +66,8 @@ class RawAssistantCarrier extends PlannerContextCarrier {
     required this.rawJson,
   });
 
+  static const _estimator = RawAssistantTokenEstimator();
+
   @override
-  int get estimatedTokens {
-    // Placeholder; Task 2 swaps in RawAssistantTokenEstimator for accuracy.
-    final encoded = rawJson.toString();
-    return encoded.length ~/ 4;
-  }
+  int get estimatedTokens => _estimator.estimate(rawJson);
 }
