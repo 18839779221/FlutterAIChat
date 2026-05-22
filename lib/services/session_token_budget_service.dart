@@ -1,4 +1,5 @@
 import '../models/chat_message.dart';
+import '../models/context/planner_context_carrier.dart';
 import '../models/session/context_compaction_config.dart';
 import '../models/session/model_budget_profile.dart';
 import 'model_budget_registry.dart';
@@ -172,5 +173,9 @@ class SessionTokenBudgetService {
       0,
       (total, message) => total + estimateTextTokens(message.text),
     );
+  }
+
+  int estimateCarriersTokens(List<PlannerContextCarrier> carriers) {
+    return carriers.fold<int>(0, (total, c) => total + c.estimatedTokens);
   }
 }

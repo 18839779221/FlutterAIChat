@@ -4,6 +4,7 @@ import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/session/context_compaction_config.dart';
@@ -1142,6 +1143,193 @@ void main() {
       expect(combined, contains('old-turn-2'));
       expect(combined, contains('old-turn-3'));
       expect(combined, contains('current-turn'));
+
+      await storage.deleteGroup(groupId);
+    });
+
+    test(
+        'buildPlannerCarriers projects assistantTurnSnapshot to RawAssistantCarrier '
+        'and userInteractionResult to toolResult', () async {
+      final storage = DatabaseHelper(
+        databaseName: 'session_context_service_carriers_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(
+          title: 'carriers',
+          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        ),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final eventRepository = ChatEventRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+
+      final pastTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.completed,
+          userInput: 'q',
+        ),
+      );
+      await eventRepository.appendUserMessage(
+        turnId: pastTurnId,
+        groupId: groupId,
+        content: 'q',
+      );
+      await eventRepository.appendAssistantTurnSnapshot(
+        turnId: pastTurnId,
+        groupId: groupId,
+        apiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        rawAssistantMessageJson: const {
+          'role': 'assistant',
+          'content': 'past response',
+          'reasoning_content': 'past reasoning',
+        },
+      );
+
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '继续',
+        ),
+      );
+
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetResolver: (_) => const SessionModelBudget(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw UnimplementedError(),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      );
+
+      final carriers = await service.buildPlannerCarriers(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: [
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '继续',
+          ),
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 2,
+            eventType: ChatEventType.userInteractionResult,
+            role: MessageRole.system,
+            content: 'Android',
+            payloadJson: const {'providerCallId': 'call_ask_1'},
+          ),
+        ],
+        config: ChatConfig(systemPrompt: '你是助手'),
+      );
+
+      final rawCarriers = carriers.whereType<RawAssistantCarrier>().toList();
+      expect(rawCarriers, hasLength(1));
+      expect(rawCarriers.single.rawJson['content'], 'past response');
+      expect(rawCarriers.single.rawJson['reasoning_content'], 'past reasoning');
+
+      final toolResults = carriers
+          .whereType<SyntheticCarrier>()
+          .where((c) => c.role == SyntheticRole.toolResult)
+          .toList();
+      expect(toolResults, hasLength(1));
+      expect(toolResults.single.toolCallId, 'call_ask_1');
+      expect(toolResults.single.content, 'Android');
+
+      await storage.deleteGroup(groupId);
+    });
+
+    test(
+        'buildPlannerCarriers skips UI-only events (textDelta / reasoningDelta / '
+        'assistantPlannerMessage) when no snapshot is present',
+        () async {
+      final storage = DatabaseHelper(
+        databaseName: 'session_context_service_carriers_no_snapshot_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(
+          title: 'carriers-noraw',
+          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        ),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final eventRepository = ChatEventRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+
+      final pastTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.completed,
+          userInput: 'q',
+        ),
+      );
+      await eventRepository.appendUserMessage(
+        turnId: pastTurnId,
+        groupId: groupId,
+        content: 'q',
+      );
+      // No assistantTurnSnapshot — only fragmented UI events.
+      await eventRepository.appendAssistantPlannerMessage(
+        turnId: pastTurnId,
+        groupId: groupId,
+        content: 'fragment only',
+      );
+
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '继续',
+        ),
+      );
+
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetResolver: (_) => const SessionModelBudget(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw UnimplementedError(),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      );
+
+      final carriers = await service.buildPlannerCarriers(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: const [],
+        config: ChatConfig(systemPrompt: 'sys'),
+      );
+
+      // No RawAssistantCarrier for that past turn (no snapshot was written).
+      expect(carriers.whereType<RawAssistantCarrier>(), isEmpty);
+      // But the user message still surfaces as a Synthetic user carrier.
+      final userMessages = carriers
+          .whereType<SyntheticCarrier>()
+          .where((c) => c.role == SyntheticRole.user)
+          .toList();
+      expect(userMessages.any((c) => c.content == 'q'), isTrue);
 
       await storage.deleteGroup(groupId);
     });

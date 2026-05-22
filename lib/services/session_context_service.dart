@@ -2,6 +2,7 @@ import '../models/chat_event.dart';
 import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/context/model_context_item.dart';
+import '../models/context/planner_context_carrier.dart';
 import '../models/session/context_compaction_config.dart';
 import '../models/session/session_context_snapshot.dart';
 import '../repositories/chat_event_repository.dart';
@@ -19,11 +20,13 @@ import 'session_token_budget_service.dart';
 class SessionContextTurnSegment {
   final int turnId;
   final List<ChatMessage> messages;
+  final List<PlannerContextCarrier> carriers;
   final int estimatedTokens;
 
   const SessionContextTurnSegment({
     required this.turnId,
     required this.messages,
+    required this.carriers,
     required this.estimatedTokens,
   });
 }
@@ -128,6 +131,61 @@ class SessionContextService {
       ...state.recentSegments.expand((segment) => segment.messages),
       ...state.currentTurnMessages,
     ];
+  }
+
+  /// Carrier-based replacement for [buildPlannerMessages].
+  ///
+  /// Reuses [buildPlannerContextState] for compaction / budget decisions but
+  /// emits a typed [PlannerContextCarrier] list. Adapters consume this
+  /// list and decide how to materialize each carrier into wire format.
+  Future<List<PlannerContextCarrier>> buildPlannerCarriers({
+    required int groupId,
+    required int currentTurnId,
+    required List<ChatEvent> currentTurnTranscript,
+    required ChatConfig config,
+  }) async {
+    final state = await buildPlannerContextState(
+      groupId: groupId,
+      currentTurnId: currentTurnId,
+      currentTurnTranscript: currentTurnTranscript,
+      config: config,
+    );
+    final carriers = <PlannerContextCarrier>[];
+
+    // (1) runtime user context (system / user messages, our-side synthesized)
+    for (final m in state.runtimeUserContextMessages) {
+      carriers.add(_chatMessageToSyntheticCarrier(m));
+    }
+
+    // (2) compaction snapshot summary (plain text)
+    final snapshot = state.activeSnapshot;
+    if (snapshot != null) {
+      carriers.add(SyntheticCarrier.system(snapshot.summaryText));
+    }
+
+    // (3) recent history segments (already pre-projected into carriers)
+    for (final segment in state.recentSegments) {
+      carriers.addAll(segment.carriers);
+    }
+
+    // (4) current turn transcript
+    carriers.addAll(_eventsToCarriers(currentTurnTranscript));
+
+    return carriers;
+  }
+
+  SyntheticCarrier _chatMessageToSyntheticCarrier(ChatMessage m) {
+    switch (m.role) {
+      case MessageRole.system:
+        return SyntheticCarrier.system(m.text);
+      case MessageRole.user:
+        return SyntheticCarrier.user(m.text);
+      case MessageRole.assistant:
+        // Runtime user-context messages never include assistant role.
+        throw StateError(
+          'assistant role unexpected in runtimeUserContextMessages',
+        );
+    }
   }
 
   Future<SessionContextBuildResult> buildPlannerContextState({
@@ -263,21 +321,98 @@ class SessionContextService {
       if (turnId == null) {
         continue;
       }
-      final messages = _contextProjector.projectEventsToContext(
-        groupedEvents[turnId] ?? const [],
-      );
-      if (messages.isEmpty) {
+      final events = groupedEvents[turnId] ?? const <ChatEvent>[];
+      final messages = _contextProjector.projectEventsToContext(events);
+      final carriers = _eventsToCarriers(events);
+      if (messages.isEmpty && carriers.isEmpty) {
         continue;
       }
+      // Prefer carrier tokens when present (closer to wire reality);
+      // fall back to legacy ChatMessage estimation for empty-snapshot turns.
+      final tokens = carriers.isNotEmpty
+          ? _tokenBudgetService.estimateCarriersTokens(carriers)
+          : _tokenBudgetService.estimateMessagesTokens(messages);
       projected.add(
         SessionContextTurnSegment(
           turnId: turnId,
           messages: messages,
-          estimatedTokens: _tokenBudgetService.estimateMessagesTokens(messages),
+          carriers: carriers,
+          estimatedTokens: tokens,
         ),
       );
     }
     return projected;
+  }
+
+  /// Walks a turn's events and produces the carriers the adapter needs:
+  ///   • `userMessage`            → SyntheticCarrier(user)
+  ///   • `assistantTurnSnapshot`  → RawAssistantCarrier
+  ///   • `userInteractionResult`  → SyntheticCarrier(toolResult)  *if* providerCallId
+  ///   • `toolResult` / `toolError` → SyntheticCarrier(toolResult) *if* providerCallId
+  ///   • Everything else (fragmented assistant events) → skip
+  List<PlannerContextCarrier> _eventsToCarriers(List<ChatEvent> events) {
+    final carriers = <PlannerContextCarrier>[];
+    for (final event in events) {
+      switch (event.eventType) {
+        case ChatEventType.userMessage:
+          final text = (event.content ?? '').trim();
+          if (text.isNotEmpty) {
+            carriers.add(SyntheticCarrier.user(text));
+          }
+
+        case ChatEventType.assistantTurnSnapshot:
+          final payload = event.payloadJson;
+          if (payload == null) break;
+          final apiStyleName = payload['apiStyle']?.toString();
+          final raw = payload['rawAssistantMessage'];
+          if (apiStyleName == null || raw is! Map) break;
+          final style = ChatTurnProviderStyle.values.firstWhere(
+            (e) => e.name == apiStyleName,
+            orElse: () => throw StateError(
+              'unknown apiStyle in assistantTurnSnapshot: $apiStyleName',
+            ),
+          );
+          carriers.add(
+            RawAssistantCarrier(
+              apiStyle: style,
+              rawJson: Map<String, dynamic>.from(raw),
+            ),
+          );
+
+        case ChatEventType.toolResult:
+        case ChatEventType.toolError:
+        case ChatEventType.userInteractionResult:
+          final providerCallId =
+              event.payloadJson?['providerCallId']?.toString().trim();
+          final content = (event.content ?? '').trim();
+          if (providerCallId == null ||
+              providerCallId.isEmpty ||
+              content.isEmpty) {
+            break;
+          }
+          carriers.add(
+            SyntheticCarrier.toolResult(
+              toolCallId: providerCallId,
+              content: content,
+            ),
+          );
+
+        // UI-only events: skip from LLM round-trip.
+        case ChatEventType.assistantPlannerMessage:
+        case ChatEventType.assistantTextDelta:
+        case ChatEventType.assistantTextFinal:
+        case ChatEventType.assistantReasoningDelta:
+        case ChatEventType.assistantToolCall:
+        case ChatEventType.assistantToolConfirmation:
+        case ChatEventType.assistantQuestionPrompt:
+        case ChatEventType.toolExecutionStarted:
+        case ChatEventType.turnStatus:
+        case ChatEventType.finalAnswer:
+        case ChatEventType.error:
+          break;
+      }
+    }
+    return carriers;
   }
 
   List<SessionContextTurnSegment> _selectRecentCompletedTurns({
