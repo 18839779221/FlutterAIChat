@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../../agent/planner_tool_choice.dart';
 import '../../agent/planner_tool_option.dart';
 import '../../chat_message.dart';
@@ -226,14 +228,58 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
   Map<String, dynamic>? extractRawAssistantMessage(
     Map<String, dynamic> responsePayload,
   ) {
-    throw UnimplementedError('Task 8 implements this');
+    if (responsePayload['role'] != 'assistant') return null;
+    final content = responsePayload['content'];
+    if (content is! List || content.isEmpty) return null;
+    return <String, dynamic>{
+      'role': 'assistant',
+      'content': List<dynamic>.from(content),
+    };
   }
 
   @override
   Map<String, dynamic>? assembleRawFromStreamingSnapshot(
     StreamingDecisionAccumulatorSnapshot snapshot,
   ) {
-    throw UnimplementedError('Task 8 implements this');
+    final blocks = <Map<String, dynamic>>[];
+
+    final reasoning = snapshot.reasoning;
+    if (reasoning != null && reasoning.isNotEmpty) {
+      final signature =
+          snapshot.providerState['anthropic_thinking_signature']?.toString() ?? '';
+      blocks.add({
+        'type': 'thinking',
+        'thinking': reasoning,
+        'signature': signature,
+      });
+    }
+
+    final text = snapshot.text;
+    if (text != null && text.isNotEmpty) {
+      blocks.add({'type': 'text', 'text': text});
+    }
+
+    for (final tc in snapshot.toolCalls) {
+      if (tc.id == null || tc.toolName == null) continue;
+      blocks.add({
+        'type': 'tool_use',
+        'id': tc.id,
+        'name': tc.toolName,
+        'input': _safeDecodeArgs(tc.argumentsBuffer),
+      });
+    }
+
+    if (blocks.isEmpty) return null;
+    return {'role': 'assistant', 'content': blocks};
+  }
+
+  Map<String, dynamic> _safeDecodeArgs(String raw) {
+    if (raw.trim().isEmpty) return const {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {}
+    return const {};
   }
 
   @override
