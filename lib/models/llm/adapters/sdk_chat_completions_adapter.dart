@@ -15,7 +15,6 @@ import '../streaming_decision_accumulator.dart';
 import 'adapter_utils.dart';
 import 'api_style_adapter.dart';
 import '../api_protocol_resolver.dart';
-import 'sdk_message_converter.dart';
 
 /// SDK-backed implementation of [ApiStyleAdapter] for the Chat Completions
 /// protocol, powered by `openai_dart`.
@@ -25,11 +24,7 @@ import 'sdk_message_converter.dart';
 /// can miss provider-specific requirements (e.g., DeepSeek's strict
 /// tool_calls message sequencing).
 class SdkChatCompletionsAdapter extends ApiStyleAdapter {
-  const SdkChatCompletionsAdapter({
-    SdkMessageConverter? messageConverter,
-  }) : _messageConverter = messageConverter ?? const SdkMessageConverter();
-
-  final SdkMessageConverter _messageConverter;
+  const SdkChatCompletionsAdapter();
 
   @override
   ApiStyle get style => ApiStyle.chatCompletions;
@@ -54,7 +49,17 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
       messages,
       config.systemPrompt,
     );
-    final sdkMessages = _messageConverter.convert(normalizedMessages);
+    // Simple role mapping for the non-planner chat path. The carrier-based
+    // planner path handles assistant/tool turns separately.
+    final sdkMessages = <oai.ChatMessage>[
+      for (final m in normalizedMessages)
+        if (m.text.trim().isNotEmpty)
+          switch (m.role) {
+            MessageRole.system => oai.ChatMessage.system(m.text),
+            MessageRole.user => oai.ChatMessage.user(m.text),
+            MessageRole.assistant => oai.ChatMessage.assistant(content: m.text),
+          },
+    ];
 
     final request = oai.ChatCompletionCreateRequest(
       model: modelName,
