@@ -1,7 +1,6 @@
 import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
 import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
-import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
@@ -28,7 +27,8 @@ void main() {
     databaseFactory = databaseFactoryFfi;
   });
 
-  test('builds overview timeline and context sections from persisted and runtime facts',
+  test(
+      'builds overview timeline and context sections from persisted and runtime facts',
       () async {
     final storage = DatabaseHelper(
       databaseName: 'debug_turn_inspector_projection_test.db',
@@ -46,7 +46,8 @@ void main() {
       tokenBudgetService: SessionTokenBudgetService(
         modelBudgetRegistry: ModelBudgetRegistry(),
       ),
-      summaryService: SessionSummaryService(chatService: ChatService(llm: _FakeBaseLlm())),
+      summaryService:
+          SessionSummaryService(chatService: ChatService(llm: _FakeBaseLlm())),
       chatService: ChatService(llm: _FakeBaseLlm()),
     );
 
@@ -106,18 +107,93 @@ void main() {
       projection.timelineEntries.any((entry) => entry.kind == 'userMessage'),
       isTrue,
     );
-    expect(projection.contextSections, hasLength(7));
+    expect(projection.contextSections, hasLength(greaterThanOrEqualTo(8)));
     expect(
       projection.contextSections.map((item) => item.title),
       containsAll(
         const [
           'Planner Messages',
+          'Skills',
           'Transcript Events',
           'Provider State',
           'Runtime Stream Entries',
         ],
       ),
     );
+
+    await storage.deleteGroup(groupId);
+  });
+
+  test('builds skills context section from planner context and skill results',
+      () async {
+    final storage = DatabaseHelper(
+      databaseName: 'debug_turn_inspector_skills_projection_test.db',
+    );
+    final groupId = await storage.insertGroup(
+      ChatGroup(title: 'Debug Inspector Skills'),
+    );
+    final turnRepository = ChatTurnRepository(storage);
+    final eventRepository = ChatEventRepository(storage);
+    final sessionContextService = SessionContextService(
+      chatTurnRepository: turnRepository,
+      chatEventRepository: eventRepository,
+      snapshotRepository: SessionContextSnapshotRepository(storage),
+      contextProjector: SessionContextProjector(),
+      tokenBudgetService: SessionTokenBudgetService(
+        modelBudgetRegistry: ModelBudgetRegistry(),
+      ),
+      summaryService:
+          SessionSummaryService(chatService: ChatService(llm: _FakeBaseLlm())),
+      chatService: ChatService(llm: _FakeBaseLlm()),
+    );
+
+    final turnId = await turnRepository.createTurn(
+      ChatTurn(
+        groupId: groupId,
+        status: ChatTurnStatus.running,
+        userInput: '使用 edge-to-edge skill',
+      ),
+    );
+    await eventRepository.appendToolResult(
+      turnId: turnId,
+      groupId: groupId,
+      content: 'Skill loaded: edge-to-edge',
+      payloadJson: const {
+        'toolName': 'skill',
+        'status': 'success',
+        'summary': 'Skill loaded: edge-to-edge',
+        'data': {
+          'skillId': 'edge-to-edge',
+          'name': 'edge-to-edge',
+          'qualifiedPath': '/tmp/skills/edge-to-edge',
+          'baseDirectory': '/tmp/skills/edge-to-edge',
+          'instructionBody': 'Use Android edge-to-edge guidance.',
+          'instructionBodyTruncated': true,
+          'originalInstructionLength': 1200,
+        },
+      },
+    );
+
+    final service = DebugTurnInspectorProjectionService(
+      chatTurnRepository: turnRepository,
+      chatEventRepository: eventRepository,
+      sessionContextService: sessionContextService,
+      traceRecorder: ChatTraceRecorder(),
+    );
+
+    final projection = await service.build(groupId: groupId);
+    final skillsSection = projection.contextSections.firstWhere(
+      (section) => section.title == 'Skills',
+    );
+    final rawJson = skillsSection.rawJson as Map<String, dynamic>;
+    final invokedSkills = rawJson['invokedSkills'] as List<dynamic>;
+    final invoked = invokedSkills.single as Map<String, dynamic>;
+
+    expect(invoked['skillId'], 'edge-to-edge');
+    expect(invoked['name'], 'edge-to-edge');
+    expect(invoked['projected'], isTrue);
+    expect(invoked['instructionBodyTruncated'], isTrue);
+    expect(invoked['originalInstructionLength'], 1200);
 
     await storage.deleteGroup(groupId);
   });

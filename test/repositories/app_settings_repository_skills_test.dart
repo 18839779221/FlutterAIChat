@@ -1,4 +1,5 @@
 import 'package:ai_chat/repositories/app_settings_repository.dart';
+import 'package:ai_chat/models/skill/duplicate_skill_invocation_mode.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -35,6 +36,25 @@ void main() {
       expect(
         await repository.getLatestSkillInstallUrl(),
         'https://github.com/android/skills/tree/main/edge-to-edge',
+      );
+    });
+
+    test('defaults duplicate skill invocation mode to reuse without reload',
+        () async {
+      expect(
+        await repository.getDuplicateSkillInvocationMode(),
+        DuplicateSkillInvocationMode.reuse,
+      );
+    });
+
+    test('persists duplicate skill invocation mode', () async {
+      await repository.saveDuplicateSkillInvocationMode(
+        DuplicateSkillInvocationMode.reload,
+      );
+
+      expect(
+        await repository.getDuplicateSkillInvocationMode(),
+        DuplicateSkillInvocationMode.reload,
       );
     });
   });

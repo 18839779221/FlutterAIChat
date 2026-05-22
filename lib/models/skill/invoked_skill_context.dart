@@ -15,12 +15,20 @@ class InvokedSkillContext {
   /// Full instruction body loaded from the local `SKILL.md` file.
   final String instructionBody;
 
+  /// Whether the planner-visible skill instruction body was shortened.
+  final bool instructionBodyTruncated;
+
+  /// Original instruction body length before planner-visible truncation.
+  final int? originalInstructionLength;
+
   const InvokedSkillContext({
     required this.skillId,
     required this.name,
     required this.qualifiedPath,
     required this.baseDirectory,
     required this.instructionBody,
+    this.instructionBodyTruncated = false,
+    this.originalInstructionLength,
   });
 
   Map<String, dynamic> toJson() {
@@ -30,6 +38,10 @@ class InvokedSkillContext {
       'qualifiedPath': qualifiedPath,
       'baseDirectory': baseDirectory,
       'instructionBody': instructionBody,
+      if (instructionBodyTruncated)
+        'instructionBodyTruncated': instructionBodyTruncated,
+      if (originalInstructionLength != null)
+        'originalInstructionLength': originalInstructionLength,
     };
   }
 }

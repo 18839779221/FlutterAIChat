@@ -47,6 +47,7 @@ app.*.map.json
 # FVM Version Cache
 .fvm/
 .worktrees/
+.claude/
 .superpowers/
 .codex/
 .dart-tool/

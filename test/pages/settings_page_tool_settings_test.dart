@@ -1,4 +1,5 @@
 import 'package:ai_chat/models/tool/tool_policy.dart';
+import 'package:ai_chat/models/skill/duplicate_skill_invocation_mode.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/models/llm/llm_provider_model.dart';
 import 'package:ai_chat/pages/settings_page.dart';
@@ -52,6 +53,53 @@ void main() {
     expect(find.text('fetch_webpage'), findsOneWidget);
     expect(find.text('create_reminder'), findsOneWidget);
     expect(find.text('将可信指令直接放行，降低重复确认。'), findsOneWidget);
+  });
+
+  testWidgets('appearance section renders built-in theme choices', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    SharedPreferences.setMockInitialValues({});
+    final repository = AppSettingsRepository(
+      await SharedPreferences.getInstance(),
+      localDefaultsLoader: () async => const LlmLocalDefaults(
+        defaultProviderId: 'aigocode',
+        defaultModelId: 'gpt-5.4',
+        providers: [
+          LlmProviderConfig(
+            id: 'aigocode',
+            name: 'AIGoCode',
+            apiKey: 'test-key',
+            baseUrl: 'https://example.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-5.4', name: ''),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appSettingsRepositoryProvider.overrideWithValue(repository),
+          skillRuntimeServiceProvider
+              .overrideWithValue(_EmptySkillRuntimeService()),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const SettingsPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('界面偏好'), findsOneWidget);
+    expect(find.text('当前主题'), findsOneWidget);
+    expect(find.text('Claude'), findsAtLeastNWidgets(1));
+    expect(find.text('Olive Paper'), findsOneWidget);
   });
 
   testWidgets('model access section renders compact provider and model pickers', (tester) async {
@@ -331,6 +379,70 @@ void main() {
     );
     expect(find.text('edge-to-edge'), findsOneWidget);
     expect(find.text('Improve Android edge-to-edge handling.'), findsOneWidget);
+    expect(find.text('重复调用时重载 Skill'), findsOneWidget);
+    expect(find.text('关闭时重复调用直接复用已加载结果，不再向用户显示失败。'), findsOneWidget);
+  });
+
+  testWidgets('skills section toggles duplicate invocation reload mode', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    SharedPreferences.setMockInitialValues({});
+    final repository = AppSettingsRepository(
+      await SharedPreferences.getInstance(),
+      localDefaultsLoader: () async => null,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appSettingsRepositoryProvider.overrideWithValue(repository),
+          skillRuntimeServiceProvider.overrideWithValue(
+            _StaticSkillRuntimeService(
+              skills: const [
+                SkillDescriptor(
+                  id: 'edge-to-edge',
+                  name: 'edge-to-edge',
+                  description: 'Improve Android edge-to-edge handling.',
+                  bodyText: '# Workflow\nPrefer Android edge-to-edge guidance.',
+                  skillRootPath: '/tmp/skills/edge-to-edge',
+                  entryFilePath: '/tmp/skills/edge-to-edge/SKILL.md',
+                  sourceType: SkillSourceType.localInstalled,
+                  isEnabled: true,
+                ),
+              ],
+            ),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const SettingsPage(),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final reloadSwitch = find.descendant(
+      of: find.ancestor(
+        of: find.text('重复调用时重载 Skill'),
+        matching: find.byType(SettingsRow),
+      ),
+      matching: find.byType(Switch),
+    );
+
+    expect(
+      await repository.getDuplicateSkillInvocationMode(),
+      DuplicateSkillInvocationMode.reuse,
+    );
+
+    await tester.tap(reloadSwitch);
+    await tester.pumpAndSettle();
+
+    expect(
+      await repository.getDuplicateSkillInvocationMode(),
+      DuplicateSkillInvocationMode.reload,
+    );
   });
 
   testWidgets('disabled skills remain visible in settings for re-enable', (tester) async {

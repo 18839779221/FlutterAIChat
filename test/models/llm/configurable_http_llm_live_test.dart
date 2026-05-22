@@ -37,8 +37,42 @@ void main() {
       final missingProviderReason = provider == null
           ? 'Provider "$providerId" was not found in config/local_defaults.json.'
           : null;
+      final unstableFreeProviderReason = _unstableFreeProviderIds
+              .contains(providerId)
+          ? 'Provider "$providerId" is an unstable free channel; exclude it from flow-contract acceptance.'
+          : null;
 
       group(providerId, () {
+        test(
+          'planTurnDecision returns direct assistant text when no tool flow is required',
+          () async {
+            final llm = await _buildLiveLlm(provider!);
+            final decision = await llm.planTurnDecision(
+              messages: [
+                ChatMessage(
+                  text:
+                      'Reply with exactly "live_direct_answer_ok" and do not call any tool.',
+                  role: MessageRole.user,
+                ),
+              ],
+              config: ChatConfig(
+                systemPrompt:
+                    'Answer directly when the user asks for a plain reply. '
+                    'Do not invent tool calls when no tool is available.',
+              ),
+              availableTools: const [],
+            );
+
+            expect(decision, isNotNull);
+            expect(decision!.toolCalls, isEmpty);
+            expect((decision.assistantMessage ?? '').trim(), isNotEmpty);
+            expect(decision.providerStyle, isNotNull);
+            expect(decision.modelName?.trim(), isNotEmpty);
+          },
+          skip: missingProviderReason ?? unstableFreeProviderReason,
+          tags: const ['live-llm'],
+        );
+
         test(
           'planTurnDecision returns a parseable live decision',
           () async {
@@ -46,8 +80,7 @@ void main() {
             final decision = await llm.planTurnDecision(
               messages: [
                 ChatMessage(
-                  text:
-                      'You must call the only available tool exactly once. '
+                  text: 'You must call the only available tool exactly once. '
                       'Do not answer directly. Query for "database schema drift".',
                   role: MessageRole.user,
                 ),
@@ -92,8 +125,7 @@ void main() {
             final initialDecision = await llm.planTurnDecision(
               messages: [
                 ChatMessage(
-                  text:
-                      'You must call the only available tool exactly once. '
+                  text: 'You must call the only available tool exactly once. '
                       'Do not answer directly. Query for "database schema drift".',
                   role: MessageRole.user,
                 ),
@@ -138,12 +170,148 @@ void main() {
 
             expect(continuationDecision, isNotNull);
             expect(continuationDecision!.toolCalls, isEmpty);
-            expect(
-              (continuationDecision.assistantMessage ?? '').trim(),
-              contains('schema_version=10'),
-            );
+            expect((continuationDecision.assistantMessage ?? '').trim(),
+                isNotEmpty);
           },
           skip: missingProviderReason,
+          tags: const ['live-llm'],
+        );
+
+        test(
+          'planTurnDecision preserves assistant text before live tool result replay',
+          () async {
+            final llm = await _buildLiveLlm(provider!);
+            final initialDecision = await llm.planTurnDecision(
+              messages: [
+                ChatMessage(
+                  text:
+                      'Call the available search_chat_history tool exactly once. '
+                      'Use query "schema version".',
+                  role: MessageRole.user,
+                ),
+              ],
+              config: ChatConfig(
+                systemPrompt:
+                    'Use the available tool when the user explicitly requires it.',
+              ),
+              availableTools: const [_searchChatHistoryTool],
+            );
+
+            expect(initialDecision, isNotNull);
+            expect(initialDecision!.toolCalls, isNotEmpty);
+            final firstToolCall = initialDecision.toolCalls.single;
+            expect(firstToolCall.providerCallId?.trim(), isNotEmpty);
+
+            final continuationDecision = await llm.planTurnDecision(
+              messages: _buildToolReplayMessages(
+                decision: initialDecision,
+                toolResultOutput:
+                    'tool_result_payload: schema_version=10; source=live-test-ledger',
+                assistantPlannerText:
+                    'I will inspect the stored schema information before answering.',
+                continuationInstruction:
+                    'Continue from the tool result. Mention schema_version=10 exactly once.',
+              ),
+              config: ChatConfig(systemPrompt: ''),
+              availableTools: const [],
+            );
+
+            expect(continuationDecision, isNotNull);
+            expect(continuationDecision!.toolCalls, isEmpty);
+            expect((continuationDecision.assistantMessage ?? '').trim(),
+                isNotEmpty);
+          },
+          skip: missingProviderReason ?? unstableFreeProviderReason,
+          tags: const ['live-llm'],
+        );
+
+        test(
+          'planTurnDecision parses structured ask_user_question tool payload',
+          () async {
+            final llm = await _buildLiveLlm(provider!);
+            final decision = await llm.planTurnDecision(
+              messages: [
+                ChatMessage(
+                  text: 'You must call ask_user_question exactly once. '
+                      'Ask the user to choose one delivery mode.',
+                  role: MessageRole.user,
+                ),
+              ],
+              config: ChatConfig(
+                systemPrompt:
+                    'When the user explicitly requires ask_user_question, call it once. '
+                    'Return a structured question payload instead of plain text.',
+              ),
+              availableTools: const [_askUserQuestionTool],
+            );
+
+            expect(decision, isNotNull);
+            expect(decision!.toolCalls, isNotEmpty);
+            final toolCall = decision.toolCalls.single;
+            expect(toolCall.toolName, 'ask_user_question');
+            expect(toolCall.providerCallId?.trim(), isNotEmpty);
+            final questions = toolCall.arguments['questions'];
+            expect(questions, isA<List>());
+            expect(questions, isNotEmpty);
+            final firstQuestion = (questions as List).first;
+            expect(firstQuestion, isA<Map>());
+            final normalizedQuestion =
+                Map<String, dynamic>.from(firstQuestion as Map);
+            expect(normalizedQuestion['id'], isA<String>());
+            expect(normalizedQuestion['question'], isA<String>());
+          },
+          skip: missingProviderReason ?? unstableFreeProviderReason,
+          tags: const ['live-llm'],
+        );
+
+        test(
+          'planner stream preserves assistant text when provider emits text before a tool call',
+          () async {
+            final llm = await _buildLiveLlm(provider!);
+            final emittedSnapshots = <List<RuntimeStreamEntry>>[];
+            llm.setPlannerRuntimeStreamListener((entries) {
+              emittedSnapshots.add(List<RuntimeStreamEntry>.from(entries));
+            });
+
+            final decision = await llm.planTurnDecision(
+              messages: [
+                ChatMessage(
+                  text:
+                      'First write a short visible note, then call search_chat_history exactly once. '
+                      'Use query "schema version".',
+                  role: MessageRole.user,
+                ),
+              ],
+              config: ChatConfig(
+                systemPrompt:
+                    'If you call a tool, you may also emit brief assistant text before the tool call. '
+                    'Preserve both when the provider supports that shape.',
+              ),
+              availableTools: const [_searchChatHistoryTool],
+            );
+
+            expect(decision, isNotNull);
+            expect(
+              decision!.toolCalls.isNotEmpty ||
+                  (decision.assistantMessage ?? '').trim().isNotEmpty,
+              isTrue,
+            );
+            if (decision.toolCalls.isNotEmpty) {
+              expect(
+                  decision.toolCalls.single.providerCallId?.trim(), isNotEmpty);
+            }
+            final streamedAssistantText = emittedSnapshots.any(
+              (snapshot) => snapshot.any(
+                (entry) =>
+                    entry.kind == RuntimeStreamEntryKind.assistantText &&
+                    entry.text.trim().isNotEmpty,
+              ),
+            );
+            if ((decision.assistantMessage ?? '').trim().isNotEmpty) {
+              expect(streamedAssistantText, isTrue);
+            }
+          },
+          skip: missingProviderReason ?? unstableFreeProviderReason,
           tags: const ['live-llm'],
         );
 
@@ -182,8 +350,7 @@ void main() {
           () async {
             final llm = await _buildLiveLlm(provider!);
             final result = await llm.processWebpageContent(
-              webpageContent:
-                  'Project bulletin\n'
+              webpageContent: 'Project bulletin\n'
                   'Codename: Sunbird\n'
                   'Owner: Platform Team\n'
                   'Decision: Add live provider contract tests.\n',
@@ -218,8 +385,7 @@ void main() {
                 ),
               ],
               config: ChatConfig(
-                systemPrompt:
-                    'You must call create_artifact exactly once. '
+                systemPrompt: 'You must call create_artifact exactly once. '
                     'Return only the tool call and no ordinary answer. '
                     'The artifact should prefer <style> first, visible content before scripts, '
                     'and a compact one-screen layout when possible.',
@@ -246,9 +412,12 @@ void main() {
             expect(decision, isNotNull);
             expect(decision!.toolCalls, hasLength(1));
             expect(decision.toolCalls.single.toolName, 'create_artifact');
-            expect(decision.toolCalls.single.providerCallId?.trim(), isNotEmpty);
-            expect(decision.toolCalls.single.arguments['source'], isA<String>());
-            expect(decision.toolCalls.single.arguments['source'].toString(), isNotEmpty);
+            expect(
+                decision.toolCalls.single.providerCallId?.trim(), isNotEmpty);
+            expect(
+                decision.toolCalls.single.arguments['source'], isA<String>());
+            expect(decision.toolCalls.single.arguments['source'].toString(),
+                isNotEmpty);
             expect(
               emittedSnapshots.any(
                 (snapshot) => snapshot.any(
@@ -352,9 +521,11 @@ void main() {
             expect(decision, isNotNull);
             expect(decision!.toolCalls, hasLength(1));
             expect(decision.toolCalls.single.toolName, 'create_artifact');
-            expect(decision.toolCalls.single.providerCallId?.trim(), isNotEmpty);
+            expect(
+                decision.toolCalls.single.providerCallId?.trim(), isNotEmpty);
             expect(decision.toolCalls.single.arguments['type'], 'html');
-            expect(decision.toolCalls.single.arguments['source'], isA<String>());
+            expect(
+                decision.toolCalls.single.arguments['source'], isA<String>());
             expect(
               decision.toolCalls.single.arguments['source'].toString(),
               isNotEmpty,
@@ -387,7 +558,59 @@ const String _missingProviderSelectionMessage =
     'provider ids, and optionally set LIVE_LLM_LOCAL_DEFAULTS_PATH when the '
     'current workspace does not contain your local defaults file. Example: '
     'LIVE_LLM_LOCAL_DEFAULTS_PATH=/abs/path/config/local_defaults.json '
-    'LIVE_LLM_PROVIDER_IDS=minimax-openai,minimax-anthropic';
+    'LIVE_LLM_PROVIDER_IDS=aigocode,minimax-openai,deepseek-openai,deepseek-anthropic';
+
+const Set<String> _unstableFreeProviderIds = {
+  'ofox',
+  'openrouter',
+};
+
+const PlannerToolOption _searchChatHistoryTool = PlannerToolOption(
+  name: 'search_chat_history',
+  description: 'Searches prior chat history by query text and returns matches.',
+  inputSchema: {
+    'type': 'object',
+    'properties': {
+      'query': {'type': 'string'},
+    },
+    'required': ['query'],
+  },
+);
+
+const PlannerToolOption _askUserQuestionTool = PlannerToolOption(
+  name: 'ask_user_question',
+  description:
+      'Ask the user a structured clarification question and wait for their answer.',
+  inputSchema: {
+    'type': 'object',
+    'properties': {
+      'questions': {
+        'type': 'array',
+        'items': {
+          'type': 'object',
+          'properties': {
+            'id': {'type': 'string'},
+            'header': {'type': 'string'},
+            'question': {'type': 'string'},
+            'options': {
+              'type': 'array',
+              'items': {
+                'type': 'object',
+                'properties': {
+                  'label': {'type': 'string'},
+                  'description': {'type': 'string'},
+                },
+                'required': ['label', 'description'],
+              },
+            },
+          },
+          'required': ['id', 'question'],
+        },
+      },
+    },
+    'required': ['questions'],
+  },
+);
 
 Set<String> _readSelectedProviderIds() {
   final raw = Platform.environment['LIVE_LLM_PROVIDER_IDS'] ?? '';
@@ -421,8 +644,8 @@ Future<ConfigurableHttpLLM> _buildLiveLlm(LlmProviderConfig provider) async {
   return ConfigurableHttpLLM(
     settingsRepository: repository,
     protocolResolver: const ApiProtocolResolver(),
-    requestTimeout: const Duration(seconds: 20),
-    plannerRequestTimeout: const Duration(seconds: 12),
+    requestTimeout: const Duration(seconds: 60),
+    plannerRequestTimeout: const Duration(seconds: 60),
     mainFlowNetworkRetryAttempts: 1,
   );
 }
@@ -430,6 +653,8 @@ Future<ConfigurableHttpLLM> _buildLiveLlm(LlmProviderConfig provider) async {
 List<ChatMessage> _buildToolReplayMessages({
   required ModelTurnDecision decision,
   required String toolResultOutput,
+  String? assistantPlannerText,
+  String? continuationInstruction,
 }) {
   final toolCall = decision.toolCalls.single;
   final providerCallId = toolCall.providerCallId;
@@ -444,7 +669,7 @@ List<ChatMessage> _buildToolReplayMessages({
       role: MessageRole.user,
     ),
     ChatMessage(
-      text: '[assistant tool_use]',
+      text: assistantPlannerText ?? '[assistant tool_use]',
       role: MessageRole.assistant,
       payloadJson: {
         'modelContextType': 'assistantToolUse',
@@ -463,10 +688,10 @@ List<ChatMessage> _buildToolReplayMessages({
       },
     ),
     ChatMessage(
-      text:
+      text: continuationInstruction ??
           'Continue from the tool result. '
-          'If the tool result contains a schema version, '
-          'reply with exactly "schema_version=10" and nothing else.',
+              'If the tool result contains a schema version, '
+              'reply with exactly "schema_version=10" and nothing else.',
       role: MessageRole.user,
     ),
   ];

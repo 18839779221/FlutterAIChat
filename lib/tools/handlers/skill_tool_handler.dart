@@ -1,10 +1,15 @@
 import '../../models/chat_message.dart';
+import '../../models/skill/duplicate_skill_invocation_mode.dart';
+import '../../models/skill/skill_descriptor.dart';
 import '../../models/skill/invoked_skill_context.dart';
 import '../../models/tool/localized_tool_text.dart';
 import '../../models/tool/tool_argument_property.dart';
 import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
 import '../../models/tool/tool_result.dart';
+import '../../repositories/app_settings_repository.dart';
+import '../../services/skills/skill_invocation_guard.dart';
+import '../../services/skills/skill_context_formatter.dart';
 import '../../services/skills/skill_runtime_service.dart';
 import '../core/tool_argument_resolution.dart';
 import '../core/tool_execution_context.dart';
@@ -14,9 +19,18 @@ import '../core/tool_handler.dart';
 class SkillToolHandler extends ToolHandler {
   SkillToolHandler({
     required SkillRuntimeService skillRuntimeService,
-  }) : _skillRuntimeService = skillRuntimeService;
+    AppSettingsRepository? settingsRepository,
+    SkillInvocationGuard invocationGuard = const SkillInvocationGuard(),
+    SkillContextFormatter skillContextFormatter = const SkillContextFormatter(),
+  })  : _skillRuntimeService = skillRuntimeService,
+        _settingsRepository = settingsRepository,
+        _invocationGuard = invocationGuard,
+        _skillContextFormatter = skillContextFormatter;
 
   final SkillRuntimeService _skillRuntimeService;
+  final AppSettingsRepository? _settingsRepository;
+  final SkillInvocationGuard _invocationGuard;
+  final SkillContextFormatter _skillContextFormatter;
 
   @override
   ToolDefinition get definition => const ToolDefinition(
@@ -37,14 +51,16 @@ class SkillToolHandler extends ToolHandler {
         argumentSchema: ToolArgumentSchema(
           properties: {
             'skill': ToolArgumentProperty.string(
-              description: 'Skill name or canonical skill identifier to invoke.',
+              description:
+                  'Skill name or canonical skill identifier to invoke.',
               localizedDescription: LocalizedToolText(
                 english: 'Skill name or canonical skill identifier to invoke.',
                 chinese: '要调用的技能名称或规范技能标识。',
               ),
             ),
             'args': ToolArgumentProperty.string(
-              description: 'Optional raw argument string reserved for future skill-specific use.',
+              description:
+                  'Optional raw argument string reserved for future skill-specific use.',
               localizedDescription: LocalizedToolText(
                 english:
                     'Optional raw argument string reserved for future skill-specific use.',
@@ -93,20 +109,64 @@ class SkillToolHandler extends ToolHandler {
         errorMessage: 'skill_not_available',
       );
     }
-
-    final invoked = InvokedSkillContext(
+    if (_invocationGuard.wasSkillInvoked(
+      events: context.currentTurnEvents,
       skillId: descriptor.id,
-      name: descriptor.name,
-      qualifiedPath: descriptor.skillRootPath,
-      baseDirectory: descriptor.skillRootPath,
-      instructionBody: descriptor.bodyText,
-    );
+      skillName: descriptor.name,
+    )) {
+      final mode =
+          await _settingsRepository?.getDuplicateSkillInvocationMode() ??
+              DuplicateSkillInvocationMode.reuse;
+      if (mode == DuplicateSkillInvocationMode.reuse) {
+        return ToolResult(
+          toolName: 'skill',
+          status: ToolExecutionStatus.success,
+          summary: 'Skill reused: ${descriptor.name}',
+          data: {
+            'skillId': descriptor.id,
+            'name': descriptor.name,
+            'duplicateInvocation': true,
+            'reloadPerformed': false,
+          },
+        );
+      }
+
+      final reloaded = _buildInvokedContext(descriptor);
+      return ToolResult(
+        toolName: 'skill',
+        status: ToolExecutionStatus.success,
+        summary: 'Skill reloaded: ${descriptor.name}',
+        data: {
+          ...reloaded.toJson(),
+          'duplicateInvocation': true,
+          'reloadPerformed': true,
+        },
+      );
+    }
+
+    final invoked = _buildInvokedContext(descriptor);
 
     return ToolResult(
       toolName: 'skill',
       status: ToolExecutionStatus.success,
       summary: 'Skill loaded: ${descriptor.name}',
-      data: invoked.toJson(),
+      data: {
+        ...invoked.toJson(),
+        'duplicateInvocation': false,
+        'reloadPerformed': true,
+      },
+    );
+  }
+
+  InvokedSkillContext _buildInvokedContext(SkillDescriptor descriptor) {
+    return _skillContextFormatter.prepareInvokedContext(
+      InvokedSkillContext(
+        skillId: descriptor.id,
+        name: descriptor.name,
+        qualifiedPath: descriptor.skillRootPath,
+        baseDirectory: descriptor.skillRootPath,
+        instructionBody: descriptor.bodyText,
+      ),
     );
   }
 }

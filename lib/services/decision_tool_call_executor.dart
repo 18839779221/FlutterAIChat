@@ -163,8 +163,7 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
         enteredAwaitingUserInteraction = enteredAwaitingUserInteraction ||
             batchSummary.enteredAwaitingUserInteraction;
         hasFailedStep = hasFailedStep || batchSummary.hasFailedStep;
-        shouldStopFurtherExecution =
-            batchSummary.shouldStopFurtherExecution;
+        shouldStopFurtherExecution = batchSummary.shouldStopFurtherExecution;
       } else {
         for (final preparedCall in preparedCalls) {
           var batchHasFailedStep = false;
@@ -199,8 +198,7 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
             turn: turn,
             stepIds: [preparedCall.stepId],
             hasFailedStepHint: batchHasFailedStep,
-            enteredAwaitingConfirmationHint:
-                batchEnteredAwaitingConfirmation,
+            enteredAwaitingConfirmationHint: batchEnteredAwaitingConfirmation,
             enteredAwaitingUserInteractionHint:
                 batchEnteredAwaitingUserInteraction,
           );
@@ -277,13 +275,12 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
     }
 
     final preparedCalls = <_PreparedDecisionToolCall>[];
-    var nextStepIndex =
-        (await _stepRepository!.listSteps(turnId)).fold<int>(
-              0,
-              (maxValue, step) =>
-                  step.stepIndex > maxValue ? step.stepIndex : maxValue,
-            ) +
-            1;
+    var nextStepIndex = (await _stepRepository!.listSteps(turnId)).fold<int>(
+          0,
+          (maxValue, step) =>
+              step.stepIndex > maxValue ? step.stepIndex : maxValue,
+        ) +
+        1;
     for (final toolCall in toolCalls) {
       final stepId = await _stepRepository!.createStep(
         ChatTurnStep(
@@ -379,11 +376,9 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
     bool enteredAwaitingUserInteractionHint = false,
   }) async {
     final refreshedTurn = await _turnRepository.getTurn(turn.id!) ?? turn;
-    final enteredAwaitingConfirmation =
-        enteredAwaitingConfirmationHint ||
+    final enteredAwaitingConfirmation = enteredAwaitingConfirmationHint ||
         refreshedTurn.status == ChatTurnStatus.awaitingToolConfirmation;
-    final enteredAwaitingUserInteraction =
-        enteredAwaitingUserInteractionHint ||
+    final enteredAwaitingUserInteraction = enteredAwaitingUserInteractionHint ||
         refreshedTurn.status == ChatTurnStatus.awaitingUserInteraction;
     final terminalOrStopped = refreshedTurn.status == ChatTurnStatus.failed ||
         refreshedTurn.status == ChatTurnStatus.completed ||
@@ -470,7 +465,8 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
         'toolName': toolCall.toolName,
         'arguments': toolCall.arguments,
         'providerCallId': toolCall.providerCallId,
-        if (providerResponseId != null) 'providerResponseId': providerResponseId,
+        if (providerResponseId != null)
+          'providerResponseId': providerResponseId,
         'status': ToolInvocationStatus.proposed.name,
         'summary': '准备执行工具：$toolDisplayName',
         'requiresConfirmation': false,
@@ -526,7 +522,9 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
         final execution = await _toolCallService.executeToolInvocation(
           groupId: turn.groupId,
           invocation: invocation,
-          onExecutionStarted: ({required invocation, required toolAccess}) async {
+          currentTurnEvents: await _eventRepository.listEventsByTurn(turn.id!),
+          onExecutionStarted: (
+              {required invocation, required toolAccess}) async {
             final toolPayload = _buildToolInvocationPayload(
               invocation: invocation,
               toolAccess: toolAccess,
