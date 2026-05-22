@@ -244,14 +244,50 @@ class ResponsesAdapter extends ApiStyleAdapter {
   Map<String, dynamic>? extractRawAssistantMessage(
     Map<String, dynamic> responsePayload,
   ) {
-    throw UnimplementedError('Task 9 implements this');
+    final output = responsePayload['output'];
+    if (output is! List || output.isEmpty) return null;
+    return {'output': List<dynamic>.from(output)};
   }
 
   @override
   Map<String, dynamic>? assembleRawFromStreamingSnapshot(
     StreamingDecisionAccumulatorSnapshot snapshot,
   ) {
-    throw UnimplementedError('Task 9 implements this');
+    final items = <Map<String, dynamic>>[];
+
+    final reasoning = snapshot.reasoning;
+    if (reasoning != null && reasoning.isNotEmpty) {
+      items.add({
+        'type': 'reasoning',
+        'summary': [
+          {'type': 'summary_text', 'text': reasoning},
+        ],
+      });
+    }
+
+    final text = snapshot.text;
+    if (text != null && text.isNotEmpty) {
+      items.add({
+        'type': 'message',
+        'role': 'assistant',
+        'content': [
+          {'type': 'output_text', 'text': text},
+        ],
+      });
+    }
+
+    for (final tc in snapshot.toolCalls) {
+      if (tc.id == null || tc.toolName == null) continue;
+      items.add({
+        'type': 'function_call',
+        'call_id': tc.id,
+        'name': tc.toolName,
+        'arguments': tc.argumentsBuffer,
+      });
+    }
+
+    if (items.isEmpty) return null;
+    return {'output': items};
   }
 
   @override
