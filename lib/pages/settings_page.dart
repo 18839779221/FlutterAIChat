@@ -351,7 +351,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final model = _currentModel;
     final activeTheme = ref.watch(appThemeControllerProvider);
     final currentGroup = ref.watch(currentGroupProvider);
-    final isProviderLocked = currentGroup?.lockedProviderStyle != null;
+    final isProviderLocked = currentGroup?.id != null;
     return Scaffold(
       appBar: AppBar(
         title: const Text('设置'),
