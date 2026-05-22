@@ -77,8 +77,7 @@ void main() {
 
     container.read(currentGroupProvider.notifier).state = ChatGroup(
       id: 1,
-      title: 'Context Group',
-    );
+      title: 'Context Group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
     container.read(systemPromptProvider.notifier).state = '你是一个助手';
 
     final snapshot = await container.read(contextWindowSnapshotProvider.future);

@@ -34,7 +34,7 @@ void main() {
     final snapshotRepository = SessionContextSnapshotRepository(storage);
     final traceRecorder = ChatTraceRecorder();
     final groupId = await storage.insertGroup(
-      ChatGroup(title: 'Debug Trace Inspector'),
+      ChatGroup(title: 'Debug Trace Inspector', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
     );
     final turnId = await turnRepository.createTurn(
       ChatTurn(

@@ -469,12 +469,11 @@ class ChatSendLiveTestHarness {
       return;
     }
     final groupId = await databaseHelper.insertGroup(
-      ChatGroup(title: 'Headless Live Test'),
+      ChatGroup(title: 'Headless Live Test', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
     );
     container.read(currentGroupProvider.notifier).state = ChatGroup(
       id: groupId,
-      title: 'Headless Live Test',
-    );
+      title: 'Headless Live Test', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
   }
 
   AskUserQuestionResponse _buildFirstOptionResponse(ChatMessage message) {

@@ -116,6 +116,7 @@ class TurnVerifier {
         case ChatEventType.assistantReasoningDelta:
         case ChatEventType.assistantTextDelta:
         case ChatEventType.assistantTextFinal:
+        case ChatEventType.assistantTurnSnapshot:
         case ChatEventType.turnStatus:
         case ChatEventType.finalAnswer:
         case ChatEventType.error:

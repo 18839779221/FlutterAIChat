@@ -176,9 +176,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId = await databaseHelper
-          .insertGroup(ChatGroup(title: 'projection group'));
+          .insertGroup(ChatGroup(title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'projection group');
+          ChatGroup(id: groupId, title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
 
       final turnRepository = ChatTurnRepository(databaseHelper);
       final turnId = await turnRepository.createTurn(
@@ -376,9 +376,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId = await databaseHelper
-          .insertGroup(ChatGroup(title: 'projection group'));
+          .insertGroup(ChatGroup(title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'projection group');
+          ChatGroup(id: groupId, title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
 
       final turnRepository = ChatTurnRepository(databaseHelper);
       final turnId = await turnRepository.createTurn(
@@ -601,9 +601,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId = await databaseHelper
-          .insertGroup(ChatGroup(title: 'projection group'));
+          .insertGroup(ChatGroup(title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'projection group');
+          ChatGroup(id: groupId, title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
 
       final turnRepository = ChatTurnRepository(databaseHelper);
       final turnId = await turnRepository.createTurn(
@@ -761,9 +761,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId = await databaseHelper
-          .insertGroup(ChatGroup(title: 'projection group'));
+          .insertGroup(ChatGroup(title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'projection group');
+          ChatGroup(id: groupId, title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
 
       final turnRepository = ChatTurnRepository(databaseHelper);
       final turnId = await turnRepository.createTurn(
@@ -932,9 +932,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId = await databaseHelper
-          .insertGroup(ChatGroup(title: 'projection group'));
+          .insertGroup(ChatGroup(title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'projection group');
+          ChatGroup(id: groupId, title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
 
       final turnRepository = ChatTurnRepository(databaseHelper);
       final turnId = await turnRepository.createTurn(
@@ -1064,9 +1064,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId = await databaseHelper
-          .insertGroup(ChatGroup(title: 'projection group'));
+          .insertGroup(ChatGroup(title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'projection group');
+          ChatGroup(id: groupId, title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
 
       await container.read(chatControllerProvider).sendMessage('先查数据库版本，再继续');
       await Future<void>.delayed(const Duration(milliseconds: 40));
@@ -1156,9 +1156,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId = await databaseHelper
-          .insertGroup(ChatGroup(title: 'projection group'));
+          .insertGroup(ChatGroup(title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'projection group');
+          ChatGroup(id: groupId, title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
 
       final turnRepository = ChatTurnRepository(databaseHelper);
       final turnId = await turnRepository.createTurn(
@@ -1247,9 +1247,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId = await databaseHelper
-          .insertGroup(ChatGroup(title: 'projection group'));
+          .insertGroup(ChatGroup(title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'projection group');
+          ChatGroup(id: groupId, title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
 
       final turnRepository = ChatTurnRepository(databaseHelper);
       final turnId = await turnRepository.createTurn(
@@ -1371,9 +1371,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId = await databaseHelper
-          .insertGroup(ChatGroup(title: 'projection group'));
+          .insertGroup(ChatGroup(title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'projection group');
+          ChatGroup(id: groupId, title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
 
       final turnRepository = ChatTurnRepository(databaseHelper);
       final eventRepository = ChatEventRepository(databaseHelper);

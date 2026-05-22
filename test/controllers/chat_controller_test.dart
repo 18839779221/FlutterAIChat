@@ -131,7 +131,7 @@ void main() {
       await runCase('deleteGroup', (c) => c.deleteGroup(1));
     });
     test('selectGroup cancels', () async {
-      final group = ChatGroup(id: 1, title: '新对话 1', systemPrompt: '');
+      final group = ChatGroup(id: 1, title: '新对话 1', systemPrompt: '', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
       await runCase('selectGroup', (c) => c.selectGroup(group));
     });
   });

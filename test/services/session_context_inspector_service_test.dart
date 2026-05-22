@@ -71,7 +71,7 @@ void main() {
         databaseName: 'session_context_inspector_service_segments_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Context Inspector'),
+        ChatGroup(title: 'Context Inspector', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -200,7 +200,7 @@ void main() {
         databaseName: 'session_context_inspector_service_compaction_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Context Inspector Compaction'),
+        ChatGroup(title: 'Context Inspector Compaction', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);

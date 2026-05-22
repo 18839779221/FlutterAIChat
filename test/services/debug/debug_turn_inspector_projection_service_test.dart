@@ -34,7 +34,7 @@ void main() {
       databaseName: 'debug_turn_inspector_projection_test.db',
     );
     final groupId = await storage.insertGroup(
-      ChatGroup(title: 'Debug Inspector'),
+      ChatGroup(title: 'Debug Inspector', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
     );
     final turnRepository = ChatTurnRepository(storage);
     final eventRepository = ChatEventRepository(storage);
@@ -130,7 +130,7 @@ void main() {
       databaseName: 'debug_turn_inspector_skills_projection_test.db',
     );
     final groupId = await storage.insertGroup(
-      ChatGroup(title: 'Debug Inspector Skills'),
+      ChatGroup(title: 'Debug Inspector Skills', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
     );
     final turnRepository = ChatTurnRepository(storage);
     final eventRepository = ChatEventRepository(storage);

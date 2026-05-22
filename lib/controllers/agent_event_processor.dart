@@ -230,6 +230,9 @@ class AgentEventProcessor {
           await onFinal(event);
         }
         return;
+      case ChatEventType.assistantTurnSnapshot:
+        // Round-trip-only event; UI processor has no work to do here.
+        return;
     }
   }
 

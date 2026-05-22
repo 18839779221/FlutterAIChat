@@ -1,5 +1,6 @@
 import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
 import 'package:ai_chat/repositories/session_context_snapshot_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,7 +20,7 @@ void main() {
       );
       final repository = SessionContextSnapshotRepository(storage);
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context'),
+        ChatGroup(title: 'Session Context', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
 
       final id = await repository.upsertLatest(
@@ -48,7 +49,7 @@ void main() {
       );
       final repository = SessionContextSnapshotRepository(storage);
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Upsert'),
+        ChatGroup(title: 'Session Context Upsert', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
 
       final firstId = await repository.upsertLatest(

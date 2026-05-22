@@ -1,5 +1,6 @@
 import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/session/session_runtime_marker.dart';
 import 'package:ai_chat/repositories/session_runtime_marker_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,7 +19,7 @@ void main() {
       );
       final repository = SessionRuntimeMarkerRepository(storage);
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Date Aware Session'),
+        ChatGroup(title: 'Date Aware Session', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
 
       await repository.upsertLatest(
