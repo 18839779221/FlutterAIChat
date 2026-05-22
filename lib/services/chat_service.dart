@@ -1,3 +1,4 @@
+import '../models/chat_event.dart';
 import '../models/llm/base_llm.dart';
 import '../models/tool/tool_invocation.dart';
 import 'prompt/prompt_locale.dart';
@@ -40,6 +41,7 @@ class ChatService {
     required ToolInvocation invocation,
     bool trustTool = false,
     String? turnId,
+    List<ChatEvent> currentTurnEvents = const <ChatEvent>[],
     ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
     final toolCallService = _toolCallService;
@@ -53,6 +55,7 @@ class ChatService {
         invocation: invocation,
         trustTool: trustTool,
         turnId: turnId,
+        currentTurnEvents: currentTurnEvents,
         onExecutionStarted: onExecutionStarted,
       );
     } catch (e, stackTrace) {

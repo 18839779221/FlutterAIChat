@@ -1,9 +1,11 @@
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/chat_event.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'chat_send_live_assertions.dart';
 import 'chat_send_live_test_harness.dart';
+import 'scenarios/ask_user_resume_scenario.dart';
 import 'scenarios/news_multi_tool_scenario.dart';
 
 void main() {
@@ -46,6 +48,51 @@ void main() {
         minimumDistinctCallCount: 2,
       );
       expectProviderIdsAligned(state);
+      await harness.dispose();
+    },
+    tags: const ['live-headless-agent'],
+  );
+
+  test(
+    'chat completions ask-user scenario resumes the same turn after structured answers',
+    () async {
+      final harness = await ChatSendLiveTestHarness.bootstrap(
+        providerStyle: ChatTurnProviderStyle.openaiChatCompletions,
+      );
+      final autoRunResult = await harness.runScenarioWithAutoContinuation(
+        buildAskUserResumeScenario(),
+      );
+
+      final waitingState = autoRunResult.firstAwaitingUserInteractionState;
+      expect(waitingState, isNotNull);
+      expectTurnState(
+        waitingState!,
+        expectedStatus: ChatTurnStatus.awaitingUserInteraction,
+      );
+      expectEventTypes(
+        waitingState,
+        includesInOrder: const [
+          ChatEventType.userMessage,
+          ChatEventType.assistantQuestionPrompt,
+        ],
+      );
+
+      final resumedState = autoRunResult.finalState;
+      expectNoPlannerRequestFailure(resumedState);
+      expectTurnState(
+        resumedState,
+        expectedStatus: ChatTurnStatus.completed,
+      );
+      expectEventTypes(
+        resumedState,
+        includesInOrder: const [
+          ChatEventType.assistantQuestionPrompt,
+          ChatEventType.userInteractionResult,
+          ChatEventType.finalAnswer,
+        ],
+      );
+      expectAskUserContinuationCoverage(waitingState, resumedState);
+      expectCompletedAssistantAnswerPersisted(resumedState);
       await harness.dispose();
     },
     tags: const ['live-headless-agent'],

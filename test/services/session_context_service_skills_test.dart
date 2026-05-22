@@ -17,6 +17,9 @@ import 'package:ai_chat/services/session_context_projector.dart';
 import 'package:ai_chat/services/session_context_service.dart';
 import 'package:ai_chat/services/session_summary_service.dart';
 import 'package:ai_chat/services/session_token_budget_service.dart';
+import 'package:ai_chat/services/skills/invoked_skill_reminder_builder.dart';
+import 'package:ai_chat/services/skills/skill_context_formatter.dart';
+import 'package:ai_chat/services/tool_result_context_projector.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -132,7 +135,8 @@ void main() {
         contains('- verify: Run project verification after code changes.'),
       );
 
-      final combined = plannerMessages.map((message) => message.text).join('\n');
+      final combined =
+          plannerMessages.map((message) => message.text).join('\n');
       expect(combined, contains('### Skill: verify'));
       expect(combined, contains('Path: projectSettings:verify'));
       expect(
@@ -294,7 +298,9 @@ void main() {
       await storage.deleteGroup(groupId);
     });
 
-    test('explicit skill reminder userMessage is preserved before real user input', () async {
+    test(
+        'explicit skill reminder userMessage is preserved before real user input',
+        () async {
       final storage = DatabaseHelper(
         databaseName: 'session_context_service_explicit_skill_test.db',
       );
@@ -316,7 +322,8 @@ void main() {
         name: 'verify',
         qualifiedPath: 'projectSettings:verify',
         baseDirectory: '/tmp/skills/verify',
-        instructionBody: 'After code changes, run tests before claiming success.',
+        instructionBody:
+            'After code changes, run tests before claiming success.',
       );
 
       final service = SessionContextService(
@@ -369,11 +376,101 @@ void main() {
         config: ChatConfig(systemPrompt: '你是一个助手'),
       );
 
-      final combined = plannerMessages.map((message) => message.text).join('\n\n');
+      final combined =
+          plannerMessages.map((message) => message.text).join('\n\n');
       final skillIndex = combined.indexOf('### Skill: verify');
       final userIndex = combined.indexOf('请检查这次改动');
       expect(skillIndex, isNonNegative);
       expect(userIndex, greaterThan(skillIndex));
+
+      await storage.deleteGroup(groupId);
+    });
+
+    test('truncates long invoked skill reminders in planner context', () async {
+      final storage = DatabaseHelper(
+        databaseName: 'session_context_service_skill_truncation_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(title: 'Session Context Skill Truncation'),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '继续',
+        ),
+      );
+      final longBody = '${List.filled(120, 'A').join()}tail-sentinel';
+
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: ChatEventRepository(storage),
+        snapshotRepository: SessionContextSnapshotRepository(storage),
+        contextProjector: SessionContextProjector(
+          toolResultContextProjector: const ToolResultContextProjector(
+            invokedSkillReminderBuilder: InvokedSkillReminderBuilder(
+              formatter: SkillContextFormatter(
+                maxInstructionCharacters: 32,
+              ),
+            ),
+          ),
+        ),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetResolver: (_) => const SessionModelBudget(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw UnimplementedError(),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+        runtimeUserContextService: RuntimeUserContextService(
+          nowProvider: () => DateTime(2026, 5, 9, 10, 0),
+          agentsMdProvider: () async => '',
+          platformContextProvider: () => const [],
+          skillCatalogProvider: () async => const [],
+        ),
+      );
+
+      final plannerMessages = await service.buildPlannerMessages(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: [
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 1,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: 'Skill loaded: verify',
+            payloadJson: {
+              'toolName': 'skill',
+              'status': 'success',
+              'summary': 'Skill loaded: verify',
+              'data': {
+                'skillId': 'verify',
+                'name': 'verify',
+                'qualifiedPath': 'projectSettings:verify',
+                'baseDirectory': '/tmp/skills/verify',
+                'instructionBody': longBody,
+              },
+            },
+          ),
+        ],
+        config: ChatConfig(systemPrompt: '你是一个助手'),
+      );
+
+      final combined =
+          plannerMessages.map((message) => message.text).join('\n');
+      expect(combined, contains('### Skill: verify'));
+      expect(combined, contains('Path: projectSettings:verify'));
+      expect(combined,
+          contains('Base directory for this skill: /tmp/skills/verify'));
+      expect(combined, contains('[truncated]'));
+      expect(combined, isNot(contains('tail-sentinel')));
 
       await storage.deleteGroup(groupId);
     });

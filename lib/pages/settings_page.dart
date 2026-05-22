@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/llm/llm_provider_config.dart';
 import '../models/llm/llm_provider_model.dart';
+import '../models/skill/duplicate_skill_invocation_mode.dart';
 import '../models/skill/skill_descriptor.dart';
 import '../models/tool/tool_policy.dart';
 import '../providers/chat_providers.dart';
@@ -15,6 +16,7 @@ import '../widgets/settings/settings_row.dart';
 import '../widgets/settings/settings_segmented_control.dart';
 import '../widgets/settings/skill_install_sheet.dart';
 import 'model_management_page.dart';
+import '../theme/app_theme_controller.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -24,13 +26,14 @@ class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
-  bool _isDarkMode = false;
   bool _autoShowKeyboard = true;
   bool _isLoading = true;
   bool _isTestingModel = false;
   bool _isLoadingSkills = true;
   bool _isInstallingSkill = false;
   ToolExecutionMode _toolExecutionMode = ToolExecutionMode.balanced;
+  DuplicateSkillInvocationMode _duplicateSkillInvocationMode =
+      DuplicateSkillInvocationMode.reuse;
   List<String> _trustedToolNames = const [];
   List<SkillDescriptor> _skills = const [];
   String? _latestSkillInstallUrl;
@@ -49,6 +52,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final providers = await repository.getProviders();
     final selection = await repository.getSelectionState();
     final toolExecutionModeName = await repository.getToolExecutionModeName();
+    final duplicateSkillInvocationMode =
+        await repository.getDuplicateSkillInvocationMode();
     final trustedToolNames = await repository.getTrustedToolNames();
     final latestSkillInstallUrl = await repository.getLatestSkillInstallUrl();
 
@@ -86,6 +91,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       _currentProvider = currentProvider;
       _currentModel = currentModel;
       _toolExecutionMode = _parseToolExecutionMode(toolExecutionModeName);
+      _duplicateSkillInvocationMode = duplicateSkillInvocationMode;
       _trustedToolNames = trustedToolNames.toList()..sort();
       _latestSkillInstallUrl = latestSkillInstallUrl;
       _isLoading = false;
@@ -166,6 +172,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       await repository.disableSkillId(skill.id);
     }
     await _loadSkills();
+  }
+
+  Future<void> _saveDuplicateSkillInvocationMode(bool reload) async {
+    final mode = reload
+        ? DuplicateSkillInvocationMode.reload
+        : DuplicateSkillInvocationMode.reuse;
+    await ref
+        .read(appSettingsRepositoryProvider)
+        .saveDuplicateSkillInvocationMode(mode);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _duplicateSkillInvocationMode = mode;
+    });
   }
 
   Future<void> _openSkillInstallSheet() async {
@@ -320,6 +341,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final radius = Theme.of(context).extension<AppRadius>()!;
     final provider = _currentProvider;
     final model = _currentModel;
+    final activeTheme = ref.watch(appThemeControllerProvider);
     return Scaffold(
       appBar: AppBar(
         title: const Text('设置'),
@@ -469,6 +491,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         ],
                       ),
                       SizedBox(height: spacing.md),
+                      SettingsRow(
+                        title: '重复调用时重载 Skill',
+                        subtitle: _duplicateSkillInvocationMode ==
+                                DuplicateSkillInvocationMode.reload
+                            ? '开启时重复调用会重新读取并加载一遍 skill 内容。'
+                            : '关闭时重复调用直接复用已加载结果，不再向用户显示失败。',
+                        trailing: Switch(
+                          value: _duplicateSkillInvocationMode ==
+                              DuplicateSkillInvocationMode.reload,
+                          onChanged: _saveDuplicateSkillInvocationMode,
+                        ),
+                      ),
+                      SizedBox(height: spacing.md),
                       if (_isLoadingSkills)
                         const Center(child: CircularProgressIndicator())
                       else if (_skills.isEmpty)
@@ -577,18 +612,52 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 SettingsGroupSection(
                   title: '界面偏好',
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SettingsRow(
-                        title: '深色模式',
-                        subtitle: '后续将接入完整浅色 / 深色主题切换。',
-                        trailing: Switch(
-                          value: _isDarkMode,
-                          onChanged: (bool value) {
-                            setState(() {
-                              _isDarkMode = value;
-                            });
-                          },
+                        title: '当前主题',
+                        subtitle: activeTheme.displayName,
+                        trailing: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: spacing.sm,
+                            vertical: spacing.xs,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colors.workflowRunning,
+                            borderRadius: BorderRadius.circular(radius.pill),
+                          ),
+                          child: const Text(
+                            '当前',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ),
+                      ),
+                      SizedBox(height: spacing.md),
+                      Text(
+                        '主题作为一等公民管理。当前提供 Claude 与 Olive Paper 两套主题，后续可以继续扩展。',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: colors.secondaryText,
+                              height: 1.4,
+                            ),
+                      ),
+                      SizedBox(height: spacing.md),
+                      Wrap(
+                        spacing: spacing.sm,
+                        runSpacing: spacing.sm,
+                        children: [
+                          for (final theme in AppThemeSpec.builtInThemes())
+                            _ThemeCard(
+                              title: theme.displayName,
+                              selected: theme.id == activeTheme.id,
+                              onTap: () => ref
+                                  .read(appThemeControllerProvider.notifier)
+                                  .setTheme(theme.id),
+                            ),
+                        ],
                       ),
                       Divider(color: colors.divider, height: spacing.md * 2),
                       SettingsRow(
@@ -621,6 +690,63 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
               ],
             ),
+    );
+  }
+}
+
+class _ThemeCard extends StatelessWidget {
+  const _ThemeCard({
+    required this.title,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String title;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final radius = Theme.of(context).extension<AppRadius>()!;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(radius.lg),
+      child: Container(
+        width: 132,
+        padding: EdgeInsets.all(spacing.md),
+        decoration: BoxDecoration(
+          color: selected ? colors.assistantSurface : colors.chatBackground,
+          borderRadius: BorderRadius.circular(radius.lg),
+          border: Border.all(
+            color: selected ? colors.workflowRunning : colors.divider,
+            width: selected ? 1.2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                color: colors.primaryText,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            SizedBox(height: spacing.xxs),
+            Text(
+              selected ? '已启用' : '点击切换',
+              style: TextStyle(
+                color: colors.secondaryText,
+                fontSize: 11,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_turn.dart';
-import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -131,11 +130,14 @@ void main() {
       final harness = await ChatSendLiveTestHarness.bootstrap(
         providerStyle: ChatTurnProviderStyle.anthropicMessages,
       );
-      await harness.runScenario(buildAskUserResumeScenario());
+      final autoRunResult = await harness.runScenarioWithAutoContinuation(
+        buildAskUserResumeScenario(),
+      );
 
-      final waitingState = await harness.snapshotState();
+      final waitingState = autoRunResult.firstAwaitingUserInteractionState;
+      expect(waitingState, isNotNull);
       expectTurnState(
-        waitingState,
+        waitingState!,
         expectedStatus: ChatTurnStatus.awaitingUserInteraction,
       );
       expectEventTypes(
@@ -146,23 +148,7 @@ void main() {
         ],
       );
 
-      final promptMessage = harness.activeAskUserQuestionMessage();
-      expect(promptMessage, isNotNull);
-
-      await harness.submitQuestionAnswers(
-        message: promptMessage!,
-        response: AskUserQuestionResponse.fromJson(const {
-          'answersByQuestionId': {
-            'storage_layer': 'SQLite',
-          },
-          'selectedOptionLabelsByQuestionId': {
-            'storage_layer': ['SQLite'],
-          },
-          'freeTextAnswersByQuestionId': {},
-        }),
-      );
-
-      final resumedState = await harness.snapshotState();
+      final resumedState = autoRunResult.finalState;
       expectNoPlannerRequestFailure(resumedState);
       expectTurnState(
         resumedState,
@@ -225,10 +211,13 @@ void main() {
         },
       );
 
-      await harness.runScenario(buildRealWorkspaceFileOpsScenario());
-      final waitingState = await harness.snapshotState();
+      final autoRunResult = await harness.runScenarioWithAutoContinuation(
+        buildRealWorkspaceFileOpsScenario(),
+      );
+      final waitingState = autoRunResult.firstAwaitingToolConfirmationState;
+      expect(waitingState, isNotNull);
       expectTurnState(
-        waitingState,
+        waitingState!,
         expectedStatus: ChatTurnStatus.awaitingToolConfirmation,
       );
       expectEventTypes(
@@ -239,15 +228,7 @@ void main() {
         ],
       );
 
-      final pendingConfirmation = harness.activePendingToolConfirmation();
-      expect(pendingConfirmation, isNotNull);
-
-      await harness.confirmToolInvocation(
-        message: pendingConfirmation!.message,
-        trustTool: true,
-      );
-
-      final resumedState = await harness.snapshotState();
+      final resumedState = autoRunResult.finalState;
       expectNoPlannerRequestFailure(resumedState);
       expectTurnState(
         resumedState,

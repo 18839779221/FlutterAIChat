@@ -18,6 +18,8 @@ import 'package:ai_chat/services/prompt/prompt_builder_service.dart';
 import 'package:ai_chat/services/prompt/prompt_stage.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/session_context_service.dart';
+import 'package:ai_chat/services/tool_result_context_projector.dart';
+import 'package:ai_chat/models/tool/tool_result.dart';
 
 class DebugTurnInspectorProjectionService {
   DebugTurnInspectorProjectionService({
@@ -26,7 +28,8 @@ class DebugTurnInspectorProjectionService {
     required SessionContextService sessionContextService,
     required ChatTraceRecorder traceRecorder,
     RuntimeAssistantDraft? runtimeAssistantDraft,
-    List<RuntimeStreamEntry> runtimeStreamEntries = const <RuntimeStreamEntry>[],
+    List<RuntimeStreamEntry> runtimeStreamEntries =
+        const <RuntimeStreamEntry>[],
     List<ToolPresentationEvent> toolPresentationEvents =
         const <ToolPresentationEvent>[],
     ChatSendPhase? sendPhase,
@@ -65,8 +68,7 @@ class DebugTurnInspectorProjectionService {
     int? selectedTurnId,
   }) async {
     final turns = await _chatTurnRepository.getTurnsByGroup(groupId);
-    final sortedTurns = [...turns]
-      ..sort((left, right) {
+    final sortedTurns = [...turns]..sort((left, right) {
         final leftUpdated = left.updatedAt;
         final rightUpdated = right.updatedAt;
         final updatedOrder = rightUpdated.compareTo(leftUpdated);
@@ -92,9 +94,12 @@ class DebugTurnInspectorProjectionService {
         (turnOptions.isEmpty ? null : turnOptions.first.turnId);
     final activeTurn = effectiveSelectedTurnId == null
         ? null
-        : turns.where((turn) => turn.id == effectiveSelectedTurnId).toList(
+        : turns
+            .where((turn) => turn.id == effectiveSelectedTurnId)
+            .toList(
               growable: false,
-            ).firstOrNull;
+            )
+            .firstOrNull;
     final transcript = effectiveSelectedTurnId == null
         ? const <ChatEvent>[]
         : await _chatEventRepository.listEventsByTurn(effectiveSelectedTurnId);
@@ -229,8 +234,7 @@ class DebugTurnInspectorProjectionService {
       for (final event in _traceRecorder.eventsForTurn(traceTurnId)) {
         entries.add(
           DebugTurnTimelineEntry(
-            id:
-                'trace-$traceTurnId-${event.timestamp.microsecondsSinceEpoch}-${event.stage.name}',
+            id: 'trace-$traceTurnId-${event.timestamp.microsecondsSinceEpoch}-${event.stage.name}',
             timestamp: event.timestamp,
             kind: 'trace.${event.stage.name}.${event.status.name}',
             title: event.stage.name,
@@ -287,6 +291,10 @@ class DebugTurnInspectorProjectionService {
               .toList(growable: false),
         },
       ),
+      _buildSkillsSection(
+        plannerMessages: plannerMessages,
+        transcript: transcript,
+      ),
       DebugTurnInspectorContextSection(
         id: 'transcript-events',
         title: 'Transcript Events',
@@ -303,7 +311,8 @@ class DebugTurnInspectorProjectionService {
                   'role': event.role?.name,
                   'status': event.status,
                   'content': event.content,
-                  if (event.payloadJson != null) 'payloadJson': event.payloadJson,
+                  if (event.payloadJson != null)
+                    'payloadJson': event.payloadJson,
                   'createdAt': event.createdAt.toIso8601String(),
                 },
               )
@@ -397,6 +406,70 @@ class DebugTurnInspectorProjectionService {
         },
       ),
     ];
+  }
+
+  DebugTurnInspectorContextSection _buildSkillsSection({
+    required List<ChatMessage> plannerMessages,
+    required List<ChatEvent> transcript,
+  }) {
+    final availableSkillLines = <String>[];
+    for (final message in plannerMessages) {
+      final text = message.text;
+      if (!text.contains(
+        'The following skills are available for use with the Skill tool:',
+      )) {
+        continue;
+      }
+      availableSkillLines.addAll(
+        text
+            .split('\n')
+            .map((line) => line.trim())
+            .where((line) => line.startsWith('- '))
+            .toList(growable: false),
+      );
+    }
+
+    const projector = ToolResultContextProjector();
+    final invokedSkills = <Map<String, dynamic>>[];
+    for (final event in transcript) {
+      if (event.eventType != ChatEventType.toolResult) {
+        continue;
+      }
+      final payload = event.payloadJson;
+      if (payload == null ||
+          payload['toolName']?.toString().trim() != 'skill') {
+        continue;
+      }
+      final data = payload['data'] is Map
+          ? Map<String, dynamic>.from(payload['data'] as Map<dynamic, dynamic>)
+          : <String, dynamic>{};
+      final result = ToolResult.fromJson(payload);
+      final projectedText = projector.projectToContextText(result);
+      invokedSkills.add({
+        'skillId': data['skillId'],
+        'name': data['name'],
+        'status': payload['status'],
+        'qualifiedPath': data['qualifiedPath'],
+        'baseDirectory': data['baseDirectory'],
+        'instructionBodyTruncated': data['instructionBodyTruncated'] == true,
+        'originalInstructionLength': data['originalInstructionLength'],
+        'projected': projectedText != null && projectedText.trim().isNotEmpty,
+        if (payload['errorMessage'] != null)
+          'errorMessage': payload['errorMessage'],
+      });
+    }
+
+    return DebugTurnInspectorContextSection(
+      id: 'skills',
+      title: 'Skills',
+      summary:
+          '${availableSkillLines.length} available, ${invokedSkills.length} invoked',
+      defaultExpanded: false,
+      rawJson: {
+        'availableSkills': availableSkillLines,
+        'invokedSkills': invokedSkills,
+      },
+    );
   }
 
   DebugTimelineSeverity _severityForEvent(ChatEvent event) {

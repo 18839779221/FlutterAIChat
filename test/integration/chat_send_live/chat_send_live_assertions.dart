@@ -425,3 +425,24 @@ void expectAnyToolErrorWithProviderCallId(
     reason: 'Expected failed step to remain marked as failed.',
   );
 }
+
+void expectCompletedAssistantAnswerPersisted(
+  ChatSendLiveStateSnapshot state,
+) {
+  final answerMessage = state.messages.lastWhere(
+    (message) =>
+        message.isAssistant &&
+        message.contentType == MessageContentType.plainText &&
+        message.status == MessageStatus.completed &&
+        message.text.trim().isNotEmpty,
+    orElse: () => throw TestFailure(
+      'Expected a completed assistant plain-text answer message.',
+    ),
+  );
+
+  expect(
+    answerMessage.text.trim(),
+    isNotEmpty,
+    reason: 'Expected final assistant answer text to be persisted.',
+  );
+}

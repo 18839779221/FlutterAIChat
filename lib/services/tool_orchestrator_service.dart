@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../models/chat_event.dart';
 import '../models/chat_message.dart';
 import '../models/tool/tool_access_snapshot.dart';
 import '../models/tool/tool_definition.dart';
@@ -39,6 +40,7 @@ class ToolOrchestratorService {
     required ToolInvocation invocation,
     bool trustTool = false,
     String? turnId,
+    List<ChatEvent> currentTurnEvents = const <ChatEvent>[],
     ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
     if (trustTool) {
@@ -168,6 +170,7 @@ class ToolOrchestratorService {
       toolName: invocation.toolName,
       arguments: normalizedArguments.normalizedArguments,
       history: const <ChatMessage>[],
+      currentTurnEvents: currentTurnEvents,
       now: DateTime.now(),
       hostAdapters: _hostAdapters,
     );

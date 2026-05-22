@@ -9,7 +9,6 @@ import 'package:ai_chat/models/agent/model_tool_call.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
 import 'package:ai_chat/models/agent/stop_verification_result.dart';
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
-import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -170,7 +169,7 @@ void main() {
         planner: planner,
         toolCallService: toolCallService,
       );
-      final container = _createContainer(
+      final container = await _createContainer(
         databaseHelper: databaseHelper,
         harness: harness,
       );
@@ -370,7 +369,7 @@ void main() {
         planner: planner,
         toolCallService: toolCallService,
       );
-      final container = _createContainer(
+      final container = await _createContainer(
         databaseHelper: databaseHelper,
         harness: harness,
       );
@@ -425,18 +424,22 @@ void main() {
           );
 
       expect(container.read(activePendingToolConfirmationProvider), isNull);
-      final resolvedProjection = container.read(chatTimelineProjectionProvider);
       expect(
-        resolvedProjection.assistantBlocks.any(
-          (block) =>
-              block.workflowSteps?.any(
-                (step) =>
-                    step.toolName == 'create_reminder' &&
-                    step.status == ToolWorkflowStepStatus.completed &&
-                    step.summary == '已创建提醒：交周报',
-              ) ??
-              false,
-        ),
+        container.read(messagesProvider).any(
+              (message) =>
+                  message.contentType == MessageContentType.toolResult &&
+                  message.payloadJson?['toolName'] == 'create_reminder' &&
+                  message.text == '已创建提醒：交周报',
+            ),
+        isTrue,
+      );
+      expect(
+        container.read(chatTimelineProjectionProvider).assistantBlocks.any(
+              (block) =>
+                  block.type == AssistantTurnBlockType.toolResultSummary &&
+                  block.toolResult?.toolName == 'create_reminder' &&
+                  block.toolResult?.status == ToolExecutionStatus.success,
+            ),
         isTrue,
       );
       expect(
@@ -591,7 +594,7 @@ void main() {
         planner: planner,
         toolCallService: toolCallService,
       );
-      final container = _createContainer(
+      final container = await _createContainer(
         databaseHelper: databaseHelper,
         harness: harness,
       );
@@ -751,7 +754,7 @@ void main() {
         toolCallService: toolCallService,
         limits: const AgentLoopLimits(maxIterations: 2),
       );
-      final container = _createContainer(
+      final container = await _createContainer(
         databaseHelper: databaseHelper,
         harness: harness,
       );
@@ -922,7 +925,7 @@ void main() {
         planner: planner,
         toolCallService: toolCallService,
       );
-      final container = _createContainer(
+      final container = await _createContainer(
         databaseHelper: databaseHelper,
         harness: harness,
       );
@@ -988,7 +991,8 @@ void main() {
           ChatTurnStatus.completed);
     });
 
-    test('chat send flow projects visible failure for planner_no_terminal_decision',
+    test(
+        'chat send flow projects visible failure for planner_no_terminal_decision',
         () async {
       final databaseHelper = _createTestDatabaseHelper();
       final toolPolicyService = await _createToolPolicyService();
@@ -1053,7 +1057,7 @@ void main() {
         planner: planner,
         toolCallService: toolCallService,
       );
-      final container = _createContainer(
+      final container = await _createContainer(
         databaseHelper: databaseHelper,
         harness: harness,
       );
@@ -1145,7 +1149,7 @@ void main() {
         planner: planner,
         toolCallService: toolCallService,
       );
-      final container = _createContainer(
+      final container = await _createContainer(
         databaseHelper: databaseHelper,
         harness: harness,
       );
@@ -1184,8 +1188,7 @@ void main() {
       expect(
         assistantMessages.any(
           (message) =>
-              message.reasoningContent ==
-                  '先确认这一步需要用户授权，再进入工具执行。' &&
+              message.reasoningContent == '先确认这一步需要用户授权，再进入工具执行。' &&
               message.payloadJson?['reasoningScope'] == 'tool_use',
         ),
         isTrue,
@@ -1196,8 +1199,7 @@ void main() {
         projection.assistantBlocks.any(
           (block) =>
               block.type == AssistantTurnBlockType.analysis &&
-              block.reasoningText ==
-                  '先确认这一步需要用户授权，再进入工具执行。' &&
+              block.reasoningText == '先确认这一步需要用户授权，再进入工具执行。' &&
               block.payload?['reasoningScope'] == 'tool_use',
         ),
         isTrue,
@@ -1238,7 +1240,7 @@ void main() {
         planner: planner,
         toolCallService: toolCallService,
       );
-      final container = _createContainer(
+      final container = await _createContainer(
         databaseHelper: databaseHelper,
         harness: harness,
       );
@@ -1282,6 +1284,145 @@ void main() {
       );
       expect((await turnRepository.getTurn(turnId))!.status,
           ChatTurnStatus.completed);
+    });
+
+    test('skill tool result is visible to the next planner iteration',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final toolPolicyService = await _createToolPolicyService();
+      final queuedLlm = _QueuedDecisionLLM([
+        const ModelTurnDecision(
+          toolCalls: [
+            ModelToolCall(
+              toolName: 'skill',
+              arguments: {'skill': 'edge-to-edge'},
+              sequence: 0,
+            ),
+          ],
+          assistantMessage: null,
+          diagnosticCode: 'planner_action_call_tool',
+          providerState: {'response_id': 'resp_skill_1'},
+          isTerminal: false,
+        ),
+        const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: '我会按 Android edge-to-edge 指南处理。',
+          diagnosticCode: 'planner_action_respond',
+          providerState: {'response_id': 'resp_final_skill'},
+          isTerminal: true,
+        ),
+      ]);
+      const skillDefinition = ToolDefinition(
+        name: 'skill',
+        title: 'Skill',
+        descriptionForModel: 'Load an installed skill.',
+        argumentSchema: ToolArgumentSchema(
+          properties: {
+            'skill': ToolArgumentProperty.string(
+              description: 'Skill name.',
+            ),
+          },
+          required: ['skill'],
+        ),
+      );
+      final planner = AgentPlannerService(
+        llm: queuedLlm,
+        availableTools: const [skillDefinition],
+        toolPolicyService: toolPolicyService,
+      );
+      final toolCallService = _QueuedToolCallService(
+        chatStorage: databaseHelper,
+        definitions: const {'skill': skillDefinition},
+        queuedResultsByTool: {
+          'skill': Queue.of([
+            const ToolPreparationResult(
+              toolInvocation: ToolInvocation(
+                toolName: 'skill',
+                arguments: {'skill': 'edge-to-edge'},
+                status: ToolInvocationStatus.running,
+                summary: '正在执行工具：Skill',
+                requiresConfirmation: false,
+              ),
+              toolResult: ToolResult(
+                toolName: 'skill',
+                status: ToolExecutionStatus.success,
+                summary: 'Skill loaded: edge-to-edge',
+                data: {
+                  'skillId': 'edge-to-edge',
+                  'name': 'edge-to-edge',
+                  'qualifiedPath': '/tmp/skills/edge-to-edge',
+                  'baseDirectory': '/tmp/skills/edge-to-edge',
+                  'instructionBody': 'Use Android edge-to-edge guidance.',
+                },
+              ),
+            ),
+          ]),
+        },
+      );
+      final harness = _createHarness(
+        databaseHelper: databaseHelper,
+        planner: planner,
+        toolCallService: toolCallService,
+      );
+      final container = await _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId = await databaseHelper
+          .insertGroup(ChatGroup(title: 'projection group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'projection group');
+
+      final turnRepository = ChatTurnRepository(databaseHelper);
+      final eventRepository = ChatEventRepository(databaseHelper);
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '启用 edge-to-edge skill 后继续。',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+
+      await _consumeEventStream(
+        container: container,
+        groupId: groupId,
+        traceTurnId: 'trace-skill-projection',
+        agentTurnId: turnId,
+        stream: harness.runTurn(
+          turn: turn,
+          config: ChatConfig(systemPrompt: ''),
+        ),
+      );
+
+      final transcript = await eventRepository.listEventsByTurn(turnId);
+      expect(
+        transcript.any(
+          (event) =>
+              event.eventType == ChatEventType.toolResult &&
+              event.payloadJson?['toolName'] == 'skill',
+        ),
+        isTrue,
+      );
+      expect(queuedLlm.capturedMessages, hasLength(greaterThanOrEqualTo(2)));
+      final secondPlannerContext = queuedLlm.capturedMessages[1]
+          .map((message) => message.text)
+          .join('\n');
+      expect(secondPlannerContext, contains('### Skill: edge-to-edge'));
+      expect(
+        secondPlannerContext,
+        contains('Base directory for this skill: /tmp/skills/edge-to-edge'),
+      );
+      expect(
+        container.read(messagesProvider).any(
+              (message) =>
+                  message.role == MessageRole.assistant &&
+                  message.text == '我会按 Android edge-to-edge 指南处理。',
+            ),
+        isTrue,
+      );
     });
   });
 }
@@ -1364,13 +1505,21 @@ TurnHarness _createHarness({
   );
 }
 
-ProviderContainer _createContainer({
+Future<ProviderContainer> _createContainer({
   required DatabaseHelper databaseHelper,
   required TurnHarness harness,
-}) {
+}) async {
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
+  final settingsRepository = AppSettingsRepository(
+    preferences,
+    localDefaultsLoader: () async => null,
+  );
   return ProviderContainer(
     overrides: [
       databaseProvider.overrideWith((ref) => databaseHelper),
+      sharedPreferencesProvider.overrideWith((ref) => preferences),
+      appSettingsRepositoryProvider.overrideWith((ref) => settingsRepository),
       turnHarnessProvider.overrideWith((ref) => harness),
       chatServiceProvider
           .overrideWith((ref) => ChatService(llm: _NoopBaseLLM())),
@@ -1421,6 +1570,7 @@ class _QueuedDecisionLLM extends BaseLLM {
       : _decisions = Queue.of(decisions);
 
   final Queue<ModelTurnDecision> _decisions;
+  final List<List<ChatMessage>> capturedMessages = [];
 
   @override
   Map<String, dynamic> get config => const {};
@@ -1435,6 +1585,7 @@ class _QueuedDecisionLLM extends BaseLLM {
     required List availableTools,
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
+    capturedMessages.add(List<ChatMessage>.unmodifiable(messages));
     if (_decisions.isEmpty) {
       throw StateError('No queued decisions left');
     }
@@ -1470,6 +1621,7 @@ class _QueuedToolCallService extends ToolCallService {
     required ToolInvocation invocation,
     bool trustTool = false,
     String? turnId,
+    List<ChatEvent> currentTurnEvents = const <ChatEvent>[],
     ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
     final queue = _queuedResultsByTool[invocation.toolName];

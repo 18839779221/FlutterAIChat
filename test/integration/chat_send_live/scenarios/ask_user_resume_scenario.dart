@@ -5,12 +5,9 @@ ScenarioCase buildAskUserResumeScenario() {
   return const ScenarioCase(
     id: 'ask_user_resume',
     title: 'Ask user resume continuation',
-    userMessage: '你现在不能自行决定我的偏好，也不要直接在普通文本里提问。'
-        '必须先调用 ask_user_question 工具，发起一个单选问题，'
-        '问题 id 固定为 `storage_layer`，问题内容是“你希望我后续按哪种本地存储方案继续？”，'
-        '并提供两个选项：`SQLite` 和 `Hive`。'
-        '在我回答前，不要调用任何其他工具，也不要直接给结论。'
-        '等我回答后，不要再次提问，不要调用其他工具，只用一句中文确认我的选择并结束当前 turn。',
+    userMessage: '我准备继续做本地存储这块，但还没决定后面按 SQLite 还是 Hive 往下走。'
+        '如果这会影响你下一步怎么继续，请先问我一个单选问题让我选，'
+        '我答完以后你再接着往下说，不用展开成长篇解释。',
     providerTargets: [
       ProviderMatrixTarget(
         style: ChatTurnProviderStyle.anthropicMessages,

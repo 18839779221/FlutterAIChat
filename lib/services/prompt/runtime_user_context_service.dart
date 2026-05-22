@@ -3,11 +3,13 @@ import 'package:flutter/widgets.dart';
 
 import '../../models/skill/skill_catalog_entry.dart';
 import '../../models/prompt/runtime_user_context_snapshot.dart';
+import '../skills/skill_context_formatter.dart';
 
 typedef RuntimeNowProvider = DateTime Function();
 typedef AgentsMdProvider = Future<String> Function();
 typedef RuntimePlatformContextProvider = List<String> Function();
-typedef RuntimeSkillCatalogProvider = Future<List<SkillCatalogEntry>> Function();
+typedef RuntimeSkillCatalogProvider = Future<List<SkillCatalogEntry>>
+    Function();
 
 class RuntimeUserContextService {
   RuntimeUserContextService({
@@ -15,17 +17,20 @@ class RuntimeUserContextService {
     AgentsMdProvider? agentsMdProvider,
     RuntimePlatformContextProvider? platformContextProvider,
     RuntimeSkillCatalogProvider? skillCatalogProvider,
+    SkillContextFormatter skillContextFormatter = const SkillContextFormatter(),
   })  : _nowProvider = nowProvider ?? DateTime.now,
         _agentsMdProvider = agentsMdProvider ?? _defaultAgentsMdProvider,
         _platformContextProvider =
             platformContextProvider ?? _defaultPlatformContextProvider,
         _skillCatalogProvider =
-            skillCatalogProvider ?? _defaultSkillCatalogProvider;
+            skillCatalogProvider ?? _defaultSkillCatalogProvider,
+        _skillContextFormatter = skillContextFormatter;
 
   final RuntimeNowProvider _nowProvider;
   final AgentsMdProvider _agentsMdProvider;
   final RuntimePlatformContextProvider _platformContextProvider;
   final RuntimeSkillCatalogProvider _skillCatalogProvider;
+  final SkillContextFormatter _skillContextFormatter;
 
   Future<RuntimeUserContextSnapshot> buildSnapshot() async {
     final now = _nowProvider();
@@ -35,7 +40,7 @@ class RuntimeUserContextService {
       currentDateText: "Today's date is ${_formatIsoDate(now)}.",
       agentsMdText: (await _agentsMdProvider()).trim(),
       skillsSectionText:
-          skillCatalog.isNotEmpty ? _buildSkillsListSection(skillCatalog) : '',
+          _skillContextFormatter.formatCatalogReminder(skillCatalog),
       additionalSections: [
         if (platformSections.isNotEmpty)
           '# runtimePlatform\n${platformSections.join('\n')}',
@@ -100,7 +105,8 @@ class RuntimeUserContextService {
       }
       final logicalWidth = view.physicalSize.width / view.devicePixelRatio;
       final logicalHeight = view.physicalSize.height / view.devicePixelRatio;
-      final shortestSide = logicalWidth < logicalHeight ? logicalWidth : logicalHeight;
+      final shortestSide =
+          logicalWidth < logicalHeight ? logicalWidth : logicalHeight;
       if (shortestSide >= 600) {
         return 'tablet';
       }
@@ -139,16 +145,5 @@ class RuntimeUserContextService {
       return 'Unknown';
     }
     return months[month - 1];
-  }
-
-  static String _buildSkillsListSection(List<SkillCatalogEntry> skills) {
-    final lines = <String>[
-      'The following skills are available for use with the Skill tool:',
-      '',
-    ];
-    for (final skill in skills) {
-      lines.add('- ${skill.name}: ${skill.description}');
-    }
-    return lines.join('\n');
   }
 }

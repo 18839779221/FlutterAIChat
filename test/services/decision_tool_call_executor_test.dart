@@ -67,7 +67,8 @@ void main() {
           .executeDecisionToolCalls(
             turn: turn,
             decision: ModelTurnDecision(
-              toolCalls: _readCalls(['a.txt', 'b.txt', 'c.txt', 'd.txt', 'e.txt']),
+              toolCalls:
+                  _readCalls(['a.txt', 'b.txt', 'c.txt', 'd.txt', 'e.txt']),
               assistantMessage: null,
               providerState: const {'response_id': 'resp_parallel'},
               isTerminal: false,
@@ -146,8 +147,7 @@ void main() {
           .toList();
 
       final summary = updates.last.summary!;
-      expect(toolCallService.executedKeys,
-          ['ok-a.txt', 'bad.txt', 'ok-c.txt']);
+      expect(toolCallService.executedKeys, ['ok-a.txt', 'bad.txt', 'ok-c.txt']);
       expect(summary.executedToolCount, 3);
       expect(summary.hasFailedStep, isTrue);
       expect(summary.shouldStopFurtherExecution, isTrue);
@@ -164,7 +164,8 @@ void main() {
           .where((update) => update.event != null)
           .map((update) => update.event!.eventType)
           .toList();
-      expect(eventTypes.where((type) => type == ChatEventType.toolResult).length,
+      expect(
+          eventTypes.where((type) => type == ChatEventType.toolResult).length,
           2);
       expect(eventTypes.where((type) => type == ChatEventType.toolError).length,
           1);
@@ -244,7 +245,9 @@ void main() {
         {'resp_parallel_calls'},
       );
       expect(
-        toolCallEvents.map((event) => event.payloadJson?['providerCallId']).toSet(),
+        toolCallEvents
+            .map((event) => event.payloadJson?['providerCallId'])
+            .toSet(),
         {'call_alpha', 'call_beta'},
       );
     });
@@ -309,7 +312,8 @@ void main() {
           .where((event) => event.eventType == ChatEventType.assistantToolCall)
           .toList(growable: false);
       final runningEvents = eventRepository.events
-          .where((event) => event.eventType == ChatEventType.toolExecutionStarted)
+          .where(
+              (event) => event.eventType == ChatEventType.toolExecutionStarted)
           .toList(growable: false);
       final toolResultEvents = eventRepository.events
           .where((event) => event.eventType == ChatEventType.toolResult)
@@ -326,10 +330,12 @@ void main() {
         'call_alpha',
       );
       expect(toolResultEvents, hasLength(1));
-      expect(toolResultEvents.single.payloadJson?['providerCallId'], 'call_alpha');
+      expect(
+          toolResultEvents.single.payloadJson?['providerCallId'], 'call_alpha');
     });
 
-    test('emits tool execution started once even when service reports pre-start',
+    test(
+        'emits tool execution started once even when service reports pre-start',
         () async {
       final turnRepository = _InMemoryChatTurnRepository();
       final stepRepository = _InMemoryChatTurnStepRepository();
@@ -385,7 +391,8 @@ void main() {
       expect(startedEvents, hasLength(1));
     });
 
-    test('keeps write tools isolated between concurrent read batches', () async {
+    test('keeps write tools isolated between concurrent read batches',
+        () async {
       final turnRepository = _InMemoryChatTurnRepository();
       final stepRepository = _InMemoryChatTurnStepRepository();
       final turnId = await turnRepository.createTurn(
@@ -468,10 +475,10 @@ void main() {
             consecutiveFailures: 0,
           )
           .listen(
-        collected.add,
-        onError: done.completeError,
-        onDone: done.complete,
-      );
+            collected.add,
+            onError: done.completeError,
+            onDone: done.complete,
+          );
 
       await Future<void>.delayed(const Duration(milliseconds: 10));
       expect(toolCallService.startedKeys, ['read-a.txt', 'read-b.txt']);
@@ -676,6 +683,7 @@ class _TrackingToolCallService extends ToolCallService {
     required ToolInvocation invocation,
     bool trustTool = false,
     String? turnId,
+    List<ChatEvent> currentTurnEvents = const <ChatEvent>[],
     ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
     final key =
@@ -768,13 +776,15 @@ class _InMemoryChatTurnRepository extends ChatTurnRepository {
   @override
   Future<void> markAwaitingToolConfirmation(int turnId) async {
     final turn = turns[turnId]!;
-    turns[turnId] = turn.copyWith(status: ChatTurnStatus.awaitingToolConfirmation);
+    turns[turnId] =
+        turn.copyWith(status: ChatTurnStatus.awaitingToolConfirmation);
   }
 
   @override
   Future<void> markAwaitingUserInteraction(int turnId) async {
     final turn = turns[turnId]!;
-    turns[turnId] = turn.copyWith(status: ChatTurnStatus.awaitingUserInteraction);
+    turns[turnId] =
+        turn.copyWith(status: ChatTurnStatus.awaitingUserInteraction);
   }
 
   @override
