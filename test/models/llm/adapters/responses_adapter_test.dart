@@ -133,36 +133,6 @@ void main() {
     });
   });
 
-  group('ResponsesAdapter.buildPlannerPayload', () {
-    test('keeps transcript input and emits tools', () {
-      final payload = adapter.buildPlannerPayload(
-        messages: [ChatMessage(text: 'q', role: MessageRole.user)],
-        config: ChatConfig(systemPrompt: ''),
-        modelName: 'gpt-x',
-        availableTools: const [
-          PlannerToolOption(
-            name: 'search',
-            description: 'd',
-            inputSchema: {'type': 'object'},
-          ),
-        ],
-        parallelToolCalls: true,
-      );
-      expect(payload['store'], false);
-      expect(payload['tool_choice'], 'auto');
-      expect((payload['tools'] as List).first, {
-        'type': 'function',
-        'name': 'search',
-        'description': 'd',
-        'parameters': {'type': 'object'},
-      });
-      final input = payload['input'] as List<dynamic>;
-      expect(input.length, 1);
-      expect(input[0]['role'], 'user');
-      expect(input[0]['content'][0], {'type': 'input_text', 'text': 'q'});
-    });
-  });
-
   group('ResponsesAdapter.parsePlannerChoice', () {
     test('parses function_call from output array', () {
       final choice = adapter.parsePlannerChoice({

@@ -48,39 +48,6 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
   }
 
   @override
-  Map<String, dynamic> buildPlannerPayload({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required String modelName,
-    required List<PlannerToolOption> availableTools,
-    required bool parallelToolCalls,
-    LlmRequestOptions requestOptions = const LlmRequestOptions(),
-  }) {
-    final payload = _buildMessagesPayload(
-      messages: messages,
-      config: config,
-      modelName: modelName,
-      stream: false,
-      requestOptions: requestOptions,
-    );
-    final tools = availableTools
-        .map(
-          (tool) => {
-            'name': tool.name,
-            'description': tool.description,
-            'input_schema': tool.inputSchema,
-          },
-        )
-        .toList(growable: false);
-    if (tools.isNotEmpty) {
-      payload['tools'] = tools;
-      payload['tool_choice'] = {'type': 'auto'};
-    }
-    _applyCacheHints(payload, requestOptions.cache);
-    return payload;
-  }
-
-  @override
   PlannerToolChoice? parsePlannerChoice(Map<String, dynamic> payload) {
     final content = payload['content'];
     if (content is! List) {

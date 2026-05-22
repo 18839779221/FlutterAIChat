@@ -35,16 +35,6 @@ abstract class ApiStyleAdapter {
     LlmRequestOptions requestOptions = const LlmRequestOptions(),
   });
 
-  /// Build the structured-planner payload used by `planTurnDecision`.
-  Map<String, dynamic> buildPlannerPayload({
-    required List<ChatMessage> messages,
-    required ChatConfig config,
-    required String modelName,
-    required List<PlannerToolOption> availableTools,
-    required bool parallelToolCalls,
-    LlmRequestOptions requestOptions = const LlmRequestOptions(),
-  });
-
   /// Parse a structured planner response into a [PlannerToolChoice], or null
   /// if the response isn't decodable.
   PlannerToolChoice? parsePlannerChoice(Map<String, dynamic> payload);

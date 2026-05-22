@@ -997,8 +997,20 @@ class ConfigurableHttpLLM
       messageCount: messages.length,
       messages: messages,
     );
-    final payload = adapter.buildPlannerPayload(
-      messages: messages,
+    // Side-model tasks (summary / webpage processing) have no provider
+    // round-trip history — every message is our-side synthetic. Wrap as
+    // SyntheticCarrier and use the unified carrier-based payload builder.
+    final sideCarriers = <PlannerContextCarrier>[
+      for (final m in messages)
+        if (m.text.trim().isNotEmpty)
+          switch (m.role) {
+            MessageRole.system => SyntheticCarrier.system(m.text),
+            MessageRole.user => SyntheticCarrier.user(m.text),
+            MessageRole.assistant => SyntheticCarrier.user(m.text),
+          },
+    ];
+    final payload = adapter.buildPlannerPayloadFromCarriers(
+      carriers: sideCarriers,
       config: config,
       modelName: modelName,
       availableTools: const [],
