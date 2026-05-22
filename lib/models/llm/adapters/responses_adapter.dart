@@ -299,6 +299,61 @@ class ResponsesAdapter extends ApiStyleAdapter {
     required bool parallelToolCalls,
     LlmRequestOptions requestOptions = const LlmRequestOptions(),
   }) {
-    throw UnimplementedError('Task 14 implements this');
+    String? instructions;
+    final input = <Map<String, dynamic>>[];
+
+    for (final carrier in carriers) {
+      switch (carrier) {
+        case SyntheticCarrier(role: SyntheticRole.system, :final content):
+          instructions =
+              instructions == null ? content : '$instructions\n\n$content';
+
+        case SyntheticCarrier(role: SyntheticRole.user, :final content):
+          input.add({
+            'type': 'message',
+            'role': 'user',
+            'content': [
+              {'type': 'input_text', 'text': content},
+            ],
+          });
+
+        case SyntheticCarrier(
+              role: SyntheticRole.toolResult,
+              :final toolCallId,
+              :final content,
+            ):
+          input.add({
+            'type': 'function_call_output',
+            'call_id': toolCallId,
+            'output': content,
+          });
+
+        case RawAssistantCarrier(:final rawJson):
+          final outputs = rawJson['output'];
+          if (outputs is List) {
+            for (final item in outputs) {
+              if (item is Map) {
+                input.add(Map<String, dynamic>.from(item));
+              }
+            }
+          }
+      }
+    }
+
+    final tools = availableTools
+        .map((t) => <String, dynamic>{
+              'type': 'function',
+              'name': t.name,
+              'description': t.description,
+              'parameters': t.inputSchema,
+            })
+        .toList(growable: false);
+
+    return <String, dynamic>{
+      'model': modelName,
+      if (instructions != null) 'instructions': instructions,
+      'input': input,
+      if (tools.isNotEmpty) 'tools': tools,
+    };
   }
 }

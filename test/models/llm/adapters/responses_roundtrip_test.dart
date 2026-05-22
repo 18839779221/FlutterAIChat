@@ -1,5 +1,9 @@
+import 'package:ai_chat/models/agent/planner_tool_option.dart';
+import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/llm/adapters/responses_adapter.dart';
 import 'package:ai_chat/models/llm/streaming_decision_accumulator.dart';
+import 'package:ai_chat/services/chat_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -81,6 +85,75 @@ void main() {
         ),
       );
       expect(raw, isNull);
+    });
+  });
+
+  group('ResponsesAdapter.buildPlannerPayloadFromCarriers', () {
+    const adapter = ResponsesAdapter();
+
+    test('system → instructions; user → input_text; raw.output → 直接注入 input', () {
+      const raw = {
+        'output': [
+          {
+            'type': 'message',
+            'role': 'assistant',
+            'content': [
+              {'type': 'output_text', 'text': 'Let me search'},
+            ],
+          },
+          {
+            'type': 'function_call',
+            'call_id': 'call_1',
+            'name': 'search',
+            'arguments': '{"q":"x"}',
+          },
+        ],
+      };
+      final payload = adapter.buildPlannerPayloadFromCarriers(
+        carriers: const [
+          SyntheticCarrier.system('agent'),
+          SyntheticCarrier.user('please'),
+          RawAssistantCarrier(
+            apiStyle: ChatTurnProviderStyle.openaiResponses,
+            rawJson: raw,
+          ),
+          SyntheticCarrier.toolResult(toolCallId: 'call_1', content: 'OK'),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'gpt-5',
+        availableTools: const [],
+        parallelToolCalls: false,
+      );
+      expect(payload['instructions'], 'agent');
+      final input = payload['input'] as List;
+      expect(input, hasLength(4));
+      expect(input[0]['type'], 'message');
+      expect(input[0]['role'], 'user');
+      expect(input[1], raw['output']![0]);
+      expect(input[2], raw['output']![1]);
+      expect(input[3]['type'], 'function_call_output');
+      expect(input[3]['call_id'], 'call_1');
+      expect(input[3]['output'], 'OK');
+    });
+
+    test('tools 转 Responses 形 function 描述', () {
+      final payload = adapter.buildPlannerPayloadFromCarriers(
+        carriers: const [SyntheticCarrier.user('hi')],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'gpt-5',
+        availableTools: const [
+          PlannerToolOption(
+            name: 'search',
+            description: 'web search',
+            inputSchema: {'type': 'object'},
+          ),
+        ],
+        parallelToolCalls: false,
+      );
+      final tools = payload['tools'] as List;
+      expect(tools.first['type'], 'function');
+      expect(tools.first['name'], 'search');
+      expect(tools.first['parameters'], {'type': 'object'});
     });
   });
 }
