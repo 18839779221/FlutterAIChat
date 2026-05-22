@@ -402,6 +402,16 @@ class ConfigurableHttpLLM
         );
         return null;
       }
+      // Capture provider raw assistant message for round-trip replay.
+      final rawAssistantMessage = adapter.extractRawAssistantMessage(decoded);
+      final decisionWithRaw = rawAssistantMessage == null
+          ? decision
+          : decision.copyWith(
+              providerState: {
+                ...decision.providerState,
+                'raw_assistant_message': rawAssistantMessage,
+              },
+            );
       _emitRequestDone(
         traceContext,
         totalMs: _elapsedMilliseconds(traceContext.startedAt),
@@ -418,7 +428,7 @@ class ConfigurableHttpLLM
           'native planner multi-tool parsed calls: ${decision.toolCalls.map((call) => '${call.toolName}:${jsonEncode(call.arguments)}').join(' | ')}',
         );
       }
-      return decision.copyWith(
+      return decisionWithRaw.copyWith(
         providerStyle: _toProviderStyle(apiStyle),
         modelName: modelName,
       );
@@ -578,8 +588,21 @@ class ConfigurableHttpLLM
       _tag,
       'native planner streaming snapshot: ${_summarizeStreamingPlannerAttempt(debugSnapshot)}',
     );
+    final builtDecision = accumulator.buildDecision();
+    // Capture provider raw assistant message for round-trip replay.
+    final rawAssistantMessage = builtDecision == null
+        ? null
+        : adapter.assembleRawFromStreamingSnapshot(accumulator.currentSnapshot());
+    final decisionWithRaw = (builtDecision == null || rawAssistantMessage == null)
+        ? builtDecision
+        : builtDecision.copyWith(
+            providerState: {
+              ...builtDecision.providerState,
+              'raw_assistant_message': rawAssistantMessage,
+            },
+          );
     return _StreamingPlannerAttemptResult.completed(
-      accumulator.buildDecision(),
+      decisionWithRaw,
       debugSnapshot: debugSnapshot,
       runtimeSnapshots: accumulator.runtimeSnapshots(
         turnId: 'planner_runtime',
