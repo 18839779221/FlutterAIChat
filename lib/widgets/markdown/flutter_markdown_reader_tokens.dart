@@ -13,11 +13,22 @@ class FlutterMarkdownReaderTokens {
     final theme = Theme.of(context);
     final colors = theme.extension<AppThemeSpec>()!;
     final bodyColor = theme.colorScheme.onSurface;
+    final isClaude = colors.id == 'claude';
     final secondaryColor = bodyColor.withValues(alpha: 0.82);
     final quoteBorderColor = colors.workflowRunning.withValues(alpha: 0.18);
     final quoteBackgroundColor = colors.assistantSurface.withValues(
       alpha: theme.brightness == Brightness.dark ? 0.28 : 0.18,
     );
+    final codeBlockBackgroundColor = isClaude
+        ? const Color(0xFFE6E2D6)
+        : colors.toolWorkflowSurface.withValues(
+            alpha: theme.brightness == Brightness.dark ? 0.62 : 0.38,
+          );
+    final codePanelBackgroundColor = isClaude
+        ? const Color(0xFFF0EBDD)
+        : colors.assistantSurface.withValues(
+            alpha: theme.brightness == Brightness.dark ? 0.42 : 0.58,
+          );
 
     return MarkdownReaderStyles(
       body: AppTypography.documentStyle(
@@ -50,6 +61,8 @@ class FlutterMarkdownReaderTokens {
       ),
       quoteBackgroundColor: quoteBackgroundColor,
       quoteBorderColor: quoteBorderColor,
+      codeBlockBackgroundColor: codeBlockBackgroundColor,
+      codePanelBackgroundColor: codePanelBackgroundColor,
     );
   }
 }
@@ -77,6 +90,12 @@ class MarkdownReaderStyles {
   /// Left border tone for quiet blockquote side notes.
   final Color quoteBorderColor;
 
+  /// Inner monospace canvas for fenced code blocks.
+  final Color codeBlockBackgroundColor;
+
+  /// Outer container background for fenced code blocks.
+  final Color codePanelBackgroundColor;
+
   const MarkdownReaderStyles({
     required this.body,
     required this.secondaryBody,
@@ -85,5 +104,7 @@ class MarkdownReaderStyles {
     required this.h3,
     required this.quoteBackgroundColor,
     required this.quoteBorderColor,
+    required this.codeBlockBackgroundColor,
+    required this.codePanelBackgroundColor,
   });
 }

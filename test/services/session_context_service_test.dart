@@ -947,6 +947,118 @@ void main() {
     });
 
     test(
+        'buildPlannerCarriers keeps current-turn chat-completions tool snapshot paired with tool result carrier',
+        () async {
+      final storage = DatabaseHelper(
+        databaseName: 'session_context_service_chat_completions_pairing_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(
+          title: 'chat completions pairing',
+          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        ),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final eventRepository = ChatEventRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '继续',
+        ),
+      );
+
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetResolver: (_) => const SessionModelBudget(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw UnimplementedError(),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      );
+
+      final carriers = await service.buildPlannerCarriers(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: [
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '继续',
+          ),
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 2,
+            eventType: ChatEventType.assistantTurnSnapshot,
+            role: MessageRole.assistant,
+            payloadJson: const {
+              'apiStyle': 'openaiChatCompletions',
+              'rawAssistantMessage': {
+                'role': 'assistant',
+                'content': '',
+                'tool_calls': [
+                  {
+                    'id': 'call_ask_1',
+                    'type': 'function',
+                    'function': {
+                      'name': 'ask_user_question',
+                      'arguments':
+                          '{"questions":[{"id":"platform","question":"平台?"}]}',
+                    },
+                  },
+                ],
+              },
+            },
+          ),
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 3,
+            eventType: ChatEventType.userInteractionResult,
+            role: MessageRole.system,
+            content: 'User answered AskUserQuestion:\n- 平台: Android',
+            payloadJson: const {'providerCallId': 'call_ask_1'},
+          ),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+      );
+
+      final rawCarriers = carriers.whereType<RawAssistantCarrier>().toList();
+      expect(rawCarriers, hasLength(1));
+      expect(rawCarriers.single.apiStyle,
+          ChatTurnProviderStyle.openaiChatCompletions);
+      expect(
+        (rawCarriers.single.rawJson['tool_calls'] as List).single['id'],
+        'call_ask_1',
+      );
+
+      final toolResults = carriers
+          .whereType<SyntheticCarrier>()
+          .where((c) => c.role == SyntheticRole.toolResult)
+          .toList();
+      expect(toolResults, hasLength(1));
+      expect(toolResults.single.toolCallId, 'call_ask_1');
+      expect(toolResults.single.content, contains('平台: Android'));
+
+      await storage.deleteGroup(groupId);
+    });
+
+    test(
         'buildPlannerCarriers does not use UI summary when tool payload is empty',
         () async {
       final storage = DatabaseHelper(

@@ -10,12 +10,16 @@ class TechnicalContentSurface extends StatelessWidget {
   final Widget child;
   final Widget? header;
   final EdgeInsetsGeometry? contentPadding;
+  final Color? backgroundColor;
+  final Color? headerBackgroundColor;
 
   const TechnicalContentSurface({
     super.key,
     required this.child,
     this.header,
     this.contentPadding,
+    this.backgroundColor,
+    this.headerBackgroundColor,
   });
 
   @override
@@ -27,7 +31,7 @@ class TechnicalContentSurface extends StatelessWidget {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: colors.assistantSurface.withValues(alpha: 0.5),
+        color: backgroundColor ?? colors.assistantSurface.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(radius.md),
       ),
       clipBehavior: Clip.antiAlias,
@@ -44,7 +48,8 @@ class TechnicalContentSurface extends StatelessWidget {
                 spacing.xxs + 1,
               ),
               decoration: BoxDecoration(
-                color: colors.toolWorkflowSurface.withValues(alpha: 0.32),
+                color: headerBackgroundColor ??
+                    colors.toolWorkflowSurface.withValues(alpha: 0.32),
                 border: Border(
                   bottom: BorderSide(
                     color: colors.divider.withValues(alpha: 0.08),
