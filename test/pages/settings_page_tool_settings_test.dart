@@ -367,6 +367,75 @@ void main() {
     expect(find.text('当前会话已锁定 provider，新建会话方可切换'), findsNothing);
   });
 
+  testWidgets(
+      'switching provider updates draft group locked provider style before first send',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    SharedPreferences.setMockInitialValues({});
+    final repository = AppSettingsRepository(
+      await SharedPreferences.getInstance(),
+      localDefaultsLoader: () async => const LlmLocalDefaults(
+        defaultProviderId: 'responses',
+        defaultModelId: 'gpt-5.4',
+        providers: [
+          LlmProviderConfig(
+            id: 'responses',
+            name: 'Responses',
+            apiKey: 'test-key',
+            baseUrl: 'https://example.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-5.4', name: ''),
+            ],
+          ),
+          LlmProviderConfig(
+            id: 'chat',
+            name: 'Chat Completions',
+            apiKey: 'test-key-2',
+            baseUrl: 'https://api.openai.com/chat/completions',
+            models: [
+              LlmProviderModel(id: 'gpt-4o', name: ''),
+            ],
+          ),
+        ],
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        appSettingsRepositoryProvider.overrideWithValue(repository),
+        skillRuntimeServiceProvider
+            .overrideWithValue(_EmptySkillRuntimeService()),
+      ],
+    );
+    container.read(currentGroupProvider.notifier).state = ChatGroup(
+      title: 'Draft',
+      lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const SettingsPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('选择提供方'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Chat Completions').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      container.read(currentGroupProvider)?.lockedProviderStyle,
+      ChatTurnProviderStyle.openaiChatCompletions,
+    );
+  });
+
   testWidgets('model picker supports scrolling for long model lists', (
     tester,
   ) async {
