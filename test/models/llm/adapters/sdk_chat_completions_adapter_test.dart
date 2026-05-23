@@ -1,5 +1,7 @@
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/llm/adapters/sdk_chat_completions_adapter.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -125,6 +127,58 @@ void main() {
       expect(decision.toolCalls.first.arguments, {'query': 'deepseek'});
       expect(decision.assistantMessage, 'I will search');
       expect(decision.isTerminal, isFalse);
+    });
+  });
+
+  group('SdkChatCompletionsAdapter.buildPlannerPayloadFromCarriers', () {
+    late SdkChatCompletionsAdapter adapter;
+
+    setUp(() {
+      adapter = SdkChatCompletionsAdapter();
+    });
+
+    test(
+        'keeps assistant tool_calls paired with following tool result messages for chat completions continuation',
+        () {
+      final payload = adapter.buildPlannerPayloadFromCarriers(
+        carriers: [
+          RawAssistantCarrier(
+            apiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+            rawJson: const {
+              'role': 'assistant',
+              'content': '',
+              'tool_calls': [
+                {
+                  'id': 'call_server_1',
+                  'type': 'function',
+                  'function': {
+                    'name': 'ask_user_question',
+                    'arguments': '{"questions":[{"id":"platform"}]}',
+                  },
+                },
+              ],
+            },
+          ),
+          const SyntheticCarrier.toolResult(
+            toolCallId: 'call_server_1',
+            content: 'User answered AskUserQuestion:\n- platform: Android',
+          ),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'deepseek-chat',
+        availableTools: const <PlannerToolOption>[],
+        parallelToolCalls: false,
+      );
+
+      final messages = payload['messages'] as List<dynamic>;
+      expect(messages, hasLength(2));
+      expect(messages[0]['role'], 'assistant');
+      expect(messages[0]['tool_calls'][0]['id'], 'call_server_1');
+      expect(messages[1], {
+        'role': 'tool',
+        'tool_call_id': 'call_server_1',
+        'content': 'User answered AskUserQuestion:\n- platform: Android',
+      });
     });
   });
 }

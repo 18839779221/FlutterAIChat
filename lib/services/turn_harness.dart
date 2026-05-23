@@ -747,7 +747,13 @@ class TurnHarness {
         groupId: groupId,
         content: toolResult?.summary ?? 'tool_execution_failed',
         errorCode: toolResult?.errorMessage,
-        payloadJson: toolResult?.toJson(),
+        payloadJson: toolResult == null
+            ? null
+            : {
+                ...toolResult.toJson(),
+                if ((invocation.providerCallId ?? '').trim().isNotEmpty)
+                  'providerCallId': invocation.providerCallId!.trim(),
+              },
       );
       await _turnRepository.incrementToolCallCount(turnId);
       if (stepId != null) {
@@ -788,7 +794,11 @@ class TurnHarness {
       turnId: turnId,
       groupId: groupId,
       content: toolResult.summary,
-      payloadJson: toolResult.toJson(),
+      payloadJson: {
+        ...toolResult.toJson(),
+        if ((invocation.providerCallId ?? '').trim().isNotEmpty)
+          'providerCallId': invocation.providerCallId!.trim(),
+      },
     );
     await _turnRepository.incrementToolCallCount(turnId);
     if (stepId != null) {

@@ -73,7 +73,7 @@ class FlutterMarkdownImpl extends StatelessWidget {
             borderRadius: BorderRadius.circular(999),
           ),
           codeblockDecoration: BoxDecoration(
-            color: theme.colorScheme.surface.withValues(alpha: 0.7),
+            color: reader.codePanelBackgroundColor,
             borderRadius: BorderRadius.circular(10),
           ),
         ),

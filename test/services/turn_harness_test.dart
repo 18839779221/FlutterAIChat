@@ -1265,6 +1265,106 @@ void main() {
       );
     });
 
+    test(
+        'resumeAfterConfirmation persists providerCallId on tool result events for continuation pairing',
+        () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      final llm = _NoopBaseLLM();
+      final turn = ChatTurn(
+        id: 401,
+        groupId: 1,
+        status: ChatTurnStatus.awaitingToolConfirmation,
+        userInput: '确认后继续',
+      );
+      await turnRepository.createTurn(turn);
+      await eventRepository.appendToolConfirmation(
+        turnId: 401,
+        groupId: 1,
+        toolName: 'create_reminder',
+        arguments: const {'title': '开会'},
+        summary: '请确认执行工具：创建提醒',
+        payloadJson: const {
+          'toolName': 'create_reminder',
+          'arguments': {'title': '开会'},
+          'status': 'awaitingConfirmation',
+          'summary': '请确认执行工具：创建提醒',
+          'requiresConfirmation': true,
+          'providerCallId': 'call_reminder_1',
+        },
+      );
+
+      final harness = TurnHarness(
+        plannerService: _FakePlannerService([
+          const AgentAction.respond('工具执行后给出最终回答'),
+        ]),
+        turnRepository: turnRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        turnVerifier: TurnVerifier(),
+        toolCallService: _FakeToolCallService(
+          executeResult: const ToolPreparationResult(
+            toolInvocation: ToolInvocation(
+              toolName: 'create_reminder',
+              arguments: {'title': '开会'},
+              status: ToolInvocationStatus.running,
+              summary: '正在执行工具：创建提醒',
+              requiresConfirmation: false,
+              providerCallId: 'call_reminder_1',
+            ),
+            toolResult: ToolResult(
+              toolName: 'create_reminder',
+              status: ToolExecutionStatus.success,
+              summary: '已创建提醒：开会',
+            ),
+          ),
+        ),
+        sessionContextService: SessionContextService(
+          chatTurnRepository: turnRepository,
+          chatEventRepository: eventRepository,
+          snapshotRepository: SessionContextSnapshotRepository(
+            _NoopChatStorage(),
+          ),
+          contextProjector: SessionContextProjector(),
+          tokenBudgetService: SessionTokenBudgetService(
+            modelBudgetResolver: (_) => const SessionModelBudget(
+              maxContextTokens: 10000,
+              reservedOutputTokens: 1000,
+              safetyMarginTokens: 500,
+            ),
+          ),
+          summaryService: SessionSummaryService(
+            summaryGenerator: (_) async => 'summary',
+          ),
+          chatService: ChatService(llm: llm),
+        ),
+        limits: const AgentLoopLimits(maxIterations: 2),
+        chatStorage: _NoopChatStorage(),
+);
+
+      final emitted = await harness
+          .resumeAfterConfirmation(
+            turnId: 401,
+            invocation: const ToolInvocation(
+              toolName: 'create_reminder',
+              arguments: {'title': '开会'},
+              status: ToolInvocationStatus.awaitingConfirmation,
+              summary: '请确认执行工具：创建提醒',
+              requiresConfirmation: true,
+              providerCallId: 'call_reminder_1',
+            ),
+            config: ChatConfig(systemPrompt: ''),
+          )
+          .toList();
+
+      final resultEvent = emitted.firstWhere(
+        (event) => event.eventType == ChatEventType.toolResult,
+      );
+      expect(resultEvent.payloadJson?['providerCallId'], 'call_reminder_1');
+    });
+
     test('resumeAfterConfirmation completes the original pending turn step',
         () async {
       final eventRepository = _InMemoryChatEventRepository();

@@ -35,6 +35,10 @@ class ToolResult {
   /// for retries, branching logic, and error presentation decisions.
   final String? errorMessage;
 
+  /// Provider-native tool call id used to pair this result back to the
+  /// originating assistant tool_call during continuation requests.
+  final String? providerCallId;
+
   const ToolResult({
     required this.toolName,
     required this.status,
@@ -43,6 +47,7 @@ class ToolResult {
     this.executionPolicy,
     this.toolAccess,
     this.errorMessage,
+    this.providerCallId,
   })  : summary = summary ?? '',
         data = data ?? const {};
 
@@ -120,6 +125,8 @@ class ToolResult {
         'executionPolicy': resolvedExecutionPolicy,
       if (toolAccess != null) 'toolAccess': toolAccess,
       'errorMessage': errorMessage,
+      if ((providerCallId ?? '').trim().isNotEmpty)
+        'providerCallId': providerCallId!.trim(),
     };
   }
 
@@ -152,6 +159,7 @@ class ToolResult {
                   json['toolAccess'] as Map<dynamic, dynamic>)
               : null,
       errorMessage: json['errorMessage'] as String?,
+      providerCallId: (json['providerCallId'] as String?)?.trim(),
     );
   }
 }

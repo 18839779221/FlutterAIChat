@@ -7,6 +7,7 @@ import 'package:flutter_highlight/themes/a11y-dark.dart';
 import 'package:flutter_highlight/themes/a11y-light.dart';
 
 import '../technical_content_surface.dart';
+import 'flutter_markdown_reader_tokens.dart';
 
 class CodeBlockWidget extends StatefulWidget {
   final String code;
@@ -28,11 +29,12 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
+    final reader = FlutterMarkdownReaderTokens.build(context);
     final content = Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: _codeCanvasColor(context),
+          color: reader.codeBlockBackgroundColor,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Padding(
@@ -48,6 +50,10 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
     );
 
     return TechnicalContentSurface(
+      backgroundColor: reader.codePanelBackgroundColor,
+      headerBackgroundColor: reader.codeBlockBackgroundColor.withValues(
+        alpha: 0.78,
+      ),
       header: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -111,15 +117,6 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
         height: 1.45,
       ),
     );
-  }
-
-  Color _codeCanvasColor(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.extension<AppThemeSpec>()!;
-    final isDark = theme.brightness == Brightness.dark;
-    return isDark
-        ? colors.toolWorkflowSurface.withValues(alpha: 0.62)
-        : colors.toolWorkflowSurface.withValues(alpha: 0.2);
   }
 }
 
