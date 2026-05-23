@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/llm/llm_provider_config.dart';
 import '../models/llm/llm_provider_model.dart';
+import '../models/llm/api_protocol_resolver.dart';
 import '../models/skill/duplicate_skill_invocation_mode.dart';
 import '../models/skill/skill_descriptor.dart';
 import '../models/tool/tool_policy.dart';
@@ -245,6 +246,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           providerId: provider.id,
           modelId: nextModel.id,
         );
+    _syncDraftGroupProviderStyle(provider);
     await _loadSettings();
   }
 
@@ -258,6 +260,24 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           modelId: model.id,
         );
     await _loadSettings();
+  }
+
+  void _syncDraftGroupProviderStyle(LlmProviderConfig provider) {
+    final currentGroup = ref.read(currentGroupProvider);
+    if (currentGroup == null || currentGroup.id != null) {
+      return;
+    }
+
+    final nextStyle = const ApiProtocolResolver()
+        .resolveStyle(provider.baseUrl)
+        .toChatTurnProviderStyle();
+    if (currentGroup.lockedProviderStyle == nextStyle) {
+      return;
+    }
+
+    ref.read(currentGroupProvider.notifier).state = currentGroup.copyWith(
+          lockedProviderStyle: nextStyle,
+        );
   }
 
   Future<void> _testCurrentModel() async {
