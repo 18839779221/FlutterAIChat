@@ -155,7 +155,74 @@ void main() {
       final toolResultBlock = (messages[2]['content'] as List).first as Map;
       expect(toolResultBlock['type'], 'tool_result');
       expect(toolResultBlock['tool_use_id'], 'toolu_1');
-      expect(toolResultBlock['content'], 'OK');
+      expect(toolResultBlock['content'], [
+        {
+          'type': 'text',
+          'text': 'OK',
+        },
+      ]);
+    });
+
+    test('连续 toolResult carrier 会合并成同一条 user continuation message', () {
+      final payload = adapter.buildPlannerPayloadFromCarriers(
+        carriers: const [
+          SyntheticCarrier.user('继续'),
+          RawAssistantCarrier(
+            apiStyle: ChatTurnProviderStyle.anthropicMessages,
+            rawJson: {
+              'role': 'assistant',
+              'content': [
+                {
+                  'type': 'tool_use',
+                  'id': 'toolu_1',
+                  'name': 'fetch_webpage',
+                  'input': {'url': 'https://example.com/a'},
+                },
+                {
+                  'type': 'tool_use',
+                  'id': 'toolu_2',
+                  'name': 'web_search',
+                  'input': {'query': 'news'},
+                },
+              ],
+            },
+          ),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'toolu_1',
+            content: 'page ok',
+          ),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'toolu_2',
+            content: 'search ok',
+          ),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'claude-3-5-sonnet',
+        availableTools: const [],
+        parallelToolCalls: true,
+      );
+
+      final messages = payload['messages'] as List;
+      expect(messages, hasLength(3));
+      expect(messages[2]['role'], 'user');
+      final blocks = messages[2]['content'] as List;
+      expect(blocks, hasLength(2));
+      expect(blocks[0]['type'], 'tool_result');
+      expect(blocks[0]['tool_use_id'], 'toolu_1');
+      expect(blocks[0]['content'], [
+        {
+          'type': 'text',
+          'text': 'page ok',
+        },
+      ]);
+      expect(blocks[1]['type'], 'tool_result');
+      expect(blocks[1]['tool_use_id'], 'toolu_2');
+      expect(blocks[1]['content'], [
+        {
+          'type': 'text',
+          'text': 'search ok',
+        },
+      ]);
     });
 
     test('多 system carrier 拼接', () {

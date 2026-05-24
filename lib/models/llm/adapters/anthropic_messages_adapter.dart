@@ -2,17 +2,22 @@ import 'dart:convert';
 
 import '../../agent/planner_tool_choice.dart';
 import '../../agent/planner_tool_option.dart';
+import '../../agent/model_tool_call.dart';
+import '../../agent/model_turn_decision.dart';
 import '../../chat_message.dart';
 import '../../context/planner_context_carrier.dart';
 import '../llm_cache_request_options.dart';
 import '../llm_cache_strategy.dart';
 import '../llm_request_options.dart';
+import '../runtime/protocol_request_spec.dart';
 import '../../../services/chat_service.dart';
 import '../api_protocol_resolver.dart';
 import '../llm_config.dart';
+import '../llm_request_purpose.dart';
 import '../streaming_decision_accumulator.dart';
 import 'adapter_utils.dart';
 import 'api_style_adapter.dart';
+import 'provider_capabilities.dart';
 
 /// Adapter for the Anthropic Messages protocol.
 class AnthropicMessagesAdapter extends ApiStyleAdapter {
@@ -22,12 +27,60 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
   ApiStyle get style => ApiStyle.anthropicMessages;
 
   @override
+  ProviderCapabilities get capabilities => const ProviderCapabilities(
+        supportsPlannerStreaming: true,
+        supportsParallelToolCalls: true,
+      );
+
+  @override
   Map<String, String> buildHeaders(LLMConfig runtimeConfig) {
     return {
       'Content-Type': 'application/json',
       'x-api-key': runtimeConfig.apiKey,
       'anthropic-version': '2023-06-01',
     };
+  }
+
+  @override
+  LlmRequestOptions normalizeRequestOptions(
+    LlmRequestOptions requestOptions, {
+    required LlmRequestPurpose purpose,
+  }) {
+    final allowReasoning = switch (purpose) {
+      LlmRequestPurpose.planner => false,
+      LlmRequestPurpose.summary ||
+      LlmRequestPurpose.webpageProcessing ||
+      LlmRequestPurpose.sideTask => true,
+    };
+    if (requestOptions.allowReasoning == allowReasoning) {
+      return requestOptions;
+    }
+    return LlmRequestOptions(
+      maxOutputTokens: requestOptions.maxOutputTokens,
+      allowReasoning: allowReasoning,
+      cache: requestOptions.cache,
+    );
+  }
+
+  @override
+  ProtocolRequestSpec buildChatRequestSpec({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required String modelName,
+    required bool stream,
+    required LLMConfig runtimeConfig,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
+  }) {
+    return JsonProtocolRequestSpec(
+      payload: _buildMessagesPayload(
+        messages: messages,
+        config: config,
+        modelName: modelName,
+        stream: stream,
+        requestOptions: requestOptions,
+      ),
+      headers: buildHeaders(runtimeConfig),
+    );
   }
 
   @override
@@ -95,6 +148,90 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
     return buffer.toString();
   }
 
+  @override
+  ModelTurnDecision? parseDecision(Map<String, dynamic> payload) {
+    final content = payload['content'];
+    final providerState = <String, dynamic>{
+      if (payload['id'] is String && (payload['id'] as String).trim().isNotEmpty)
+        'message_id': payload['id'],
+      if (content is List)
+        'content_blocks': content
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList(growable: false),
+    };
+    if (content is! List) {
+      return null;
+    }
+
+    final toolCalls = <ModelToolCall>[];
+    final textBuffer = StringBuffer();
+    final reasoningBuffer = StringBuffer();
+    for (var i = 0; i < content.length; i++) {
+      final item = content[i];
+      if (item is! Map) {
+        continue;
+      }
+      final normalizedItem = item.cast<String, dynamic>();
+      if (normalizedItem['type'] == 'tool_use') {
+        final toolName = normalizeText(normalizedItem['name']);
+        final input = normalizedItem['input'];
+        if (toolName == null || input is! Map) {
+          continue;
+        }
+        toolCalls.add(
+          ModelToolCall(
+            providerCallId: normalizeText(normalizedItem['id']),
+            toolName: toolName,
+            arguments: input.cast<String, dynamic>(),
+            sequence: i,
+          ),
+        );
+        continue;
+      }
+
+      final type = normalizedItem['type'];
+      if (type == 'thinking' || type == 'redacted_thinking') {
+        final thinking = normalizeText(
+          normalizedItem['thinking'] ?? normalizedItem['text'],
+        );
+        if (thinking != null) {
+          reasoningBuffer.write(thinking);
+        }
+        continue;
+      }
+
+      final text = _extractContentTextPreserveWhitespace(normalizedItem);
+      if (text != null) {
+        textBuffer.write(text);
+      }
+    }
+
+    final visibleReasoning = _normalizeAggregatedText(reasoningBuffer.toString());
+
+    if (toolCalls.isNotEmpty) {
+      return ModelTurnDecision(
+        toolCalls: toolCalls,
+        assistantMessage: null,
+        visibleReasoning: visibleReasoning,
+        providerState: providerState,
+        isTerminal: false,
+      );
+    }
+
+    final assistantMessage = _normalizeAggregatedText(textBuffer.toString());
+    if (assistantMessage == null) {
+      return null;
+    }
+    return ModelTurnDecision(
+      toolCalls: const [],
+      assistantMessage: assistantMessage,
+      visibleReasoning: visibleReasoning,
+      providerState: providerState,
+      isTerminal: true,
+    );
+  }
+
   /// Extracts plain text from an Anthropic content block. Public so other
   /// adapters / tests can reuse it.
   static String? extractContentText(Map<String, dynamic> item) {
@@ -104,6 +241,22 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
     }
     final text = normalizeText(item['text'] ?? item['thinking']);
     return text;
+  }
+
+  String? _extractContentTextPreserveWhitespace(Map<String, dynamic> item) {
+    final type = item['type'];
+    if (type != 'text') {
+      return null;
+    }
+    final value = item['text'];
+    if (value is! String) {
+      return null;
+    }
+    return value.trim().isEmpty ? null : value;
+  }
+
+  String? _normalizeAggregatedText(String value) {
+    return value.trim().isEmpty ? null : value;
   }
 
   Map<String, dynamic> _buildMessagesPayload({
@@ -174,7 +327,12 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
             {
               'type': 'tool_result',
               'tool_use_id': providerCallId,
-              'content': message.text,
+              'content': [
+                {
+                  'type': 'text',
+                  'text': message.text,
+                },
+              ],
             },
           ],
         };
@@ -250,6 +408,29 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
   }
 
   @override
+  ProtocolRequestSpec buildPlannerRequestSpecFromCarriers({
+    required List<PlannerContextCarrier> carriers,
+    required ChatConfig config,
+    required String modelName,
+    required List<PlannerToolOption> availableTools,
+    required bool parallelToolCalls,
+    required LLMConfig runtimeConfig,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
+  }) {
+    return JsonProtocolRequestSpec(
+      payload: buildPlannerPayloadFromCarriers(
+        carriers: carriers,
+        config: config,
+        modelName: modelName,
+        availableTools: availableTools,
+        parallelToolCalls: parallelToolCalls,
+        requestOptions: requestOptions,
+      ),
+      headers: buildHeaders(runtimeConfig),
+    );
+  }
+
+  @override
   Map<String, dynamic> buildPlannerPayloadFromCarriers({
     required List<PlannerContextCarrier> carriers,
     required ChatConfig config,
@@ -260,13 +441,29 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
   }) {
     String? systemText;
     final messages = <Map<String, dynamic>>[];
+    List<Map<String, dynamic>>? pendingToolResults;
+
+    void flushPendingToolResults() {
+      final blocks = pendingToolResults;
+      if (blocks == null || blocks.isEmpty) {
+        pendingToolResults = null;
+        return;
+      }
+      messages.add({
+        'role': 'user',
+        'content': List<Map<String, dynamic>>.from(blocks),
+      });
+      pendingToolResults = null;
+    }
 
     for (final carrier in carriers) {
       switch (carrier) {
         case SyntheticCarrier(role: SyntheticRole.system, :final content):
+          flushPendingToolResults();
           systemText = systemText == null ? content : '$systemText\n\n$content';
 
         case SyntheticCarrier(role: SyntheticRole.user, :final content):
+          flushPendingToolResults();
           messages.add({
             'role': 'user',
             'content': [
@@ -279,21 +476,24 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
               :final toolCallId,
               :final content,
             ):
-          messages.add({
-            'role': 'user',
+          (pendingToolResults ??= <Map<String, dynamic>>[]).add({
+            'type': 'tool_result',
+            'tool_use_id': toolCallId,
             'content': [
               {
-                'type': 'tool_result',
-                'tool_use_id': toolCallId,
-                'content': content,
+                'type': 'text',
+                'text': content,
               },
             ],
           });
 
         case RawAssistantCarrier(:final rawJson):
+          flushPendingToolResults();
           messages.add(Map<String, dynamic>.from(rawJson));
       }
     }
+
+    flushPendingToolResults();
 
     final tools = availableTools
         .map((t) => <String, dynamic>{
@@ -309,6 +509,8 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
       'messages': messages,
       'max_tokens': requestOptions.maxOutputTokens ?? 4096,
       if (tools.isNotEmpty) 'tools': tools,
+      if (!requestOptions.allowReasoning)
+        'thinking': const {'type': 'disabled'},
     };
   }
 

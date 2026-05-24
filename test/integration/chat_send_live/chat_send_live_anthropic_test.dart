@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -12,6 +13,7 @@ import 'scenarios/ask_user_resume_scenario.dart';
 import 'scenarios/file_ops_real_workspace_scenario.dart';
 import 'scenarios/mixed_success_failure_scenario.dart';
 import 'scenarios/news_multi_tool_scenario.dart';
+import '../../test_utils/local_test_provider_selector.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -39,6 +41,26 @@ void main() {
       final messages = await harness.listMessages();
       expectAtLeastOneTurn(turns);
       expect(messages.any((message) => message.isUser), isTrue);
+      await harness.dispose();
+    },
+    tags: const ['live-headless-agent'],
+  );
+
+  test(
+    'bootstrap locks first headless group to anthropic provider style',
+    () async {
+      final harness = await ChatSendLiveTestHarness.bootstrap(
+        providerStyle: ChatTurnProviderStyle.anthropicMessages,
+      );
+      await harness.sendUserMessage(
+        '直接回复 LOCK_OK，不要调用任何工具，也不要输出其他内容。',
+      );
+      final state = await harness.snapshotState();
+      expect(state.groupId, isNotNull);
+      expect(
+        harness.container.read(currentGroupProvider)?.lockedProviderStyle,
+        ChatTurnProviderStyle.anthropicMessages,
+      );
       await harness.dispose();
     },
     tags: const ['live-headless-agent'],
@@ -135,6 +157,18 @@ void main() {
       );
 
       final waitingState = autoRunResult.firstAwaitingUserInteractionState;
+      final shouldValidateStructuredAskUser = expectOptionalStructuredAskUserFlow(
+        waitingState,
+        autoRunResult.finalState,
+        supportsStructuredInteraction:
+            harness.providerProfile.askUserInteraction ==
+            StructuredCheckpointExpectation.required,
+      );
+      if (!shouldValidateStructuredAskUser) {
+        await harness.dispose();
+        return;
+      }
+
       expect(waitingState, isNotNull);
       expectTurnState(
         waitingState!,
@@ -215,6 +249,19 @@ void main() {
         buildRealWorkspaceFileOpsScenario(),
       );
       final waitingState = autoRunResult.firstAwaitingToolConfirmationState;
+      final shouldValidateStructuredConfirmation =
+          expectOptionalStructuredToolConfirmationFlow(
+        waitingState,
+        autoRunResult.finalState,
+        supportsStructuredInteraction:
+            harness.providerProfile.toolConfirmation ==
+            StructuredCheckpointExpectation.required,
+      );
+      if (!shouldValidateStructuredConfirmation) {
+        await harness.dispose();
+        return;
+      }
+
       expect(waitingState, isNotNull);
       expectTurnState(
         waitingState!,

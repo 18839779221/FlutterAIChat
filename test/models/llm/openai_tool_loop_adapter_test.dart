@@ -1,16 +1,16 @@
 import 'dart:convert';
 
 import 'package:ai_chat/models/agent/model_tool_call.dart';
-import 'package:ai_chat/models/llm/tool_loop/anthropic_messages_tool_loop_adapter.dart';
-import 'package:ai_chat/models/llm/tool_loop/openai_chat_completions_tool_loop_adapter.dart';
-import 'package:ai_chat/models/llm/tool_loop/openai_responses_tool_loop_adapter.dart';
+import 'package:ai_chat/models/llm/adapters/anthropic_messages_adapter.dart';
+import 'package:ai_chat/models/llm/adapters/responses_adapter.dart';
+import 'package:ai_chat/models/llm/adapters/sdk_chat_completions_adapter.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('OpenAIChatCompletionsToolLoopAdapter', () {
+  group('SdkChatCompletionsAdapter.parseDecision', () {
     test('keeps assistant text when tool calls are present in same message',
         () {
-      const adapter = OpenAIChatCompletionsToolLoopAdapter();
+      const adapter = SdkChatCompletionsAdapter();
 
       final decision = adapter.parseDecision({
         'choices': [
@@ -40,7 +40,7 @@ void main() {
     });
 
     test('keeps reasoning content separate from tool-use assistant text', () {
-      const adapter = OpenAIChatCompletionsToolLoopAdapter();
+      const adapter = SdkChatCompletionsAdapter();
 
       final decision = adapter.parseDecision({
         'choices': [
@@ -71,7 +71,7 @@ void main() {
     });
 
     test('parses multiple tool calls from one assistant message', () {
-      const adapter = OpenAIChatCompletionsToolLoopAdapter();
+      const adapter = SdkChatCompletionsAdapter();
 
       final decision = adapter.parseDecision({
         'choices': [
@@ -124,7 +124,7 @@ void main() {
     });
 
     test('returns terminal assistant message when no tool calls exist', () {
-      const adapter = OpenAIChatCompletionsToolLoopAdapter();
+      const adapter = SdkChatCompletionsAdapter();
 
       final decision = adapter.parseDecision({
         'choices': [
@@ -144,7 +144,7 @@ void main() {
     });
 
     test('preserves markdown whitespace across split content parts', () {
-      const adapter = OpenAIChatCompletionsToolLoopAdapter();
+      const adapter = SdkChatCompletionsAdapter();
 
       final decision = adapter.parseDecision({
         'choices': [
@@ -170,7 +170,7 @@ void main() {
     });
 
     test('extracts inline think tag from terminal assistant message', () {
-      const adapter = OpenAIChatCompletionsToolLoopAdapter();
+      const adapter = SdkChatCompletionsAdapter();
 
       final decision = adapter.parseDecision({
         'choices': [
@@ -192,7 +192,7 @@ void main() {
 
     test('extracts inline think tag when tool calls share the same message',
         () {
-      const adapter = OpenAIChatCompletionsToolLoopAdapter();
+      const adapter = SdkChatCompletionsAdapter();
 
       final decision = adapter.parseDecision({
         'choices': [
@@ -223,10 +223,10 @@ void main() {
     });
   });
 
-  group('OpenAIResponsesToolLoopAdapter', () {
+  group('ResponsesAdapter.parseDecision', () {
     test('keeps assistant text when output mixes message and function_call',
         () {
-      const adapter = OpenAIResponsesToolLoopAdapter();
+      const adapter = ResponsesAdapter();
 
       final decision = adapter.parseDecision({
         'id': 'resp_mixed',
@@ -257,7 +257,7 @@ void main() {
     });
 
     test('extracts reasoning summary separately from tool calls', () {
-      const adapter = OpenAIResponsesToolLoopAdapter();
+      const adapter = ResponsesAdapter();
 
       final decision = adapter.parseDecision({
         'id': 'resp_reasoning_tool',
@@ -284,7 +284,7 @@ void main() {
     });
 
     test('parses multiple function calls from one response output', () {
-      const adapter = OpenAIResponsesToolLoopAdapter();
+      const adapter = ResponsesAdapter();
 
       final decision = adapter.parseDecision({
         'id': 'resp_123',
@@ -313,7 +313,7 @@ void main() {
     });
 
     test('returns terminal assistant message when output contains message', () {
-      const adapter = OpenAIResponsesToolLoopAdapter();
+      const adapter = ResponsesAdapter();
 
       final decision = adapter.parseDecision({
         'id': 'resp_456',
@@ -338,7 +338,7 @@ void main() {
     });
 
     test('preserves markdown whitespace across split output text parts', () {
-      const adapter = OpenAIResponsesToolLoopAdapter();
+      const adapter = ResponsesAdapter();
 
       final decision = adapter.parseDecision({
         'id': 'resp_markdown_parts',
@@ -363,7 +363,7 @@ void main() {
 
     test('preserves response_id when payload exposes a reusable response id',
         () {
-      const adapter = OpenAIResponsesToolLoopAdapter();
+      const adapter = ResponsesAdapter();
 
       final decision = adapter.parseDecision({
         'id': 'resp_unstored',
@@ -388,9 +388,9 @@ void main() {
     });
   });
 
-  group('AnthropicMessagesToolLoopAdapter', () {
+  group('AnthropicMessagesAdapter.parseDecision', () {
     test('extracts thinking separately from tool calls', () {
-      const adapter = AnthropicMessagesToolLoopAdapter();
+      const adapter = AnthropicMessagesAdapter();
 
       final decision = adapter.parseDecision({
         'id': 'msg_1',
@@ -412,7 +412,7 @@ void main() {
     });
 
     test('extracts final thinking separately from final text', () {
-      const adapter = AnthropicMessagesToolLoopAdapter();
+      const adapter = AnthropicMessagesAdapter();
 
       final decision = adapter.parseDecision({
         'id': 'msg_final',
@@ -429,7 +429,7 @@ void main() {
     });
 
     test('preserves markdown whitespace across split text blocks', () {
-      const adapter = AnthropicMessagesToolLoopAdapter();
+      const adapter = AnthropicMessagesAdapter();
 
       final decision = adapter.parseDecision({
         'id': 'msg_markdown_parts',

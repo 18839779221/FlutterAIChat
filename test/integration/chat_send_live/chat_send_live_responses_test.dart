@@ -9,6 +9,7 @@ import 'scenarios/ask_user_resume_scenario.dart';
 import 'scenarios/file_ops_real_workspace_scenario.dart';
 import 'scenarios/mixed_success_failure_scenario.dart';
 import 'scenarios/news_multi_tool_scenario.dart';
+import '../../test_utils/local_test_provider_selector.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -98,6 +99,18 @@ void main() {
       );
 
       final waitingState = autoRunResult.firstAwaitingUserInteractionState;
+      final shouldValidateStructuredAskUser = expectOptionalStructuredAskUserFlow(
+        waitingState,
+        autoRunResult.finalState,
+        supportsStructuredInteraction:
+            harness.providerProfile.askUserInteraction ==
+            StructuredCheckpointExpectation.required,
+      );
+      if (!shouldValidateStructuredAskUser) {
+        await harness.dispose();
+        return;
+      }
+
       expect(waitingState, isNotNull);
       expectTurnState(
         waitingState!,
@@ -151,6 +164,19 @@ void main() {
         buildRealWorkspaceFileOpsScenario(),
       );
       final waitingState = autoRunResult.firstAwaitingToolConfirmationState;
+      final shouldValidateStructuredConfirmation =
+          expectOptionalStructuredToolConfirmationFlow(
+        waitingState,
+        autoRunResult.finalState,
+        supportsStructuredInteraction:
+            harness.providerProfile.toolConfirmation ==
+            StructuredCheckpointExpectation.required,
+      );
+      if (!shouldValidateStructuredConfirmation) {
+        await harness.dispose();
+        return;
+      }
+
       expect(waitingState, isNotNull);
       expectTurnState(
         waitingState!,

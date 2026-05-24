@@ -1,5 +1,6 @@
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/llm/adapters/anthropic_messages_adapter.dart';
 import 'package:ai_chat/models/llm/llm_config.dart';
 import 'package:ai_chat/models/llm/llm_request_options.dart';
@@ -97,7 +98,12 @@ void main() {
           {
             'type': 'tool_result',
             'tool_use_id': 'toolu_server_1',
-            'content': 'ok',
+            'content': [
+              {
+                'type': 'text',
+                'text': 'ok',
+              },
+            ],
           },
         ],
       });
@@ -206,6 +212,38 @@ void main() {
 
     test('returns empty string when content is not a list', () {
       expect(adapter.extractNonStreamText({'content': 'oops'}), '');
+    });
+  });
+
+  group('AnthropicMessagesAdapter.buildPlannerPayloadFromCarriers', () {
+    test('disables thinking when planner requestOptions forbid reasoning', () {
+      final payload = adapter.buildPlannerPayloadFromCarriers(
+        carriers: const [
+          SyntheticCarrier.user('继续'),
+        ],
+        config: ChatConfig(systemPrompt: 'sys'),
+        modelName: 'claude',
+        availableTools: const [
+          PlannerToolOption(
+            name: 'web_search',
+            description: '搜索',
+            inputSchema: {
+              'type': 'object',
+              'properties': {
+                'query': {'type': 'string'},
+              },
+              'required': ['query'],
+            },
+          ),
+        ],
+        parallelToolCalls: true,
+        requestOptions: const LlmRequestOptions(
+          allowReasoning: false,
+          maxOutputTokens: 2048,
+        ),
+      );
+
+      expect(payload['thinking'], const {'type': 'disabled'});
     });
   });
 }

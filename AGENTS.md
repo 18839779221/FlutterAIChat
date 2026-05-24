@@ -70,8 +70,9 @@ fvm flutter test
 - Then run opt-in live provider contract tests against real upstream APIs:
   - `bash scripts/run_live_llm_contract_tests.sh minimax-openai`
   - `bash scripts/run_live_llm_contract_tests.sh minimax-openai minimax-anthropic`
-  - `LIVE_LLM_PROVIDER_IDS=minimax-openai fvm flutter test --tags live-llm test/models/llm/configurable_http_llm_live_test.dart`
-  - `LIVE_LLM_PROVIDER_IDS=minimax-anthropic fvm flutter test --tags live-llm test/models/llm/configurable_http_llm_live_test.dart`
+  - `HEADLESS_LIVE_PROVIDER_CHAT_COMPLETIONS=minimax-openai flutter test --tags live-headless-agent test/integration/chat_send_live/chat_send_live_chat_completions_test.dart`
+  - `HEADLESS_LIVE_PROVIDER_ANTHROPIC=minimax-anthropic flutter test --tags live-headless-agent test/integration/chat_send_live/chat_send_live_anthropic_test.dart`
+  - `HEADLESS_LIVE_PROVIDER_RESPONSES=<provider-id> flutter test --tags live-headless-agent test/integration/chat_send_live/chat_send_live_responses_test.dart`
   - if the current workspace does not contain your local defaults file, inject it explicitly:
     `LIVE_LLM_LOCAL_DEFAULTS_PATH=/abs/path/config/local_defaults.json ...`
 - Prefer validating at least one real provider for each still-supported API style you touched
@@ -80,7 +81,7 @@ fvm flutter test
   - do not treat a provider as verified if it only passes plain text / summary smoke paths
 - Keep live tests opt-in
   - do not make default `flutter test` depend on external network access or provider credentials
-  - use `LIVE_LLM_PROVIDER_IDS` to explicitly select which providers to hit from `config/local_defaults.json`
+  - use `HEADLESS_LIVE_PROVIDER_CHAT_COMPLETIONS` / `HEADLESS_LIVE_PROVIDER_RESPONSES` / `HEADLESS_LIVE_PROVIDER_ANTHROPIC` to explicitly select provider ids from `config/local_defaults.json`
   - when an AI agent is running tests, default preference is to use `minimax` / `deepseek` provider entries and their configured base URLs when available
   - for headless live integration tests, prefer environment-variable injection over editing test source:
     `HEADLESS_LIVE_PROVIDER_CHAT_COMPLETIONS`
@@ -281,6 +282,15 @@ Important rules:
 
 ### LLM Integration
 
+- `ConfigurableHttpLLM` should remain a high-level orchestrator only
+  - protocol semantic mapping belongs in `lib/models/llm/adapters/`
+  - protocol transport / SDK execution belongs in `lib/models/llm/runtime/`
+  - protocol-specific streaming event adaptation should stay inside the runtime boundary instead of leaking into planner / controller layers
+- Prefer extending the unified protocol runtime architecture before adding new provider-specific branches
+  - `ProtocolRequestSpec` carries typed or JSON protocol request objects
+  - `ProtocolExecutionRuntime` owns request execution and raw response capture
+  - `ProtocolRuntimeRegistry` selects the runtime by `ApiStyle`
+  - upcoming anthropic SDK/native refactors should plug into this boundary instead of restoring inline HTTP logic inside `ConfigurableHttpLLM`
  
 To add a new LLM provider:
 1. Create a new class extending `BaseLLM` in `lib/models/llm/`
@@ -389,7 +399,7 @@ Database version: 10
   - When adding or changing debug cases, consider whether empty-state featured entries, Debug `Cases` grouping, and related tests also need updates
 - `config/local_defaults.json` is a runtime-facing local defaults file
   - Changes to its schema or semantics must consider app boot-time config loading, settings fallback behavior, and Android/Web automation scripts that read it directly
-  - When adding or changing LLM providers, consider whether `test/models/llm/configurable_http_llm_live_test.dart` should also be exercised against the new provider
+  - When adding or changing LLM providers, consider whether the headless live suites under `test/integration/chat_send_live/` should also be exercised against the new provider
 - When generating or modifying code, add necessary comments for public interfaces, payload models, and important fields
   - This is especially required for interface fields, schema fields, DTO/model fields, and tool/message payload fields
   - Comments should explain the meaning and usage of the field, not restate the field name mechanically

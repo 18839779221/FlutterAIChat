@@ -37,6 +37,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   http: ^1.1.0
   openai_dart: ^5.0.0
+  anthropic_sdk_dart: ^2.2.0
   flutter_markdown: ^0.6.18
   flutter_math_fork: ^0.7.4
   markdown: ^7.3.0
