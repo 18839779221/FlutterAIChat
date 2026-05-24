@@ -2,17 +2,22 @@ import 'dart:convert';
 
 import '../../agent/planner_tool_choice.dart';
 import '../../agent/planner_tool_option.dart';
+import '../../agent/model_tool_call.dart';
+import '../../agent/model_turn_decision.dart';
 import '../../chat_message.dart';
 import '../../context/planner_context_carrier.dart';
 import '../llm_cache_request_options.dart';
 import '../llm_cache_strategy.dart';
 import '../llm_request_options.dart';
+import '../runtime/protocol_request_spec.dart';
 import '../../../services/chat_service.dart';
 import '../api_protocol_resolver.dart';
 import '../llm_config.dart';
 import '../streaming_decision_accumulator.dart';
 import 'adapter_utils.dart';
 import 'api_style_adapter.dart';
+import 'provider_capabilities.dart';
+import 'package:openai_dart/openai_dart.dart' as oai;
 
 /// Adapter for the OpenAI Responses protocol.
 class ResponsesAdapter extends ApiStyleAdapter {
@@ -26,11 +31,39 @@ class ResponsesAdapter extends ApiStyleAdapter {
   ApiStyle get style => ApiStyle.responses;
 
   @override
+  ProviderCapabilities get capabilities => const ProviderCapabilities(
+        supportsPlannerStreaming: true,
+        supportsParallelToolCalls: true,
+      );
+
+  @override
   Map<String, String> buildHeaders(LLMConfig runtimeConfig) {
     return {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer ${runtimeConfig.apiKey}',
     };
+  }
+
+  @override
+  ProtocolRequestSpec buildChatRequestSpec({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required String modelName,
+    required bool stream,
+    required LLMConfig runtimeConfig,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
+  }) {
+    return ResponsesRequestSpec(
+      request: oai.CreateResponseRequest.fromJson(
+        buildChatPayload(
+          messages: messages,
+          config: config,
+          modelName: modelName,
+          stream: stream,
+          requestOptions: requestOptions,
+        ),
+      ),
+    );
   }
 
   @override
@@ -112,6 +145,101 @@ class ResponsesAdapter extends ApiStyleAdapter {
     return '';
   }
 
+  @override
+  ModelTurnDecision? parseDecision(Map<String, dynamic> payload) {
+    final providerState = <String, dynamic>{
+      if (payload['id'] is String &&
+          (payload['id'] as String).trim().isNotEmpty)
+        'response_id': payload['id'],
+    };
+
+    final output = payload['output'];
+    if (output is List) {
+      final toolCalls = <ModelToolCall>[];
+      final assistantBuffer = StringBuffer();
+      final reasoningBuffer = StringBuffer();
+      for (var i = 0; i < output.length; i++) {
+        final item = output[i];
+        if (item is! Map) {
+          continue;
+        }
+        final normalizedItem = item.cast<String, dynamic>();
+        switch (normalizedItem['type']) {
+          case 'function_call':
+            final toolName = normalizeText(normalizedItem['name']);
+            final arguments = decodeToolArguments(normalizedItem['arguments']);
+            final providerCallId = normalizeText(
+              normalizedItem['call_id'] ?? normalizedItem['id'],
+            );
+            if (toolName != null && arguments != null) {
+              toolCalls.add(
+                ModelToolCall(
+                  providerCallId: providerCallId,
+                  toolName: toolName,
+                  arguments: arguments,
+                  sequence: i,
+                ),
+              );
+            }
+          case 'message':
+            final text = _extractMessageText(normalizedItem, preserveWhitespace: true);
+            if (text != null) {
+              assistantBuffer.write(text);
+            }
+          case 'reasoning':
+            final directText = normalizeText(
+              normalizedItem['text'] ?? normalizedItem['content'],
+            );
+            if (directText != null) {
+              reasoningBuffer.write(directText);
+            }
+            final summary = normalizedItem['summary'];
+            if (summary is List) {
+              for (final entry in summary) {
+                if (entry is! Map) {
+                  continue;
+                }
+                final normalizedEntry = entry.cast<String, dynamic>();
+                final summaryText = normalizeText(
+                  normalizedEntry['text'] ?? normalizedEntry['summary_text'],
+                );
+                if (summaryText != null) {
+                  reasoningBuffer.write(summaryText);
+                }
+              }
+            }
+        }
+      }
+
+      final assistantMessage = _normalizeAggregatedText(assistantBuffer.toString());
+      final visibleReasoning = _normalizeAggregatedText(reasoningBuffer.toString());
+      if (toolCalls.isNotEmpty ||
+          assistantMessage != null ||
+          visibleReasoning != null) {
+        return ModelTurnDecision(
+          toolCalls: toolCalls,
+          assistantMessage: assistantMessage,
+          visibleReasoning: visibleReasoning,
+          providerState: providerState,
+          isTerminal: toolCalls.isEmpty,
+        );
+      }
+    }
+
+    final outputText = normalizeText(payload['output_text']);
+    if (outputText != null) {
+      return ModelTurnDecision(
+        toolCalls: const [],
+        assistantMessage: outputText,
+        visibleReasoning: normalizeText(payload['reasoning']),
+        providerState: providerState,
+        isTerminal: true,
+      );
+    }
+
+    return null;
+  }
+
   Map<String, dynamic> _buildInputItem(ChatMessage message) {
     final contextType = modelContextTypeOf(message);
     if (contextType == assistantToolUseContextType) {
@@ -162,7 +290,10 @@ class ResponsesAdapter extends ApiStyleAdapter {
     );
   }
 
-  String? _extractMessageText(Map<String, dynamic> item) {
+  String? _extractMessageText(
+    Map<String, dynamic> item, {
+    bool preserveWhitespace = false,
+  }) {
     final content = item['content'];
     if (content is! List) {
       return null;
@@ -173,14 +304,16 @@ class ResponsesAdapter extends ApiStyleAdapter {
       if (part is! Map) {
         continue;
       }
-      final normalizedPart = part.cast<String, dynamic>();
-      if (normalizedPart['type'] != 'output_text') {
-        continue;
-      }
-      final text = normalizeText(normalizedPart['text']);
-      if (text != null) {
-        buffer.write(text);
-      }
+        final normalizedPart = part.cast<String, dynamic>();
+        if (normalizedPart['type'] != 'output_text') {
+          continue;
+        }
+        final text = preserveWhitespace
+            ? _nonBlankTextPreserveWhitespace(normalizedPart['text'])
+            : normalizeText(normalizedPart['text']);
+        if (text != null) {
+          buffer.write(text);
+        }
     }
 
     final aggregated = buffer.toString().trim();
@@ -188,6 +321,17 @@ class ResponsesAdapter extends ApiStyleAdapter {
       return null;
     }
     return aggregated;
+  }
+
+  String? _normalizeAggregatedText(String value) {
+    return value.trim().isEmpty ? null : value;
+  }
+
+  String? _nonBlankTextPreserveWhitespace(dynamic value) {
+    if (value is! String) {
+      return null;
+    }
+    return value.trim().isEmpty ? null : value;
   }
 
   void _applyCacheHints(
@@ -256,6 +400,30 @@ class ResponsesAdapter extends ApiStyleAdapter {
   }
 
   @override
+  ProtocolRequestSpec buildPlannerRequestSpecFromCarriers({
+    required List<PlannerContextCarrier> carriers,
+    required ChatConfig config,
+    required String modelName,
+    required List<PlannerToolOption> availableTools,
+    required bool parallelToolCalls,
+    required LLMConfig runtimeConfig,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
+  }) {
+    return ResponsesRequestSpec(
+      request: oai.CreateResponseRequest.fromJson(
+        buildPlannerPayloadFromCarriers(
+          carriers: carriers,
+          config: config,
+          modelName: modelName,
+          availableTools: availableTools,
+          parallelToolCalls: parallelToolCalls,
+          requestOptions: requestOptions,
+        ),
+      ),
+    );
+  }
+
+  @override
   Map<String, dynamic> buildPlannerPayloadFromCarriers({
     required List<PlannerContextCarrier> carriers,
     required ChatConfig config,
@@ -318,6 +486,7 @@ class ResponsesAdapter extends ApiStyleAdapter {
       'model': modelName,
       if (instructions != null) 'instructions': instructions,
       'input': input,
+      'store': false,
       if (tools.isNotEmpty) 'tools': tools,
     };
   }

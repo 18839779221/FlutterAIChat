@@ -6,10 +6,23 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
+import 'package:ai_chat/models/llm/adapters/api_style_adapter.dart';
+import 'package:ai_chat/models/llm/adapters/provider_capabilities.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/llm/configurable_http_llm.dart';
+import 'package:ai_chat/models/llm/llm_config.dart';
+import 'package:ai_chat/models/llm/llm_cache_usage.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/models/llm/llm_provider_model.dart';
+import 'package:ai_chat/models/llm/llm_request_options.dart';
+import 'package:ai_chat/models/agent/model_turn_decision.dart';
+import 'package:ai_chat/models/agent/planner_tool_choice.dart';
+import 'package:ai_chat/models/llm/adapters/anthropic_messages_adapter.dart';
+import 'package:ai_chat/models/llm/adapters/responses_adapter.dart';
+import 'package:ai_chat/models/llm/runtime/protocol_execution_runtime.dart';
+import 'package:ai_chat/models/llm/runtime/protocol_request_spec.dart';
+import 'package:ai_chat/models/llm/runtime/protocol_runtime_registry.dart';
+import 'package:ai_chat/models/llm/streaming_decision_accumulator.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
 import 'package:ai_chat/services/chat_service.dart';
@@ -119,6 +132,111 @@ void main() {
       expect(decision, isNull);
     });
 
+    test('planner streaming is gated by provider capabilities', () async {
+      final runtime = _CountingRuntime(
+        executeResult: const ProtocolExecutionResult(
+          rawResponseJson: {
+            'choices': [
+              {
+                'message': {
+                  'role': 'assistant',
+                  'content': 'non-stream response',
+                },
+              },
+            ],
+          },
+        ),
+      );
+      final adapter = _FakeAdapter(
+        style: ApiStyle.chatCompletions,
+        capabilities: const ProviderCapabilities(
+          supportsPlannerStreaming: false,
+          supportsParallelToolCalls: true,
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        runtimeRegistry: ProtocolRuntimeRegistry(
+          runtimes: {
+            ApiStyle.chatCompletions: runtime,
+            ApiStyle.responses: _CountingRuntime(),
+            ApiStyle.anthropicMessages: _CountingRuntime(),
+          },
+        ),
+        adapters: {
+          ApiStyle.chatCompletions: adapter,
+          ApiStyle.responses: const ResponsesAdapter(),
+          ApiStyle.anthropicMessages: const AnthropicMessagesAdapter(),
+        },
+      );
+
+      final decision = await llm.planTurnDecision(
+        carriers: [SyntheticCarrier.user('继续')],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [],
+      );
+
+      expect(runtime.executeCalls, 1);
+      expect(runtime.streamExecuteCalls, 0);
+      expect(decision?.assistantMessage, 'non-stream response');
+      expect(adapter.parseDecisionCalls, 1);
+    });
+
+    test('planner fallback json is parsed through adapter contract', () async {
+      final runtime = _CountingRuntime(
+        streamResult: const ProtocolStreamExecutionResult(
+          chunks: Stream.empty(),
+          nonStreamingFallbackJson: {
+            'choices': [
+              {
+                'message': {
+                  'role': 'assistant',
+                  'content': 'fallback response',
+                },
+              },
+            ],
+          },
+        ),
+      );
+      final adapter = _FakeAdapter(
+        style: ApiStyle.chatCompletions,
+        capabilities: const ProviderCapabilities(
+          supportsPlannerStreaming: true,
+          supportsParallelToolCalls: true,
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        runtimeRegistry: ProtocolRuntimeRegistry(
+          runtimes: {
+            ApiStyle.chatCompletions: runtime,
+            ApiStyle.responses: _CountingRuntime(),
+            ApiStyle.anthropicMessages: _CountingRuntime(),
+          },
+        ),
+        adapters: {
+          ApiStyle.chatCompletions: adapter,
+          ApiStyle.responses: const ResponsesAdapter(),
+          ApiStyle.anthropicMessages: const AnthropicMessagesAdapter(),
+        },
+      );
+
+      final decision = await llm.planTurnDecision(
+        carriers: [SyntheticCarrier.user('继续')],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [],
+      );
+
+      expect(runtime.executeCalls, 0);
+      expect(runtime.streamExecuteCalls, 1);
+      expect(adapter.parseDecisionCalls, 1);
+      expect(decision?.assistantMessage, 'fallback response');
+    });
+
     test('anthropic streaming planner assembles completed tool call decision',
         () async {
       final client = _RecordingHttpClient(
@@ -145,7 +263,7 @@ void main() {
         carriers: [
           SyntheticCarrier.user('请写文件'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          activeApiStyle: ChatTurnProviderStyle.anthropicMessages,
           currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
@@ -165,6 +283,7 @@ void main() {
       );
 
       expect(client.lastRequestBody?['stream'], isTrue);
+      expect(client.lastRequestBody?['thinking'], const {'type': 'disabled'});
       expect(decision, isNotNull);
       expect(decision!.toolCalls, hasLength(1));
       expect(decision.toolCalls.single.providerCallId, 'toolu_1');
@@ -225,7 +344,7 @@ void main() {
         carriers: [
           SyntheticCarrier.user('请写文件'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          activeApiStyle: ChatTurnProviderStyle.anthropicMessages,
           currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
@@ -282,7 +401,7 @@ void main() {
         carriers: [
           SyntheticCarrier.user('请创建美食页面'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          activeApiStyle: ChatTurnProviderStyle.anthropicMessages,
           currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
@@ -352,7 +471,7 @@ void main() {
         carriers: [
           SyntheticCarrier.user('请创建 artifact'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          activeApiStyle: ChatTurnProviderStyle.anthropicMessages,
           currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
@@ -410,7 +529,7 @@ void main() {
         carriers: [
           SyntheticCarrier.user('直接回答'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          activeApiStyle: ChatTurnProviderStyle.anthropicMessages,
           currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
@@ -580,7 +699,7 @@ void main() {
         carriers: [
           SyntheticCarrier.user('帮我查 OpenAI 最新发布'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          activeApiStyle: ChatTurnProviderStyle.openaiResponses,
           currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
@@ -617,9 +736,9 @@ void main() {
 
     test('records trace events for non-stream planner requests', () async {
       final collected = <Map<String, dynamic>>[];
-      final client = _RecordingHttpClient(
-        handler: (request) => http.Response(
-          jsonEncode({
+      final runtime = _CountingRuntime(
+        executeResult: const ProtocolExecutionResult(
+          rawResponseJson: {
             'choices': [
               {
                 'message': {
@@ -628,19 +747,35 @@ void main() {
                 },
               },
             ],
-            'usage': {
-              'prompt_tokens': 12,
-              'completion_tokens': 4,
-              'prompt_tokens_details': {'cached_tokens': 8},
-            },
-          }),
-          200,
-          headers: {'content-type': 'application/json'},
+          },
+          cacheUsage: LlmCacheUsage(
+            inputTokens: 12,
+            outputTokens: 4,
+            cachedInputTokens: 8,
+          ),
+        ),
+      );
+      final adapter = _FakeAdapter(
+        style: ApiStyle.chatCompletions,
+        capabilities: const ProviderCapabilities(
+          supportsPlannerStreaming: false,
+          supportsParallelToolCalls: true,
         ),
       );
       final llm = await _buildLlm(
         baseUrl: 'https://planner.example/v1/chat/completions',
-        httpClient: client,
+        runtimeRegistry: ProtocolRuntimeRegistry(
+          runtimes: {
+            ApiStyle.chatCompletions: runtime,
+            ApiStyle.responses: _CountingRuntime(),
+            ApiStyle.anthropicMessages: _CountingRuntime(),
+          },
+        ),
+        adapters: {
+          ApiStyle.chatCompletions: adapter,
+          ApiStyle.responses: const ResponsesAdapter(),
+          ApiStyle.anthropicMessages: const AnthropicMessagesAdapter(),
+        },
         traceEmitter: (tag, message, {level = LogLevel.info, data}) {
           collected.add({
             'tag': tag,
@@ -854,7 +989,7 @@ void main() {
         carriers: [
           SyntheticCarrier.user('直接回答'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          activeApiStyle: ChatTurnProviderStyle.openaiResponses,
           currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
@@ -888,7 +1023,7 @@ void main() {
         carriers: [
           SyntheticCarrier.user('继续'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          activeApiStyle: ChatTurnProviderStyle.openaiResponses,
           currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
@@ -1238,7 +1373,7 @@ void main() {
         carriers: [
           SyntheticCarrier.user('帮我查 OpenAI 最新发布'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          activeApiStyle: ChatTurnProviderStyle.openaiResponses,
           currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
@@ -1357,7 +1492,7 @@ void main() {
         carriers: [
           SyntheticCarrier.user('今晚 8 点提醒我'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          activeApiStyle: ChatTurnProviderStyle.openaiResponses,
           currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
@@ -1413,7 +1548,7 @@ void main() {
         carriers: [
           SyntheticCarrier.user('查数据库版本'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          activeApiStyle: ChatTurnProviderStyle.openaiResponses,
           currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
@@ -1604,7 +1739,7 @@ void main() {
         carriers: [
           SyntheticCarrier.user('请先问我需要哪个方案'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          activeApiStyle: ChatTurnProviderStyle.openaiResponses,
           currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
@@ -1655,7 +1790,7 @@ void main() {
         carriers: [
           SyntheticCarrier.user('继续搜索'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          activeApiStyle: ChatTurnProviderStyle.anthropicMessages,
           currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
@@ -1678,6 +1813,63 @@ void main() {
       expect(decision.modelName, 'gpt-5.4');
       expect(decision.providerState, containsPair('message_id', 'msg_123'));
       expect(decision.toolCalls.single.providerCallId, 'toolu_123');
+    });
+
+    test('anthropic planner streaming uses runtime registry dispatch',
+        () async {
+      final runtime = _CountingRuntime(
+        streamResult: const ProtocolStreamExecutionResult(
+          chunks: Stream.empty(),
+          nonStreamingFallbackJson: {
+            'id': 'msg_123',
+            'content': [
+              {
+                'type': 'tool_use',
+                'id': 'toolu_123',
+                'name': 'web_search',
+                'input': {'query': 'Anthropic API'},
+              },
+            ],
+          },
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://anthropic.example/v1/messages',
+        runtimeRegistry: ProtocolRuntimeRegistry(
+          runtimes: {
+            ApiStyle.chatCompletions: _CountingRuntime(),
+            ApiStyle.responses: _CountingRuntime(),
+            ApiStyle.anthropicMessages: runtime,
+          },
+        ),
+      );
+
+      final decision = await llm.planTurnDecision(
+        carriers: [
+          SyntheticCarrier.user('继续搜索'),
+        ],
+        activeApiStyle: ChatTurnProviderStyle.anthropicMessages,
+        currentTurnRunning: false,
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [
+          PlannerToolOption(
+            name: 'web_search',
+            description: '搜索外部资料',
+            inputSchema: {
+              'type': 'object',
+              'properties': {
+                'query': {'type': 'string'},
+              },
+              'required': ['query'],
+            },
+          ),
+        ],
+      );
+
+      expect(runtime.streamExecuteCalls, 1);
+      expect(decision, isNotNull);
+      expect(decision!.toolCalls, hasLength(1));
+      expect(decision.toolCalls.single.toolName, 'web_search');
     });
 
   });
@@ -1983,6 +2175,8 @@ void main() {
 Future<ConfigurableHttpLLM> _buildLlm({
   required String baseUrl,
   http.Client? httpClient,
+  ProtocolRuntimeRegistry? runtimeRegistry,
+  Map<ApiStyle, ApiStyleAdapter>? adapters,
   Duration? plannerRequestTimeout,
   Duration? plannerStreamIdleTimeout,
   Duration? plannerStreamOverallTimeout,
@@ -2020,6 +2214,8 @@ Future<ConfigurableHttpLLM> _buildLlm({
   return ConfigurableHttpLLM(
     settingsRepository: repository,
     httpClient: httpClient,
+    runtimeRegistry: runtimeRegistry,
+    adapters: adapters,
     plannerRequestTimeout: plannerRequestTimeout,
     plannerStreamIdleTimeout: plannerStreamIdleTimeout,
     plannerStreamOverallTimeout: plannerStreamOverallTimeout,
@@ -2073,5 +2269,148 @@ class _RecordingHttpClient extends http.BaseClient {
       );
     }
     throw StateError('Unsupported test response type: ${response.runtimeType}');
+  }
+}
+
+class _CountingRuntime extends ProtocolExecutionRuntime {
+  _CountingRuntime({
+    this.executeResult = const ProtocolExecutionResult(rawResponseJson: {}),
+    this.streamResult = const ProtocolStreamExecutionResult(
+      chunks: Stream.empty(),
+    ),
+  });
+
+  int executeCalls = 0;
+  int streamExecuteCalls = 0;
+  final ProtocolExecutionResult executeResult;
+  final ProtocolStreamExecutionResult streamResult;
+
+  @override
+  Future<ProtocolExecutionResult> execute({
+    required ProtocolRequestSpec requestSpec,
+    required LLMConfig runtimeConfig,
+    required Duration timeout,
+  }) async {
+    executeCalls += 1;
+    return executeResult;
+  }
+
+  @override
+  Future<ProtocolStreamExecutionResult> streamExecute({
+    required ProtocolRequestSpec requestSpec,
+    required LLMConfig runtimeConfig,
+    required Duration idleTimeout,
+    required Duration overallTimeout,
+  }) async {
+    streamExecuteCalls += 1;
+    return streamResult;
+  }
+}
+
+class _FakeAdapter extends ApiStyleAdapter {
+  _FakeAdapter({
+    required this.style,
+    required this.capabilities,
+  });
+
+  @override
+  final ApiStyle style;
+
+  @override
+  final ProviderCapabilities capabilities;
+
+  int parseDecisionCalls = 0;
+
+  @override
+  Map<String, String> buildHeaders(LLMConfig runtimeConfig) => const {};
+
+  @override
+  ProtocolRequestSpec buildChatRequestSpec({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required String modelName,
+    required bool stream,
+    required LLMConfig runtimeConfig,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
+  }) {
+    return const JsonProtocolRequestSpec(payload: {}, headers: {});
+  }
+
+  @override
+  Map<String, dynamic> buildChatPayload({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required String modelName,
+    required bool stream,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
+  }) {
+    return const {};
+  }
+
+  @override
+  ProtocolRequestSpec buildPlannerRequestSpecFromCarriers({
+    required List<PlannerContextCarrier> carriers,
+    required ChatConfig config,
+    required String modelName,
+    required List<PlannerToolOption> availableTools,
+    required bool parallelToolCalls,
+    required LLMConfig runtimeConfig,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
+  }) {
+    return const JsonProtocolRequestSpec(payload: {}, headers: {});
+  }
+
+  @override
+  Map<String, dynamic> buildPlannerPayloadFromCarriers({
+    required List<PlannerContextCarrier> carriers,
+    required ChatConfig config,
+    required String modelName,
+    required List<PlannerToolOption> availableTools,
+    required bool parallelToolCalls,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
+  }) {
+    return const {};
+  }
+
+  @override
+  String extractNonStreamText(Map<String, dynamic> payload) => '';
+
+  @override
+  Map<String, dynamic>? extractRawAssistantMessage(
+    Map<String, dynamic> responsePayload,
+  ) {
+    return null;
+  }
+
+  @override
+  Map<String, dynamic>? assembleRawFromStreamingSnapshot(
+    StreamingDecisionAccumulatorSnapshot snapshot,
+  ) {
+    return null;
+  }
+
+  @override
+  PlannerToolChoice? parsePlannerChoice(Map<String, dynamic> payload) => null;
+
+  @override
+  ModelTurnDecision? parseDecision(Map<String, dynamic> payload) {
+    parseDecisionCalls += 1;
+    final choices = payload['choices'];
+    if (choices is List &&
+        choices.isNotEmpty &&
+        choices.first is Map &&
+        (choices.first as Map)['message'] is Map) {
+      final message = (choices.first as Map)['message'] as Map;
+      final content = message['content']?.toString();
+      if (content != null && content.isNotEmpty) {
+        return ModelTurnDecision(
+          toolCalls: const [],
+          assistantMessage: content,
+          providerState: const {},
+          isTerminal: true,
+        );
+      }
+    }
+    return null;
   }
 }

@@ -221,6 +221,51 @@ void expectAskUserContinuationCoverage(
   );
 }
 
+bool expectOptionalStructuredAskUserFlow(
+  ChatSendLiveStateSnapshot? waitingState,
+  ChatSendLiveStateSnapshot finalState, {
+  required bool supportsStructuredInteraction,
+}) {
+  if (supportsStructuredInteraction || waitingState != null) {
+    return true;
+  }
+  expectNoPlannerRequestFailure(finalState);
+  expectTurnState(
+    finalState,
+    expectedStatus: ChatTurnStatus.completed,
+  );
+  expectEventTypes(
+    finalState,
+    includesInOrder: const [
+      ChatEventType.userMessage,
+      ChatEventType.finalAnswer,
+    ],
+  );
+  return false;
+}
+
+bool expectOptionalStructuredToolConfirmationFlow(
+  ChatSendLiveStateSnapshot? waitingState,
+  ChatSendLiveStateSnapshot finalState, {
+  required bool supportsStructuredInteraction,
+}) {
+  if (supportsStructuredInteraction || waitingState != null) {
+    return true;
+  }
+  expectNoPlannerRequestFailure(finalState);
+  expectTurnState(
+    finalState,
+    expectedStatus: ChatTurnStatus.completed,
+  );
+  expectEventTypes(
+    finalState,
+    includes: const [
+      ChatEventType.finalAnswer,
+    ],
+  );
+  return false;
+}
+
 void expectToolBatchWithDistinctCalls(
   ChatSendLiveStateSnapshot state, {
   required String toolName,

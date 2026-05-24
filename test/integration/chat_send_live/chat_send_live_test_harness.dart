@@ -8,6 +8,7 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
+import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
 import 'package:ai_chat/models/llm/llm_factory.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
@@ -61,6 +62,8 @@ class ChatSendLiveTestHarness {
   final String databasePath;
   final ChatSendLiveFixtureBuilder fixtureBuilder;
   final Directory workspaceRoot;
+  final ChatTurnProviderStyle activeProviderStyle;
+  final HeadlessLiveProviderProfile providerProfile;
   final List<Directory> _workspaceRoots;
 
   ChatSendLiveTestHarness._({
@@ -70,6 +73,8 @@ class ChatSendLiveTestHarness {
     required this.databasePath,
     required this.fixtureBuilder,
     required this.workspaceRoot,
+    required this.activeProviderStyle,
+    required this.providerProfile,
     required List<Directory> workspaceRoots,
   }) : _workspaceRoots = workspaceRoots;
 
@@ -145,6 +150,20 @@ class ChatSendLiveTestHarness {
         '${selectionReason == null ? '' : ' ($selectionReason)'}',
       );
     }
+    final activeProviderStyle =
+        providerStyle ??
+        (selectedProvider == null
+            ? ChatTurnProviderStyle.openaiChatCompletions
+            : ApiProtocolResolver()
+                .resolveStyle(selectedProvider.baseUrl)
+                .toChatTurnProviderStyle());
+    final providerProfile =
+        selectedProvider == null
+            ? const HeadlessLiveProviderProfile(
+                askUserInteraction: StructuredCheckpointExpectation.required,
+                toolConfirmation: StructuredCheckpointExpectation.required,
+              )
+            : resolveHeadlessLiveProviderProfile(selectedProvider.id);
 
     _chatSendLiveDatabaseCounter += 1;
     final databaseName =
@@ -272,6 +291,8 @@ class ChatSendLiveTestHarness {
       databasePath: databaseName,
       fixtureBuilder: fixtureBuilder,
       workspaceRoot: workspaceRoot,
+      activeProviderStyle: activeProviderStyle,
+      providerProfile: providerProfile,
       workspaceRoots: <Directory>[workspaceRoot],
     );
   }
@@ -470,11 +491,16 @@ class ChatSendLiveTestHarness {
       return;
     }
     final groupId = await databaseHelper.insertGroup(
-      ChatGroup(title: 'Headless Live Test', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+      ChatGroup(
+        title: 'Headless Live Test',
+        lockedProviderStyle: activeProviderStyle,
+      ),
     );
     container.read(currentGroupProvider.notifier).state = ChatGroup(
       id: groupId,
-      title: 'Headless Live Test', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+      title: 'Headless Live Test',
+      lockedProviderStyle: activeProviderStyle,
+    );
   }
 
   AskUserQuestionResponse _buildFirstOptionResponse(ChatMessage message) {

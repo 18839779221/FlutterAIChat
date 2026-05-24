@@ -76,7 +76,13 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [
+          SyntheticCarrier.user('继续完成方案'),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_function_123',
+            content: 'User answered AskUserQuestion:\n- 目标平台: Android',
+          ),
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -130,7 +136,18 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [
+          SyntheticCarrier.user('帮我回忆刚才聊到的数据库版本'),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_web_1',
+            content:
+                'web_search query: MiniMax API\n1. MiniMax API Docs - https://example.com/minimax\nsnippet: The latest MiniMax API reference.',
+          ),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_ask_1',
+            content: 'User answered AskUserQuestion:\n- Storage: SQLite',
+          ),
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -161,7 +178,7 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [SyntheticCarrier.user('Please help with Android edge-to-edge')],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -248,7 +265,7 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [SyntheticCarrier.user('帮我回忆刚才聊到的数据库版本')],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -270,7 +287,7 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [SyntheticCarrier.user('帮我回忆刚才聊到的数据库版本')],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -351,7 +368,17 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [
+          SyntheticCarrier.user('帮我总结网页'),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_web_1',
+            content: '已读取网页正文',
+          ),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_web_2',
+            content: '读取失败',
+          ),
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -456,7 +483,25 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [
+          SyntheticCarrier.user('帮我确认应该用什么本地存储'),
+          RawAssistantCarrier(
+            apiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+            rawJson: {'content': '<think>我先补充询问用户的偏好</think>'},
+          ),
+          RawAssistantCarrier(
+            apiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+            rawJson: {'content': '你更偏向 SQLite 还是 ObjectBox？'},
+          ),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_ask_1',
+            content: 'User answered AskUserQuestion:\n- Storage: SQLite',
+          ),
+          RawAssistantCarrier(
+            apiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+            rawJson: {'content': '已记录用户偏好：SQLite'},
+          ),
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -516,7 +561,12 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [
+          SyntheticCarrier.toolResult(
+            toolCallId: 'edit_call_1',
+            content: 'Edit path: agent/my_hobbies.md\n已编辑文件：agent/my_hobbies.md',
+          ),
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -620,7 +670,9 @@ void main() {
         ],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [
+          SyntheticCarrier.user('帮我确认数据库版本'),
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -676,7 +728,13 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [
+          SyntheticCarrier.user('继续完成方案'),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_function_123',
+            content: 'User answered AskUserQuestion:\n- 目标平台: Android',
+          ),
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -779,7 +837,18 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [
+          SyntheticCarrier.user('帮我回忆刚才聊到的数据库版本'),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_web_1',
+            content:
+                'web_search query: MiniMax API\n1. MiniMax API Docs - https://example.com/minimax\nsnippet: The latest MiniMax API reference.',
+          ),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_ask_1',
+            content: 'User answered AskUserQuestion:\n- Storage: SQLite',
+          ),
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -829,7 +898,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [
+          SyntheticCarrier.user('帮我回忆刚才聊到的数据库版本'),
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -870,7 +941,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [
+          SyntheticCarrier.user('帮我回忆刚才聊到的数据库版本'),
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -912,7 +985,13 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [
+          SyntheticCarrier.user('帮我制作一个精美的HTML介绍中国各地美食从夯到拉的排序'),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_function_ujx5ah3p2ec4_1',
+            content: 'User answered AskUserQuestion:\n- 排序方式: 按地区（由南到北）',
+          ),
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -966,7 +1045,13 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [
+          SyntheticCarrier.user('继续完成方案'),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_function_123',
+            content: 'User answered AskUserQuestion:\n- 目标平台: Android',
+          ),
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -1188,7 +1273,13 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [
+          SyntheticCarrier.user('帮我制作一个精美的HTML介绍中国各地美食从夯到拉的排序'),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_function_ujx5ah3p2ec4_1',
+            content: 'User answered AskUserQuestion:\n- 排序方式: 按地区（由南到北）',
+          ),
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -1244,7 +1335,32 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [
+          SyntheticCarrier.user('帮我看下本地的文件夹都有哪些文件'),
+          RawAssistantCarrier(
+            apiStyle: ChatTurnProviderStyle.anthropicMessages,
+            rawJson: {
+              'role': 'assistant',
+              'content': [
+                {
+                  'type': 'thinking',
+                  'thinking': '我要先列出目录。',
+                  'signature': 'sig_1',
+                },
+                {
+                  'type': 'tool_use',
+                  'id': 'call_function_123',
+                  'name': 'LS',
+                  'input': {'path': '.'},
+                },
+              ],
+            },
+          ),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_function_123',
+            content: 'LS path: .\nentries: empty',
+          ),
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -1319,7 +1435,13 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [
+          SyntheticCarrier.user('继续完成方案'),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_function_123',
+            content: 'User answered AskUserQuestion:\n- 目标平台: Android',
+          ),
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -1397,7 +1519,13 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [
+          SyntheticCarrier.user('帮我制作一个精美的HTML介绍中国各地美食从夯到拉的排序'),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_function_ujx5ah3p2ec4_1',
+            content: 'User answered AskUserQuestion:\n- 排序方式: 按地区（由南到北）',
+          ),
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -1491,7 +1619,32 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [
+          SyntheticCarrier.user('帮我看下本地的文件夹都有哪些文件'),
+          RawAssistantCarrier(
+            apiStyle: ChatTurnProviderStyle.anthropicMessages,
+            rawJson: {
+              'role': 'assistant',
+              'content': [
+                {
+                  'type': 'thinking',
+                  'thinking': '我要先列出目录。',
+                  'signature': 'sig_1',
+                },
+                {
+                  'type': 'tool_use',
+                  'id': 'call_function_123',
+                  'name': 'LS',
+                  'input': {'path': '.'},
+                },
+              ],
+            },
+          ),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_function_123',
+            content: 'LS path: .\nentries: empty',
+          ),
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -1621,7 +1774,54 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [
+          SyntheticCarrier.user('继续整理 Google 最新新闻'),
+          RawAssistantCarrier(
+            apiStyle: ChatTurnProviderStyle.anthropicMessages,
+            rawJson: {
+              'role': 'assistant',
+              'content': [
+                {
+                  'type': 'thinking',
+                  'thinking': '我要补充细节。',
+                  'signature': 'sig_multi',
+                },
+                {
+                  'type': 'tool_use',
+                  'id': 'call_00',
+                  'name': 'fetch_webpage',
+                  'input': {'url': 'https://example.com/a'},
+                },
+                {
+                  'type': 'tool_use',
+                  'id': 'call_01',
+                  'name': 'fetch_webpage',
+                  'input': {'url': 'https://example.com/b'},
+                },
+                {
+                  'type': 'tool_use',
+                  'id': 'call_02',
+                  'name': 'web_search',
+                  'input': {'query': 'Google latest news 2026'},
+                },
+              ],
+            },
+          ),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_00',
+            content:
+                'fetch_webpage url: https://example.com/a\n页面 A 的正文摘要',
+          ),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_01',
+            content: 'fetch_webpage failed: network_timeout',
+          ),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_02',
+            content:
+                'web_search query: Google latest news 2026\n1. Google latest news 2026 - https://example.com/google-news\nsnippet: Top result snippet',
+          ),
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -1631,7 +1831,7 @@ void main() {
           .where((text) =>
               text.contains('fetch_webpage') || text.contains('web_search'))
           .toList();
-      expect(toolResultTexts, hasLength(3));
+      expect(toolResultTexts, hasLength(4));
       expect(toolResultTexts.join('\n'), contains('fetch_webpage url: https://example.com/a'));
       expect(toolResultTexts.join('\n'), contains('页面 A 的正文摘要'));
       expect(toolResultTexts.join('\n'), contains('fetch_webpage failed: network_timeout'));
@@ -1790,7 +1990,73 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [],
+        carriers: const [
+          SyntheticCarrier.user('继续整理 Google 最新新闻'),
+          RawAssistantCarrier(
+            apiStyle: ChatTurnProviderStyle.anthropicMessages,
+            rawJson: {
+              'role': 'assistant',
+              'content': [
+                {
+                  'type': 'thinking',
+                  'thinking': '我要补充细节。',
+                  'signature': 'sig_five',
+                },
+                {
+                  'type': 'tool_use',
+                  'id': 'call_00',
+                  'name': 'fetch_webpage',
+                  'input': {'url': 'https://example.com/a'},
+                },
+                {
+                  'type': 'tool_use',
+                  'id': 'call_01',
+                  'name': 'fetch_webpage',
+                  'input': {'url': 'https://example.com/b'},
+                },
+                {
+                  'type': 'tool_use',
+                  'id': 'call_02',
+                  'name': 'fetch_webpage',
+                  'input': {'url': 'https://example.com/c'},
+                },
+                {
+                  'type': 'tool_use',
+                  'id': 'call_03',
+                  'name': 'fetch_webpage',
+                  'input': {'url': 'https://example.com/d'},
+                },
+                {
+                  'type': 'tool_use',
+                  'id': 'call_04',
+                  'name': 'fetch_webpage',
+                  'input': {'url': 'https://example.com/e'},
+                },
+              ],
+            },
+          ),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_00',
+            content: 'fetch_webpage failed: network_error',
+          ),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_01',
+            content:
+                'fetch_webpage url: https://example.com/b\n页面 B 的结构化结果',
+          ),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_02',
+            content: 'fetch_webpage failed: timeout',
+          ),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_03',
+            content: 'fetch_webpage failed: network_error',
+          ),
+          SyntheticCarrier.toolResult(
+            toolCallId: 'call_04',
+            content: 'fetch_webpage failed: network_error',
+          ),
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -1975,7 +2241,7 @@ class _NativeDecisionLLM implements BaseLLM {
           )
         else if (c is RawAssistantCarrier)
           ChatMessage(
-            text: (c.rawJson['content'] as String?) ?? '',
+            text: _rawAssistantPreview(c.rawJson),
             role: MessageRole.assistant,
           ),
     ];
@@ -1994,6 +2260,42 @@ class _NativeDecisionLLM implements BaseLLM {
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async =>
       'summary';
+
+  String _rawAssistantPreview(Map<String, dynamic> rawJson) {
+    final content = rawJson['content'];
+    if (content is String) {
+      return content;
+    }
+    if (content is List) {
+      final parts = <String>[];
+      for (final item in content) {
+        if (item is! Map) {
+          continue;
+        }
+        final block = Map<String, dynamic>.from(item);
+        final type = block['type']?.toString();
+        switch (type) {
+          case 'text':
+            final text = block['text']?.toString();
+            if (text != null && text.isNotEmpty) {
+              parts.add(text);
+            }
+          case 'thinking':
+            final thinking = block['thinking']?.toString();
+            if (thinking != null && thinking.isNotEmpty) {
+              parts.add(thinking);
+            }
+          case 'tool_use':
+            final name = block['name']?.toString();
+            if (name != null && name.isNotEmpty) {
+              parts.add('[tool_use] $name');
+            }
+        }
+      }
+      return parts.join('\n');
+    }
+    return '';
+  }
 
 }
 

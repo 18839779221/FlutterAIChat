@@ -70,7 +70,8 @@ void main() {
       );
     });
 
-    test('parses anthropic planner tool use chunks', () async {
+    test('rejects anthropic planner chunk parsing on legacy parser path',
+        () async {
       const parser = ApiStreamParser();
       final response = http.StreamedResponse(
         Stream<List<int>>.fromIterable([
@@ -89,41 +90,13 @@ void main() {
         200,
       );
 
-      final chunks = await parser
-          .parsePlannerChunks(response, ApiStyle.anthropicMessages)
-          .toList();
-
       expect(
-        chunks.any(
-          (chunk) =>
-              chunk.type == StreamingPlannerChunkType.toolCallStarted &&
-              chunk.toolCallIndex == 0 &&
-              chunk.providerCallId == 'toolu_1' &&
-              chunk.toolName == 'write_file',
-        ),
-        isTrue,
-      );
-      expect(
-        chunks.where(
-          (chunk) =>
-              chunk.type == StreamingPlannerChunkType.toolCallArgumentsDelta &&
-              chunk.toolCallIndex == 0 &&
-              chunk.providerCallId == 'toolu_1',
-        ),
-        hasLength(2),
-      );
-      expect(
-        chunks.any(
-          (chunk) =>
-              chunk.type == StreamingPlannerChunkType.toolCallCompleted &&
-              chunk.toolCallIndex == 0 &&
-              chunk.providerCallId == 'toolu_1',
-        ),
-        isTrue,
+        () => parser.parsePlannerChunks(response, ApiStyle.anthropicMessages),
+        throwsA(isA<UnsupportedError>()),
       );
     });
 
-    test('preserves whitespace in anthropic planner input_json_delta chunks',
+    test('rejects anthropic planner whitespace parsing on legacy parser path',
         () async {
       const parser = ApiStreamParser();
       final response = http.StreamedResponse(
@@ -143,22 +116,9 @@ void main() {
         200,
       );
 
-      final chunks = await parser
-          .parsePlannerChunks(response, ApiStyle.anthropicMessages)
-          .toList();
-      final argumentText = chunks
-          .where(
-              (chunk) =>
-                  chunk.type == StreamingPlannerChunkType.toolCallArgumentsDelta &&
-                  chunk.toolCallIndex == 0 &&
-                  chunk.providerCallId == 'toolu_1',
-          )
-          .map((chunk) => chunk.argumentsTextDelta)
-          .join();
-
       expect(
-        argumentText,
-        '{\n  "source": "<div>\n    <span>ok</span>\n  </div>"\n}',
+        () => parser.parsePlannerChunks(response, ApiStyle.anthropicMessages),
+        throwsA(isA<UnsupportedError>()),
       );
     });
   });

@@ -17,7 +17,6 @@ import '../agent/planner_tool_option.dart';
 import '../chat_message.dart';
 import '../chat_turn.dart';
 import '../context/planner_context_carrier.dart';
-import '../chat_turn.dart';
 import '../session/model_budget_profile.dart';
 import '../../services/session_summary_service.dart';
 import 'adapters/anthropic_messages_adapter.dart';
@@ -26,19 +25,21 @@ import 'adapters/chat_completions_adapter.dart';
 import 'adapters/responses_adapter.dart';
 import 'adapters/sdk_chat_completions_adapter.dart';
 import 'api_protocol_resolver.dart';
-import 'api_stream_parser.dart';
 import 'base_llm.dart';
 import 'llm_cache_usage.dart';
 import 'llm_cache_strategy.dart';
 import 'llm_config.dart';
+import 'llm_request_purpose.dart';
 import 'llm_request_options.dart';
 import 'llm_usage_extractor.dart';
 import 'planner_invariant_validator.dart';
 import 'streaming_decision_accumulator.dart';
 import 'streaming_planner_chunk.dart';
-import 'tool_loop/anthropic_messages_tool_loop_adapter.dart';
-import 'tool_loop/openai_chat_completions_tool_loop_adapter.dart';
-import 'tool_loop/openai_responses_tool_loop_adapter.dart';
+import 'runtime/anthropic_messages_runtime.dart';
+import 'runtime/openai_chat_completions_runtime.dart';
+import 'runtime/openai_responses_runtime.dart';
+import 'runtime/protocol_request_spec.dart';
+import 'runtime/protocol_runtime_registry.dart';
 
 class ConfigurableHttpLLM
     implements BaseLLM, PlannerRuntimeStreamingCapable {
@@ -62,26 +63,15 @@ class ConfigurableHttpLLM
     ApiStyle.anthropicMessages: AnthropicMessagesAdapter(),
   };
 
-  /// Legacy adapters that bypass `openai_dart` SDK, kept as fallback.
-  static const Map<ApiStyle, ApiStyleAdapter> _legacyAdapters = {
-    ApiStyle.chatCompletions: LegacyChatCompletionsAdapter(),
-    ApiStyle.responses: ResponsesAdapter(),
-    ApiStyle.anthropicMessages: AnthropicMessagesAdapter(),
-  };
-
   final AppSettingsRepository _settingsRepository;
   final ApiProtocolResolver _protocolResolver;
-  final ApiStreamParser _streamParser;
-  final http.Client _httpClient;
   final Duration _requestTimeout;
   final Duration _plannerRequestTimeout;
   final Duration _plannerStreamIdleTimeout;
   final Duration _plannerStreamOverallTimeout;
   final int _mainFlowNetworkRetryAttempts;
   Map<ApiStyle, ApiStyleAdapter> _adapters;
-  final OpenAIChatCompletionsToolLoopAdapter _chatCompletionsToolLoopAdapter;
-  final OpenAIResponsesToolLoopAdapter _responsesToolLoopAdapter;
-  final AnthropicMessagesToolLoopAdapter _anthropicMessagesToolLoopAdapter;
+  final ProtocolRuntimeRegistry _runtimeRegistry;
   final PromptBuilderService _promptBuilder;
   final ModelBudgetRegistry _modelBudgetRegistry;
   final void Function(
@@ -96,7 +86,6 @@ class ConfigurableHttpLLM
   ConfigurableHttpLLM({
     required AppSettingsRepository settingsRepository,
     ApiProtocolResolver? protocolResolver,
-    ApiStreamParser? streamParser,
     http.Client? httpClient,
     Duration? requestTimeout,
     Duration? plannerRequestTimeout,
@@ -104,9 +93,7 @@ class ConfigurableHttpLLM
     Duration? plannerStreamOverallTimeout,
     int mainFlowNetworkRetryAttempts = _defaultMainFlowNetworkRetryAttempts,
     Map<ApiStyle, ApiStyleAdapter>? adapters,
-    OpenAIChatCompletionsToolLoopAdapter? chatCompletionsToolLoopAdapter,
-    OpenAIResponsesToolLoopAdapter? responsesToolLoopAdapter,
-    AnthropicMessagesToolLoopAdapter? anthropicMessagesToolLoopAdapter,
+    ProtocolRuntimeRegistry? runtimeRegistry,
     PromptBuilderService? promptBuilder,
     ModelBudgetRegistry? modelBudgetRegistry,
     void Function(
@@ -118,8 +105,6 @@ class ConfigurableHttpLLM
     Duration Function(int attempt)? retryDelayBuilder,
   })  : _settingsRepository = settingsRepository,
         _protocolResolver = protocolResolver ?? const ApiProtocolResolver(),
-        _streamParser = streamParser ?? const ApiStreamParser(),
-        _httpClient = httpClient ?? http.Client(),
         _requestTimeout = requestTimeout ?? _defaultRequestTimeout,
         _plannerRequestTimeout =
             plannerRequestTimeout ?? _defaultPlannerRequestTimeout,
@@ -136,12 +121,20 @@ class ConfigurableHttpLLM
                 ),
         _mainFlowNetworkRetryAttempts = mainFlowNetworkRetryAttempts,
         _adapters = adapters ?? _defaultAdapters,
-        _chatCompletionsToolLoopAdapter = chatCompletionsToolLoopAdapter ??
-            const OpenAIChatCompletionsToolLoopAdapter(),
-        _responsesToolLoopAdapter =
-            responsesToolLoopAdapter ?? const OpenAIResponsesToolLoopAdapter(),
-        _anthropicMessagesToolLoopAdapter = anthropicMessagesToolLoopAdapter ??
-            const AnthropicMessagesToolLoopAdapter(),
+        _runtimeRegistry = runtimeRegistry ??
+            ProtocolRuntimeRegistry(
+              runtimes: {
+                ApiStyle.chatCompletions: OpenAiChatCompletionsRuntime(
+                  httpClient: httpClient,
+                ),
+                ApiStyle.responses: OpenAiResponsesRuntime(
+                  httpClient: httpClient,
+                ),
+                ApiStyle.anthropicMessages: AnthropicMessagesRuntime(
+                  httpClient: httpClient,
+                ),
+              },
+            ),
         _promptBuilder = promptBuilder ?? const PromptBuilderService(),
         _modelBudgetRegistry = modelBudgetRegistry ?? ModelBudgetRegistry(),
         _traceEmitter = traceEmitter ?? Logger.trace,
@@ -318,10 +311,13 @@ class ConfigurableHttpLLM
       }
       final adapter = _adapterFor(apiStyle);
       final modelName = _resolveModelName(runtimeConfig, config);
-      final requestOptions = _requestOptionsFor(
-        modelName: modelName,
+      final requestOptions = adapter.normalizeRequestOptions(
+        _requestOptionsFor(
+          modelName: modelName,
+          purpose: LlmRequestPurpose.planner,
+          apiStyle: apiStyle,
+        ),
         purpose: LlmRequestPurpose.planner,
-        apiStyle: apiStyle,
       );
       final traceContext = _requestTraceContext(
         label: 'native_planner',
@@ -332,21 +328,21 @@ class ConfigurableHttpLLM
         messageCount: carriers.length,
         messages: const [],
       );
-      Map<String, dynamic> payload = adapter.buildPlannerPayloadFromCarriers(
+      final requestSpec = adapter.buildPlannerRequestSpecFromCarriers(
         carriers: carriers,
         config: config,
         modelName: modelName,
         availableTools: availableTools,
         parallelToolCalls: true,
+        runtimeConfig: runtimeConfig,
         requestOptions: requestOptions,
       );
-      if (_shouldUseStreamingPlanner(apiStyle)) {
+      final payload = _requestSpecToJsonMap(requestSpec);
+      if (adapter.capabilities.supportsPlannerStreaming) {
         final streamedResult = await _planTurnDecisionStreaming(
           runtimeConfig: runtimeConfig,
           apiStyle: apiStyle,
-          adapter: adapter,
-          payload: payload,
-          modelName: modelName,
+          requestSpec: requestSpec,
           traceContext: traceContext,
           onRetryScheduled: onRetryScheduled,
         );
@@ -365,56 +361,29 @@ class ConfigurableHttpLLM
       }
       _emitRequestStart(traceContext, payload);
       Logger.i(_tag, 'native planner 请求体: ${jsonEncode(payload)}');
-      Future<http.Response> sendPlannerRequest(
-        Map<String, dynamic> requestPayload,
-      ) {
-        return _performRetriableMainFlowRequest(
-          label: 'native_planner',
-          onRetryScheduled: onRetryScheduled,
-          operation: () => _httpClient
-              .post(
-                _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
-                headers: adapter.buildHeaders(runtimeConfig),
-                body: jsonEncode(requestPayload),
-              )
-              .timeout(_plannerRequestTimeout),
-        );
-      }
-
-      var response = await sendPlannerRequest(payload);
-      if (response.statusCode != 200) {
-        final detail =
-            'HTTP ${response.statusCode} ${response.reasonPhrase ?? '-'} ${_previewBody(response.body)}';
-        Logger.w(
-          _tag,
-          'native planner unsupported status=${response.statusCode} reason=${response.reasonPhrase ?? '-'} body=${_previewBody(response.body)}',
-        );
-        throw Exception(detail);
-      }
-      final responseText = utf8.decode(response.bodyBytes);
-      Logger.i(_tag, 'native planner 响应体: $responseText');
-      if (responseText.trim().isEmpty) {
-        Logger.w(
-          _tag,
-          'native planner returned empty body',
-        );
+      final execution = await _performRetriableMainFlowRequest(
+        label: 'native_planner',
+        onRetryScheduled: onRetryScheduled,
+        operation: () => _runtimeRegistry
+            .runtimeFor(apiStyle)
+            .execute(
+              requestSpec: requestSpec,
+              runtimeConfig: runtimeConfig,
+              timeout: _plannerRequestTimeout,
+            ),
+      );
+      final decoded = execution.rawResponseJson;
+      Logger.i(_tag, 'native planner 响应体: ${jsonEncode(decoded)}');
+      if (decoded.isEmpty) {
+        Logger.w(_tag, 'native planner returned empty body');
         return null;
       }
 
-      final decoded = jsonDecode(responseText);
-      if (decoded is! Map<String, dynamic>) {
-        Logger.w(
-          _tag,
-          'native planner returned non-object payload: ${_previewBody(responseText)}',
-        );
-        return null;
-      }
-
-      final decision = _parseTurnDecisionForStyle(apiStyle, decoded);
+      final decision = adapter.parseDecision(decoded);
       if (decision == null) {
         Logger.w(
           _tag,
-          'native planner parsed null decision. response=${_previewBody(responseText)} summary=${_summarizePlannerPayload(decoded)}',
+          'native planner parsed null decision. response=${_previewBody(jsonEncode(decoded))} summary=${_summarizePlannerPayload(decoded)}',
         );
         return null;
       }
@@ -432,12 +401,12 @@ class ConfigurableHttpLLM
         traceContext,
         totalMs: _elapsedMilliseconds(traceContext.startedAt),
         payloadBytes: _payloadBytes(payload),
-        cacheUsage: LlmUsageExtractor.extract(decoded),
+        cacheUsage: execution.cacheUsage ?? LlmUsageExtractor.extract(decoded),
       );
       if (decision.toolCalls.length > 1) {
         Logger.i(
           _tag,
-          'native planner multi-tool raw response: ${_previewBody(responseText)}',
+          'native planner multi-tool raw response: ${_previewBody(jsonEncode(decoded))}',
         );
         Logger.i(
           _tag,
@@ -472,28 +441,14 @@ class ConfigurableHttpLLM
     }
   }
 
-  bool _shouldUseStreamingPlanner(ApiStyle apiStyle) {
-    switch (apiStyle) {
-      case ApiStyle.anthropicMessages:
-      case ApiStyle.chatCompletions:
-      case ApiStyle.responses:
-        return true;
-    }
-  }
-
   Future<_StreamingPlannerAttemptResult> _planTurnDecisionStreaming({
     required LLMConfig runtimeConfig,
     required ApiStyle apiStyle,
-    required ApiStyleAdapter adapter,
-    required Map<String, dynamic> payload,
-    required String modelName,
+    required ProtocolRequestSpec requestSpec,
     required _RequestTraceContext traceContext,
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
-    final streamingPayload = <String, dynamic>{
-      ...payload,
-      'stream': true,
-    };
+    final streamingPayload = _requestSpecToJsonMap(requestSpec);
     _emitRequestStart(traceContext, streamingPayload);
     Logger.i(
       _tag,
@@ -505,8 +460,7 @@ class ConfigurableHttpLLM
       operation: () => _runStreamingPlannerAttempt(
         runtimeConfig: runtimeConfig,
         apiStyle: apiStyle,
-        adapter: adapter,
-        streamingPayload: streamingPayload,
+        requestSpec: requestSpec,
         traceContext: traceContext,
       ),
     );
@@ -515,45 +469,23 @@ class ConfigurableHttpLLM
   Future<_StreamingPlannerAttemptResult> _runStreamingPlannerAttempt({
     required LLMConfig runtimeConfig,
     required ApiStyle apiStyle,
-    required ApiStyleAdapter adapter,
-    required Map<String, dynamic> streamingPayload,
+    required ProtocolRequestSpec requestSpec,
     required _RequestTraceContext traceContext,
   }) async {
-    final streamedResponse = await _httpClient
-        .send(
-          http.Request(
-            'POST',
-            _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
-          )
-            ..headers.addAll(adapter.buildHeaders(runtimeConfig))
-            ..body = jsonEncode(streamingPayload),
-        )
-        .timeout(_plannerStreamIdleTimeout);
-
-    if (streamedResponse.statusCode != 200) {
-      final responseText = await streamedResponse.stream
-          .bytesToString()
-          .timeout(_plannerStreamIdleTimeout);
-      final detail =
-          'HTTP ${streamedResponse.statusCode} ${streamedResponse.reasonPhrase ?? '-'} ${_previewBody(responseText)}';
-      Logger.w(
-        _tag,
-        'native planner streaming unsupported status=${streamedResponse.statusCode} reason=${streamedResponse.reasonPhrase ?? '-'} body=${_previewBody(responseText)}',
-      );
-      throw Exception(detail);
-    }
-
-    final contentType = streamedResponse.headers['content-type'] ?? '';
-    final normalizedContentType = contentType.toLowerCase();
-    if (!normalizedContentType.contains('text/event-stream')) {
-      final responseText = await streamedResponse.stream
-          .bytesToString()
-          .timeout(_plannerStreamIdleTimeout);
+    final execution = await _runtimeRegistry.runtimeFor(apiStyle).streamExecute(
+          requestSpec: requestSpec,
+          runtimeConfig: runtimeConfig,
+          idleTimeout: _plannerStreamIdleTimeout,
+          overallTimeout: _plannerStreamOverallTimeout,
+        );
+    final streamingPayload = _requestSpecToJsonMap(requestSpec);
+    final fallbackJson = execution.nonStreamingFallbackJson;
+    if (fallbackJson != null) {
       Logger.i(
         _tag,
-        'native planner streaming fallback 响应体: $responseText',
+        'native planner streaming fallback 响应体: ${jsonEncode(fallbackJson)}',
       );
-      if (responseText.trim().isEmpty) {
+      if (fallbackJson.isEmpty) {
         _emitRequestDone(
           traceContext,
           totalMs: _elapsedMilliseconds(traceContext.startedAt),
@@ -561,28 +493,22 @@ class ConfigurableHttpLLM
         );
         return const _StreamingPlannerAttemptResult.completed(null);
       }
-      final decoded = jsonDecode(responseText);
-      final cacheUsage = decoded is Map<String, dynamic>
-          ? LlmUsageExtractor.extract(decoded)
-          : null;
       _emitRequestDone(
         traceContext,
         totalMs: _elapsedMilliseconds(traceContext.startedAt),
         payloadBytes: _payloadBytes(streamingPayload),
-        cacheUsage: cacheUsage,
+        cacheUsage: LlmUsageExtractor.extract(fallbackJson),
       );
-      if (decoded is! Map<String, dynamic>) {
-        return const _StreamingPlannerAttemptResult.completed(null);
-      }
+      final adapter = _adapterFor(apiStyle);
       return _StreamingPlannerAttemptResult.completed(
-        _parseTurnDecisionForStyle(apiStyle, decoded),
+        adapter.parseDecision(fallbackJson),
       );
     }
 
     final accumulator = StreamingDecisionAccumulator();
     DateTime? firstChunkAt;
     await _consumePlannerStreamWithTimeouts(
-      stream: _streamParser.parsePlannerChunks(streamedResponse, apiStyle),
+      stream: execution.chunks,
       accumulator: accumulator,
       onFirstChunk: () {
         firstChunkAt ??= DateTime.now();
@@ -604,6 +530,7 @@ class ConfigurableHttpLLM
       _tag,
       'native planner streaming snapshot: ${_summarizeStreamingPlannerAttempt(debugSnapshot)}',
     );
+    final adapter = _adapterFor(apiStyle);
     final builtDecision = accumulator.buildDecision();
     // Capture provider raw assistant message for round-trip replay.
     final rawAssistantMessage = builtDecision == null
@@ -782,10 +709,7 @@ class ConfigurableHttpLLM
         profile: profile,
         purpose: purpose,
       ),
-      allowReasoning: _allowReasoningFor(
-        apiStyle: apiStyle,
-        purpose: purpose,
-      ),
+      allowReasoning: true,
     );
   }
 
@@ -800,23 +724,6 @@ class ConfigurableHttpLLM
       case LlmRequestPurpose.webpageProcessing:
       case LlmRequestPurpose.sideTask:
         return profile.reservedOutputTokens + profile.reasoningReserveTokens;
-    }
-  }
-
-  bool _allowReasoningFor({
-    required ApiStyle apiStyle,
-    required LlmRequestPurpose purpose,
-  }) {
-    if (apiStyle != ApiStyle.anthropicMessages) {
-      return true;
-    }
-    switch (purpose) {
-      case LlmRequestPurpose.planner:
-        return false;
-      case LlmRequestPurpose.summary:
-      case LlmRequestPurpose.webpageProcessing:
-      case LlmRequestPurpose.sideTask:
-        return true;
     }
   }
 
@@ -950,20 +857,6 @@ class ConfigurableHttpLLM
     }
   }
 
-  ModelTurnDecision? _parseTurnDecisionForStyle(
-    ApiStyle apiStyle,
-    Map<String, dynamic> payload,
-  ) {
-    switch (apiStyle) {
-      case ApiStyle.responses:
-        return _responsesToolLoopAdapter.parseDecision(payload);
-      case ApiStyle.chatCompletions:
-        return _chatCompletionsToolLoopAdapter.parseDecision(payload);
-      case ApiStyle.anthropicMessages:
-        return _anthropicMessagesToolLoopAdapter.parseDecision(payload);
-    }
-  }
-
   Future<String> _runSideModelTextTask(
     LLMConfig runtimeConfig, {
     required ChatConfig config,
@@ -975,24 +868,24 @@ class ConfigurableHttpLLM
     final apiStyle = _protocolResolver.resolveStyle(runtimeConfig.apiUrl);
     final adapter = _adapterFor(apiStyle);
     final modelName = _resolveModelName(runtimeConfig, config);
-    final requestOptions = _requestOptionsFor(
-      modelName: modelName,
-      purpose: switch (requestLabel) {
-        'side_summary' => LlmRequestPurpose.summary,
-        'side_webpage' => LlmRequestPurpose.webpageProcessing,
-        _ => LlmRequestPurpose.sideTask,
-      },
-      apiStyle: apiStyle,
+    final purpose = switch (requestLabel) {
+      'side_summary' => LlmRequestPurpose.summary,
+      'side_webpage' => LlmRequestPurpose.webpageProcessing,
+      _ => LlmRequestPurpose.sideTask,
+    };
+    final requestOptions = adapter.normalizeRequestOptions(
+      _requestOptionsFor(
+        modelName: modelName,
+        purpose: purpose,
+        apiStyle: apiStyle,
+      ),
+      purpose: purpose,
     );
     final traceContext = _requestTraceContext(
       label: requestLabel,
       apiStyle: apiStyle,
       modelName: modelName,
-      purpose: switch (requestLabel) {
-        'side_summary' => LlmRequestPurpose.summary,
-        'side_webpage' => LlmRequestPurpose.webpageProcessing,
-        _ => LlmRequestPurpose.sideTask,
-      },
+      purpose: purpose,
       requestOptions: requestOptions,
       messageCount: messages.length,
       messages: messages,
@@ -1017,33 +910,32 @@ class ConfigurableHttpLLM
       parallelToolCalls: false,
       requestOptions: requestOptions,
     );
+    final requestSpec = adapter.buildPlannerRequestSpecFromCarriers(
+      carriers: sideCarriers,
+      config: config,
+      modelName: modelName,
+      availableTools: const [],
+      parallelToolCalls: false,
+      runtimeConfig: runtimeConfig,
+      requestOptions: requestOptions,
+    );
     _emitRequestStart(traceContext, payload);
     Logger.i(_tag, '$requestLabel 请求体: ${jsonEncode(payload)}');
-    final response = await _performRetriableMainFlowRequest(
+    final execution = await _performRetriableMainFlowRequest(
       label: requestLabel,
-      operation: () => _httpClient
-          .post(
-            _protocolResolver.buildRequestUri(runtimeConfig.apiUrl, apiStyle),
-            headers: adapter.buildHeaders(runtimeConfig),
-            body: jsonEncode(payload),
-          )
-          .timeout(effectiveTimeout),
+      operation: () => _runtimeRegistry.runtimeFor(apiStyle).execute(
+            requestSpec: requestSpec,
+            runtimeConfig: runtimeConfig,
+            timeout: effectiveTimeout,
+          ),
     );
-    if (response.statusCode != 200) {
-      throw Exception('请求失败: ${response.statusCode}');
-    }
-
-    final responseText = utf8.decode(response.bodyBytes);
-    final decoded = jsonDecode(responseText);
-    if (decoded is! Map<String, dynamic>) {
-      return '';
-    }
-    final decision = _parseTurnDecisionForStyle(apiStyle, decoded);
+    final decoded = execution.rawResponseJson;
+    final decision = adapter.parseDecision(decoded);
     _emitRequestDone(
       traceContext,
       totalMs: _elapsedMilliseconds(traceContext.startedAt),
       payloadBytes: _payloadBytes(payload),
-      cacheUsage: LlmUsageExtractor.extract(decoded),
+      cacheUsage: execution.cacheUsage ?? LlmUsageExtractor.extract(decoded),
     );
     if (decision != null) {
       if (decision.toolCalls.isNotEmpty) {
@@ -1213,6 +1105,17 @@ class ConfigurableHttpLLM
     }
     return _defaultPlannerStreamOverallTimeout;
   }
+
+  Map<String, dynamic> _requestSpecToJsonMap(ProtocolRequestSpec requestSpec) {
+    switch (requestSpec) {
+      case JsonProtocolRequestSpec(:final payload):
+        return payload;
+      case ChatCompletionsRequestSpec(:final request):
+        return request.toJson();
+      case ResponsesRequestSpec(:final request):
+        return request.toJson();
+    }
+  }
 }
 
 class _StreamingPlannerAttemptResult {
@@ -1247,11 +1150,4 @@ class _RequestTraceContext {
     required this.cacheStrategy,
     required this.startedAt,
   });
-}
-
-enum LlmRequestPurpose {
-  planner,
-  summary,
-  webpageProcessing,
-  sideTask,
 }

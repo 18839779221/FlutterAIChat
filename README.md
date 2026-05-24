@@ -120,7 +120,12 @@ fvm flutter test
 ## 模型与运行时配置
 
 - 模型配置采用 provider-first 结构，可在设置页管理提供方和模型目录
-- 当前运行时已支持根据 Base URL 适配不同 API 风格，包括 OpenAI `responses`、OpenAI `chat/completions` 和 Anthropic `messages`
+- `ConfigurableHttpLLM` 现在只负责高层编排；协议语义映射由 `ApiStyleAdapter` 负责，请求执行由 `ProtocolExecutionRuntime` 负责，流式事件转换由 runtime 内部的 stream adapter 负责
+- 当前统一 runtime registry 已支持根据 Base URL 适配不同 API 风格，包括 OpenAI `responses`、OpenAI `chat/completions` 和 Anthropic `messages`
+- OpenAI `chat/completions`、`responses` 与 Anthropic `messages` 已进入统一 runtime registry；其中 OpenAI 两条协议与 Anthropic 非流请求都走 SDK-first 执行
+- Anthropic planner streaming 只保留一条正式主链路：`AnthropicMessagesRuntime -> AnthropicStreamEventAdapter -> StreamingDecisionAccumulator`
+- legacy `ApiStreamParser` 不再承载 Anthropic planner chunk 解析，避免与正式 runtime 主链路形成双实现漂移
+- provider adapter / runtime / live capability matrix 的详细边界见 [docs/architecture/provider-adapter-runtime-and-live-matrix.md](./docs/architecture/provider-adapter-runtime-and-live-matrix.md)
 - 本地默认配置位于 [config/local_defaults.json](./config/local_defaults.json)
 
 ## 测试与自动化
@@ -136,6 +141,7 @@ bash scripts/android_install_debug.sh
 bash scripts/android_droidrun_driver_smoke.sh
 bash scripts/android_droidrun_chat_smoke.sh
 bash scripts/run_live_llm_contract_tests.sh minimax-openai
+HEADLESS_LIVE_PROVIDER_RESPONSES=my-responses-provider flutter test --tags live-headless-agent test/integration/chat_send_live/chat_send_live_responses_test.dart
 ```
 
 ## 文档导航

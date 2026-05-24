@@ -6,6 +6,8 @@ import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
 
+import 'headless_live_provider_matrix.dart';
+
 class SelectedHeadlessLiveProvider {
   /// Concrete provider chosen for the current test run.
   final LlmProviderConfig provider;
@@ -17,6 +19,32 @@ class SelectedHeadlessLiveProvider {
     required this.provider,
     required this.selectionReason,
   });
+}
+
+/// Describes observed live-test behavior for one concrete upstream provider.
+///
+/// This stays in the test layer so provider-specific quirks do not leak into
+/// production orchestration contracts.
+enum StructuredCheckpointExpectation {
+  /// The provider is expected to stably emit the structured checkpoint.
+  required,
+
+  /// The provider may emit the structured checkpoint, but real traffic has
+  /// shown fallback to plain assistant text / inline completion is possible.
+  opportunistic,
+}
+
+class HeadlessLiveProviderProfile {
+  const HeadlessLiveProviderProfile({
+    required this.askUserInteraction,
+    required this.toolConfirmation,
+  });
+
+  /// Live expectation for the structured `ask_user_question` checkpoint.
+  final StructuredCheckpointExpectation askUserInteraction;
+
+  /// Live expectation for the shared write-confirmation checkpoint.
+  final StructuredCheckpointExpectation toolConfirmation;
 }
 
 String? resolveInjectedLocalDefaultsPath({
@@ -117,6 +145,16 @@ SelectedHeadlessLiveProvider selectHeadlessLiveProvider({
     provider: matchingProviders.first,
     selectionReason: 'selected first matching provider for $style as fallback',
   );
+}
+
+HeadlessLiveProviderProfile resolveHeadlessLiveProviderProfile(
+  String providerId,
+) {
+  return headlessLiveProviderMatrix[providerId] ??
+      const HeadlessLiveProviderProfile(
+        askUserInteraction: StructuredCheckpointExpectation.required,
+        toolConfirmation: StructuredCheckpointExpectation.required,
+      );
 }
 
 String? _styleOverrideKey(

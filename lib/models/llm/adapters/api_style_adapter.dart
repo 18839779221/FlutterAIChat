@@ -2,11 +2,15 @@ import '../../agent/planner_tool_choice.dart';
 import '../../agent/planner_tool_option.dart';
 import '../../chat_message.dart';
 import '../../context/planner_context_carrier.dart';
+import '../llm_request_purpose.dart';
 import '../llm_request_options.dart';
 import '../../../services/chat_service.dart';
 import '../api_protocol_resolver.dart';
 import '../llm_config.dart';
+import '../runtime/protocol_request_spec.dart';
 import '../streaming_decision_accumulator.dart';
+import '../../agent/model_turn_decision.dart';
+import 'provider_capabilities.dart';
 
 /// Encapsulates the differences between the three supported HTTP LLM
 /// protocols. `ConfigurableHttpLLM` stays protocol-agnostic and dispatches to
@@ -23,10 +27,34 @@ abstract class ApiStyleAdapter {
 
   ApiStyle get style;
 
-  /// Request headers for both chat and planner calls.
+  /// Declares orchestration-relevant provider capabilities.
+  ProviderCapabilities get capabilities;
+
+  /// Request headers retained for legacy JSON runtime compatibility.
   Map<String, String> buildHeaders(LLMConfig runtimeConfig);
 
-  /// Build the primary chat payload for `chatStream` / `validateApiKey`.
+  /// Normalize request-scoped options according to provider-specific policy.
+  ///
+  /// This keeps orchestration generic while allowing adapters to enforce
+  /// provider-contract defaults such as planner reasoning toggles.
+  LlmRequestOptions normalizeRequestOptions(
+    LlmRequestOptions requestOptions, {
+    required LlmRequestPurpose purpose,
+  }) {
+    return requestOptions;
+  }
+
+  /// Build the primary chat request for direct model-side tasks.
+  ProtocolRequestSpec buildChatRequestSpec({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required String modelName,
+    required bool stream,
+    required LLMConfig runtimeConfig,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
+  });
+
+  /// Legacy JSON payload builder kept for compatibility during runtime split.
   Map<String, dynamic> buildChatPayload({
     required List<ChatMessage> messages,
     required ChatConfig config,
@@ -38,6 +66,10 @@ abstract class ApiStyleAdapter {
   /// Parse a structured planner response into a [PlannerToolChoice], or null
   /// if the response isn't decodable.
   PlannerToolChoice? parsePlannerChoice(Map<String, dynamic> payload);
+
+  /// Parse a provider response into a terminal or tool-use
+  /// [ModelTurnDecision].
+  ModelTurnDecision? parseDecision(Map<String, dynamic> payload);
 
   /// Extract plain text from a non-streaming response body (used by
   /// `_sendTextRequest`).
@@ -58,9 +90,21 @@ abstract class ApiStyleAdapter {
     StreamingDecisionAccumulatorSnapshot snapshot,
   );
 
-  /// Build the planner request payload from a list of carriers. RawAssistant
+  /// Build the planner request spec from a list of carriers. RawAssistant
   /// carriers are spliced byte-identically; Synthetic carriers are
   /// materialized using the adapter's role mapping.
+  ProtocolRequestSpec buildPlannerRequestSpecFromCarriers({
+    required List<PlannerContextCarrier> carriers,
+    required ChatConfig config,
+    required String modelName,
+    required List<PlannerToolOption> availableTools,
+    required bool parallelToolCalls,
+    required LLMConfig runtimeConfig,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
+  });
+
+  /// Legacy JSON planner payload builder kept for compatibility during
+  /// runtime split and focused adapter tests.
   Map<String, dynamic> buildPlannerPayloadFromCarriers({
     required List<PlannerContextCarrier> carriers,
     required ChatConfig config,

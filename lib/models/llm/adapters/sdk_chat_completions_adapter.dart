@@ -11,10 +11,12 @@ import '../../chat_message.dart';
 import '../../context/planner_context_carrier.dart';
 import '../llm_config.dart';
 import '../llm_request_options.dart';
+import '../runtime/protocol_request_spec.dart';
 import '../streaming_decision_accumulator.dart';
 import 'adapter_utils.dart';
 import 'api_style_adapter.dart';
 import '../api_protocol_resolver.dart';
+import 'provider_capabilities.dart';
 
 /// SDK-backed implementation of [ApiStyleAdapter] for the Chat Completions
 /// protocol, powered by `openai_dart`.
@@ -30,11 +32,35 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
   ApiStyle get style => ApiStyle.chatCompletions;
 
   @override
+  ProviderCapabilities get capabilities => const ProviderCapabilities(
+        supportsPlannerStreaming: true,
+        supportsParallelToolCalls: true,
+      );
+
+  @override
   Map<String, String> buildHeaders(LLMConfig runtimeConfig) {
     return {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer ${runtimeConfig.apiKey}',
     };
+  }
+
+  @override
+  ProtocolRequestSpec buildChatRequestSpec({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required String modelName,
+    required bool stream,
+    required LLMConfig runtimeConfig,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
+  }) {
+    final request = _buildChatRequest(
+      messages: messages,
+      config: config,
+      modelName: modelName,
+      requestOptions: requestOptions,
+    );
+    return ChatCompletionsRequestSpec(request: request);
   }
 
   @override
@@ -44,6 +70,22 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
     required String modelName,
     required bool stream,
     LlmRequestOptions requestOptions = const LlmRequestOptions(),
+  }) {
+    final request = _buildChatRequest(
+      messages: messages,
+      config: config,
+      modelName: modelName,
+      requestOptions: requestOptions,
+    );
+    // Serialize via toJson and strip null fields for clean payload
+    return _cleanNulls(request.toJson());
+  }
+
+  oai.ChatCompletionCreateRequest _buildChatRequest({
+    required List<ChatMessage> messages,
+    required ChatConfig config,
+    required String modelName,
+    required LlmRequestOptions requestOptions,
   }) {
     final normalizedMessages = normalizeMessagesWithConfiguredSystemPrompt(
       messages,
@@ -61,14 +103,11 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
           },
     ];
 
-    final request = oai.ChatCompletionCreateRequest(
+    return oai.ChatCompletionCreateRequest(
       model: modelName,
       messages: sdkMessages,
       maxCompletionTokens: requestOptions.maxOutputTokens,
     );
-
-    // Serialize via toJson and strip null fields for clean payload
-    return _cleanNulls(request.toJson());
   }
 
   @override
@@ -116,52 +155,38 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
   /// [ModelTurnDecision] for the agent loop.
   ///
   /// Used by the streaming planner fallback path (non-SSE response).
+  @override
   ModelTurnDecision? parseDecision(Map<String, dynamic> payload) {
-    try {
-      final completion = oai.ChatCompletion.fromJson(payload);
-      final message = completion.choices.firstOrNull?.message;
-      if (message == null) return null;
-
-      final toolCalls = <ModelToolCall>[];
-      if (message.hasToolCalls) {
-        for (var i = 0; i < message.toolCalls!.length; i++) {
-          final tc = message.toolCalls![i];
-          final args = _decodeArguments(tc.function.arguments);
-          if (args != null) {
-            toolCalls.add(
-              ModelToolCall(
-                providerCallId: tc.id,
-                toolName: tc.function.name,
-                arguments: args,
-                sequence: i,
-              ),
-            );
-          }
-        }
-      }
-
-      final content = message.content?.trim();
-      final reasoning = message.reasoningContent?.trim() ??
-          message.reasoning?.trim();
-
-      if (toolCalls.isEmpty &&
-          (content == null || content.isEmpty) &&
-          (reasoning == null || reasoning.isEmpty)) {
-        return null;
-      }
-
-      return ModelTurnDecision(
-        toolCalls: toolCalls,
-        assistantMessage: content?.isEmpty == true ? null : content,
-        visibleReasoning: reasoning?.isEmpty == true ? null : reasoning,
-        providerState: {
-          if (completion.id != null) 'response_id': completion.id,
-        },
-        isTerminal: toolCalls.isEmpty,
-      );
-    } catch (_) {
+    final providerState = <String, dynamic>{
+      if (payload['id'] is String && (payload['id'] as String).trim().isNotEmpty)
+        'response_id': payload['id'],
+    };
+    final rawMessage = extractRawAssistantMessage(payload);
+    if (rawMessage == null) {
       return null;
     }
+
+    final toolCalls = _parseToolCalls(rawMessage);
+    final contentParts = _extractContentParts(rawMessage['content']);
+    final content = contentParts.content;
+    final reasoning = _joinReasoningParts([
+      rawMessage['reasoning_content'],
+      rawMessage['reasoning'],
+      rawMessage['thinking'],
+      contentParts.reasoning,
+    ]);
+
+    if (toolCalls.isEmpty && content == null && reasoning == null) {
+      return null;
+    }
+
+    return ModelTurnDecision(
+      toolCalls: toolCalls,
+      assistantMessage: content,
+      visibleReasoning: reasoning,
+      providerState: providerState,
+      isTerminal: toolCalls.isEmpty,
+    );
   }
 
   @override
@@ -203,6 +228,29 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
             },
         ],
     };
+  }
+
+  @override
+  ProtocolRequestSpec buildPlannerRequestSpecFromCarriers({
+    required List<PlannerContextCarrier> carriers,
+    required ChatConfig config,
+    required String modelName,
+    required List<PlannerToolOption> availableTools,
+    required bool parallelToolCalls,
+    required LLMConfig runtimeConfig,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
+  }) {
+    final payload = buildPlannerPayloadFromCarriers(
+      carriers: carriers,
+      config: config,
+      modelName: modelName,
+      availableTools: availableTools,
+      parallelToolCalls: parallelToolCalls,
+      requestOptions: requestOptions,
+    );
+    return ChatCompletionsRequestSpec(
+      request: oai.ChatCompletionCreateRequest.fromJson(payload),
+    );
   }
 
   @override
@@ -285,6 +333,135 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
     return null;
   }
 
+  List<ModelToolCall> _parseToolCalls(Map<String, dynamic> message) {
+    final toolCalls = message['tool_calls'];
+    if (toolCalls is! List || toolCalls.isEmpty) {
+      return const [];
+    }
+
+    final parsed = <ModelToolCall>[];
+    for (var i = 0; i < toolCalls.length; i++) {
+      final rawToolCall = toolCalls[i];
+      if (rawToolCall is! Map) {
+        continue;
+      }
+      final normalizedToolCall = rawToolCall.cast<String, dynamic>();
+      final function = normalizedToolCall['function'];
+      if (function is! Map) {
+        continue;
+      }
+      final normalizedFunction = function.cast<String, dynamic>();
+      final toolName = normalizeText(normalizedFunction['name']);
+      final arguments = decodeToolArguments(normalizedFunction['arguments']);
+      if (toolName == null || arguments == null) {
+        continue;
+      }
+      parsed.add(
+        ModelToolCall(
+          providerCallId: normalizeText(normalizedToolCall['id']),
+          toolName: toolName,
+          arguments: arguments,
+          sequence: i,
+        ),
+      );
+    }
+    return parsed;
+  }
+
+  _ContentParts _extractContentParts(dynamic content) {
+    final textBuffer = StringBuffer();
+    final reasoningBuffer = StringBuffer();
+    final inlineText = _nonBlankText(content);
+    if (inlineText != null) {
+      final extracted = _extractThinkTaggedTextPreserveWhitespace(inlineText);
+      if (extracted.reasoning != null) {
+        reasoningBuffer.write(extracted.reasoning);
+      }
+      if (extracted.content != null) {
+        textBuffer.write(extracted.content);
+      }
+      return _ContentParts(
+        content: _normalizeAggregatedText(textBuffer.toString()),
+        reasoning: _normalizeAggregatedText(reasoningBuffer.toString()),
+      );
+    }
+
+    if (content is List) {
+      for (final item in content) {
+        if (item is! Map) {
+          continue;
+        }
+        final normalizedItem = item.cast<String, dynamic>();
+        final text = _nonBlankText(
+          normalizedItem['text'] ?? normalizedItem['content'],
+        );
+        if (text == null) {
+          continue;
+        }
+        final extracted = _extractThinkTaggedTextPreserveWhitespace(text);
+        if (extracted.reasoning != null) {
+          reasoningBuffer.write(extracted.reasoning);
+        }
+        if (extracted.content != null) {
+          textBuffer.write(extracted.content);
+        }
+      }
+    }
+
+    return _ContentParts(
+      content: _normalizeAggregatedText(textBuffer.toString()),
+      reasoning: _normalizeAggregatedText(reasoningBuffer.toString()),
+    );
+  }
+
+  String? _joinReasoningParts(List<dynamic> values) {
+    final buffer = StringBuffer();
+    for (final value in values) {
+      final text = normalizeText(value);
+      if (text != null) {
+        buffer.write(text);
+      }
+    }
+    return _normalizeAggregatedText(buffer.toString());
+  }
+
+  String? _nonBlankText(dynamic value) {
+    if (value is! String) {
+      return null;
+    }
+    return value.trim().isEmpty ? null : value;
+  }
+
+  String? _normalizeAggregatedText(String value) {
+    return value.trim().isEmpty ? null : value.trim();
+  }
+
+  ThinkTagExtraction _extractThinkTaggedTextPreserveWhitespace(String value) {
+    final matches = _thinkTagPattern.allMatches(value).toList(growable: false);
+    if (matches.isEmpty) {
+      return ThinkTagExtraction(content: value);
+    }
+
+    final reasoningBuffer = StringBuffer();
+    for (final match in matches) {
+      final reasoning = normalizeText(match.group(1));
+      if (reasoning != null) {
+        reasoningBuffer.write(reasoning);
+      }
+    }
+
+    final content = value.replaceAll(_thinkTagPattern, '');
+    return ThinkTagExtraction(
+      content: content.trim().isEmpty ? null : content,
+      reasoning: _normalizeAggregatedText(reasoningBuffer.toString()),
+    );
+  }
+
+  static final RegExp _thinkTagPattern = RegExp(
+    r'<think>([\s\S]*?)</think>',
+    caseSensitive: false,
+  );
+
   /// Strip null values from a JSON map for cleaner request payloads.
   /// The SDK includes null fields; some providers reject unexpected keys.
   Map<String, dynamic> _cleanNulls(Map<String, dynamic> json) {
@@ -306,4 +483,11 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
     }
     return cleaned;
   }
+}
+
+class _ContentParts {
+  const _ContentParts({this.content, this.reasoning});
+
+  final String? content;
+  final String? reasoning;
 }
