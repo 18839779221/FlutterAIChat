@@ -41,6 +41,7 @@ class DebugTurnOverview {
   final int groupId;
   final ChatTurnStatus status;
   final String? sendPhase;
+  final String? sendStatusText;
   final int iterationCount;
   final int toolCallCount;
   final String? providerStyle;
@@ -60,6 +61,7 @@ class DebugTurnOverview {
     required this.groupId,
     required this.status,
     required this.sendPhase,
+    this.sendStatusText,
     required this.iterationCount,
     required this.toolCallCount,
     required this.providerStyle,
