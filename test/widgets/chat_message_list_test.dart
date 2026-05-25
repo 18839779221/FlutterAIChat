@@ -885,6 +885,39 @@ void main() {
       expect(find.text('准备搜索 OpenAI 最新消息'), findsNothing);
     });
 
+    testWidgets('ask user question proposed workflow stays hidden', (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '请先补充信息',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const {
+              'toolName': 'ask_user_question',
+              'arguments': {
+                'questions': [
+                  {
+                    'id': 'storage_layer',
+                    'header': 'Storage',
+                    'question': 'Which storage layer should we use?',
+                    'multiSelect': false,
+                    'options': [],
+                  },
+                ],
+              },
+              'status': 'proposed',
+              'summary': '请先补充信息',
+              'requiresConfirmation': false,
+            },
+          ),
+        ],
+      );
+
+      expect(find.byType(ToolWorkflowCard), findsNothing);
+      expect(find.text('请先补充信息'), findsNothing);
+    });
+
     testWidgets('ask user question prompt renders compact placeholder card',
         (tester) async {
       await _pumpMessageList(
@@ -929,10 +962,26 @@ void main() {
               'type': 'result',
               'agentTurnId': 42,
               'status': 'submitted',
+              'questions': [
+                {
+                  'id': 'storage_layer',
+                  'header': 'Storage',
+                  'question': 'Which storage layer should we use?',
+                  'multiSelect': false,
+                  'options': [],
+                },
+                {
+                  'id': 'offline_mode',
+                  'header': 'Offline',
+                  'question': 'Do we need offline mode?',
+                  'multiSelect': false,
+                  'options': [],
+                },
+              ],
               'submittedAnswers': {
                 'answersByQuestionId': {
                   'storage_layer': 'SQLite',
-                  'offline_mode': 'Yes',
+                  'offline_mode': '',
                 },
               },
             },
@@ -942,8 +991,12 @@ void main() {
 
       expect(find.byType(AskUserQuestionResultCard), findsOneWidget);
       expect(find.text('已补充本回合信息'), findsOneWidget);
+      expect(find.text('Which storage layer should we use?'), findsOneWidget);
+      expect(find.text('Do we need offline mode?'), findsOneWidget);
       expect(find.text('SQLite'), findsOneWidget);
-      expect(find.text('Yes'), findsOneWidget);
+      expect(find.text('已跳过'), findsOneWidget);
+      expect(find.text('storage_layer'), findsNothing);
+      expect(find.text('offline_mode'), findsNothing);
     });
 
     testWidgets(

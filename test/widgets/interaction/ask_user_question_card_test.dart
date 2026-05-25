@@ -142,7 +142,107 @@ void main() {
 
     expect(find.text('问题 1 / 2'), findsOneWidget);
     expect(find.text('下一题'), findsOneWidget);
+    expect(find.text('提交并继续'), findsNothing);
+    expect(find.text('跳过'), findsOneWidget);
+  });
+
+  testWidgets('last question shows submit action instead of next action', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    container.read(questionCardDraftsProvider.notifier).setCurrentQuestionIndex(
+          messageId: 47,
+          index: 1,
+        );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Scaffold(
+            body: AskUserQuestionCard(
+              message: ChatMessage(
+                id: 47,
+                text: 'Need two answers',
+                role: MessageRole.assistant,
+                payloadJson: const {
+                  'questions': [
+                    {
+                      'id': 'storage_layer',
+                      'header': 'Storage',
+                      'question': 'Which storage layer should we use?',
+                      'multiSelect': false,
+                      'options': [],
+                    },
+                    {
+                      'id': 'offline_mode',
+                      'header': 'Offline',
+                      'question': 'Do we need offline mode?',
+                      'multiSelect': false,
+                      'options': [],
+                    },
+                  ],
+                  'agentTurnId': 42,
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('问题 2 / 2'), findsOneWidget);
     expect(find.text('提交并继续'), findsOneWidget);
+    expect(find.text('下一题'), findsNothing);
+  });
+
+  testWidgets('skip advances to the next question automatically', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Scaffold(
+            body: AskUserQuestionCard(
+              message: ChatMessage(
+                id: 48,
+                text: 'Need two answers',
+                role: MessageRole.assistant,
+                payloadJson: const {
+                  'questions': [
+                    {
+                      'id': 'storage_layer',
+                      'header': 'Storage',
+                      'question': 'Which storage layer should we use?',
+                      'multiSelect': false,
+                      'options': [],
+                    },
+                    {
+                      'id': 'offline_mode',
+                      'header': 'Offline',
+                      'question': 'Do we need offline mode?',
+                      'multiSelect': false,
+                      'options': [],
+                    },
+                  ],
+                  'agentTurnId': 42,
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('跳过'));
+    await tester.pump();
+
+    expect(find.text('问题 2 / 2'), findsOneWidget);
+    expect(find.text('Do we need offline mode?'), findsOneWidget);
   });
 
   testWidgets(
