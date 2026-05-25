@@ -1,4 +1,5 @@
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/interaction/ask_user_question_item.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -78,6 +79,50 @@ void main() {
     );
 
     expect(container.read(questionCardDraftsProvider)[messageId], isNull);
+  });
+
+  test('skipCurrentQuestion records empty-string answer semantics', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    const messageId = 79;
+    final coordinator = container.read(chatInteractionCoordinatorProvider);
+
+    await coordinator.skipCurrentQuestion(
+      ChatMessage(
+        id: messageId,
+        text: 'Need more info',
+        role: MessageRole.assistant,
+        payloadJson: const {
+          'questions': [
+            {
+              'id': 'storage_layer',
+              'header': 'Storage',
+              'question': 'Which storage layer should we use?',
+              'multiSelect': false,
+              'options': [],
+            },
+          ],
+          'agentTurnId': 42,
+        },
+      ),
+    );
+
+    final draft = container.read(questionCardDraftsProvider)[messageId];
+    expect(draft?.selectedOptionLabelsByQuestionId, containsPair('storage_layer', <String>[]));
+    expect(
+      resolveAnswerText(
+        draft: draft!,
+        question: const AskUserQuestionItem(
+          id: 'storage_layer',
+          header: 'Storage',
+          question: 'Which storage layer should we use?',
+          multiSelect: false,
+          options: [],
+        ),
+      ),
+      '',
+    );
   });
 }
 
