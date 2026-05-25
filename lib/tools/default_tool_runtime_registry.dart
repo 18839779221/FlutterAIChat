@@ -5,6 +5,7 @@ import 'core/tool_runtime_registry.dart';
 import 'handlers/ask_user_question_tool_handler.dart';
 import 'handlers/create_calendar_event_tool_handler.dart';
 import 'handlers/create_artifact_tool_handler.dart';
+import 'handlers/create_artifact_guideline_tool_handler.dart';
 import 'handlers/create_reminder_tool_handler.dart';
 import 'handlers/edit_tool_handler.dart';
 import 'handlers/fetch_webpage_tool_handler.dart';
@@ -25,9 +26,11 @@ ToolRuntimeRegistry buildDefaultToolRuntimeRegistry({
   SkillRuntimeService? skillRuntimeService,
   AppSettingsRepository? appSettingsRepository,
   CreateArtifactToolHandler? createArtifactHandler,
+  CreateArtifactGuidelineToolHandler? createArtifactGuidelineHandler,
 }) {
   return ToolRuntimeRegistry(
     handlers: [
+      if (createArtifactGuidelineHandler != null) createArtifactGuidelineHandler,
       if (createArtifactHandler != null) createArtifactHandler,
       if (skillRuntimeService != null)
         SkillToolHandler(

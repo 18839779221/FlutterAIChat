@@ -165,6 +165,10 @@ class AppSettingsRepository {
   }
 
   Future<String?> getThemeId() async {
+    return getThemeIdSync();
+  }
+
+  String? getThemeIdSync() {
     final value = _preferences.getString(_themeIdKey)?.trim();
     if (value == null || value.isEmpty) {
       return null;

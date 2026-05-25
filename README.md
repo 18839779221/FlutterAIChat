@@ -26,7 +26,7 @@
 - 长对话上下文管理：不是简单拼接全部历史，而是按上下文预算保留近期内容并压缩较早历史
 - 工具调用工作流：支持搜索、网页读取、文件类工具和结果展示，并可在执行前确认高风险操作
 - 结构化追问与恢复：当模型需要补充信息时，可以在同一轮对话中发起问题卡片，等待用户回答后继续执行
-- 可视化回答：支持生成 inline artifact，在回答中插入 HTML / SVG 形式的图表、表格或交互式说明
+- 可视化回答：支持生成 inline artifact，在回答中插入 HTML / SVG 形式的图表、表格或交互式说明；解释增强型 artifact 会先读取配套 guideline，再按项目级 design token 渲染
 - 可配置模型接入：支持 provider-first 的多提供方、多模型配置，并可在设置页测试模型连通性
 - 可扩展 skills：支持安装、启用和停用本地 skills，为运行时 Agent 增加额外能力
 
@@ -78,7 +78,8 @@ flowchart TD
 | Tool | Category | Purpose |
 | --- | --- | --- |
 | `ask_user_question` | Interaction | 发起结构化问题卡片，在同一轮对话中等待用户补充信息后继续执行 |
-| `create_artifact` | Visualization | 生成 HTML / SVG artifact，用于图表、表格、交互式说明等可视化回答 |
+| `create_artifact:guideline` | Visualization | 在首次解释增强型 artifact 创建前返回宿主渲染 contract、design token 引用与布局约束 |
+| `create_artifact` | Visualization | 生成 HTML / SVG artifact，用于图表、表格、交互式说明等可视化回答，并复用项目级 design token 与当前主题语言 |
 | `skill` | Extension | 调用已安装并启用的 skill，扩展 Agent 的运行时能力 |
 | `search_chat_history` | Context | 搜索当前会话的历史内容 |
 | `web_search` | Web | 搜索互联网信息并返回候选结果 |

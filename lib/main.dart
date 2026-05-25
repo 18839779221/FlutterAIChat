@@ -46,9 +46,11 @@ import 'services/skills/skill_storage_service.dart';
 import 'services/artifact/artifact_file_storage_service.dart';
 import 'tools/adapters/tool_host_adapters.dart';
 import 'tools/default_tool_runtime_registry.dart';
+import 'tools/handlers/create_artifact_guideline_tool_handler.dart';
 import 'tools/handlers/create_artifact_tool_handler.dart';
 import 'theme/app_theme_controller.dart';
 import 'theme/app_theme.dart';
+import 'theme/app_theme_spec.dart';
 
 void main() async {
   // 确保 Flutter 绑定初始化
@@ -99,6 +101,13 @@ void main() async {
     );
     await artifactFileStorageService.ensureReady();
     final artifactRepository = ArtifactRepository(storage);
+    final createArtifactGuidelineHandler = CreateArtifactGuidelineToolHandler(
+      activeThemeSpecProvider: () {
+        final storedThemeId = settingsRepository.getThemeIdSync();
+        return AppThemeSpec.resolveById(storedThemeId ?? '') ??
+            AppThemeSpec.claude();
+      },
+    );
     final createArtifactHandler = CreateArtifactToolHandler(
       artifactRepository: artifactRepository,
       fileStorageService: artifactFileStorageService,
@@ -147,6 +156,7 @@ void main() async {
       toolExecutor: toolExecutor,
       skillRuntimeService: skillRuntimeService,
       appSettingsRepository: settingsRepository,
+      createArtifactGuidelineHandler: createArtifactGuidelineHandler,
       createArtifactHandler: createArtifactHandler,
     );
     final toolPolicyService = ToolPolicyService(

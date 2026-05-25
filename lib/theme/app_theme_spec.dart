@@ -52,6 +52,16 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
       error: Color(0xFFBE2222),
       info: Color(0xFF8A5A44),
     );
+    const chart = AppChartSemanticTokens(
+      series1: Color(0xFFC96442),
+      series2: Color(0xFF2F6A4F),
+      series3: Color(0xFF9A6C37),
+      series4: Color(0xFF8A5A44),
+      series5: Color(0xFF7C6A58),
+      grid: Color(0xFFE8E6DC),
+      axis: Color(0xFF75726A),
+      highlight: Color(0xFF1F1F1E),
+    );
     const interactions = AppInteractionSemanticTokens(
       border: Color(0xFFD9D6CC),
       focus: Color(0xFFC96442),
@@ -63,7 +73,7 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
       displayName: 'Claude',
       brightness: Brightness.light,
       core: AppCoreTokens(
-        colors: AppColorTokens(
+        colors: const AppColorTokens(
           black: Color(0xFF1F1F1E),
           white: Colors.white,
           paper: Color(0xFFF5F4EE),
@@ -81,7 +91,7 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
         spacing: AppSpacing.base(),
         radius: AppRadius.base(),
         motion: AppMotion.base(),
-        elevation: AppElevationTokens(
+        elevation: const AppElevationTokens(
           shadowColor: Color(0x1F000000),
         ),
         stroke: const AppStrokeTokens(
@@ -90,21 +100,22 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
           strong: 1.5,
         ),
       ),
-      semantic: AppSemanticTokens(
+      semantic: const AppSemanticTokens(
         surfaces: surfaces,
         text: text,
         state: state,
+        chart: chart,
         interaction: interactions,
       ),
-      components: AppComponentTokens(
-        chatPage: const ChatPageTokens(),
-        composer: const ChatComposerTokens(),
-        assistantDocument: const AssistantDocumentTokens(),
-        userBubble: const UserBubbleTokens(),
-        toolCard: const ToolCardTokens(),
-        reasoning: const ReasoningTokens(),
-        settings: const SettingsTokens(),
-        markdown: const MarkdownTokens(),
+      components: const AppComponentTokens(
+        chatPage: ChatPageTokens(),
+        composer: ChatComposerTokens(),
+        assistantDocument: AssistantDocumentTokens(),
+        userBubble: UserBubbleTokens(),
+        toolCard: ToolCardTokens(),
+        reasoning: ReasoningTokens(),
+        settings: SettingsTokens(),
+        markdown: MarkdownTokens(),
       ),
     );
   }
@@ -133,6 +144,16 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
       error: Color(0xFFB5483C),
       info: Color(0xFF4B6C8A),
     );
+    const chart = AppChartSemanticTokens(
+      series1: Color(0xFF35594A),
+      series2: Color(0xFF4B6C8A),
+      series3: Color(0xFF9A6C37),
+      series4: Color(0xFFB5483C),
+      series5: Color(0xFF73796F),
+      grid: Color(0x2E20281F),
+      axis: Color(0xFF596259),
+      highlight: Color(0xFF182019),
+    );
     const interactions = AppInteractionSemanticTokens(
       border: Color(0x664F5F55),
       focus: Color(0xFF35594A),
@@ -144,7 +165,7 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
       displayName: 'Olive Paper',
       brightness: Brightness.light,
       core: AppCoreTokens(
-        colors: AppColorTokens(
+        colors: const AppColorTokens(
           black: Color(0xFF182019),
           white: Colors.white,
           paper: Color(0xFFF3F1EC),
@@ -162,7 +183,7 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
         spacing: AppSpacing.base(),
         radius: AppRadius.base(),
         motion: AppMotion.base(),
-        elevation: AppElevationTokens(
+        elevation: const AppElevationTokens(
           shadowColor: Color(0x1F000000),
         ),
         stroke: const AppStrokeTokens(
@@ -171,21 +192,22 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
           strong: 1.5,
         ),
       ),
-      semantic: AppSemanticTokens(
+      semantic: const AppSemanticTokens(
         surfaces: surfaces,
         text: text,
         state: state,
+        chart: chart,
         interaction: interactions,
       ),
-      components: AppComponentTokens(
-        chatPage: const ChatPageTokens(),
-        composer: const ChatComposerTokens(),
-        assistantDocument: const AssistantDocumentTokens(),
-        userBubble: const UserBubbleTokens(),
-        toolCard: const ToolCardTokens(),
-        reasoning: const ReasoningTokens(),
-        settings: const SettingsTokens(),
-        markdown: const MarkdownTokens(),
+      components: const AppComponentTokens(
+        chatPage: ChatPageTokens(),
+        composer: ChatComposerTokens(),
+        assistantDocument: AssistantDocumentTokens(),
+        userBubble: UserBubbleTokens(),
+        toolCard: ToolCardTokens(),
+        reasoning: ReasoningTokens(),
+        settings: SettingsTokens(),
+        markdown: MarkdownTokens(),
       ),
     );
   }
@@ -227,6 +249,23 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
   Color get workflowRunning => semantic.state.running;
   Color get workflowSuccess => semantic.state.success;
   Color get workflowWarning => semantic.state.warning;
+  Color get artifactPageBackground => semantic.surfaces.pageBackground;
+  Color get artifactSurface => semantic.surfaces.readingSurface;
+  Color get artifactSurfaceMuted => semantic.surfaces.toolResultSurface;
+  Color get artifactTextPrimary => semantic.text.primary;
+  Color get artifactTextSecondary => semantic.text.secondary;
+  Color get artifactTextTertiary => semantic.text.tertiary;
+  Color get artifactBorderSubtle => semantic.interaction.subtleBorder;
+  Color get artifactBorderStrong => semantic.interaction.border;
+  Color get artifactAccent => semantic.interaction.focus;
+  Color get artifactChart1 => semantic.chart.series1;
+  Color get artifactChart2 => semantic.chart.series2;
+  Color get artifactChart3 => semantic.chart.series3;
+  Color get artifactChart4 => semantic.chart.series4;
+  Color get artifactChart5 => semantic.chart.series5;
+  Color get artifactChartGrid => semantic.chart.grid;
+  Color get artifactChartAxis => semantic.chart.axis;
+  Color get artifactChartHighlight => semantic.chart.highlight;
 
   @override
   ThemeExtension<AppThemeSpec> copyWith({
@@ -348,12 +387,14 @@ class AppSemanticTokens {
   final AppSurfaceSemanticTokens surfaces;
   final AppTextSemanticTokens text;
   final AppStateSemanticTokens state;
+  final AppChartSemanticTokens chart;
   final AppInteractionSemanticTokens interaction;
 
   const AppSemanticTokens({
     required this.surfaces,
     required this.text,
     required this.state,
+    required this.chart,
     required this.interaction,
   });
 
@@ -362,6 +403,7 @@ class AppSemanticTokens {
       surfaces: surfaces.lerp(other.surfaces, t),
       text: text.lerp(other.text, t),
       state: state.lerp(other.state, t),
+      chart: chart.lerp(other.chart, t),
       interaction: interaction.lerp(other.interaction, t),
     );
   }
@@ -454,6 +496,42 @@ class AppStateSemanticTokens {
       warning: Color.lerp(warning, other.warning, t)!,
       error: Color.lerp(error, other.error, t)!,
       info: Color.lerp(info, other.info, t)!,
+    );
+  }
+}
+
+@immutable
+class AppChartSemanticTokens {
+  final Color series1;
+  final Color series2;
+  final Color series3;
+  final Color series4;
+  final Color series5;
+  final Color grid;
+  final Color axis;
+  final Color highlight;
+
+  const AppChartSemanticTokens({
+    required this.series1,
+    required this.series2,
+    required this.series3,
+    required this.series4,
+    required this.series5,
+    required this.grid,
+    required this.axis,
+    required this.highlight,
+  });
+
+  AppChartSemanticTokens lerp(AppChartSemanticTokens other, double t) {
+    return AppChartSemanticTokens(
+      series1: Color.lerp(series1, other.series1, t)!,
+      series2: Color.lerp(series2, other.series2, t)!,
+      series3: Color.lerp(series3, other.series3, t)!,
+      series4: Color.lerp(series4, other.series4, t)!,
+      series5: Color.lerp(series5, other.series5, t)!,
+      grid: Color.lerp(grid, other.grid, t)!,
+      axis: Color.lerp(axis, other.axis, t)!,
+      highlight: Color.lerp(highlight, other.highlight, t)!,
     );
   }
 }

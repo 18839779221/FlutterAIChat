@@ -177,6 +177,11 @@ class CreateArtifactToolHandler extends ToolHandler {
 
 const String _englishArtifactDescription = '''
 Publish an interactive, self-contained HTML artifact inline in your reply.
+
+IMPORTANT: Before the first `create_artifact` call for any artifact used for visualization or explanatory enhancement, you MUST first call `create_artifact:guideline`. Do not create the first version directly without reading the guideline.
+
+Use the guideline result as the current host contract for artifact rendering. Follow its token references, layout constraints, and rendering rules. Do not hardcode theme-specific colors, spacing scales, or other visual values when guideline references are available.
+
 Use when a chart, calculator, form, visualization, polished table, or small interactive demo would explain the answer better than prose. The artifact is rendered as a content block inside the assistant message, and you can still write normal text before or after it.
 
 Current native surfaces primarily include Android phone, Android tablet, iPhone, iPad, and macOS. Adapt the layout to the active platform and likely viewport. On Android phone, prefer narrow-screen, touch-friendly layouts that remain readable without horizontal scrolling. On tablet or desktop, you may use a wider centered composition, but avoid edge-to-edge text.
@@ -189,15 +194,14 @@ Constraints:
 - Let invalid or incomplete intermediate HTML still degrade gracefully while the source is streaming in. Avoid patterns that require the final closing chunk before anything visible can appear.
 - Design for one inline card that may be re-rendered after later Edit/Write operations on the same sourcePath.
 - The artifact itself should read as a single integrated surface inside the chat reply. Favor one coherent outer structure with the main content placed directly inside it, so the result feels embedded in the message rather than presented as a separate page.
-- Default the page-level background to transparent, and treat the main content container as the visible surface. Do not rely on the body element to create a full-screen stage unless the user explicitly asks for that effect.
+- Prefer using host-provided background and surface token references instead of assuming a transparent or white page background. Do not rely on the body element to create a full-screen stage unless the user explicitly asks for that effect.
 - The preview container height is derived from the document content, so keep the document flow-driven and avoid giant fixed-height outer wrappers unless they are necessary.
 - Prefer content that fits within one screen when rendered inline. Unless the user explicitly asks for a longer experience, keep the artifact concise and avoid exceeding two screens.
-- After the first version is created, prefer using Read/Edit/Write on the returned sourcePath to improve the same artifact instead of resending the full source every time.
 
 Design guidelines unless the user asks otherwise:
 - Layout and spacing: use generous padding (16-24px), clear hierarchy, max content width around 720px on wide screens, centered layout, and never cram text edge-to-edge.
 - Surface structure: keep the outermost artifact surface visually quiet and unified. Let spacing, typography, and content organization create hierarchy before introducing extra framing layers.
-- Background treatment: prefer transparent or near-transparent page background, with visual emphasis carried by the main content surface rather than by a surrounding stage.
+- Background treatment: prefer host-provided background and surface token references, with visual emphasis carried by the main content surface rather than by a surrounding stage.
 - Typography: use the system font stack -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif. Titles should usually be 18-22px, body 14-15px, caption 12px, with line-height 1.5 or higher. Limit each section to regular and semibold weights.
 - Color: support light and dark appearance with color-scheme: light dark and Canvas/CanvasText-friendly colors. Use one calm accent color by default, such as #3B82F6. For data visualization, prefer a restrained palette like #3B82F6, #10B981, #F59E0B, #EF4444, #8B5CF6 rather than rainbow colors.
 - Charts and data visualization: always include axis labels and units where relevant. Use subtle gridlines. Prefer entry animation once on load (roughly 200-400ms ease-out), not on every interaction. Prefer tooltips on hover or tap instead of always-on labels. Prefer SVG for mostly static charts and Canvas for dense or animated plots.
@@ -208,6 +212,11 @@ Design guidelines unless the user asks otherwise:
 
 const String _chineseArtifactDescription = '''
 在回复中内联发布一个可交互、自包含的 HTML artifact。
+
+重要：对于任何用于可视化或描述增强的 artifact，在第一次调用 `create_artifact` 之前，必须先调用 `create_artifact:guideline`。不要跳过 guideline 直接生成首版 artifact。
+
+应将 guideline 的结果视为当前 artifact 渲染环境的宿主 contract。生成时请遵守其中的 token 引用、布局约束和渲染规则；当 guideline 已提供引用时，不要硬编码主题特定的颜色、间距尺度或其他视觉值。
+
 当图表、计算器、表单、可视化、精致表格或小型交互 demo 比纯文字更能说明问题时使用。artifact 会作为助手消息中的内容卡片渲染，你仍然可以在前后正常写文字说明。
 
 当前原生展示面主要包括 Android 手机、Android 平板、iPhone、iPad 和 macOS。请根据当前平台和可能的视口宽度适配布局。在 Android 手机上，优先窄屏、触控友好、无需横向滚动也能读懂的布局；在平板和桌面上可以适当加宽并居中，但不要做通栏贴边文字。
@@ -218,15 +227,14 @@ const String _chineseArtifactDescription = '''
 - 优先使用 SVG、Canvas 和原生 JS；不要依赖外部 CDN 或第三方托管资源。
 - 设计时要考虑它会作为一张内联卡片显示，后续可能通过同一 sourcePath 上的 Edit/Write 重新渲染。
 - artifact 自身应呈现为单层、整合的内容表面，让主要内容直接落在统一的外层结构中，使它更像消息中的嵌入式展示，而不是独立页面。
-- 默认让页面级背景保持透明，并把主要内容容器作为实际可见表面；除非用户明确要求，否则不要依赖 body 去搭建一个铺满全页的舞台背景。
+- 优先使用宿主提供的背景与 surface token 引用，而不是假设透明背景或白色背景；除非用户明确要求，否则不要依赖 body 去搭建一个铺满全页的舞台背景。
 - 预览容器高度会根据文档内容自适应，因此尽量保持正常文档流，不要无必要地使用超大的固定外层高度。
 - 优先让内容在内联展示时控制在 1 屏内；除非用户明确要求更长体验，否则尽量保持精简，不要超过 2 屏。
-- 初版创建完成后，如需继续优化同一个 artifact，优先对返回的 sourcePath 使用 Read/Edit/Write，而不是每次都重发完整源码。
 
 默认设计规范（除非用户另有要求）：
 - 布局与留白：使用 16-24px 的宽松内边距，层级清晰，宽屏时内容最大宽度约 720px 并居中，避免贴边堆字。
 - 表面结构：最外层表面应保持克制、统一，让留白、字体层级和内容组织先承担主要的视觉结构，再谨慎补充必要的表面区分。
-- 背景处理：优先使用透明或接近透明的页面背景，让视觉重点落在主内容表面本身，而不是外围舞台式背景。
+- 背景处理：优先使用宿主提供的背景与 surface token 引用，让视觉重点落在主内容表面本身，而不是外围舞台式背景。
 - 字体：使用系统字体栈 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif。标题通常 18-22px，正文 14-15px，说明文字 12px，行高至少 1.5。每个区块尽量只使用常规和 semibold 两种字重。
 - 色彩：通过 color-scheme: light dark 和兼容 Canvas/CanvasText 的颜色适配浅色/深色。默认使用单一主强调色，例如 #3B82F6。数据可视化优先克制配色，如 #3B82F6、#10B981、#F59E0B、#EF4444、#8B5CF6，不要彩虹色乱铺。
 - 图表与可视化：在相关场景中始终补齐坐标轴标签与单位，网格线保持轻量。入场动画只在首次加载时出现，控制在约 200-400ms ease-out，不要每次交互都重播。提示信息优先使用 hover/tap tooltip，不要默认把所有标签一直铺开。静态图优先 SVG，点位多或动画多时再用 Canvas。
