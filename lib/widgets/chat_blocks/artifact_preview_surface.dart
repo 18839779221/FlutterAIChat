@@ -208,7 +208,6 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   @override
   void initState() {
     super.initState();
-    _controller = _createController();
     _lastRenderedSource = widget.source;
   }
 
@@ -217,10 +216,12 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     super.didChangeDependencies();
     final nextSignature = _currentThemeSignature();
     if (_lastThemeSignature == nextSignature) {
+      _controller ??= _createController();
       return;
     }
     final didThemeChange = _lastThemeSignature != null;
     _lastThemeSignature = nextSignature;
+    _controller ??= _createController();
     final source = widget.source;
     if (didThemeChange &&
         !widget.isStale &&

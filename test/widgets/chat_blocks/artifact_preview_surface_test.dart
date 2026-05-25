@@ -1,7 +1,27 @@
 import 'package:ai_chat/widgets/chat_blocks/artifact_preview_surface.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('mounts artifact preview without inherited widget initState error',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: ArtifactPreviewSurface(
+            source: '<div>Hello</div>',
+            isStale: false,
+            sourcePath: 'test://artifact',
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+  });
+
   test('wraps fragment source into constrained html document', () {
     final document = buildArtifactPreviewDocument(
       '<div>Hello</div>',
