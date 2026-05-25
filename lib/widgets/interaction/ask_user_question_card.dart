@@ -31,6 +31,8 @@ class AskUserQuestionCard extends ConsumerWidget {
     );
     final question = request.questions[questionIndex];
     final selected = draft.selectedOptionLabelsByQuestionId[question.id] ?? const [];
+    final isSkipped = draft.selectedOptionLabelsByQuestionId.containsKey(question.id) &&
+        selected.isEmpty;
     final hasOther = selected.contains('Other');
     final colors = Theme.of(context).extension<AppThemeSpec>() ?? AppThemeSpec.light();
     final spacing = Theme.of(context).extension<AppSpacing>() ?? AppSpacing.base();
@@ -105,6 +107,28 @@ class AskUserQuestionCard extends ConsumerWidget {
             ),
           ),
           SizedBox(height: spacing.sm),
+          if (isSkipped) ...[
+            Container(
+              width: double.infinity,
+              margin: EdgeInsets.only(bottom: spacing.sm),
+              padding: EdgeInsets.symmetric(
+                horizontal: spacing.sm,
+                vertical: spacing.xs,
+              ),
+              decoration: BoxDecoration(
+                color: colors.chatBackground.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(radius.md),
+              ),
+              child: Text(
+                '此题将以空答案跳过，提交后会继续当前回合。',
+                style: TextStyle(
+                  color: colors.secondaryText,
+                  fontSize: 12,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
           ...question.options.map(
             (option) => _QuestionOptionTile(
               label: option.label,
@@ -174,32 +198,55 @@ class AskUserQuestionCard extends ConsumerWidget {
                           ),
                   child: const Text('上一题'),
                 ),
-              if (request.questions.length > 1)
-                TextButton(
-                  onPressed: questionIndex >= request.questions.length - 1
-                      ? null
-                      : () => ref
-                          .read(questionCardDraftsProvider.notifier)
-                          .setCurrentQuestionIndex(
-                            messageId: messageId,
-                            index: questionIndex + 1,
-                          ),
-                  child: const Text('下一题'),
-                ),
+              TextButton(
+                onPressed: () => ref
+                    .read(chatInteractionCoordinatorProvider)
+                    .skipCurrentQuestion(message),
+                child: const Text('跳过'),
+              ),
               const Spacer(),
               FilledButton(
-                onPressed: canSubmit
-                    ? () => ref
-                        .read(chatInteractionCoordinatorProvider)
-                        .submitQuestionAnswers(message)
-                    : null,
-                child: const Text('提交并继续'),
+                onPressed: _resolvePrimaryAction(
+                  ref: ref,
+                  message: message,
+                  messageId: messageId,
+                  questionIndex: questionIndex,
+                  totalQuestions: request.questions.length,
+                  canSubmit: canSubmit,
+                ),
+                child: Text(
+                  questionIndex >= request.questions.length - 1
+                      ? '提交并继续'
+                      : '下一题',
+                ),
               ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  VoidCallback? _resolvePrimaryAction({
+    required WidgetRef ref,
+    required ChatMessage message,
+    required int messageId,
+    required int questionIndex,
+    required int totalQuestions,
+    required bool canSubmit,
+  }) {
+    if (questionIndex < totalQuestions - 1) {
+      return () => ref.read(questionCardDraftsProvider.notifier).setCurrentQuestionIndex(
+            messageId: messageId,
+            index: questionIndex + 1,
+          );
+    }
+    if (!canSubmit) {
+      return null;
+    }
+    return () => ref
+        .read(chatInteractionCoordinatorProvider)
+        .submitQuestionAnswers(message);
   }
 }
 

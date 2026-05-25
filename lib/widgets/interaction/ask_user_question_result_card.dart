@@ -1,4 +1,6 @@
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/interaction/ask_user_question_item.dart';
+import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_radius.dart';
@@ -22,9 +24,15 @@ class AskUserQuestionResultCard extends StatelessWidget {
     }
 
     final submittedAnswers = payload['submittedAnswers'];
-    final answers = submittedAnswers is Map<String, dynamic>
-        ? AskUserQuestionResponse.fromJson(submittedAnswers).answersByQuestionId
-        : const <String, String>{};
+    final response = submittedAnswers is Map<String, dynamic>
+        ? AskUserQuestionResponse.fromJson(submittedAnswers)
+        : const AskUserQuestionResponse();
+    final answers = response.answersByQuestionId;
+    final request = _readRequest(payload);
+    final questionsById = {
+      for (final question in request?.questions ?? const <AskUserQuestionItem>[])
+        question.id: question,
+    };
 
     final colors = Theme.of(context).extension<AppThemeSpec>() ?? AppThemeSpec.light();
     final spacing = Theme.of(context).extension<AppSpacing>() ?? AppSpacing.base();
@@ -64,31 +72,26 @@ class AskUserQuestionResultCard extends StatelessWidget {
             ...answers.entries.map(
               (entry) => Padding(
                 padding: EdgeInsets.only(bottom: spacing.xs),
-                child: Row(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(
-                      width: 88,
-                      child: Text(
-                        entry.key,
-                        style: TextStyle(
-                          color: colors.secondaryText,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          height: 1.4,
-                        ),
+                    Text(
+                      questionsById[entry.key]?.question ?? entry.key,
+                      style: TextStyle(
+                        color: colors.secondaryText,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.4,
                       ),
                     ),
-                    SizedBox(width: spacing.xs),
-                    Expanded(
-                      child: Text(
-                        entry.value,
-                        style: TextStyle(
-                          color: colors.primaryText,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          height: 1.4,
-                        ),
+                    SizedBox(height: spacing.xxs),
+                    Text(
+                      entry.value.isEmpty ? '已跳过' : entry.value,
+                      style: TextStyle(
+                        color: colors.primaryText,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.4,
                       ),
                     ),
                   ],
@@ -98,5 +101,13 @@ class AskUserQuestionResultCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  AskUserQuestionRequest? _readRequest(Map<String, dynamic> payload) {
+    try {
+      return AskUserQuestionRequest.fromJson(payload);
+    } on FormatException {
+      return null;
+    }
   }
 }
