@@ -892,13 +892,14 @@ class TurnHarness {
   ) {
     final lines = <String>['User answered AskUserQuestion:'];
     for (final question in request.questions) {
-      final answer = response.answersByQuestionId[question.id];
-      if (answer == null || answer.trim().isEmpty) {
+      if (!response.answersByQuestionId.containsKey(question.id)) {
         continue;
       }
+      final answer = response.answersByQuestionId[question.id] ?? '';
       final title =
           question.header.trim().isEmpty ? question.id : question.header;
-      lines.add('- $title: ${answer.trim()}');
+      final normalizedAnswer = answer.trim().isEmpty ? '(skipped)' : answer.trim();
+      lines.add('- $title: $normalizedAnswer');
     }
     return lines.join('\n');
   }

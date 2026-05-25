@@ -279,6 +279,9 @@ class ChatTimelineRow extends ConsumerWidget {
     required ToolUiRendererRegistry toolUiRegistry,
   }) {
     final steps = _extractWorkflowSteps(block);
+    if (steps.isNotEmpty && steps.every((step) => step.toolName == 'ask_user_question')) {
+      return const SizedBox.shrink();
+    }
     final manualExpandedStepId =
         ref.watch(toolWorkflowExpansionProvider)[block.turnId];
     final expandedStepId = resolveWorkflowExpandedStepId(

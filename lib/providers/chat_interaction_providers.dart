@@ -89,6 +89,26 @@ class QuestionCardDraftsNotifier extends StateNotifier<Map<int, QuestionCardDraf
     };
   }
 
+  void setSkipped({
+    required int messageId,
+    required String questionId,
+  }) {
+    final current = state[messageId] ?? const QuestionCardDraft();
+    state = {
+      ...state,
+      messageId: current.copyWith(
+        selectedOptionLabelsByQuestionId: {
+          ...current.selectedOptionLabelsByQuestionId,
+          questionId: const [],
+        },
+        otherTextByQuestionId: {
+          ...current.otherTextByQuestionId,
+          questionId: '',
+        },
+      ),
+    };
+  }
+
   void clearDraft(int messageId) {
     if (!state.containsKey(messageId)) {
       return;
@@ -107,6 +127,10 @@ bool isQuestionAnswered({
   required QuestionCardDraft draft,
   required AskUserQuestionItem question,
 }) {
+  if (draft.selectedOptionLabelsByQuestionId.containsKey(question.id) &&
+      (draft.selectedOptionLabelsByQuestionId[question.id]?.isEmpty ?? false)) {
+    return true;
+  }
   final selected = draft.selectedOptionLabelsByQuestionId[question.id] ?? const [];
   if (selected.isEmpty) {
     return false;
@@ -122,6 +146,10 @@ String resolveAnswerText({
   required QuestionCardDraft draft,
   required AskUserQuestionItem question,
 }) {
+  if (draft.selectedOptionLabelsByQuestionId.containsKey(question.id) &&
+      (draft.selectedOptionLabelsByQuestionId[question.id]?.isEmpty ?? false)) {
+    return '';
+  }
   final selected = draft.selectedOptionLabelsByQuestionId[question.id] ?? const [];
   if (selected.isEmpty) {
     return '';
