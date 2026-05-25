@@ -33,6 +33,7 @@ class DebugTurnInspectorProjectionService {
     List<ToolPresentationEvent> toolPresentationEvents =
         const <ToolPresentationEvent>[],
     ChatSendPhase? sendPhase,
+    String? sendStatusText,
     ChatMessage? activeAskUserQuestionMessage,
     ChatGroup? currentGroup,
     String? systemPromptOverride,
@@ -45,6 +46,7 @@ class DebugTurnInspectorProjectionService {
         _runtimeStreamEntries = runtimeStreamEntries,
         _toolPresentationEvents = toolPresentationEvents,
         _sendPhase = sendPhase,
+        _sendStatusText = sendStatusText,
         _activeAskUserQuestionMessage = activeAskUserQuestionMessage,
         _currentGroup = currentGroup,
         _systemPromptOverride = systemPromptOverride,
@@ -58,6 +60,7 @@ class DebugTurnInspectorProjectionService {
   final List<RuntimeStreamEntry> _runtimeStreamEntries;
   final List<ToolPresentationEvent> _toolPresentationEvents;
   final ChatSendPhase? _sendPhase;
+  final String? _sendStatusText;
   final ChatMessage? _activeAskUserQuestionMessage;
   final ChatGroup? _currentGroup;
   final String? _systemPromptOverride;
@@ -170,6 +173,7 @@ class DebugTurnInspectorProjectionService {
       groupId: turn.groupId,
       status: turn.status,
       sendPhase: _sendPhase?.name,
+      sendStatusText: _sendStatusText,
       iterationCount: turn.iterationCount,
       toolCallCount: turn.toolCallCount,
       providerStyle: turn.providerStyle?.name,
