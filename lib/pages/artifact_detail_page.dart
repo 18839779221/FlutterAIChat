@@ -88,6 +88,7 @@ class _ArtifactDetailPageState extends State<ArtifactDetailPage> {
                       source: projection.source,
                       isStale: projection.isStale,
                       sourcePath: projection.sourcePath,
+                      enableInternalScroll: true,
                     ),
             ),
           ],

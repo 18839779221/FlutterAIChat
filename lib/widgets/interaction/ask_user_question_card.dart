@@ -41,180 +41,163 @@ class AskUserQuestionCard extends ConsumerWidget {
         question: item,
       ),
     );
-    final maxCardHeight = MediaQuery.sizeOf(context).height * 0.72;
-
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: maxCardHeight),
-      child: Container(
-        margin: EdgeInsets.symmetric(vertical: spacing.xs - 2),
-        padding: EdgeInsets.all(spacing.lg),
-        decoration: BoxDecoration(
-          color: colors.structuredSurface.withValues(alpha: 0.9),
-          borderRadius: BorderRadius.circular(radius.md + 2),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-              Text(
-                '继续当前回合所需信息',
-                style: TextStyle(
-                  color: colors.secondaryText,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.4,
-                ),
-              ),
-              SizedBox(height: spacing.xs),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      question.header.isEmpty ? 'Question' : question.header,
-                      style: TextStyle(
-                        color: colors.primaryText,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        height: 1.24,
-                      ),
-                    ),
-                  ),
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: spacing.xs,
-                      vertical: spacing.xxs,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colors.workflowRunning.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(radius.pill),
-                    ),
-                    child: Text(
-                      '问题 ${questionIndex + 1} / ${request.questions.length}',
-                      style: TextStyle(
-                        color: colors.workflowRunning,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: spacing.sm),
+    return Container(
+      margin: EdgeInsets.symmetric(vertical: spacing.xs - 2),
+      padding: EdgeInsets.all(spacing.lg),
+      decoration: BoxDecoration(
+        color: colors.structuredSurface.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(radius.md + 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '继续当前回合所需信息',
+            style: TextStyle(
+              color: colors.secondaryText,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+            ),
+          ),
+          SizedBox(height: spacing.xs),
+          Row(
+            children: [
               Expanded(
-                child: PrimaryScrollController.none(
-                  child: ListView(
-                    key: const ValueKey('ask-user-question-scroll'),
-                    primary: false,
-                    padding: EdgeInsets.zero,
-                    physics: const ClampingScrollPhysics(),
-                    children: [
-                      Text(
-                        question.question,
-                        style: TextStyle(
-                          color: colors.primaryText,
-                          fontSize: 14,
-                          height: 1.45,
-                        ),
-                      ),
-                      SizedBox(height: spacing.sm),
-                      ...question.options.map(
-                        (option) => _QuestionOptionTile(
-                          label: option.label,
-                          description: option.description,
-                          selected: selected.contains(option.label),
-                          isRecommended: option.isRecommended,
-                          onTap: () {
-                            ref.read(questionCardDraftsProvider.notifier).selectOption(
-                                  messageId: messageId,
-                                  questionId: question.id,
-                                  label: option.label,
-                                  multiSelect: question.multiSelect,
-                                );
-                          },
-                        ),
-                      ),
-                      _QuestionOptionTile(
-                        label: 'Other',
-                        description: '',
-                        selected: hasOther,
-                        isRecommended: false,
-                        onTap: () {
-                          ref.read(questionCardDraftsProvider.notifier).selectOption(
-                                messageId: messageId,
-                                questionId: question.id,
-                                label: 'Other',
-                                multiSelect: question.multiSelect,
-                              );
-                        },
-                      ),
-                      if (hasOther) ...[
-                        SizedBox(height: spacing.xs),
-                        TextField(
-                          onChanged: (value) {
-                            ref.read(questionCardDraftsProvider.notifier).setOtherText(
-                                  messageId: messageId,
-                                  questionId: question.id,
-                                  value: value,
-                                );
-                          },
-                          decoration: const InputDecoration(
-                            hintText: 'Tell us more',
-                          ),
-                        ),
-                      ],
-                      SizedBox(height: spacing.md),
-                      Text(
-                        '提交后将继续当前回合，而不是开启新对话。',
-                        style: TextStyle(
-                          color: colors.secondaryText,
-                          fontSize: 11.5,
-                          height: 1.4,
-                        ),
-                      ),
-                      SizedBox(height: spacing.xs),
-                    ],
+                child: Text(
+                  question.header.isEmpty ? 'Question' : question.header,
+                  style: TextStyle(
+                    color: colors.primaryText,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    height: 1.24,
                   ),
                 ),
               ),
-              SizedBox(height: spacing.sm),
-              Row(
-                children: [
-                  if (request.questions.length > 1)
-                    TextButton(
-                      onPressed: questionIndex == 0
-                          ? null
-                          : () => ref
-                              .read(questionCardDraftsProvider.notifier)
-                              .setCurrentQuestionIndex(
-                                messageId: messageId,
-                                index: questionIndex - 1,
-                              ),
-                      child: const Text('上一题'),
-                    ),
-                  if (request.questions.length > 1)
-                    TextButton(
-                      onPressed: questionIndex >= request.questions.length - 1
-                          ? null
-                          : () => ref
-                              .read(questionCardDraftsProvider.notifier)
-                              .setCurrentQuestionIndex(
-                                messageId: messageId,
-                                index: questionIndex + 1,
-                              ),
-                      child: const Text('下一题'),
-                    ),
-                  const Spacer(),
-                  FilledButton(
-                    onPressed: canSubmit
-                        ? () => ref
-                            .read(chatInteractionCoordinatorProvider)
-                            .submitQuestionAnswers(message)
-                        : null,
-                    child: const Text('提交并继续'),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: spacing.xs,
+                  vertical: spacing.xxs,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.workflowRunning.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(radius.pill),
+                ),
+                child: Text(
+                  '问题 ${questionIndex + 1} / ${request.questions.length}',
+                  style: TextStyle(
+                    color: colors.workflowRunning,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
                   ),
-                ],
+                ),
               ),
+            ],
+          ),
+          SizedBox(height: spacing.sm),
+          Text(
+            question.question,
+            style: TextStyle(
+              color: colors.primaryText,
+              fontSize: 14,
+              height: 1.45,
+            ),
+          ),
+          SizedBox(height: spacing.sm),
+          ...question.options.map(
+            (option) => _QuestionOptionTile(
+              label: option.label,
+              description: option.description,
+              selected: selected.contains(option.label),
+              isRecommended: option.isRecommended,
+              onTap: () {
+                ref.read(questionCardDraftsProvider.notifier).selectOption(
+                      messageId: messageId,
+                      questionId: question.id,
+                      label: option.label,
+                      multiSelect: question.multiSelect,
+                    );
+              },
+            ),
+          ),
+          _QuestionOptionTile(
+            label: 'Other',
+            description: '',
+            selected: hasOther,
+            isRecommended: false,
+            onTap: () {
+              ref.read(questionCardDraftsProvider.notifier).selectOption(
+                    messageId: messageId,
+                    questionId: question.id,
+                    label: 'Other',
+                    multiSelect: question.multiSelect,
+                  );
+            },
+          ),
+          if (hasOther) ...[
+            SizedBox(height: spacing.xs),
+            TextField(
+              onChanged: (value) {
+                ref.read(questionCardDraftsProvider.notifier).setOtherText(
+                      messageId: messageId,
+                      questionId: question.id,
+                      value: value,
+                    );
+              },
+              decoration: const InputDecoration(
+                hintText: 'Tell us more',
+              ),
+            ),
           ],
-        ),
+          SizedBox(height: spacing.md),
+          Text(
+            '提交后将继续当前回合，而不是开启新对话。',
+            style: TextStyle(
+              color: colors.secondaryText,
+              fontSize: 11.5,
+              height: 1.4,
+            ),
+          ),
+          SizedBox(height: spacing.sm),
+          Row(
+            children: [
+              if (request.questions.length > 1)
+                TextButton(
+                  onPressed: questionIndex == 0
+                      ? null
+                      : () => ref
+                          .read(questionCardDraftsProvider.notifier)
+                          .setCurrentQuestionIndex(
+                            messageId: messageId,
+                            index: questionIndex - 1,
+                          ),
+                  child: const Text('上一题'),
+                ),
+              if (request.questions.length > 1)
+                TextButton(
+                  onPressed: questionIndex >= request.questions.length - 1
+                      ? null
+                      : () => ref
+                          .read(questionCardDraftsProvider.notifier)
+                          .setCurrentQuestionIndex(
+                            messageId: messageId,
+                            index: questionIndex + 1,
+                          ),
+                  child: const Text('下一题'),
+                ),
+              const Spacer(),
+              FilledButton(
+                onPressed: canSubmit
+                    ? () => ref
+                        .read(chatInteractionCoordinatorProvider)
+                        .submitQuestionAnswers(message)
+                    : null,
+                child: const Text('提交并继续'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
