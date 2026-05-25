@@ -80,7 +80,7 @@ void main() {
 
     expect(
       definitions.map((item) => item.name),
-      contains('create_artifact:guideline'),
+      contains('create_artifact__guideline'),
     );
   });
 }

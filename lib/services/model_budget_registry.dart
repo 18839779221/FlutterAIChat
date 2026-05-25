@@ -116,7 +116,7 @@ class ModelBudgetRegistry {
     'deepseek': ModelBudgetProfile(
       modelId: 'deepseek-family',
       maxContextTokens: 64000,
-      reservedOutputTokens: 8000,
+      reservedOutputTokens: 16000,
       reasoningReserveTokens: 8000,
       safetyMarginTokens: 4000,
       compactionConfig: ContextCompactionConfig(),

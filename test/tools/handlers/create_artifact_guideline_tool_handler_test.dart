@@ -11,7 +11,7 @@ void main() {
         activeThemeSpecProvider: () => AppThemeSpec.claude(),
       );
 
-      expect(handler.definition.name, 'create_artifact:guideline');
+      expect(handler.definition.name, 'create_artifact__guideline');
       expect(handler.definition.descriptionForModel, contains('IMPORTANT:'));
       expect(
         handler.definition.descriptionForModel,
@@ -31,7 +31,7 @@ void main() {
       final result = await handler.execute(
         ToolExecutionContext(
           groupId: 1,
-          toolName: 'create_artifact:guideline',
+          toolName: 'create_artifact__guideline',
           arguments: const <String, dynamic>{},
           history: const [],
           now: DateTime(2026, 5, 26, 12),

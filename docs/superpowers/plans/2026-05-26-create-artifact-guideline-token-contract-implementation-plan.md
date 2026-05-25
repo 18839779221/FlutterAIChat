@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 为解释增强型 artifact 增加 `create_artifact:guideline` 前置工具，并让 artifact WebView 通过项目级全局 design token 注入实现主题一致的原生化渲染。
+**Goal:** 为解释增强型 artifact 增加 `create_artifact__guideline` 前置工具，并让 artifact WebView 通过项目级全局 design token 注入实现主题一致的原生化渲染。
 
 **Architecture:** 在现有 `create_artifact` 管线旁新增一个只读前置 tool，用结构化 guideline 返回宿主包裹 contract、token 引用与渲染约束；同时扩展 `AppThemeSpec` 的全局可视化 token，并在 artifact 预览文档构建层把这些 token 映射成 CSS variables。`create_artifact` 与 `guideline` 仅通过 prompt-contract 协作，不增加 execution-time 硬阻断。
 
@@ -19,7 +19,7 @@
 - `lib/tools/handlers/create_artifact_tool_handler.dart`
   - 更新 `create_artifact` 的 `descriptionForModel`
 - `lib/tools/default_tool_runtime_registry.dart`
-  - 注册新的 `create_artifact:guideline`
+  - 注册新的 `create_artifact__guideline`
 - `lib/providers/chat_dependency_providers.dart`
   - 注入 guideline handler 需要的依赖
 - `lib/widgets/chat_blocks/artifact_preview_surface.dart`
@@ -233,7 +233,7 @@ git commit -m "feat(artifact): add guideline contract builder"
 
 ---
 
-### Task 3: 新增 `create_artifact:guideline` tool handler 与注册
+### Task 3: 新增 `create_artifact__guideline` tool handler 与注册
 
 **Files:**
 - Create: `lib/tools/handlers/create_artifact_guideline_tool_handler.dart`
@@ -246,7 +246,7 @@ git commit -m "feat(artifact): add guideline contract builder"
 
 在 `test/tools/handlers/create_artifact_guideline_tool_handler_test.dart` 增加测试，覆盖：
 
-- tool name 为 `create_artifact:guideline`
+- tool name 为 `create_artifact__guideline`
 - `descriptionForModel` 包含首次 `create_artifact` 前必须先读 guideline 的 `IMPORTANT:` 约束
 - 返回结果包含 `usage / host_markup_contract / layout_constraints / rendering_rules`
 
@@ -255,7 +255,7 @@ git commit -m "feat(artifact): add guideline contract builder"
 ```dart
 test('guideline tool description requires first-call pairing', () {
   final handler = buildHandler();
-  expect(handler.definition.name, 'create_artifact:guideline');
+  expect(handler.definition.name, 'create_artifact__guideline');
   expect(handler.definition.descriptionForModel, contains('IMPORTANT:'));
   expect(
     handler.definition.descriptionForModel,
@@ -319,7 +319,7 @@ git commit -m "feat(artifact): add create_artifact guideline tool"
 在 `test/tools/handlers/create_artifact_tool_handler_test.dart` 增加或更新断言，覆盖：
 
 - desc 开头包含 `IMPORTANT:`
-- 明确要求首次解释增强型 `create_artifact` 前先调 `create_artifact:guideline`
+- 明确要求首次解释增强型 `create_artifact` 前先调 `create_artifact__guideline`
 - 删除“优先 `Read/Edit/Write` 继续改 artifact”的推荐描述
 - 删除“透明背景优先”的旧描述
 
@@ -329,7 +329,7 @@ git commit -m "feat(artifact): add create_artifact guideline tool"
 test('prompt requires guideline before first explanatory artifact creation', () {
   final description = buildHandler().definition.descriptionForModel;
   expect(description, contains('IMPORTANT:'));
-  expect(description, contains('MUST first call `create_artifact:guideline`'));
+  expect(description, contains('MUST first call `create_artifact__guideline`'));
   expect(description, isNot(contains('prefer using Read/Edit/Write')));
   expect(description, isNot(contains('background to transparent')));
 });
@@ -431,7 +431,7 @@ git commit -m "feat(artifact): inject theme tokens into preview document"
 
 在 `README.md` 补充：
 
-- `create_artifact:guideline` 的前置定位
+- `create_artifact__guideline` 的前置定位
 - artifact 会复用项目级 design token 与主题语言
 - 解释增强型 artifact 的原生化渲染方向
 

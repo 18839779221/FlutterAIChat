@@ -78,7 +78,7 @@ flowchart TD
 | Tool | Category | Purpose |
 | --- | --- | --- |
 | `ask_user_question` | Interaction | 发起结构化问题卡片，在同一轮对话中等待用户补充信息后继续执行 |
-| `create_artifact:guideline` | Visualization | 在首次解释增强型 artifact 创建前返回宿主渲染 contract、design token 引用与布局约束 |
+| `create_artifact__guideline` | Visualization | 在首次解释增强型 artifact 创建前返回宿主渲染 contract、design token 引用与布局约束 |
 | `create_artifact` | Visualization | 生成 HTML / SVG artifact，用于图表、表格、交互式说明等可视化回答，并复用项目级 design token 与当前主题语言 |
 | `skill` | Extension | 调用已安装并启用的 skill，扩展 Agent 的运行时能力 |
 | `search_chat_history` | Context | 搜索当前会话的历史内容 |

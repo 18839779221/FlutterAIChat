@@ -178,7 +178,7 @@ class CreateArtifactToolHandler extends ToolHandler {
 const String _englishArtifactDescription = '''
 Publish an interactive, self-contained HTML artifact inline in your reply.
 
-IMPORTANT: Before the first `create_artifact` call for any artifact used for visualization or explanatory enhancement, you MUST first call `create_artifact:guideline`. Do not create the first version directly without reading the guideline.
+IMPORTANT: Before the first `create_artifact` call for any artifact used for visualization or explanatory enhancement, you MUST first call `create_artifact__guideline`. Do not create the first version directly without reading the guideline.
 
 Use the guideline result as the current host contract for artifact rendering. Follow its token references, layout constraints, and rendering rules. Do not hardcode theme-specific colors, spacing scales, or other visual values when guideline references are available.
 
@@ -213,7 +213,7 @@ Design guidelines unless the user asks otherwise:
 const String _chineseArtifactDescription = '''
 在回复中内联发布一个可交互、自包含的 HTML artifact。
 
-重要：对于任何用于可视化或描述增强的 artifact，在第一次调用 `create_artifact` 之前，必须先调用 `create_artifact:guideline`。不要跳过 guideline 直接生成首版 artifact。
+重要：对于任何用于可视化或描述增强的 artifact，在第一次调用 `create_artifact` 之前，必须先调用 `create_artifact__guideline`。不要跳过 guideline 直接生成首版 artifact。
 
 应将 guideline 的结果视为当前 artifact 渲染环境的宿主 contract。生成时请遵守其中的 token 引用、布局约束和渲染规则；当 guideline 已提供引用时，不要硬编码主题特定的颜色、间距尺度或其他视觉值。
 
