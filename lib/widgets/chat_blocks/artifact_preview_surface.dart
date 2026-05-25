@@ -31,8 +31,11 @@ double clampArtifactPreviewHeight(
 }
 
 /// Builds a constrained HTML document for native artifact preview.
-String buildArtifactPreviewDocument(String source) {
-  const headInjection = '''
+String buildArtifactPreviewDocument(
+  String source, {
+  bool lockScroll = true,
+}) {
+  final headInjection = '''
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: https: http:; style-src 'unsafe-inline' data: https: http:; font-src data: https: http:; script-src 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'none'; media-src data: blob:; frame-src data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'; navigate-to 'none'">
@@ -41,12 +44,12 @@ String buildArtifactPreviewDocument(String source) {
   (function() {
     const lockScroll = () => {
       if (document.documentElement) {
-        document.documentElement.style.overflow = 'hidden';
-        document.documentElement.style.touchAction = 'none';
+        document.documentElement.style.overflow = '${lockScroll ? 'hidden' : 'auto'}';
+        document.documentElement.style.touchAction = '${lockScroll ? 'none' : 'auto'}';
       }
       if (document.body) {
-        document.body.style.overflow = 'hidden';
-        document.body.style.touchAction = 'none';
+        document.body.style.overflow = '${lockScroll ? 'hidden' : 'auto'}';
+        document.body.style.touchAction = '${lockScroll ? 'none' : 'auto'}';
       }
     };
     const postHeight = () => {
@@ -146,11 +149,13 @@ class ArtifactPreviewSurface extends StatefulWidget {
     required this.source,
     required this.isStale,
     required this.sourcePath,
+    this.enableInternalScroll = false,
   });
 
   final String? source;
   final bool isStale;
   final String sourcePath;
+  final bool enableInternalScroll;
 
   @override
   State<ArtifactPreviewSurface> createState() => _ArtifactPreviewSurfaceState();
@@ -222,7 +227,12 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     if (controller == null) return;
 
     try {
-      controller.loadHtmlString(buildArtifactPreviewDocument(source));
+      controller.loadHtmlString(
+        buildArtifactPreviewDocument(
+          source,
+          lockScroll: !widget.enableInternalScroll,
+        ),
+      );
       // Reset height state for new content
       if (mounted) {
         setState(() {
@@ -256,24 +266,6 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
         ..setBackgroundColor(Colors.transparent)
         ..enableZoom(false)
-        ..addJavaScriptChannel(
-          _artifactHeightChannelName,
-          onMessageReceived: (message) {
-            final value = double.tryParse(message.message.trim());
-            if (value == null || !mounted) {
-              return;
-            }
-            final viewportHeight = _resolveViewportHeight();
-            final clampedHeight = clampArtifactPreviewHeight(
-              value,
-              viewportHeight: viewportHeight,
-            );
-            setState(() {
-              _previewHeight = clampedHeight;
-              _isPreviewTruncated = value > clampedHeight;
-            });
-          },
-        )
         ..setNavigationDelegate(
           NavigationDelegate(
             onNavigationRequest: (request) {
@@ -291,8 +283,33 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
               });
             },
           ),
-        )
-        ..loadHtmlString(buildArtifactPreviewDocument(source));
+        );
+      if (!widget.enableInternalScroll) {
+        controller.addJavaScriptChannel(
+          _artifactHeightChannelName,
+          onMessageReceived: (message) {
+            final value = double.tryParse(message.message.trim());
+            if (value == null || !mounted) {
+              return;
+            }
+            final viewportHeight = _resolveViewportHeight();
+            final clampedHeight = clampArtifactPreviewHeight(
+              value,
+              viewportHeight: viewportHeight,
+            );
+            setState(() {
+              _previewHeight = clampedHeight;
+              _isPreviewTruncated = value > clampedHeight;
+            });
+          },
+        );
+      }
+      controller.loadHtmlString(
+        buildArtifactPreviewDocument(
+          source,
+          lockScroll: !widget.enableInternalScroll,
+        ),
+      );
       return controller;
     } catch (error) {
       _errorText = '$error';
@@ -324,6 +341,28 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
 
     // Show loading indicator if we have pending updates
     final isUpdating = _pendingSource != null && _pendingSource != _lastRenderedSource;
+    if (widget.enableInternalScroll) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: RepaintBoundary(
+                child: WebViewWidget(
+                  controller: _controller!,
+                ),
+              ),
+            ),
+            if (isUpdating)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: _buildStreamingIndicator(context),
+              ),
+          ],
+        ),
+      );
+    }
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),

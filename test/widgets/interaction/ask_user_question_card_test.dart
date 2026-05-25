@@ -145,7 +145,8 @@ void main() {
     expect(find.text('提交并继续'), findsOneWidget);
   });
 
-  testWidgets('long option list can scroll to reveal items beyond first screen',
+  testWidgets(
+      'ask user question card expands naturally without inner vertical scroll view',
       (tester) async {
     final container = ProviderContainer();
     addTearDown(container.dispose);
@@ -163,27 +164,28 @@ void main() {
         container: container,
         child: MaterialApp(
           home: Scaffold(
-            body: SizedBox(
-              height: 420,
-              child: AskUserQuestionCard(
-                message: ChatMessage(
-                  id: 44,
-                  text: 'Need one answer',
-                  role: MessageRole.assistant,
-                  payloadJson: {
-                    'questions': [
-                      {
-                        'id': 'long_list',
-                        'header': 'Long List',
-                        'question': 'Choose one option',
-                        'multiSelect': false,
-                        'options': options,
-                      },
-                    ],
-                    'agentTurnId': 42,
-                  },
+            body: ListView(
+              children: [
+                AskUserQuestionCard(
+                  message: ChatMessage(
+                    id: 44,
+                    text: 'Need one answer',
+                    role: MessageRole.assistant,
+                    payloadJson: {
+                      'questions': [
+                        {
+                          'id': 'long_list',
+                          'header': 'Long List',
+                          'question': 'Choose one option',
+                          'multiSelect': false,
+                          'options': options,
+                        },
+                      ],
+                      'agentTurnId': 42,
+                    },
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
         ),
@@ -191,24 +193,17 @@ void main() {
     );
 
     final lastOption = find.text('Option 18');
-    final viewportBottom = tester.getRect(find.byType(Scaffold)).bottom;
-    expect(lastOption, findsNothing);
-
-    await tester.scrollUntilVisible(
-      lastOption,
-      200,
-      scrollable: find.descendant(
-        of: find.byKey(const ValueKey('ask-user-question-scroll')),
+    expect(
+      find.descendant(
+        of: find.byType(AskUserQuestionCard),
         matching: find.byType(Scrollable),
       ),
+      findsNothing,
     );
-    await tester.pumpAndSettle();
-
     expect(lastOption, findsOneWidget);
-    expect(tester.getRect(lastOption).bottom, lessThanOrEqualTo(viewportBottom));
   });
 
-  testWidgets('inner list view is non-primary for nested chat timeline usage',
+  testWidgets('ask user question card does not render inner vertical scrollables',
       (tester) async {
     final container = ProviderContainer();
     addTearDown(container.dispose);
@@ -247,11 +242,16 @@ void main() {
       ),
     );
 
-    final scrollView = tester.widget<ListView>(find.byType(ListView));
-    expect(scrollView.primary, isFalse);
+    expect(
+      find.descendant(
+        of: find.byType(AskUserQuestionCard),
+        matching: find.byType(Scrollable),
+      ),
+      findsNothing,
+    );
   });
 
-  testWidgets('dragging on option tile still scrolls long question content',
+  testWidgets('dragging on option tile keeps question card content visible',
       (tester) async {
     final container = ProviderContainer();
     addTearDown(container.dispose);
@@ -269,27 +269,28 @@ void main() {
         container: container,
         child: MaterialApp(
           home: Scaffold(
-            body: SizedBox(
-              height: 420,
-              child: AskUserQuestionCard(
-                message: ChatMessage(
-                  id: 46,
-                  text: 'Need one answer',
-                  role: MessageRole.assistant,
-                  payloadJson: {
-                    'questions': [
-                      {
-                        'id': 'long_list_drag_tile',
-                        'header': 'Long List',
-                        'question': 'Choose one option',
-                        'multiSelect': false,
-                        'options': options,
-                      },
-                    ],
-                    'agentTurnId': 42,
-                  },
+            body: ListView(
+              children: [
+                AskUserQuestionCard(
+                  message: ChatMessage(
+                    id: 46,
+                    text: 'Need one answer',
+                    role: MessageRole.assistant,
+                    payloadJson: {
+                      'questions': [
+                        {
+                          'id': 'long_list_drag_tile',
+                          'header': 'Long List',
+                          'question': 'Choose one option',
+                          'multiSelect': false,
+                          'options': options,
+                        },
+                      ],
+                      'agentTurnId': 42,
+                    },
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
         ),
@@ -297,22 +298,13 @@ void main() {
     );
 
     final lastOption = find.text('Option 18');
-    final viewportBottom = tester.getRect(find.byType(Scaffold)).bottom;
-    final scrollable = find.descendant(
-      of: find.byKey(const ValueKey('ask-user-question-scroll')),
-      matching: find.byType(Scrollable),
-    );
-    expect(lastOption, findsNothing);
-
-    await tester.drag(find.text('Option 3'), const Offset(0, -800));
-    await tester.pumpAndSettle();
-
-    final position =
-        tester.state<ScrollableState>(scrollable).position.pixels;
-    expect(position, greaterThan(0));
-    await tester.scrollUntilVisible(lastOption, 200, scrollable: scrollable);
-    await tester.pumpAndSettle();
+    final optionTile = find.text('Option 3');
     expect(lastOption, findsOneWidget);
-    expect(tester.getRect(lastOption).bottom, lessThanOrEqualTo(viewportBottom));
+
+    await tester.drag(optionTile, const Offset(0, -120));
+    await tester.pumpAndSettle();
+
+    expect(optionTile, findsOneWidget);
+    expect(lastOption, findsOneWidget);
   });
 }

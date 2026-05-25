@@ -480,6 +480,84 @@ void main() {
 
     expect(scrollController.offset, greaterThanOrEqualTo(outerOffsetBefore));
   });
+
+  testWidgets('dragging inside active ask user question moves the outer timeline',
+      (tester) async {
+    final scrollController = ScrollController();
+    final container = ProviderContainer(
+      overrides: [
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+        scrollControllerProvider.overrideWith((ref) => scrollController),
+        chatSendStateProvider.overrideWith(
+          (ref) => ChatSendStateNotifier()
+            ..update(
+              phase: ChatSendPhase.streamingResponse,
+              isGenerating: true,
+            ),
+        ),
+        chatInteractionCoordinatorProvider.overrideWithValue(
+          _NoopChatInteractionCoordinator(),
+        ),
+      ],
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      scrollController.dispose();
+    });
+
+    final options = List.generate(
+      18,
+      (index) => {
+        'label': 'Option ${index + 1}',
+        'description': 'Description ${index + 1}',
+      },
+    );
+
+    container.read(messagesProvider.notifier).setMessages([
+      ChatMessage(
+        id: 2001,
+        text: 'Long list question',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.askUserQuestionPrompt,
+        payloadJson: {
+          'type': 'prompt',
+          'agentTurnId': 42,
+          'status': 'awaitingResponse',
+          'questions': [
+            {
+              'id': 'long_list_drag',
+              'header': 'Long List',
+              'question': 'Choose one option',
+              'multiSelect': false,
+              'options': options,
+            },
+          ],
+        },
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatMessageList()),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.byType(AskUserQuestionCard), findsOneWidget);
+    final outerOffsetBefore = scrollController.offset;
+    await tester.drag(find.text('Option 3'), const Offset(0, -400));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(scrollController.offset, greaterThan(outerOffsetBefore));
+  });
 }
 
 class _NoopChatInteractionCoordinator implements ChatInteractionCoordinator {

@@ -31,6 +31,17 @@ void main() {
     expect(document, contains('scrollHeight'));
   });
 
+  test('detail preview document can keep internal scrolling enabled', () {
+    final document = buildArtifactPreviewDocument(
+      '<div style="height: 480px"></div>',
+      lockScroll: false,
+    );
+
+    expect(document, contains("overflow = 'auto'"));
+    expect(document, contains("touchAction = 'auto'"));
+    expect(document, isNot(contains("overflow = 'hidden'")));
+  });
+
   test('clamps reported preview height into three-screen bounds', () {
     expect(clampArtifactPreviewHeight(80, viewportHeight: 800), 180);
     expect(clampArtifactPreviewHeight(320, viewportHeight: 800), 320);
@@ -41,5 +52,12 @@ void main() {
   test('exposes a stable truncation hint for overlong artifact previews', () {
     expect(artifactPreviewTruncationMessage, contains('详情页'));
     expect(artifactPreviewTruncationMessage, contains('完整内容'));
+  });
+
+  test('artifact inline preview keeps details page wording as the overflow path',
+      () {
+    expect(artifactPreviewTruncationMessage, contains('详情页'));
+    expect(artifactPreviewTruncationMessage, isNot(contains('展开更多')));
+    expect(artifactPreviewTruncationMessage, isNot(contains('收起')));
   });
 }
