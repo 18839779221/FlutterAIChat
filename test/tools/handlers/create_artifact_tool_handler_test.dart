@@ -40,7 +40,7 @@ void main() {
       expect(handler.definition.descriptionForModel, contains('IMPORTANT:'));
       expect(
         handler.definition.descriptionForModel,
-        contains('MUST first call `create_artifact:guideline`'),
+        contains('MUST first call `create_artifact__guideline`'),
       );
       expect(
         handler.definition.descriptionForModel,
@@ -68,7 +68,7 @@ void main() {
       );
       expect(
         handler.definition.localizedDescriptionForModel?.chinese,
-        contains('必须先调用 `create_artifact:guideline`'),
+        contains('必须先调用 `create_artifact__guideline`'),
       );
       expect(
         handler.definition.localizedDescriptionForModel?.chinese,

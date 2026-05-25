@@ -24,8 +24,8 @@
 
 本次设计目标如下：
 
-1. 新增前置工具 `create_artifact:guideline`，作为解释增强型 artifact 的显式前置参考步骤
-2. 在 `create_artifact:guideline` 与 `create_artifact` 两个 tool desc 中同时强化“首次 `create_artifact` 前必须先读 guideline”的 prompt 约束
+1. 新增前置工具 `create_artifact__guideline`，作为解释增强型 artifact 的显式前置参考步骤
+2. 在 `create_artifact__guideline` 与 `create_artifact` 两个 tool desc 中同时强化“首次 `create_artifact` 前必须先读 guideline”的 prompt 约束
 3. guideline 返回结构以 `JSON + 代码化宿主包裹示意` 为主，避免纯抽象 token 列表导致理解偏差
 4. artifact 生成时只引用项目级 design token，不直接硬编码主题特定的视觉值
 5. 如果项目现有 token 不够支撑可视化场景，应优先扩展项目全局 token，而不是在 artifact/WebView 私有层补一套
@@ -35,7 +35,7 @@
 
 本轮明确不做以下事情：
 
-1. 不把 `create_artifact:guideline` 设计成会直接生成 artifact 的复合工具
+1. 不把 `create_artifact__guideline` 设计成会直接生成 artifact 的复合工具
 2. 不把 artifact 升级成完整页面系统、模板系统或组件系统
 3. 不为 artifact 引入以 `class` 为主的预制组件语义
 4. 不让 WebView 持有独立于项目主题系统之外的第二套 token 真相源
@@ -103,13 +103,13 @@
 - 模型没有显式“先读规范再生成”的步骤
 - 无法体现 `create_artifact` 与 guideline 的配套关系
 
-### 方案 B：新增 `create_artifact:guideline`，并只暴露项目级 token 引用规范
+### 方案 B：新增 `create_artifact__guideline`，并只暴露项目级 token 引用规范
 
 本轮采用。
 
 做法：
 
-- 新增前置工具 `create_artifact:guideline`
+- 新增前置工具 `create_artifact__guideline`
 - 其返回值提供当前宿主包裹环境、可引用 token、布局约束与渲染规则
 - `create_artifact` 负责真正生成 artifact
 - WebView 只负责注入项目级 token 的 CSS 映射
@@ -142,7 +142,7 @@
 
 本次能力拆分为四层：
 
-#### `create_artifact:guideline`
+#### `create_artifact__guideline`
 
 前置读取工具，只负责返回：
 
@@ -178,13 +178,13 @@
 
 它不是独立设计系统。
 
-### 2. `create_artifact:guideline` 的工具定位
+### 2. `create_artifact__guideline` 的工具定位
 
 本工具应被明确塑造成 `create_artifact` 的配套前置工具，而不是泛化的“查设计规范”工具。
 
 命名采用：
 
-- `create_artifact:guideline`
+- `create_artifact__guideline`
 
 命名意图：
 
@@ -203,11 +203,11 @@
 - 明确触发时机
 - 在两个 tool desc 中镜像重复一次关键规则
 
-#### `create_artifact:guideline` desc 约束
+#### `create_artifact__guideline` desc 约束
 
 应包含以下核心语义：
 
-1. 当模型准备创建“用于可视化/描述增强”的 artifact 时，第一次 `create_artifact` 调用前必须先调用 `create_artifact:guideline`
+1. 当模型准备创建“用于可视化/描述增强”的 artifact 时，第一次 `create_artifact` 调用前必须先调用 `create_artifact__guideline`
 2. 不要跳过这一步直接生成首版 artifact
 3. 本工具是 `create_artifact` 的前置配套步骤，而不是 artifact 生成步骤本身
 4. 对同一个 artifact，通常只应在首次创建前调用一次
@@ -218,7 +218,7 @@
 ```text
 Read the current design-token contract and host rendering constraints for explanatory artifacts that should feel native to the app.
 
-IMPORTANT: If you are about to create an artifact for visualization or explanatory enhancement, you MUST call `create_artifact:guideline` before the first `create_artifact` call for that artifact. Do not skip this step for the first version.
+IMPORTANT: If you are about to create an artifact for visualization or explanatory enhancement, you MUST call `create_artifact__guideline` before the first `create_artifact` call for that artifact. Do not skip this step for the first version.
 
 Use this tool immediately before the first `create_artifact` call for a new explanatory artifact. This tool is a paired prerequisite for `create_artifact`, not the artifact creation step itself.
 
@@ -231,7 +231,7 @@ After reading the guideline for the same artifact, do not call this tool again u
 
 应在当前 desc 最前部补充以下核心语义：
 
-1. 对任何“用于可视化/描述增强”的首次 `create_artifact` 调用，必须先调用 `create_artifact:guideline`
+1. 对任何“用于可视化/描述增强”的首次 `create_artifact` 调用，必须先调用 `create_artifact__guideline`
 2. 不要直接跳过 guideline 生成首版 artifact
 3. guideline 的结果应被视为当前 artifact 渲染环境的宿主 contract
 4. 当 guideline 提供了 token 引用时，不要硬编码主题特定的颜色、间距尺度或其他视觉值
@@ -241,7 +241,7 @@ After reading the guideline for the same artifact, do not call this tool again u
 ```text
 Publish an interactive, self-contained HTML artifact inline in your reply.
 
-IMPORTANT: Before the first `create_artifact` call for any artifact used for visualization or explanatory enhancement, you MUST first call `create_artifact:guideline`. Do not create the first version directly without reading the guideline.
+IMPORTANT: Before the first `create_artifact` call for any artifact used for visualization or explanatory enhancement, you MUST first call `create_artifact__guideline`. Do not create the first version directly without reading the guideline.
 
 Use the guideline result as the current host contract for artifact rendering. Follow its token references, layout constraints, and rendering rules. Do not hardcode theme-specific colors, spacing scales, or other visual values when guideline references are available.
 ```
@@ -478,9 +478,9 @@ WebView 注入层采用：
 
 规则如下：
 
-1. 当模型判断自己需要用 artifact 做可视化/描述增强时，首次 `create_artifact` 前必须先调用 `create_artifact:guideline`
+1. 当模型判断自己需要用 artifact 做可视化/描述增强时，首次 `create_artifact` 前必须先调用 `create_artifact__guideline`
 2. 该规则在两个 tool desc 中都要重复出现，避免遗漏
-3. `create_artifact:guideline` 通常只在同一个 artifact 的首次创建前调用一次
+3. `create_artifact__guideline` 通常只在同一个 artifact 的首次创建前调用一次
 4. 如果 guideline 上下文缺失或可能变化，可以再次调用
 5. 本轮不把这条规则下沉为 execution-time 硬阻断，而是先作为 prompt-contract 强约束
 
@@ -509,8 +509,8 @@ WebView 注入层采用：
 
 本轮设计完成后，应满足以下标准：
 
-1. 项目中存在正式 `create_artifact:guideline` 设计，并与 `create_artifact` 建立明确前置关系
-2. `create_artifact:guideline` 与 `create_artifact` 的 desc 中都包含高显著性的首次调用顺序约束
+1. 项目中存在正式 `create_artifact__guideline` 设计，并与 `create_artifact` 建立明确前置关系
+2. `create_artifact__guideline` 与 `create_artifact` 的 desc 中都包含高显著性的首次调用顺序约束
 3. guideline 返回结构以 `host_markup_contract` 代码化示意为主，而不是只给抽象 token 列表
 4. artifact 只引用项目级 token，不新建独立视觉真相源
 5. 图表辅助 token 若缺失，应先进入项目主主题系统
@@ -544,7 +544,7 @@ WebView 注入层采用：
 
 本轮设计采用：
 
-- 新增 `create_artifact:guideline`
+- 新增 `create_artifact__guideline`
 - 用它承载 `create_artifact` 的前置规范读取
 - 以项目级全局 design token 作为唯一视觉真相源
 - 以 `host_markup_contract` 代码化返回宿主包裹环境
