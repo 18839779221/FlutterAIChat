@@ -6,6 +6,8 @@ import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/services/audio/audio_capture_service.dart';
 import 'package:ai_chat/services/audio/record_audio_capture_service.dart';
 import 'package:ai_chat/services/artifact/artifact_file_storage_service.dart';
+import 'package:ai_chat/services/artifact/artifact_guideline_contract_builder.dart';
+import 'package:ai_chat/services/artifact/artifact_theme_token_mapper.dart';
 import 'package:ai_chat/services/artifact/artifact_turn_resolver.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_timeline_projection_service.dart';
@@ -161,6 +163,14 @@ final chatTimelineProjectionServiceProvider =
 
 final artifactFileStorageServiceProvider =
     Provider<ArtifactFileStorageService?>((ref) => null);
+
+final artifactThemeTokenMapperProvider =
+    Provider<ArtifactThemeTokenMapper>((ref) => const ArtifactThemeTokenMapper());
+
+final artifactGuidelineContractBuilderProvider =
+    Provider<ArtifactGuidelineContractBuilder>(
+  (ref) => const ArtifactGuidelineContractBuilder(),
+);
 
 // 聊天服务提供者
 final chatServiceProvider = Provider<ChatService>((ref) {

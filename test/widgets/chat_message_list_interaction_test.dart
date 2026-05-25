@@ -565,6 +565,9 @@ class _NoopChatInteractionCoordinator implements ChatInteractionCoordinator {
   Future<void> cancelQuestionPrompt(ChatMessage message) async {}
 
   @override
+  Future<void> skipCurrentQuestion(ChatMessage message) async {}
+
+  @override
   Future<void> submitQuestionAnswers(ChatMessage message) async {}
 }
 

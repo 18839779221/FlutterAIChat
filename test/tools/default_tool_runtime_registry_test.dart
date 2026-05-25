@@ -15,6 +15,8 @@ import 'package:ai_chat/services/skills/skill_storage_service.dart';
 import 'package:ai_chat/services/tool_executor.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:ai_chat/tools/default_tool_runtime_registry.dart';
+import 'package:ai_chat/tools/handlers/create_artifact_guideline_tool_handler.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -63,6 +65,22 @@ void main() {
     expect(
       definitions.map((item) => item.name),
       contains('skill'),
+    );
+  });
+
+  test('default runtime registry exposes create_artifact guideline when wired', () {
+    final registry = buildDefaultToolRuntimeRegistry(
+      toolExecutor: ToolExecutor(chatStorage: _FakeChatStorage()),
+      createArtifactGuidelineHandler: CreateArtifactGuidelineToolHandler(
+        activeThemeSpecProvider: () => AppThemeSpec.claude(),
+      ),
+    );
+
+    final definitions = registry.getDefinitionsForPlatform('android');
+
+    expect(
+      definitions.map((item) => item.name),
+      contains('create_artifact:guideline'),
     );
   });
 }

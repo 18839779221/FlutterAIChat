@@ -37,9 +37,22 @@ void main() {
 
       expect(handler.definition.descriptionForModel, contains('one screen'));
       expect(handler.definition.descriptionForModel, contains('two screens'));
+      expect(handler.definition.descriptionForModel, contains('IMPORTANT:'));
+      expect(
+        handler.definition.descriptionForModel,
+        contains('MUST first call `create_artifact:guideline`'),
+      );
       expect(
         handler.definition.descriptionForModel,
         isNot(contains('three screens')),
+      );
+      expect(
+        handler.definition.descriptionForModel,
+        isNot(contains('prefer using Read/Edit/Write')),
+      );
+      expect(
+        handler.definition.descriptionForModel,
+        isNot(contains('background to transparent')),
       );
       expect(
         handler.definition.localizedDescriptionForModel?.chinese,
@@ -52,6 +65,18 @@ void main() {
       expect(
         handler.definition.localizedDescriptionForModel?.chinese,
         isNot(contains('3 屏')),
+      );
+      expect(
+        handler.definition.localizedDescriptionForModel?.chinese,
+        contains('必须先调用 `create_artifact:guideline`'),
+      );
+      expect(
+        handler.definition.localizedDescriptionForModel?.chinese,
+        isNot(contains('优先对返回的 sourcePath 使用 Read/Edit/Write')),
+      );
+      expect(
+        handler.definition.localizedDescriptionForModel?.chinese,
+        isNot(contains('页面级背景保持透明')),
       );
 
       await tempDirectory.delete(recursive: true);

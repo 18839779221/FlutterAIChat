@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:ai_chat/services/artifact/artifact_theme_token_mapper.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -34,7 +36,9 @@ double clampArtifactPreviewHeight(
 String buildArtifactPreviewDocument(
   String source, {
   bool lockScroll = true,
+  Map<String, String> hostCssVariables = const <String, String>{},
 }) {
+  final hostStyles = buildArtifactPreviewHostStyles(hostCssVariables);
   final headInjection = '''
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -98,6 +102,7 @@ String buildArtifactPreviewDocument(
     }
   })();
 </script>
+$hostStyles
 ''';
 
   final htmlTagPattern = RegExp(r'<html[\s>]', caseSensitive: false);
@@ -124,21 +129,48 @@ String buildArtifactPreviewDocument(
 <html>
   <head>
     $headInjection
-    <style>
-      html, body {
-        margin: 0;
-        padding: 0;
-        background: transparent;
-      }
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      }
-    </style>
   </head>
   <body>
-    $source
+    <div id="artifact-root">
+      $source
+    </div>
   </body>
 </html>
+''';
+}
+
+String buildArtifactPreviewHostStyles(Map<String, String> hostCssVariables) {
+  final variableLines = hostCssVariables.entries
+      .map((entry) => '        ${entry.key}: ${entry.value};')
+      .join('\n');
+  final rootBlock = variableLines.isEmpty
+      ? ''
+      : '''
+      :root {
+$variableLines
+      }
+''';
+  return '''
+<style>
+$rootBlock
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--app-artifact-page-bg, #ffffff);
+    color: var(--app-artifact-text-primary, #1f1f1e);
+    font-family: var(--app-artifact-font-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  #artifact-root {
+    width: 100%;
+    background: var(--app-artifact-page-bg, #ffffff);
+    color: var(--app-artifact-text-primary, #1f1f1e);
+  }
+</style>
 ''';
 }
 
@@ -171,12 +203,31 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   Timer? _debounceTimer;
   String? _pendingSource;
   String? _lastRenderedSource;
+  String? _lastThemeSignature;
 
   @override
   void initState() {
     super.initState();
     _controller = _createController();
     _lastRenderedSource = widget.source;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final nextSignature = _currentThemeSignature();
+    if (_lastThemeSignature == nextSignature) {
+      return;
+    }
+    final didThemeChange = _lastThemeSignature != null;
+    _lastThemeSignature = nextSignature;
+    final source = widget.source;
+    if (didThemeChange &&
+        !widget.isStale &&
+        source != null &&
+        source.trim().isNotEmpty) {
+      _updateControllerContent(source);
+    }
   }
 
   @override
@@ -231,6 +282,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         buildArtifactPreviewDocument(
           source,
           lockScroll: !widget.enableInternalScroll,
+          hostCssVariables: _resolveHostCssVariables(),
         ),
       );
       // Reset height state for new content
@@ -308,6 +360,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         buildArtifactPreviewDocument(
           source,
           lockScroll: !widget.enableInternalScroll,
+          hostCssVariables: _resolveHostCssVariables(),
         ),
       );
       return controller;
@@ -403,6 +456,21 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
       return _defaultArtifactPreviewHeight;
     }
     return viewportHeight;
+  }
+
+  Map<String, String> _resolveHostCssVariables() {
+    final spec = Theme.of(context).extension<AppThemeSpec>();
+    if (spec == null) {
+      return const <String, String>{};
+    }
+    return ArtifactThemeTokenMapper.fromSpec(spec);
+  }
+
+  String _currentThemeSignature() {
+    final variables = _resolveHostCssVariables();
+    final entries = variables.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    return entries.map((entry) => '${entry.key}=${entry.value}').join(';');
   }
 
   Widget _buildStreamingIndicator(BuildContext context) {
