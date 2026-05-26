@@ -317,7 +317,6 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     try {
       final controller = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setBackgroundColor(Colors.transparent)
         ..enableZoom(false)
         ..setNavigationDelegate(
           NavigationDelegate(
