@@ -14,7 +14,6 @@ import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
 import 'package:ai_chat/widgets/tool_renderers/tool_running_effects.dart';
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
 import 'package:ai_chat/widgets/markdown/code_widget.dart';
-import 'package:ai_chat/widgets/markdown/markdown_widget_impl.dart';
 import 'package:ai_chat/widgets/markdown/markdown_callout_block.dart';
 import 'package:ai_chat/widgets/markdown/markdown_math_widgets.dart';
 import 'package:ai_chat/widgets/markdown/table_edge_fade_scroll_shell.dart';
@@ -319,7 +318,6 @@ $$
 
       expect(find.byType(MarkdownInlineMath), findsWidgets);
       expect(find.byType(MarkdownBlockMath), findsOneWidget);
-      expect(find.byType(MarkdownWidgetImpl), findsNothing);
     });
 
     testWidgets('streaming response stays close to completed markdown rhythm', (
@@ -367,7 +365,7 @@ $$
       );
     });
 
-    testWidgets('markdown tables use the table-focused renderer',
+    testWidgets('markdown tables stay on the default document renderer',
         (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -385,10 +383,8 @@ $$
         ),
       );
 
-      expect(find.byType(MarkdownWidgetImpl), findsOneWidget);
-      expect(find.byType(MarkdownBody), findsNothing);
+      expect(find.byType(MarkdownBody), findsOneWidget);
       expect(find.byType(Table), findsOneWidget);
-      expect(find.byType(TableEdgeFadeScrollShell), findsOneWidget);
     });
 
     testWidgets('plain markdown keeps the default document renderer', (
@@ -406,7 +402,6 @@ $$
       );
 
       expect(find.byType(MarkdownBody), findsOneWidget);
-      expect(find.byType(MarkdownWidgetImpl), findsNothing);
     });
 
     testWidgets('code blocks use shared technical content surface', (
