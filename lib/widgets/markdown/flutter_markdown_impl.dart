@@ -30,60 +30,63 @@ class FlutterMarkdownImpl extends StatelessWidget {
     final reader = FlutterMarkdownReaderTokens.build(context);
 
     return RepaintBoundary(
-      child: MarkdownBody(
-        data: data,
-        selectable: false,
-        fitContent: false,
-        onTapLink: (text, href, title) => _launchUrl(text, href),
-        blockSyntaxes: const [
-          MathBlockSyntax(),
-          CalloutBlockSyntax(),
-        ],
-        inlineSyntaxes: [
-          MathInlineSyntax(),
-        ],
-        styleSheet: MarkdownStyleSheet(
-          p: reader.body,
-          h1: reader.h1,
-          h2: reader.h2,
-          h3: reader.h3,
-          listBullet: reader.secondaryBody.copyWith(height: 1.46),
-          blockquote: reader.secondaryBody,
-          blockquotePadding: const EdgeInsets.fromLTRB(13, 8, 9, 8),
-          blockquoteDecoration: BoxDecoration(
-            color: reader.quoteBackgroundColor,
-            border: Border(
-              left: BorderSide(
-                color: reader.quoteBorderColor,
-                width: 1.4,
+      child: DefaultTextStyle.merge(
+        style: reader.body,
+        child: MarkdownBody(
+          data: data,
+          selectable: false,
+          fitContent: false,
+          onTapLink: (text, href, title) => _launchUrl(text, href),
+          blockSyntaxes: const [
+            MathBlockSyntax(),
+            CalloutBlockSyntax(),
+          ],
+          inlineSyntaxes: [
+            MathInlineSyntax(),
+          ],
+          styleSheet: MarkdownStyleSheet(
+            p: reader.body,
+            h1: reader.h1,
+            h2: reader.h2,
+            h3: reader.h3,
+            listBullet: reader.secondaryBody.copyWith(height: 1.46),
+            blockquote: reader.secondaryBody,
+            blockquotePadding: const EdgeInsets.fromLTRB(13, 8, 9, 8),
+            blockquoteDecoration: BoxDecoration(
+              color: reader.quoteBackgroundColor,
+              border: Border(
+                left: BorderSide(
+                  color: reader.quoteBorderColor,
+                  width: 1.4,
+                ),
               ),
+              borderRadius: BorderRadius.circular(8),
             ),
-            borderRadius: BorderRadius.circular(8),
+            strong: reader.body.copyWith(fontWeight: FontWeight.w500),
+            em: reader.body.copyWith(fontStyle: FontStyle.italic),
+            textAlign: WrapAlignment.start,
+            blockSpacing: 10,
+            listIndent: 17,
+            h1Padding: const EdgeInsets.only(top: 5, bottom: 6),
+            h2Padding: const EdgeInsets.only(top: 15, bottom: 6),
+            h3Padding: const EdgeInsets.only(top: 12, bottom: 5),
+            horizontalRuleDecoration: BoxDecoration(
+              color: theme.dividerColor.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            codeblockDecoration: BoxDecoration(
+              color: reader.codePanelBackgroundColor,
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
-          strong: reader.body.copyWith(fontWeight: FontWeight.w500),
-          em: reader.body.copyWith(fontStyle: FontStyle.italic),
-          textAlign: WrapAlignment.start,
-          blockSpacing: 10,
-          listIndent: 17,
-          h1Padding: const EdgeInsets.only(top: 5, bottom: 6),
-          h2Padding: const EdgeInsets.only(top: 15, bottom: 6),
-          h3Padding: const EdgeInsets.only(top: 12, bottom: 5),
-          horizontalRuleDecoration: BoxDecoration(
-            color: theme.dividerColor.withValues(alpha: 0.16),
-            borderRadius: BorderRadius.circular(999),
-          ),
-          codeblockDecoration: BoxDecoration(
-            color: reader.codePanelBackgroundColor,
-            borderRadius: BorderRadius.circular(10),
-          ),
+          builders: {
+            'math-inline': MarkdownInlineMathBuilder(),
+            'math-block': MarkdownBlockMathBuilder(),
+            'callout': MarkdownCalloutBuilder(),
+            'code': CodeElementBuilder(),
+            'pre': CodeBlockBuilder(),
+          },
         ),
-        builders: {
-          'math-inline': MarkdownInlineMathBuilder(),
-          'math-block': MarkdownBlockMathBuilder(),
-          'callout': MarkdownCalloutBuilder(),
-          'code': CodeElementBuilder(),
-          'pre': CodeBlockBuilder(),
-        },
       ),
     );
   }

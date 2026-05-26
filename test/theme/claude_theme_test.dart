@@ -15,4 +15,12 @@ void main() {
     expect(theme.assistantSurface, const Color(0xFFFAF9F5));
     expect(theme.toolWorkflowSurface, const Color(0xFFF5F2EA));
   });
+
+  test('Claude theme keeps strong structural border contrast for table edges', () {
+    final theme = AppThemeSpec.claude();
+
+    expect(theme.artifactBorderStrong, const Color(0xFFD9D6CC));
+    expect(theme.artifactBorderStrong.computeLuminance(),
+        lessThan(theme.assistantSurface.computeLuminance()));
+  });
 }

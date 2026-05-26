@@ -21,10 +21,14 @@ class MarkdownWidgetImpl extends StatefulWidget {
 class _MarkdownWidgetImplState extends State<MarkdownWidgetImpl> {
   @override
   Widget build(BuildContext context) {
-    return MarkdownBlock(
-      data: widget.data,
-      config: _getMarkdownConfig(context),
-      selectable: false,
+    final config = _getMarkdownConfig(context);
+    return DefaultTextStyle.merge(
+      style: config.p.textStyle,
+      child: MarkdownBlock(
+        data: widget.data,
+        config: config,
+        selectable: false,
+      ),
     );
   }
 
@@ -33,10 +37,17 @@ class _MarkdownWidgetImplState extends State<MarkdownWidgetImpl> {
     final isDark = theme.brightness == Brightness.dark;
     final colors = theme.extension<AppThemeSpec>()!;
     final bodyColor = theme.colorScheme.onSurface;
+    final bodyStyle = AppTypography.documentStyle(
+      color: bodyColor,
+      fontSize: 13,
+      height: 1.46,
+    );
     final secondaryColor = bodyColor.withValues(alpha: 0.84);
     final linkColor = theme.colorScheme.primary;
+    final tableEdgeColor =
+        colors.artifactBorderStrong.withValues(alpha: isDark ? 0.72 : 0.92);
     final tableDividerColor =
-        colors.divider.withValues(alpha: isDark ? 0.4 : 0.16);
+        colors.artifactBorderStrong.withValues(alpha: isDark ? 0.54 : 0.68);
     final tableHeaderFill =
         colors.toolWorkflowSurface.withValues(alpha: isDark ? 0.72 : 0.52);
     final tableBodyFill =
@@ -84,13 +95,7 @@ class _MarkdownWidgetImplState extends State<MarkdownWidgetImpl> {
             fontWeight: FontWeight.w500,
           ),
         ),
-        PConfig(
-          textStyle: AppTypography.documentStyle(
-            color: bodyColor,
-            fontSize: 13,
-            height: 1.46,
-          ),
-        ),
+        PConfig(textStyle: bodyStyle),
         HrConfig(
           height: 1,
           color: colors.divider.withValues(alpha: isDark ? 0.18 : 0.1),
@@ -120,9 +125,29 @@ class _MarkdownWidgetImplState extends State<MarkdownWidgetImpl> {
         TableConfig(
           defaultColumnWidth: const IntrinsicColumnWidth(),
           border: TableBorder(
+            top: BorderSide(
+              color: tableEdgeColor,
+              width: 0.9,
+            ),
+            bottom: BorderSide(
+              color: tableEdgeColor,
+              width: 0.9,
+            ),
+            left: BorderSide(
+              color: tableEdgeColor,
+              width: 0.9,
+            ),
+            right: BorderSide(
+              color: tableEdgeColor,
+              width: 0.9,
+            ),
             horizontalInside: BorderSide(
               color: tableDividerColor,
-              width: 0.7,
+              width: 0.8,
+            ),
+            verticalInside: BorderSide(
+              color: tableDividerColor,
+              width: 0.8,
             ),
           ),
           headerRowDecoration: BoxDecoration(
