@@ -42,15 +42,17 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
     required LLMConfig runtimeConfig,
     required Duration timeout,
   }) async {
-    final spec = requestSpec as ResponsesRequestSpec;
+    final payload = _requestSpecToPayload(requestSpec);
     final client = _buildClient(runtimeConfig, timeout: timeout);
     try {
       try {
-        final response = await client.responses.create(spec.request);
+        final response = await client.responses.create(
+          oai.CreateResponseRequest.fromJson(payload),
+        );
         return ProtocolExecutionResult(rawResponseJson: response.toJson());
       } catch (_) {
         final fallback = await _executeFallbackJson(
-          request: spec.request,
+          payload: payload,
           runtimeConfig: runtimeConfig,
           timeout: timeout,
         );
@@ -68,7 +70,7 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
     required Duration idleTimeout,
     required Duration overallTimeout,
   }) async {
-    final spec = requestSpec as ResponsesRequestSpec;
+    final payload = _requestSpecToPayload(requestSpec);
     final streamedResponse = await (_httpClient ?? http.Client())
         .send(
           http.Request(
@@ -82,7 +84,10 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
               'Content-Type': 'application/json',
               'Authorization': 'Bearer ${runtimeConfig.apiKey}',
             })
-            ..body = jsonEncode(spec.request.copyWith(stream: true).toJson()),
+            ..body = jsonEncode({
+              ...payload,
+              'stream': true,
+            }),
         )
         .timeout(idleTimeout);
 
@@ -112,7 +117,10 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
             ).timeout(idleTimeout)
           : _streamEventAdapter.adapt(
               _streamRequestExecutor!(
-                request: spec.request,
+                request: oai.CreateResponseRequest.fromJson({
+                  ...payload,
+                  'stream': true,
+                }),
                 streamedResponse: streamedResponse,
               ).timeout(idleTimeout),
             ),
@@ -135,7 +143,7 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
   }
 
   Future<Map<String, dynamic>> _executeFallbackJson({
-    required oai.CreateResponseRequest request,
+    required Map<String, dynamic> payload,
     required LLMConfig runtimeConfig,
     required Duration timeout,
   }) async {
@@ -146,12 +154,22 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer ${runtimeConfig.apiKey}',
           },
-          body: jsonEncode(request.toJson()),
+          body: jsonEncode(payload),
         )
         .timeout(timeout);
     return Map<String, dynamic>.from(
       jsonDecode(utf8.decode(response.bodyBytes)) as Map,
     );
+  }
+
+  Map<String, dynamic> _requestSpecToPayload(ProtocolRequestSpec requestSpec) {
+    return switch (requestSpec) {
+      JsonProtocolRequestSpec(:final payload) => payload,
+      ResponsesRequestSpec(:final request) => request.toJson(),
+      _ => throw StateError(
+          'Unsupported request spec for responses runtime: ${requestSpec.runtimeType}',
+        ),
+    };
   }
 
   Stream<StreamingPlannerChunk> _createAdaptedChunkStream({

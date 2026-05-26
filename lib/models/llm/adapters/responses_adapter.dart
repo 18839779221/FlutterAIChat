@@ -17,9 +17,14 @@ import '../streaming_decision_accumulator.dart';
 import 'adapter_utils.dart';
 import 'api_style_adapter.dart';
 import 'provider_capabilities.dart';
-import 'package:openai_dart/openai_dart.dart' as oai;
-
-/// Adapter for the OpenAI Responses protocol.
+/// Deprecated self-managed semantic adapter for the OpenAI Responses protocol.
+///
+/// Responses 目标主链路已经是 SDK-first。
+/// 这个自研实现仅为迁移期兼容保留，不再维护；后续 provider 能力、
+/// 缓存兼容与真实请求优化都不应继续落在这里。
+@Deprecated(
+  'Responses 主链路目标为 SDK-first；ResponsesAdapter 仅为迁移期兼容保留，不再维护。',
+)
 class ResponsesAdapter extends ApiStyleAdapter {
   const ResponsesAdapter();
   static const Map<String, dynamic> _reasoningConfig = {
@@ -53,16 +58,15 @@ class ResponsesAdapter extends ApiStyleAdapter {
     required LLMConfig runtimeConfig,
     LlmRequestOptions requestOptions = const LlmRequestOptions(),
   }) {
-    return ResponsesRequestSpec(
-      request: oai.CreateResponseRequest.fromJson(
-        buildChatPayload(
-          messages: messages,
-          config: config,
-          modelName: modelName,
-          stream: stream,
-          requestOptions: requestOptions,
-        ),
+    return JsonProtocolRequestSpec(
+      payload: buildChatPayload(
+        messages: messages,
+        config: config,
+        modelName: modelName,
+        stream: stream,
+        requestOptions: requestOptions,
       ),
+      headers: buildHeaders(runtimeConfig),
     );
   }
 
@@ -409,17 +413,16 @@ class ResponsesAdapter extends ApiStyleAdapter {
     required LLMConfig runtimeConfig,
     LlmRequestOptions requestOptions = const LlmRequestOptions(),
   }) {
-    return ResponsesRequestSpec(
-      request: oai.CreateResponseRequest.fromJson(
-        buildPlannerPayloadFromCarriers(
-          carriers: carriers,
-          config: config,
-          modelName: modelName,
-          availableTools: availableTools,
-          parallelToolCalls: parallelToolCalls,
-          requestOptions: requestOptions,
-        ),
+    return JsonProtocolRequestSpec(
+      payload: buildPlannerPayloadFromCarriers(
+        carriers: carriers,
+        config: config,
+        modelName: modelName,
+        availableTools: availableTools,
+        parallelToolCalls: parallelToolCalls,
+        requestOptions: requestOptions,
       ),
+      headers: buildHeaders(runtimeConfig),
     );
   }
 
@@ -482,12 +485,14 @@ class ResponsesAdapter extends ApiStyleAdapter {
             })
         .toList(growable: false);
 
-    return <String, dynamic>{
+    final payload = <String, dynamic>{
       'model': modelName,
       if (instructions != null) 'instructions': instructions,
       'input': input,
       'store': false,
       if (tools.isNotEmpty) 'tools': tools,
     };
+    _applyCacheHints(payload, requestOptions.cache);
+    return payload;
   }
 }

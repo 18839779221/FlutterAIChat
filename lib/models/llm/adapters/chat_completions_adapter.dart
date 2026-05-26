@@ -18,10 +18,15 @@ import 'adapter_utils.dart';
 import 'api_style_adapter.dart';
 import 'provider_capabilities.dart';
 
-/// Legacy adapter for the OpenAI-compatible Chat Completions protocol.
+/// Deprecated legacy adapter for the OpenAI-compatible Chat Completions
+/// protocol.
 ///
-/// Kept as a fallback when the SDK-backed [SdkChatCompletionsAdapter]
-/// encounters issues with specific providers.
+/// Provider 主链路已经切到 SDK-backed [SdkChatCompletionsAdapter]。
+/// 这个自研实现只保留为极端兼容问题下的临时 fallback，不再维护，
+/// 后续 provider 能力或缓存相关优化不要继续加在这里。
+@Deprecated(
+  'Chat Completions 主链路已切到 SDK；LegacyChatCompletionsAdapter 仅保留为临时 fallback，不再维护。',
+)
 class LegacyChatCompletionsAdapter extends ApiStyleAdapter {
   const LegacyChatCompletionsAdapter();
 
@@ -250,11 +255,6 @@ class LegacyChatCompletionsAdapter extends ApiStyleAdapter {
     if (cache.retention != null && cache.retention!.trim().isNotEmpty) {
       payload['prompt_cache_retention'] = cache.retention!.trim();
     }
-  }
-
-  /// DeepSeek API rejects `parallel_tool_calls`; detect by model name prefix.
-  static bool _isDeepSeekModel(String modelName) {
-    return modelName.trim().toLowerCase().startsWith('deepseek');
   }
 
   PlannerToolChoice? _parseToolCall(Map<String, dynamic> message) {

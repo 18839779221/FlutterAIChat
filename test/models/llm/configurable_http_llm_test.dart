@@ -12,6 +12,7 @@ import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/llm/configurable_http_llm.dart';
 import 'package:ai_chat/models/llm/llm_config.dart';
 import 'package:ai_chat/models/llm/llm_cache_usage.dart';
+import 'package:ai_chat/models/llm/llm_cache_strategy.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/models/llm/llm_provider_model.dart';
 import 'package:ai_chat/models/llm/llm_request_options.dart';
@@ -19,6 +20,7 @@ import 'package:ai_chat/models/agent/model_turn_decision.dart';
 import 'package:ai_chat/models/agent/planner_tool_choice.dart';
 import 'package:ai_chat/models/llm/adapters/anthropic_messages_adapter.dart';
 import 'package:ai_chat/models/llm/adapters/responses_adapter.dart';
+import 'package:ai_chat/models/llm/adapters/sdk_chat_completions_adapter.dart';
 import 'package:ai_chat/models/llm/runtime/protocol_execution_runtime.dart';
 import 'package:ai_chat/models/llm/runtime/protocol_request_spec.dart';
 import 'package:ai_chat/models/llm/runtime/protocol_runtime_registry.dart';
@@ -752,6 +754,9 @@ void main() {
             inputTokens: 12,
             outputTokens: 4,
             cachedInputTokens: 8,
+            rawUsage: {
+              'input_tokens': 12,
+            },
           ),
         ),
       );
@@ -801,6 +806,118 @@ void main() {
         (entry) => entry['message'] == 'llm.request.done',
       );
       expect(done['data'], containsPair('cachedInputTokens', 8));
+      expect(done['data'], containsPair('usageKeys', ['input_tokens']));
+      expect(done['data'], containsPair('rawUsage', {'input_tokens': 12}));
+    });
+
+    test('responses planner emits cache hints by default', () async {
+      final adapter = _NonStreamingResponsesAdapter();
+      final runtime = _CountingRuntime(
+        executeResult: const ProtocolExecutionResult(
+          rawResponseJson: {
+            'output': [
+              {
+                'type': 'message',
+                'role': 'assistant',
+                'content': [
+                  {
+                    'type': 'output_text',
+                    'text': 'ok',
+                  },
+                ],
+              },
+            ],
+          },
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/responses',
+        runtimeRegistry: ProtocolRuntimeRegistry(
+          runtimes: {
+            ApiStyle.responses: runtime,
+            ApiStyle.chatCompletions: _CountingRuntime(),
+            ApiStyle.anthropicMessages: _CountingRuntime(),
+          },
+        ),
+        adapters: {
+          ApiStyle.responses: adapter,
+          ApiStyle.chatCompletions: const SdkChatCompletionsAdapter(),
+          ApiStyle.anthropicMessages: const AnthropicMessagesAdapter(),
+        },
+      );
+
+      await llm.planTurnDecision(
+        carriers: [SyntheticCarrier.user('继续')],
+        activeApiStyle: ChatTurnProviderStyle.openaiResponses,
+        currentTurnRunning: false,
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [],
+      );
+
+      final spec = runtime.lastExecuteRequestSpec as JsonProtocolRequestSpec;
+      expect(spec.payload['prompt_cache_retention'], 'in-memory');
+    });
+
+    test('trace start records cache hint metadata for responses planner',
+        () async {
+      final collected = <Map<String, dynamic>>[];
+      final adapter = _NonStreamingResponsesAdapter();
+      final runtime = _CountingRuntime(
+        executeResult: const ProtocolExecutionResult(
+          rawResponseJson: {
+            'output': [
+              {
+                'type': 'message',
+                'role': 'assistant',
+                'content': [
+                  {
+                    'type': 'output_text',
+                    'text': 'ok',
+                  },
+                ],
+              },
+            ],
+          },
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/responses',
+        runtimeRegistry: ProtocolRuntimeRegistry(
+          runtimes: {
+            ApiStyle.responses: runtime,
+            ApiStyle.chatCompletions: _CountingRuntime(),
+            ApiStyle.anthropicMessages: _CountingRuntime(),
+          },
+        ),
+        adapters: {
+          ApiStyle.responses: adapter,
+          ApiStyle.chatCompletions: const SdkChatCompletionsAdapter(),
+          ApiStyle.anthropicMessages: const AnthropicMessagesAdapter(),
+        },
+        traceEmitter: (tag, message, {level = LogLevel.info, data}) {
+          collected.add({
+            'tag': tag,
+            'message': message,
+            'level': level.name,
+            if (data != null) 'data': data,
+          });
+        },
+      );
+
+      await llm.planTurnDecision(
+        carriers: [SyntheticCarrier.user('继续')],
+        activeApiStyle: ChatTurnProviderStyle.openaiResponses,
+        currentTurnRunning: false,
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [],
+      );
+
+      final start = collected.lastWhere(
+        (entry) => entry['message'] == 'llm.request.start',
+      );
+      expect(start['data'], containsPair('cacheStrategy', LlmCacheStrategy.providerHints.name));
+      expect(start['data'], containsPair('cacheRetention', 'in-memory'));
+      expect(start['data'], containsPair('cacheKeyPresent', false));
     });
 
     test('records trace events for streaming planner requests', () async {
@@ -2282,6 +2399,8 @@ class _CountingRuntime extends ProtocolExecutionRuntime {
 
   int executeCalls = 0;
   int streamExecuteCalls = 0;
+  ProtocolRequestSpec? lastExecuteRequestSpec;
+  ProtocolRequestSpec? lastStreamRequestSpec;
   final ProtocolExecutionResult executeResult;
   final ProtocolStreamExecutionResult streamResult;
 
@@ -2292,6 +2411,7 @@ class _CountingRuntime extends ProtocolExecutionRuntime {
     required Duration timeout,
   }) async {
     executeCalls += 1;
+    lastExecuteRequestSpec = requestSpec;
     return executeResult;
   }
 
@@ -2303,6 +2423,7 @@ class _CountingRuntime extends ProtocolExecutionRuntime {
     required Duration overallTimeout,
   }) async {
     streamExecuteCalls += 1;
+    lastStreamRequestSpec = requestSpec;
     return streamResult;
   }
 }
@@ -2413,4 +2534,12 @@ class _FakeAdapter extends ApiStyleAdapter {
     }
     return null;
   }
+}
+
+class _NonStreamingResponsesAdapter extends ResponsesAdapter {
+  @override
+  ProviderCapabilities get capabilities => const ProviderCapabilities(
+        supportsPlannerStreaming: false,
+        supportsParallelToolCalls: true,
+      );
 }

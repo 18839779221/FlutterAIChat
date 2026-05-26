@@ -4,6 +4,7 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 
+import 'debug_cache_panel_projection.dart';
 import 'debug_turn_inspector_context_section.dart';
 import 'debug_turn_inspector_timeline_entry.dart';
 import 'debug_turn_option.dart';
@@ -15,6 +16,7 @@ class DebugTurnInspectorProjection {
   final DebugTurnOverview? activeTurnOverview;
   final List<DebugTurnTimelineEntry> timelineEntries;
   final List<DebugTurnInspectorContextSection> contextSections;
+  final DebugCachePanelProjection? cachePanel;
 
   const DebugTurnInspectorProjection({
     required this.turnOptions,
@@ -22,6 +24,7 @@ class DebugTurnInspectorProjection {
     required this.activeTurnOverview,
     required this.timelineEntries,
     required this.contextSections,
+    this.cachePanel,
   });
 
   DebugTurnInspectorProjection copyWithSelectedTurn(int selectedTurnId) {
@@ -31,6 +34,7 @@ class DebugTurnInspectorProjection {
       activeTurnOverview: activeTurnOverview,
       timelineEntries: timelineEntries,
       contextSections: contextSections,
+      cachePanel: cachePanel,
     );
   }
 }

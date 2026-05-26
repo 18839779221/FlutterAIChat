@@ -19,7 +19,15 @@ import 'adapter_utils.dart';
 import 'api_style_adapter.dart';
 import 'provider_capabilities.dart';
 
-/// Adapter for the Anthropic Messages protocol.
+/// Deprecated self-managed semantic adapter for the Anthropic Messages
+/// protocol.
+///
+/// Anthropic 目标主链路已经是 SDK-first / runtime-first。
+/// 这个自研实现仅为迁移期兼容保留，不再维护；后续 provider 能力、
+/// 缓存兼容与真实请求优化都不应继续落在这里。
+@Deprecated(
+  'Anthropic 主链路目标为 SDK-first；AnthropicMessagesAdapter 仅为迁移期兼容保留，不再维护。',
+)
 class AnthropicMessagesAdapter extends ApiStyleAdapter {
   const AnthropicMessagesAdapter();
 
@@ -287,7 +295,7 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
       );
     }
 
-    return {
+    final payload = <String, dynamic>{
       'model': modelName,
       if (systemSegments.isNotEmpty) 'system': systemSegments.join('\n\n'),
       'messages': normalizedMessages,
@@ -297,6 +305,8 @@ class AnthropicMessagesAdapter extends ApiStyleAdapter {
       if (!requestOptions.allowReasoning)
         'thinking': const {'type': 'disabled'},
     };
+    _applyCacheHints(payload, requestOptions.cache);
+    return payload;
   }
 
   Map<String, dynamic> _buildMessage(ChatMessage message) {
