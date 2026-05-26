@@ -4,9 +4,12 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:openai_dart/openai_dart.dart' as oai;
 
+import '../../../utils/logger.dart';
 import '../api_protocol_resolver.dart';
-import '../api_stream_parser.dart';
+import '../llm_cache_usage.dart';
 import '../llm_config.dart';
+import '../llm_usage_extractor.dart';
+import '../streaming_planner_chunk.dart';
 import 'protocol_execution_runtime.dart';
 import 'protocol_request_spec.dart';
 
@@ -20,7 +23,6 @@ class OpenAiChatCompletionsRuntime extends ProtocolExecutionRuntime {
 
   final http.Client? _httpClient;
   final http.Client Function()? _streamClientFactory;
-  static const ApiStreamParser _streamParser = ApiStreamParser();
 
   @override
   Future<ProtocolExecutionResult> execute({
@@ -32,8 +34,14 @@ class OpenAiChatCompletionsRuntime extends ProtocolExecutionRuntime {
     final client = _buildClient(runtimeConfig, timeout: timeout);
     try {
       final response = await client.chat.completions.create(spec.request);
+      final responseJson = response.toJson();
+      final extractedUsage = LlmUsageExtractor.extract(responseJson);
+      Logger.trace('OpenAiChatCompletionsRuntime', 'responseJson.usage: ${responseJson['usage']}');
+      Logger.trace('OpenAiChatCompletionsRuntime', 'extractedUsage: inputTokens=${extractedUsage?.inputTokens}, '
+          'cachedInputTokens=${extractedUsage?.cachedInputTokens}');
       return ProtocolExecutionResult(
-        rawResponseJson: response.toJson(),
+        rawResponseJson: responseJson,
+        cacheUsage: extractedUsage,
       );
     } finally {
       client.close();
@@ -80,19 +88,172 @@ class OpenAiChatCompletionsRuntime extends ProtocolExecutionRuntime {
         );
       }
       final decoded = jsonDecode(responseText);
+      final fallbackUsage = decoded is Map<String, dynamic>
+          ? LlmUsageExtractor.extract(decoded)
+          : null;
       return ProtocolStreamExecutionResult(
         chunks: const Stream.empty(),
         nonStreamingFallbackJson:
             decoded is Map<String, dynamic> ? decoded : <String, dynamic>{},
+        cacheUsage: fallbackUsage,
       );
     }
 
+    LlmCacheUsage? collectedUsage;
     return ProtocolStreamExecutionResult(
-      chunks: _streamParser.parsePlannerChunks(
-        streamedResponse,
-        ApiStyle.chatCompletions,
-      ),
+      chunks: _createAdaptedChunkStream(
+        streamedResponse: streamedResponse,
+        onUsageExtracted: (usage) => collectedUsage = usage,
+      ).timeout(idleTimeout),
+      cacheUsage: collectedUsage,
     );
+  }
+
+  Stream<StreamingPlannerChunk> _createAdaptedChunkStream({
+    required http.StreamedResponse streamedResponse,
+    void Function(LlmCacheUsage?)? onUsageExtracted,
+  }) async* {
+    await for (final line in streamedResponse.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
+      if (!line.startsWith('data: ')) {
+        continue;
+      }
+
+      if (line.contains('[DONE]')) {
+        Logger.i('OpenAiChatCompletionsRuntime', 'Chat Completions planner 流式响应完成');
+        continue;
+      }
+
+      try {
+        final data = jsonDecode(line.substring(6));
+        if (data is! Map<String, dynamic>) {
+          continue;
+        }
+
+        // Extract usage from the chunk if present
+        final usage = data['usage'];
+        if (usage is Map<String, dynamic>) {
+          final extractedUsage = LlmUsageExtractor.extract(data);
+          if (extractedUsage != null && onUsageExtracted != null) {
+            onUsageExtracted(extractedUsage);
+            Logger.trace('OpenAiChatCompletionsRuntime', 'stream usage extracted: inputTokens=${extractedUsage.inputTokens}, '
+                'cachedInputTokens=${extractedUsage.cachedInputTokens}');
+          }
+          // Emit usage as metadata in a keepalive chunk
+          yield StreamingPlannerChunk.keepalive(
+            providerMetadata: <String, dynamic>{
+              '_usage': <String, dynamic>{
+                if (extractedUsage?.inputTokens != null) 'inputTokens': extractedUsage!.inputTokens,
+                if (extractedUsage?.outputTokens != null) 'outputTokens': extractedUsage!.outputTokens,
+                if (extractedUsage?.cachedInputTokens != null) 'cachedInputTokens': extractedUsage!.cachedInputTokens,
+                if (extractedUsage?.cacheReadInputTokens != null) 'cacheReadInputTokens': extractedUsage!.cacheReadInputTokens,
+                if (extractedUsage?.cacheWriteInputTokens != null) 'cacheWriteInputTokens': extractedUsage!.cacheWriteInputTokens,
+              },
+            },
+          );
+        }
+
+        final choices = data['choices'];
+        if (choices is! List || choices.isEmpty) {
+          continue;
+        }
+        final firstChoice = choices.first;
+        if (firstChoice is! Map) {
+          continue;
+        }
+        final delta = firstChoice['delta'];
+        if (delta is! Map) {
+          continue;
+        }
+
+        final content = _normalizeText(delta['content']);
+        if (content != null) {
+          yield StreamingPlannerChunk.contentDelta(
+            content,
+            providerMetadata: _providerStateFromChatCompletions(data),
+          );
+        }
+        final reasoning = _normalizeText(
+          delta['reasoning_content'] ?? delta['reasoning'] ?? delta['thinking'],
+        );
+        if (reasoning != null) {
+          yield StreamingPlannerChunk.reasoningDelta(
+            reasoning,
+            providerMetadata: _providerStateFromChatCompletions(data),
+          );
+        }
+
+        final toolCalls = delta['tool_calls'];
+        if (toolCalls is! List) {
+          continue;
+        }
+        for (var toolCallPosition = 0;
+            toolCallPosition < toolCalls.length;
+            toolCallPosition += 1) {
+          final toolCall = toolCalls[toolCallPosition];
+          if (toolCall is! Map) {
+            continue;
+          }
+          final function = toolCall['function'];
+          final toolCallIndex = _normalizeInt(toolCall['index']);
+          final providerCallId = _normalizeText(toolCall['id']);
+          String? toolName;
+          String? argumentsDelta;
+          if (function is Map) {
+            toolName = _normalizeText(function['name']);
+            argumentsDelta = _normalizeText(function['arguments']);
+          }
+          if (providerCallId != null || toolName != null) {
+            yield StreamingPlannerChunk.toolCallStarted(
+              toolCallIndex: toolCallIndex,
+              providerCallId: providerCallId,
+              toolName: toolName,
+              providerMetadata: _providerStateFromChatCompletions(data),
+            );
+          }
+          if (argumentsDelta != null) {
+            yield StreamingPlannerChunk.toolCallArgumentsDelta(
+              toolCallIndex: toolCallIndex,
+              providerCallId: providerCallId,
+              toolName: toolName,
+              argumentsTextDelta: argumentsDelta,
+              providerMetadata: _providerStateFromChatCompletions(data),
+            );
+          }
+        }
+      } catch (e) {
+        Logger.e('OpenAiChatCompletionsRuntime', 'Chat Completions planner JSON解析错误: $e');
+      }
+    }
+    yield const StreamingPlannerChunk.streamCompleted();
+  }
+
+  Map<String, dynamic>? _providerStateFromChatCompletions(
+    Map<String, dynamic> data,
+  ) {
+    final responseId = _normalizeText(data['id']);
+    if (responseId == null) {
+      return null;
+    }
+    return {'response_id': responseId};
+  }
+
+  String? _normalizeText(dynamic value) {
+    if (value is! String) {
+      return null;
+    }
+    return value.isEmpty ? null : value;
+  }
+
+  int? _normalizeInt(Object? value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is String) {
+      return int.tryParse(value.trim());
+    }
+    return null;
   }
 
   oai.OpenAIClient _buildClient(

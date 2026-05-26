@@ -29,6 +29,11 @@ fvm flutter run
 - Unless explicitly requested otherwise, prefer debug builds/runs for local development and device installation
 - On Android real devices, default to debug package install/run; only use `--release` or `--profile` when the user specifically asks for it
 - Prefer Android real devices for end-to-end verification when available, unless the task explicitly requires another platform
+- **CRITICAL: For Android debug installation, ALWAYS use `bash scripts/android_install_debug.sh [device_id]`**
+  - **NEVER use `flutter install` or any uninstall/reinstall approach**
+  - The script ensures debug APK is built and installed correctly with proper flags
+  - This prevents issues like installing release builds which lack debug logging
+  - Example: `bash scripts/android_install_debug.sh AUUNW22B08000071`
 - Before installing a debug package to a real device, rebuild it first so the installed APK matches the latest workspace code
   - Prefer `bash scripts/android_install_debug.sh`
   - The script builds the latest debug APK, then installs with `adb install -r -t` only

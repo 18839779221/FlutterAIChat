@@ -67,6 +67,18 @@ class AnthropicStreamEventAdapter {
             },
           );
         case anthropic.MessageDeltaEvent():
+          // Extract usage from message delta
+          final usage = event.usage;
+          if (usage != null) {
+            yield StreamingPlannerChunk.keepalive(
+              providerMetadata: <String, dynamic>{
+                '_usage': <String, dynamic>{
+                  'input_tokens': usage.inputTokens,
+                  'output_tokens': usage.outputTokens,
+                },
+              },
+            );
+          }
           continue;
       }
     }

@@ -45,6 +45,7 @@ class ProtocolStreamExecutionResult {
     required this.chunks,
     this.nonStreamingFallbackJson,
     this.runtimeSnapshots = const <RuntimeStreamEntry>[],
+    this.cacheUsage,
   });
 
   /// Streaming planner chunks consumed by `StreamingDecisionAccumulator`.
@@ -55,4 +56,7 @@ class ProtocolStreamExecutionResult {
 
   /// Optional runtime-only snapshots surfaced while streaming.
   final List<RuntimeStreamEntry> runtimeSnapshots;
+
+  /// Optional normalized usage extracted from streaming response.
+  final LlmCacheUsage? cacheUsage;
 }

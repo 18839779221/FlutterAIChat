@@ -77,11 +77,10 @@ class LlmCacheStatsService {
     required String? sourceLogPath,
     String? warningMessage,
   }) {
-    final chronological = recentRequests.reversed.toList(growable: false);
-    final summary = _buildSummary(chronological);
-    final bucketsByApiStyle = _buildBucketsByApiStyle(chronological);
+    final summary = _buildSummary(recentRequests);
+    final bucketsByApiStyle = _buildBucketsByApiStyle(recentRequests);
     var effectiveWarning = warningMessage;
-    if (effectiveWarning == null && chronological.isEmpty) {
+    if (effectiveWarning == null && recentRequests.isEmpty) {
       effectiveWarning = 'No cache request samples found.';
     } else if (effectiveWarning == null && summary.requestsWithUsage == 0) {
       effectiveWarning = '当前样本中无可用 usage，无法计算完整命中率';
@@ -92,7 +91,7 @@ class LlmCacheStatsService {
       sourceLogPath: sourceLogPath,
       summary: summary,
       bucketsByApiStyle: bucketsByApiStyle,
-      recentRequests: chronological,
+      recentRequests: recentRequests,
       warningMessage: effectiveWarning,
     );
   }

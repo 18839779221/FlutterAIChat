@@ -4,8 +4,11 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:openai_dart/openai_dart.dart' as oai;
 
+import '../../../utils/logger.dart';
 import '../api_protocol_resolver.dart';
+import '../llm_cache_usage.dart';
 import '../llm_config.dart';
+import '../llm_usage_extractor.dart';
 import '../streaming_planner_chunk.dart';
 import 'responses_stream_event_adapter.dart';
 import 'protocol_execution_runtime.dart';
@@ -47,14 +50,29 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
     try {
       try {
         final response = await client.responses.create(spec.request);
-        return ProtocolExecutionResult(rawResponseJson: response.toJson());
+        final responseJson = response.toJson();
+        final extractedUsage = LlmUsageExtractor.extract(responseJson);
+        Logger.trace('OpenAiResponsesRuntime', 'responseJson.usage: ${responseJson['usage']}');
+        Logger.trace('OpenAiResponsesRuntime', 'extractedUsage: inputTokens=${extractedUsage?.inputTokens}, '
+            'cachedInputTokens=${extractedUsage?.cachedInputTokens}');
+        return ProtocolExecutionResult(
+          rawResponseJson: responseJson,
+          cacheUsage: extractedUsage,
+        );
       } catch (_) {
         final fallback = await _executeFallbackJson(
           payload: spec.request.toJson(),
           runtimeConfig: runtimeConfig,
           timeout: timeout,
         );
-        return ProtocolExecutionResult(rawResponseJson: fallback);
+        final extractedUsage = LlmUsageExtractor.extract(fallback);
+        Logger.trace('OpenAiResponsesRuntime', 'fallback.usage: ${fallback['usage']}');
+        Logger.trace('OpenAiResponsesRuntime', 'fallback extractedUsage: inputTokens=${extractedUsage?.inputTokens}, '
+            'cachedInputTokens=${extractedUsage?.cachedInputTokens}');
+        return ProtocolExecutionResult(
+          rawResponseJson: fallback,
+          cacheUsage: extractedUsage,
+        );
       }
     } finally {
       client.close();
@@ -101,18 +119,24 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
         );
       }
       final decoded = jsonDecode(responseText);
+      final fallbackUsage = decoded is Map<String, dynamic>
+          ? LlmUsageExtractor.extract(decoded)
+          : null;
       return ProtocolStreamExecutionResult(
         chunks: const Stream.empty(),
         nonStreamingFallbackJson: decoded is Map<String, dynamic>
             ? decoded
             : <String, dynamic>{},
+        cacheUsage: fallbackUsage,
       );
     }
 
+    LlmCacheUsage? collectedUsage;
     return ProtocolStreamExecutionResult(
       chunks: _streamRequestExecutor == null
           ? _createAdaptedChunkStream(
               streamedResponse: streamedResponse,
+              onUsageExtracted: (usage) => collectedUsage = usage,
             ).timeout(idleTimeout)
           : _streamEventAdapter.adapt(
               _streamRequestExecutor!(
@@ -120,6 +144,7 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
                 streamedResponse: streamedResponse,
               ).timeout(idleTimeout),
             ),
+      cacheUsage: collectedUsage,
     );
   }
 
@@ -160,6 +185,7 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
 
   Stream<StreamingPlannerChunk> _createAdaptedChunkStream({
     required http.StreamedResponse streamedResponse,
+    void Function(LlmCacheUsage?)? onUsageExtracted,
   }) async* {
     final parser = oai.SseParser();
     final emittedReasoningChunks = <String>{};
@@ -168,6 +194,31 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
     final latestToolArgumentsByOutputIndex = <int, String>{};
 
     await for (final rawEvent in parser.parse(streamedResponse.stream)) {
+      // Extract usage from response.done event
+      if (rawEvent['type'] == 'response.done') {
+        final response = rawEvent['response'];
+        if (response is Map<String, dynamic>) {
+          final usage = LlmUsageExtractor.extract(response);
+          if (usage != null && onUsageExtracted != null) {
+            onUsageExtracted(usage);
+            Logger.trace('OpenAiResponsesRuntime', 'stream usage extracted: inputTokens=${usage.inputTokens}, '
+                'cachedInputTokens=${usage.cachedInputTokens}');
+          }
+          // Emit usage as metadata in a keepalive chunk
+          yield StreamingPlannerChunk.keepalive(
+            providerMetadata: <String, dynamic>{
+              '_usage': <String, dynamic>{
+                if (usage?.inputTokens != null) 'inputTokens': usage!.inputTokens,
+                if (usage?.outputTokens != null) 'outputTokens': usage!.outputTokens,
+                if (usage?.cachedInputTokens != null) 'cachedInputTokens': usage!.cachedInputTokens,
+                if (usage?.cacheReadInputTokens != null) 'cacheReadInputTokens': usage!.cacheReadInputTokens,
+                if (usage?.cacheWriteInputTokens != null) 'cacheWriteInputTokens': usage!.cacheWriteInputTokens,
+              },
+            },
+          );
+        }
+      }
+
       final responseId = _extractResponseId(rawEvent);
       if (responseId != null) {
         yield StreamingPlannerChunk.keepalive(

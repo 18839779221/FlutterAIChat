@@ -19,10 +19,8 @@ import '../chat_turn.dart';
 import '../context/planner_context_carrier.dart';
 import '../session/model_budget_profile.dart';
 import '../../services/session_summary_service.dart';
-import 'adapters/anthropic_messages_adapter.dart';
 import 'adapters/api_style_adapter.dart';
 import 'adapters/chat_completions_adapter.dart';
-import 'adapters/responses_adapter.dart';
 import 'adapters/sdk_anthropic_messages_adapter.dart';
 import 'adapters/sdk_chat_completions_adapter.dart';
 import 'adapters/sdk_responses_adapter.dart';
@@ -515,6 +513,7 @@ class ConfigurableHttpLLM
 
     final accumulator = StreamingDecisionAccumulator();
     DateTime? firstChunkAt;
+    LlmCacheUsage? streamUsage;
     await _consumePlannerStreamWithTimeouts(
       stream: execution.chunks,
       accumulator: accumulator,
@@ -525,6 +524,23 @@ class ConfigurableHttpLLM
           firstChunkMs: firstChunkAt!.difference(traceContext.startedAt).inMilliseconds,
         );
       },
+      onChunk: (chunk) {
+        // Extract usage from chunk metadata
+        final metadata = chunk.providerMetadata;
+        if (metadata != null && metadata.containsKey('_usage')) {
+          final usageMap = metadata['_usage'] as Map<String, dynamic>?;
+          if (usageMap != null) {
+            streamUsage = LlmCacheUsage(
+              inputTokens: usageMap['input_tokens'] as int? ?? usageMap['inputTokens'] as int?,
+              outputTokens: usageMap['output_tokens'] as int? ?? usageMap['outputTokens'] as int?,
+              cachedInputTokens: usageMap['cached_input_tokens'] as int? ?? usageMap['cachedInputTokens'] as int?,
+              cacheReadInputTokens: usageMap['cache_read_input_tokens'] as int? ?? usageMap['cacheReadInputTokens'] as int?,
+              cacheWriteInputTokens: usageMap['cache_creation_input_tokens'] as int? ?? usageMap['cacheWriteInputTokens'] as int?,
+              rawUsage: usageMap,
+            );
+          }
+        }
+      },
     );
 
     _emitRequestDone(
@@ -532,6 +548,7 @@ class ConfigurableHttpLLM
       totalMs: _elapsedMilliseconds(traceContext.startedAt),
       payloadBytes: _payloadBytes(streamingPayload),
       firstChunkMs: firstChunkAt?.difference(traceContext.startedAt).inMilliseconds,
+      cacheUsage: streamUsage ?? execution.cacheUsage,
     );
     final debugSnapshot = accumulator.debugSnapshot();
     Logger.i(
@@ -565,6 +582,7 @@ class ConfigurableHttpLLM
     required Stream<StreamingPlannerChunk> stream,
     required StreamingDecisionAccumulator accumulator,
     void Function()? onFirstChunk,
+    void Function(StreamingPlannerChunk)? onChunk,
   }) {
     final startedAt = DateTime.now();
     var chunkCount = 0;
@@ -647,6 +665,7 @@ class ConfigurableHttpLLM
         }
         chunkCount += 1;
         lastChunkAt = DateTime.now();
+        onChunk?.call(chunk);
         accumulator.consume(chunk);
         if (chunkCount <= 3 || chunkCount % 20 == 0) {
           logChunkProgress('progress');

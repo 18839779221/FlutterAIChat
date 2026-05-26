@@ -4,8 +4,10 @@ import 'dart:convert';
 import 'package:anthropic_sdk_dart/anthropic_sdk_dart.dart' as anthropic;
 import 'package:http/http.dart' as http;
 
+import '../../../utils/logger.dart';
 import '../api_protocol_resolver.dart';
 import '../llm_config.dart';
+import '../llm_usage_extractor.dart';
 import 'anthropic_stream_event_adapter.dart';
 import 'protocol_execution_runtime.dart';
 import 'protocol_request_spec.dart';
@@ -40,8 +42,15 @@ class AnthropicMessagesRuntime extends ProtocolExecutionRuntime {
     final client = _buildClient(runtimeConfig, timeout: timeout);
     try {
       final response = await client.messages.create(spec.request);
+      final responseJson = response.toJson();
+      final extractedUsage = LlmUsageExtractor.extract(responseJson);
+      Logger.trace('AnthropicMessagesRuntime', 'responseJson.usage: ${responseJson['usage']}');
+      Logger.trace('AnthropicMessagesRuntime', 'extractedUsage: inputTokens=${extractedUsage?.inputTokens}, '
+          'cacheRead=${extractedUsage?.cacheReadInputTokens}, '
+          'cacheWrite=${extractedUsage?.cacheWriteInputTokens}');
       return ProtocolExecutionResult(
-        rawResponseJson: response.toJson(),
+        rawResponseJson: responseJson,
+        cacheUsage: extractedUsage,
       );
     } finally {
       client.close();
@@ -90,10 +99,14 @@ class AnthropicMessagesRuntime extends ProtocolExecutionRuntime {
         );
       }
       final decoded = jsonDecode(responseText);
+      final fallbackUsage = decoded is Map<String, dynamic>
+          ? LlmUsageExtractor.extract(decoded)
+          : null;
       return ProtocolStreamExecutionResult(
         chunks: const Stream.empty(),
         nonStreamingFallbackJson:
             decoded is Map<String, dynamic> ? decoded : <String, dynamic>{},
+        cacheUsage: fallbackUsage,
       );
     }
 
