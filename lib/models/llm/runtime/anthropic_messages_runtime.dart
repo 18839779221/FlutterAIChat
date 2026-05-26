@@ -36,11 +36,10 @@ class AnthropicMessagesRuntime extends ProtocolExecutionRuntime {
     required LLMConfig runtimeConfig,
     required Duration timeout,
   }) async {
-    final spec = requestSpec as JsonProtocolRequestSpec;
-    final request = anthropic.MessageCreateRequest.fromJson(spec.payload);
+    final spec = requestSpec as AnthropicMessagesRequestSpec;
     final client = _buildClient(runtimeConfig, timeout: timeout);
     try {
-      final response = await client.messages.create(request);
+      final response = await client.messages.create(spec.request);
       return ProtocolExecutionResult(
         rawResponseJson: response.toJson(),
       );
@@ -56,10 +55,15 @@ class AnthropicMessagesRuntime extends ProtocolExecutionRuntime {
     required Duration idleTimeout,
     required Duration overallTimeout,
   }) async {
-    final spec = requestSpec as JsonProtocolRequestSpec;
+    final spec = requestSpec as AnthropicMessagesRequestSpec;
     final payload = <String, dynamic>{
-      ...spec.payload,
+      ...spec.request.toJson(),
       'stream': true,
+    };
+    final headers = {
+      'Content-Type': 'application/json',
+      'x-api-key': runtimeConfig.apiKey,
+      'anthropic-version': '2023-06-01',
     };
     final streamedResponse = await (_httpClient ?? http.Client())
         .send(
@@ -70,7 +74,7 @@ class AnthropicMessagesRuntime extends ProtocolExecutionRuntime {
               ApiStyle.anthropicMessages,
             ),
           )
-            ..headers.addAll(spec.headers)
+            ..headers.addAll(headers)
             ..body = jsonEncode(payload),
         )
         .timeout(idleTimeout);
@@ -93,10 +97,9 @@ class AnthropicMessagesRuntime extends ProtocolExecutionRuntime {
       );
     }
 
-    final request = anthropic.MessageCreateRequest.fromJson(spec.payload);
     final eventStream =
         (_streamRequestExecutor ?? _createSdkStream)(
-          request: request,
+          request: spec.request,
           streamedResponse: streamedResponse,
         ).timeout(idleTimeout);
 

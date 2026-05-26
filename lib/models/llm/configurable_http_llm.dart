@@ -23,7 +23,9 @@ import 'adapters/anthropic_messages_adapter.dart';
 import 'adapters/api_style_adapter.dart';
 import 'adapters/chat_completions_adapter.dart';
 import 'adapters/responses_adapter.dart';
+import 'adapters/sdk_anthropic_messages_adapter.dart';
 import 'adapters/sdk_chat_completions_adapter.dart';
+import 'adapters/sdk_responses_adapter.dart';
 import 'api_protocol_resolver.dart';
 import 'base_llm.dart';
 import 'llm_cache_usage.dart';
@@ -59,15 +61,13 @@ class ConfigurableHttpLLM
   static const int _defaultMainFlowNetworkRetryAttempts = 5;
 
   // Provider 维护边界：
-  // - 这三条自研 adapter 都只作为迁移期语义层保留，统一按 deprecated 对待。
-  // - chatCompletions / responses / anthropicMessages 的目标主链路都应保持 SDK-first / runtime-first。
-  // - 后续 provider 兼容、缓存命中与真实请求优化不要继续堆在这些自研 adapter 上。
+  // - 所有三个 provider 都已迁移到 SDK-first / runtime-first 架构。
+  // - 使用 SDK 类型构建请求，避免手动 JSON 构造。
+  // - 旧的自研 adapter 保留为 deprecated，仅用于极端兼容场景。
   static const Map<ApiStyle, ApiStyleAdapter> _defaultAdapters = {
     ApiStyle.chatCompletions: SdkChatCompletionsAdapter(),
-    // ignore: deprecated_member_use_from_same_package
-    ApiStyle.responses: ResponsesAdapter(),
-    // ignore: deprecated_member_use_from_same_package
-    ApiStyle.anthropicMessages: AnthropicMessagesAdapter(),
+    ApiStyle.responses: SdkResponsesAdapter(),
+    ApiStyle.anthropicMessages: SdkAnthropicMessagesAdapter(),
   };
 
   final AppSettingsRepository _settingsRepository;

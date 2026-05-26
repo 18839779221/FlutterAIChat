@@ -1,3 +1,4 @@
+import 'package:anthropic_sdk_dart/anthropic_sdk_dart.dart' as anthropic;
 import 'package:openai_dart/openai_dart.dart' as oai;
 
 /// Provider-execution request specification produced by protocol adapters.
@@ -41,4 +42,14 @@ class ResponsesRequestSpec extends ProtocolRequestSpec {
 
   /// Typed responses request passed directly to `openai_dart`.
   final oai.CreateResponseRequest request;
+}
+
+/// Request spec for Anthropic Messages SDK execution.
+class AnthropicMessagesRequestSpec extends ProtocolRequestSpec {
+  const AnthropicMessagesRequestSpec({
+    required this.request,
+  });
+
+  /// Typed messages request passed directly to `anthropic_sdk_dart`.
+  final anthropic.MessageCreateRequest request;
 }

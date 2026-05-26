@@ -20,7 +20,9 @@ import 'package:ai_chat/models/agent/model_turn_decision.dart';
 import 'package:ai_chat/models/agent/planner_tool_choice.dart';
 import 'package:ai_chat/models/llm/adapters/anthropic_messages_adapter.dart';
 import 'package:ai_chat/models/llm/adapters/responses_adapter.dart';
+import 'package:ai_chat/models/llm/adapters/sdk_anthropic_messages_adapter.dart';
 import 'package:ai_chat/models/llm/adapters/sdk_chat_completions_adapter.dart';
+import 'package:ai_chat/models/llm/adapters/sdk_responses_adapter.dart';
 import 'package:ai_chat/models/llm/runtime/protocol_execution_runtime.dart';
 import 'package:ai_chat/models/llm/runtime/protocol_request_spec.dart';
 import 'package:ai_chat/models/llm/runtime/protocol_runtime_registry.dart';
@@ -167,8 +169,8 @@ void main() {
         ),
         adapters: {
           ApiStyle.chatCompletions: adapter,
-          ApiStyle.responses: const ResponsesAdapter(),
-          ApiStyle.anthropicMessages: const AnthropicMessagesAdapter(),
+          ApiStyle.responses: const SdkResponsesAdapter(),
+          ApiStyle.anthropicMessages: const SdkAnthropicMessagesAdapter(),
         },
       );
 
@@ -220,8 +222,8 @@ void main() {
         ),
         adapters: {
           ApiStyle.chatCompletions: adapter,
-          ApiStyle.responses: const ResponsesAdapter(),
-          ApiStyle.anthropicMessages: const AnthropicMessagesAdapter(),
+          ApiStyle.responses: const SdkResponsesAdapter(),
+          ApiStyle.anthropicMessages: const SdkAnthropicMessagesAdapter(),
         },
       );
 
@@ -778,8 +780,8 @@ void main() {
         ),
         adapters: {
           ApiStyle.chatCompletions: adapter,
-          ApiStyle.responses: const ResponsesAdapter(),
-          ApiStyle.anthropicMessages: const AnthropicMessagesAdapter(),
+          ApiStyle.responses: const SdkResponsesAdapter(),
+          ApiStyle.anthropicMessages: const SdkAnthropicMessagesAdapter(),
         },
         traceEmitter: (tag, message, {level = LogLevel.info, data}) {
           collected.add({
@@ -842,7 +844,7 @@ void main() {
         adapters: {
           ApiStyle.responses: adapter,
           ApiStyle.chatCompletions: const SdkChatCompletionsAdapter(),
-          ApiStyle.anthropicMessages: const AnthropicMessagesAdapter(),
+          ApiStyle.anthropicMessages: const SdkAnthropicMessagesAdapter(),
         },
       );
 
@@ -892,7 +894,7 @@ void main() {
         adapters: {
           ApiStyle.responses: adapter,
           ApiStyle.chatCompletions: const SdkChatCompletionsAdapter(),
-          ApiStyle.anthropicMessages: const AnthropicMessagesAdapter(),
+          ApiStyle.anthropicMessages: const SdkAnthropicMessagesAdapter(),
         },
         traceEmitter: (tag, message, {level = LogLevel.info, data}) {
           collected.add({
@@ -2536,7 +2538,7 @@ class _FakeAdapter extends ApiStyleAdapter {
   }
 }
 
-class _NonStreamingResponsesAdapter extends ResponsesAdapter {
+class _NonStreamingResponsesAdapter extends SdkResponsesAdapter {
   @override
   ProviderCapabilities get capabilities => const ProviderCapabilities(
         supportsPlannerStreaming: false,

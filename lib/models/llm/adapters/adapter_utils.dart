@@ -130,3 +130,30 @@ List<ChatMessage> normalizeMessagesWithConfiguredSystemPrompt(
     ...normalizedMessages,
   ];
 }
+
+/// Recursively removes null values from a JSON map.
+/// The SDK includes null fields; some providers reject unexpected keys.
+Map<String, dynamic> cleanNullsFromJson(Map<String, dynamic> json) {
+  final cleaned = <String, dynamic>{};
+  for (final entry in json.entries) {
+    if (entry.value == null) continue;
+    if (entry.value is Map) {
+      cleaned[entry.key] = cleanNullsFromJson(
+        Map<String, dynamic>.from(entry.value as Map),
+      );
+    } else if (entry.value is List) {
+      cleaned[entry.key] = (entry.value as List).map((item) {
+        if (item is Map) return cleanNullsFromJson(Map<String, dynamic>.from(item));
+        return item;
+      }).toList();
+    } else {
+      cleaned[entry.key] = entry.value;
+    }
+  }
+  return cleaned;
+}
+
+/// Normalizes aggregated text by trimming and returning null if empty.
+String? normalizeAggregatedText(String value) {
+  return value.trim().isEmpty ? null : value;
+}

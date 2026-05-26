@@ -80,7 +80,7 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
       requestOptions: requestOptions,
     );
     // Serialize via toJson and strip null fields for clean payload
-    return _cleanNulls(request.toJson());
+    return cleanNullsFromJson(request.toJson());
   }
 
   oai.ChatCompletionCreateRequest _buildChatRequest({
@@ -403,8 +403,8 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
         textBuffer.write(extracted.content);
       }
       return _ContentParts(
-        content: _normalizeAggregatedText(textBuffer.toString()),
-        reasoning: _normalizeAggregatedText(reasoningBuffer.toString()),
+        content: normalizeAggregatedText(textBuffer.toString()),
+        reasoning: normalizeAggregatedText(reasoningBuffer.toString()),
       );
     }
 
@@ -431,8 +431,8 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
     }
 
     return _ContentParts(
-      content: _normalizeAggregatedText(textBuffer.toString()),
-      reasoning: _normalizeAggregatedText(reasoningBuffer.toString()),
+      content: normalizeAggregatedText(textBuffer.toString()),
+      reasoning: normalizeAggregatedText(reasoningBuffer.toString()),
     );
   }
 
@@ -444,7 +444,7 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
         buffer.write(text);
       }
     }
-    return _normalizeAggregatedText(buffer.toString());
+    return normalizeAggregatedText(buffer.toString());
   }
 
   String? _nonBlankText(dynamic value) {
@@ -452,10 +452,6 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
       return null;
     }
     return value.trim().isEmpty ? null : value;
-  }
-
-  String? _normalizeAggregatedText(String value) {
-    return value.trim().isEmpty ? null : value.trim();
   }
 
   ThinkTagExtraction _extractThinkTaggedTextPreserveWhitespace(String value) {
@@ -475,7 +471,7 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
     final content = value.replaceAll(_thinkTagPattern, '');
     return ThinkTagExtraction(
       content: content.trim().isEmpty ? null : content,
-      reasoning: _normalizeAggregatedText(reasoningBuffer.toString()),
+      reasoning: normalizeAggregatedText(reasoningBuffer.toString()),
     );
   }
 
@@ -484,27 +480,6 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
     caseSensitive: false,
   );
 
-  /// Strip null values from a JSON map for cleaner request payloads.
-  /// The SDK includes null fields; some providers reject unexpected keys.
-  Map<String, dynamic> _cleanNulls(Map<String, dynamic> json) {
-    final cleaned = <String, dynamic>{};
-    for (final entry in json.entries) {
-      if (entry.value == null) continue;
-      if (entry.value is Map) {
-        cleaned[entry.key] = _cleanNulls(
-          Map<String, dynamic>.from(entry.value as Map),
-        );
-      } else if (entry.value is List) {
-        cleaned[entry.key] = (entry.value as List).map((item) {
-          if (item is Map) return _cleanNulls(Map<String, dynamic>.from(item));
-          return item;
-        }).toList();
-      } else {
-        cleaned[entry.key] = entry.value;
-      }
-    }
-    return cleaned;
-  }
 }
 
 class _ContentParts {
