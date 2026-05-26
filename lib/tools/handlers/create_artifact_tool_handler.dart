@@ -231,6 +231,7 @@ Required:
 - Create one integrated inline artifact surface that feels embedded in the reply.
 - Keep the structure explanation-focused.
 - Prefer concise first versions unless the user explicitly asks for a richer or longer artifact.
+- Avoid repeating artifact content in your text reply. The artifact itself is the answer; your reply should provide context or next steps, not duplicate what's already visible in the artifact.
 </artifact_shape>
 
 <strict_avoid>
@@ -306,6 +307,7 @@ const String _chineseArtifactDescription = '''
 - 生成一个统一的内联 artifact surface，让它读起来像回复中的嵌入内容。
 - 结构要以解释内容为主。
 - 首版尽量保持精简；只有当用户明确要求更丰富或更长的 artifact 时才扩展。
+- 避免在文字回复中重复 artifact 的内容。artifact 本身就是答案；你的回复应该提供上下文或后续步骤，而不是重复 artifact 中已经可见的内容。
 </artifact_shape>
 
 <strict_avoid>

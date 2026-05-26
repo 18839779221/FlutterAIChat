@@ -60,6 +60,7 @@ $rootLines
       layoutConstraints: const <String>[
         'Keep the artifact flow-driven and avoid giant fixed-height outer wrappers.',
         'Prefer one-screen inline content and avoid exceeding two screens unless the user explicitly asks for more.',
+        'For charts and visualizations, keep the height within one screen to ensure good display quality. Avoid excessively tall charts that require excessive scrolling.',
         'Avoid horizontal scrolling on phone-sized layouts.',
         'Use the host-provided background and surface token references instead of assuming white or transparent backgrounds.',
         'Use host spacing tokens for consistent layout: var(--app-artifact-space-4) for section gaps, var(--app-artifact-space-5) for horizontal padding, var(--app-artifact-space-2) for tight spacing.',
