@@ -113,6 +113,7 @@ void main() {
       projection.contextSections.map((item) => item.title),
       containsAll(
         const [
+          'Static Prompt Inputs',
           'Planner Messages',
           'Skills',
           'Transcript Events',
@@ -195,6 +196,14 @@ void main() {
     expect(invoked['projected'], isTrue);
     expect(invoked['instructionBodyTruncated'], isTrue);
     expect(invoked['originalInstructionLength'], 1200);
+
+    final staticSection = projection.contextSections.firstWhere(
+      (section) => section.title == 'Static Prompt Inputs',
+    );
+    final staticRawJson = staticSection.rawJson as Map<String, dynamic>;
+    expect(staticRawJson['systemPrompt'], isA<String>());
+    expect(staticRawJson['toolList'], isA<List<dynamic>>());
+    expect(staticRawJson['skillList'], isA<List<dynamic>>());
 
     await storage.deleteGroup(groupId);
   });

@@ -1,8 +1,12 @@
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/debug/debug_cache_panel_projection.dart';
 import 'package:ai_chat/models/debug/debug_turn_inspector_context_section.dart';
 import 'package:ai_chat/models/debug/debug_turn_inspector_projection.dart';
 import 'package:ai_chat/models/debug/debug_turn_inspector_timeline_entry.dart';
 import 'package:ai_chat/models/debug/debug_turn_option.dart';
+import 'package:ai_chat/models/debug/llm_cache_request_record.dart';
+import 'package:ai_chat/models/debug/llm_cache_stats_bucket.dart';
+import 'package:ai_chat/models/debug/llm_cache_stats_summary.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/widgets/debug/debug_turn_inspector_sheet.dart';
 import 'package:flutter/material.dart';
@@ -25,7 +29,7 @@ void main() {
         child: MaterialApp(
           home: Scaffold(
             body: SizedBox(
-              height: 640,
+              height: 1800,
               child: DebugTurnInspectorSheet(
                 groupId: 7,
                 initialProjection: _buildProjection(),
@@ -41,7 +45,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Context'), findsOneWidget);
-    expect(find.text('Resolved System Prompt'), findsOneWidget);
+    await tester.tap(find.text('Context'));
+    await tester.pumpAndSettle();
     expect(find.text('core rule line 1\n\nplanner stage line 2\n\nuser prompt line 3'), findsOneWidget);
   });
 
@@ -60,7 +65,7 @@ void main() {
         child: MaterialApp(
           home: Scaffold(
             body: SizedBox(
-              height: 640,
+              height: 1800,
               child: DebugTurnInspectorSheet(
                 groupId: 7,
                 initialProjection: _buildProjection(
@@ -106,7 +111,7 @@ void main() {
         child: MaterialApp(
           home: Scaffold(
             body: SizedBox(
-              height: 640,
+              height: 1800,
               child: DebugTurnInspectorSheet(
                 groupId: 7,
                 initialProjection: _buildProjection(),
@@ -121,7 +126,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('line1\nline2\nline3'), findsWidgets);
+    await tester.tap(find.text('Context'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('core rule line 1\n\nplanner stage line 2\n\nuser prompt line 3'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('planner messages support per-item expand and collapse', (
@@ -143,7 +153,7 @@ void main() {
         child: MaterialApp(
           home: Scaffold(
             body: SizedBox(
-              height: 700,
+              height: 1800,
               child: DebugTurnInspectorSheet(
                 groupId: 7,
                 initialProjection: _buildProjection(),
@@ -158,6 +168,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.text('Context'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Planner Messages').first);
+    await tester.pumpAndSettle();
     expect(find.text('Message 1'), findsOneWidget);
     expect(find.text('Message 2'), findsOneWidget);
     expect(find.text('payloadJson'), findsNothing);
@@ -180,10 +194,172 @@ void main() {
 
     expect(find.byKey(const PageStorageKey<String>('debug-message-102-1')), findsOneWidget);
   });
+
+  testWidgets('context shows static prompt inputs section', (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'debug.turn_inspector.last_tab_index': 2,
+    });
+    final preferences = await SharedPreferences.getInstance();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              height: 1800,
+              child: DebugTurnInspectorSheet(
+                groupId: 7,
+                initialProjection: _buildProjection(),
+                projectionLoader: (groupId, selectedTurnId) async {
+                  return _buildProjection();
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Context'));
+    await tester.pumpAndSettle();
+    expect(find.text('toolList'), findsOneWidget);
+    expect(find.text('skillList'), findsOneWidget);
+  });
+
+  testWidgets('cache tab renders summary and recent requests', (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'debug.turn_inspector.last_tab_index': 3,
+    });
+    final preferences = await SharedPreferences.getInstance();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              height: 1800,
+              child: DebugTurnInspectorSheet(
+                groupId: 7,
+                initialProjection: _buildProjection(),
+                projectionLoader: (groupId, selectedTurnId) async {
+                  return _buildProjection();
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cache'), findsOneWidget);
+    expect(find.text('Token Hit Rate'), findsOneWidget);
+    expect(find.text('Request Hit Rate'), findsOneWidget);
+    expect(find.text('By API Style'), findsOneWidget);
+    expect(find.text('Recent Requests'), findsOneWidget);
+    expect(find.text('Strategy'), findsOneWidget);
+    expect(find.text('Cached'), findsOneWidget);
+    expect(find.text('Read'), findsOneWidget);
+    expect(find.text('responses'), findsWidgets);
+    expect(find.textContaining('gpt-5.4'), findsWidgets);
+  });
+
+  testWidgets('cache tab renders warning state', (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'debug.turn_inspector.last_tab_index': 3,
+    });
+    final preferences = await SharedPreferences.getInstance();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              height: 1800,
+              child: DebugTurnInspectorSheet(
+                groupId: 7,
+                initialProjection: _buildProjection(
+                  cachePanel: const DebugCachePanelProjection(
+                    sampleSize: 100,
+                    sourceLogPath: '/tmp/app.log',
+                    summary: LlmCacheStatsSummary(
+                      totalRequests: 0,
+                      requestsWithUsage: 0,
+                      hitRequests: 0,
+                      totalInputTokens: 0,
+                      hitInputTokens: 0,
+                    ),
+                    bucketsByApiStyle: [],
+                    recentRequests: [],
+                    warningMessage: '当前平台无本地日志文件',
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('当前平台无本地日志文件'), findsOneWidget);
+    expect(find.text('No cache request samples found.'), findsNWidgets(2));
+  });
+
+  testWidgets('cache tab uses compact request table on narrow screens', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    SharedPreferences.setMockInitialValues({
+      'debug.turn_inspector.last_tab_index': 3,
+    });
+    final preferences = await SharedPreferences.getInstance();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              height: 844,
+              child: DebugTurnInspectorSheet(
+                groupId: 7,
+                initialProjection: _buildProjection(),
+                projectionLoader: (groupId, selectedTurnId) async {
+                  return _buildProjection();
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('In'), findsOneWidget);
+    expect(find.text('Hit'), findsOneWidget);
+    expect(find.text('Ms'), findsOneWidget);
+    expect(find.textContaining('responses'), findsWidgets);
+    expect(find.textContaining('observeOnly'), findsWidgets);
+  });
 }
 
 DebugTurnInspectorProjection _buildProjection({
   ChatTurnStatus status = ChatTurnStatus.running,
+  DebugCachePanelProjection? cachePanel,
 }) {
   return DebugTurnInspectorProjection(
     turnOptions: [
@@ -226,6 +402,17 @@ DebugTurnInspectorProjection _buildProjection({
       ),
     ],
     contextSections: const [
+      DebugTurnInspectorContextSection(
+        id: 'static-prompt-inputs',
+        title: 'Static Prompt Inputs',
+        summary: 'system prompt, tools, skills',
+        defaultExpanded: false,
+        rawJson: {
+          'systemPrompt': 'core rule line 1\\n\\nplanner stage line 2\\n\\nuser prompt line 3',
+          'toolList': ['create_artifact', 'create_artifact__guideline'],
+          'skillList': ['edge-to-edge', 'artifact-authoring'],
+        },
+      ),
       DebugTurnInspectorContextSection(
         id: 'resolved-system-prompt',
         title: 'Resolved System Prompt',
@@ -303,5 +490,53 @@ DebugTurnInspectorProjection _buildProjection({
         rawJson: {'question': null},
       ),
     ],
+    cachePanel: cachePanel ??
+        DebugCachePanelProjection(
+          sampleSize: 100,
+          sourceLogPath: '/tmp/app.log',
+          summary: const LlmCacheStatsSummary(
+            totalRequests: 3,
+            requestsWithUsage: 3,
+            hitRequests: 2,
+            totalInputTokens: 200,
+            hitInputTokens: 120,
+          ),
+          bucketsByApiStyle: const [
+            LlmCacheStatsBucket(
+              key: 'responses',
+              summary: LlmCacheStatsSummary(
+                totalRequests: 2,
+                requestsWithUsage: 2,
+                hitRequests: 1,
+                totalInputTokens: 140,
+                hitInputTokens: 60,
+              ),
+            ),
+            LlmCacheStatsBucket(
+              key: 'chatCompletions',
+              summary: LlmCacheStatsSummary(
+                totalRequests: 1,
+                requestsWithUsage: 1,
+                hitRequests: 1,
+                totalInputTokens: 60,
+                hitInputTokens: 60,
+              ),
+            ),
+          ],
+          recentRequests: [
+            LlmCacheRequestRecord(
+              timestamp: DateTime(2026, 5, 5, 12, 2),
+              apiStyle: 'responses',
+              modelName: 'gpt-5.4',
+              purpose: 'planner',
+              cacheStrategy: 'observeOnly',
+              inputTokens: 100,
+              estimatedInputTokens: 120,
+              cachedInputTokens: 60,
+              totalMs: 900,
+              firstChunkMs: 300,
+            ),
+          ],
+        ),
   );
 }

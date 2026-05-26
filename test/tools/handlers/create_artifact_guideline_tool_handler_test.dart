@@ -6,20 +6,23 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('CreateArtifactGuidelineToolHandler', () {
-    test('guideline tool description requires first-call pairing', () {
+    test('guideline tool description enforces next-call contract and root scope', () {
       final handler = CreateArtifactGuidelineToolHandler(
         activeThemeSpecProvider: () => AppThemeSpec.claude(),
       );
 
       expect(handler.definition.name, 'create_artifact__guideline');
-      expect(handler.definition.descriptionForModel, contains('IMPORTANT:'));
       expect(
         handler.definition.descriptionForModel,
-        contains('before the first `create_artifact` call'),
+        contains('required prerequisite for the first version'),
       );
       expect(
         handler.definition.descriptionForModel,
-        contains('Do not skip this step for the first version'),
+        contains('required authoring contract for the next `create_artifact` call'),
+      );
+      expect(
+        handler.definition.descriptionForModel,
+        contains('always authored for placement inside the host-provided `#artifact-root`'),
       );
     });
 
@@ -40,6 +43,14 @@ void main() {
 
       expect(result.status, ToolExecutionStatus.success);
       expect(result.data['usage'], isNotEmpty);
+      expect(
+        result.data['usage'],
+        contains('Before writing source, verify all of the following'),
+      );
+      expect(
+        result.data['host_markup_contract'],
+        isNot(contains('<html>')),
+      );
       expect(result.data['host_markup_contract'], contains(':root'));
       expect(result.data['host_markup_contract'], contains('#artifact-root'));
       expect(result.data['layout_constraints'], isA<List<dynamic>>());

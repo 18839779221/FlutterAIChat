@@ -21,7 +21,7 @@ void main() {
   });
 
   group('CreateArtifactToolHandler', () {
-    test('prompt prefers one-screen artifacts and caps at two screens', () async {
+    test('prompt enforces host-root authoring scope and preflight checklist', () async {
       final tempDirectory = await Directory.systemTemp.createTemp(
         'create-artifact-prompt-',
       );
@@ -35,12 +35,39 @@ void main() {
         sanitizer: const ArtifactSourceSanitizer(),
       );
 
-      expect(handler.definition.descriptionForModel, contains('one screen'));
-      expect(handler.definition.descriptionForModel, contains('two screens'));
-      expect(handler.definition.descriptionForModel, contains('IMPORTANT:'));
       expect(
         handler.definition.descriptionForModel,
-        contains('MUST first call `create_artifact__guideline`'),
+        contains('always rendered inside the host-provided `#artifact-root`'),
+      );
+      expect(
+        handler.definition.descriptionForModel,
+        contains('Before writing `source`, verify all of the following:'),
+      );
+      expect(
+        handler.definition.descriptionForModel,
+        contains(
+          'Treat the latest guideline result as the required authoring contract',
+        ),
+      );
+      expect(
+        handler.definition.descriptionForModel,
+        contains('one screen'),
+      );
+      expect(
+        handler.definition.descriptionForModel,
+        contains('two screens'),
+      );
+      expect(
+        handler.definition.descriptionForModel,
+        contains('Do not generate a full page document structure'),
+      );
+      expect(
+        handler.definition.descriptionForModel,
+        contains('Do not make `html` or `body` the primary authored surface'),
+      );
+      expect(
+        handler.definition.descriptionForModel,
+        contains('I am not declaring a replacement root theme token set'),
       );
       expect(
         handler.definition.descriptionForModel,
@@ -52,7 +79,23 @@ void main() {
       );
       expect(
         handler.definition.descriptionForModel,
-        isNot(contains('background to transparent')),
+        isNot(contains('#3B82F6')),
+      );
+      expect(
+        handler.definition.descriptionForModel,
+        isNot(contains('0 1px 3px rgba(0,0,0,0.08)')),
+      );
+      expect(
+        handler.definition.localizedDescriptionForModel?.chinese,
+        contains('`#artifact-root`'),
+      );
+      expect(
+        handler.definition.localizedDescriptionForModel?.chinese,
+        contains('在编写 `source` 前'),
+      );
+      expect(
+        handler.definition.localizedDescriptionForModel?.chinese,
+        contains('强制 authoring contract'),
       );
       expect(
         handler.definition.localizedDescriptionForModel?.chinese,
@@ -64,11 +107,15 @@ void main() {
       );
       expect(
         handler.definition.localizedDescriptionForModel?.chinese,
-        isNot(contains('3 屏')),
+        contains('不要生成完整页面文档结构'),
       );
       expect(
         handler.definition.localizedDescriptionForModel?.chinese,
-        contains('必须先调用 `create_artifact__guideline`'),
+        contains('我没有声明替代性的根级主题 token 集'),
+      );
+      expect(
+        handler.definition.localizedDescriptionForModel?.chinese,
+        isNot(contains('3 屏')),
       );
       expect(
         handler.definition.localizedDescriptionForModel?.chinese,
@@ -76,7 +123,7 @@ void main() {
       );
       expect(
         handler.definition.localizedDescriptionForModel?.chinese,
-        isNot(contains('页面级背景保持透明')),
+        isNot(contains('#3B82F6')),
       );
 
       await tempDirectory.delete(recursive: true);
