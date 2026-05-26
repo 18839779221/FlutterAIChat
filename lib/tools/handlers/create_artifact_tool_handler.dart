@@ -63,10 +63,12 @@ class CreateArtifactToolHandler extends ToolHandler {
               ),
             ),
             'source': ToolArgumentProperty.string(
-              description: 'Full self-contained artifact source.',
+              description:
+                  'Artifact content source authored for placement inside the host-provided #artifact-root.',
               localizedDescription: LocalizedToolText(
-                english: 'Full self-contained artifact source.',
-                chinese: '完整自包含的 artifact 源码。',
+                english:
+                    'Artifact content source authored for placement inside the host-provided #artifact-root.',
+                chinese: '为宿主提供的 #artifact-root 内部编写的 artifact 内容源码。',
               ),
             ),
           },
@@ -178,67 +180,119 @@ class CreateArtifactToolHandler extends ToolHandler {
 const String _englishArtifactDescription = '''
 Publish an interactive, self-contained HTML artifact inline in your reply.
 
-IMPORTANT: Before the first `create_artifact` call for any artifact used for visualization or explanatory enhancement, you MUST first call `create_artifact__guideline`. Do not create the first version directly without reading the guideline.
+<role>
+You are authoring an inline explanatory artifact for a host chat surface.
+Your generated source is always rendered inside the host-provided `#artifact-root`.
+</role>
 
-Use the guideline result as the current host contract for artifact rendering. Follow its token references, layout constraints, and rendering rules. Do not hardcode theme-specific colors, spacing scales, or other visual values when guideline references are available.
+<authoring_protocol>
+1. For the first version of an explanatory or visualization artifact, call `create_artifact__guideline` immediately before creating it.
+2. Treat the latest guideline result as the required authoring contract for this `create_artifact` call.
+3. Apply that contract directly in the generated `source`.
+4. Author only the artifact content that belongs inside `#artifact-root`.
+</authoring_protocol>
 
-Use when a chart, calculator, form, visualization, polished table, or small interactive demo would explain the answer better than prose. The artifact is rendered as a content block inside the assistant message, and you can still write normal text before or after it.
+<preflight_checklist>
+Before writing `source`, verify all of the following:
+- I am authoring only content for `#artifact-root`.
+- I am not generating a full page document structure.
+- I am not using `html` or `body` as the primary authored surface.
+- I am not declaring a replacement root theme token set such as generic `--bg`, `--surface`, `--text`, or `--border`.
+</preflight_checklist>
 
-Current native surfaces primarily include Android phone, Android tablet, iPhone, iPad, and macOS. Adapt the layout to the active platform and likely viewport. On Android phone, prefer narrow-screen, touch-friendly layouts that remain readable without horizontal scrolling. On tablet or desktop, you may use a wider centered composition, but avoid edge-to-edge text.
+<scope_rules>
+- The host always owns the outer page shell, viewport context, and embedding environment.
+- Do not generate a full page document structure.
+- Do not author an app page, landing page, or mini website.
+- Do not make `html` or `body` the primary authored surface.
+</scope_rules>
 
-Constraints:
+<token_rules>
+- When guideline token references are available, use them for theme-aware styling.
+- Do not invent a replacement theme token system when host token references are available.
+- Do not hardcode theme-specific page, surface, text, or border values when guideline token references already cover them.
+</token_rules>
+
+<artifact_shape>
+- Create one integrated inline artifact surface that feels embedded in the reply.
+- Keep the structure explanation-focused.
+- Prefer concise first versions unless the user explicitly asks for a richer or longer artifact.
+</artifact_shape>
+
+<strict_avoid>
+- standalone page shell
+- page-first body styling
+- decorative site-style header/footer chrome
+- custom replacement tokens such as generic `--bg`, `--surface`, `--text`, or `--border` replacing host tokens
+</strict_avoid>
+
+<technical_constraints>
 - source MUST be a self-contained HTML document or fragment. Inline <script>/<style> are allowed.
 - External <script src="...">, remote CSS, and network requests are blocked by default.
 - Prefer SVG, Canvas, and vanilla JS. Do NOT rely on external CDNs or third-party hosted assets.
 - When generating HTML, make progressive inline rendering easy: prefer writing CSS first, put visible markup before scripts, and place most script logic near the end of the document.
 - Let invalid or incomplete intermediate HTML still degrade gracefully while the source is streaming in. Avoid patterns that require the final closing chunk before anything visible can appear.
 - Design for one inline card that may be re-rendered after later Edit/Write operations on the same sourcePath.
-- The artifact itself should read as a single integrated surface inside the chat reply. Favor one coherent outer structure with the main content placed directly inside it, so the result feels embedded in the message rather than presented as a separate page.
-- Prefer using host-provided background and surface token references instead of assuming a transparent or white page background. Do not rely on the body element to create a full-screen stage unless the user explicitly asks for that effect.
 - The preview container height is derived from the document content, so keep the document flow-driven and avoid giant fixed-height outer wrappers unless they are necessary.
 - Prefer content that fits within one screen when rendered inline. Unless the user explicitly asks for a longer experience, keep the artifact concise and avoid exceeding two screens.
-
-Design guidelines unless the user asks otherwise:
-- Layout and spacing: use generous padding (16-24px), clear hierarchy, max content width around 720px on wide screens, centered layout, and never cram text edge-to-edge.
-- Surface structure: keep the outermost artifact surface visually quiet and unified. Let spacing, typography, and content organization create hierarchy before introducing extra framing layers.
-- Background treatment: prefer host-provided background and surface token references, with visual emphasis carried by the main content surface rather than by a surrounding stage.
-- Typography: use the system font stack -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif. Titles should usually be 18-22px, body 14-15px, caption 12px, with line-height 1.5 or higher. Limit each section to regular and semibold weights.
-- Color: support light and dark appearance with color-scheme: light dark and Canvas/CanvasText-friendly colors. Use one calm accent color by default, such as #3B82F6. For data visualization, prefer a restrained palette like #3B82F6, #10B981, #F59E0B, #EF4444, #8B5CF6 rather than rainbow colors.
-- Charts and data visualization: always include axis labels and units where relevant. Use subtle gridlines. Prefer entry animation once on load (roughly 200-400ms ease-out), not on every interaction. Prefer tooltips on hover or tap instead of always-on labels. Prefer SVG for mostly static charts and Canvas for dense or animated plots.
-- Interactivity: buttons should have at least 36px tap targets, around 8px radius, and visible hover/active states. Inputs need a clear accent-colored focus ring, inline validation, and reset or clear actions for input-driven views. Empty states should be explicit and friendly, never blank.
-- Polish: prefer subtle shadows such as 0 1px 3px rgba(0,0,0,0.08), consistent 6-12px corner radii, and short transitions around 150-250ms. Do not add emoji to data visualizations unless the user explicitly wants that tone.
-- Accessibility: maintain WCAG AA contrast, avoid relying on color alone, label visual encodings with text or shapes, and keep interactive controls keyboard-focusable.
+</technical_constraints>
 ''';
 
 const String _chineseArtifactDescription = '''
 在回复中内联发布一个可交互、自包含的 HTML artifact。
 
-重要：对于任何用于可视化或描述增强的 artifact，在第一次调用 `create_artifact` 之前，必须先调用 `create_artifact__guideline`。不要跳过 guideline 直接生成首版 artifact。
+<role>
+你是在宿主聊天表面中编写一个内联解释型 artifact。
+你生成的 source 始终会被渲染到宿主提供的 `#artifact-root` 内部。
+</role>
 
-应将 guideline 的结果视为当前 artifact 渲染环境的宿主 contract。生成时请遵守其中的 token 引用、布局约束和渲染规则；当 guideline 已提供引用时，不要硬编码主题特定的颜色、间距尺度或其他视觉值。
+<authoring_protocol>
+1. 对于解释型或可视化 artifact 的首版，必须先紧接着调用 `create_artifact__guideline`，再执行 `create_artifact`。
+2. 必须将最近一次 guideline 结果视为本次 `create_artifact` 调用的强制 authoring contract。
+3. 必须把该 contract 直接落实到生成的 `source` 中。
+4. 只能编写属于 `#artifact-root` 内部的 artifact 内容。
+</authoring_protocol>
 
-当图表、计算器、表单、可视化、精致表格或小型交互 demo 比纯文字更能说明问题时使用。artifact 会作为助手消息中的内容卡片渲染，你仍然可以在前后正常写文字说明。
+<preflight_checklist>
+在编写 `source` 前，必须先确认以下各项全部成立：
+- 我只是在为 `#artifact-root` 编写内容。
+- 我没有生成完整页面文档结构。
+- 我没有把 `html` 或 `body` 当作主要的编写表面。
+- 我没有声明替代性的根级主题 token 集，例如通用 `--bg`、`--surface`、`--text`、`--border`。
+</preflight_checklist>
 
-当前原生展示面主要包括 Android 手机、Android 平板、iPhone、iPad 和 macOS。请根据当前平台和可能的视口宽度适配布局。在 Android 手机上，优先窄屏、触控友好、无需横向滚动也能读懂的布局；在平板和桌面上可以适当加宽并居中，但不要做通栏贴边文字。
+<scope_rules>
+- 宿主始终拥有外层 page shell、viewport 上下文和嵌入环境。
+- 不要生成完整页面文档结构。
+- 不要把它写成 app 页面、landing page 或 mini website。
+- 不要把 `html` 或 `body` 当作主要的编写表面。
+</scope_rules>
 
-约束：
+<token_rules>
+- 当 guideline 已提供 token 引用时，必须用它们处理主题相关样式。
+- 当宿主 token 可用时，不要自造替代性的主题 token 系统。
+- 当 guideline token 已覆盖页面、surface、文字或边框职责时，不要再硬编码主题相关视觉值。
+</token_rules>
+
+<artifact_shape>
+- 生成一个统一的内联 artifact surface，让它读起来像回复中的嵌入内容。
+- 结构要以解释内容为主。
+- 首版尽量保持精简；只有当用户明确要求更丰富或更长的 artifact 时才扩展。
+</artifact_shape>
+
+<strict_avoid>
+- standalone page shell
+- 以页面为中心的 body 样式
+- 装饰性的站点式 header/footer 外壳
+- 用通用 `--bg`、`--surface`、`--text`、`--border` 等替代宿主 token 的自定义主题系统
+</strict_avoid>
+
+<technical_constraints>
 - source 必须是自包含的 HTML 文档或片段，可以使用内联 <script>/<style>。
 - 默认会拦截外部 <script src="...">、远程 CSS 和网络请求。
 - 优先使用 SVG、Canvas 和原生 JS；不要依赖外部 CDN 或第三方托管资源。
-- 设计时要考虑它会作为一张内联卡片显示，后续可能通过同一 sourcePath 上的 Edit/Write 重新渲染。
-- artifact 自身应呈现为单层、整合的内容表面，让主要内容直接落在统一的外层结构中，使它更像消息中的嵌入式展示，而不是独立页面。
-- 优先使用宿主提供的背景与 surface token 引用，而不是假设透明背景或白色背景；除非用户明确要求，否则不要依赖 body 去搭建一个铺满全页的舞台背景。
+- 生成时要考虑它会作为一张内联卡片显示，后续可能通过同一 sourcePath 上的 Edit/Write 重新渲染。
 - 预览容器高度会根据文档内容自适应，因此尽量保持正常文档流，不要无必要地使用超大的固定外层高度。
 - 优先让内容在内联展示时控制在 1 屏内；除非用户明确要求更长体验，否则尽量保持精简，不要超过 2 屏。
-
-默认设计规范（除非用户另有要求）：
-- 布局与留白：使用 16-24px 的宽松内边距，层级清晰，宽屏时内容最大宽度约 720px 并居中，避免贴边堆字。
-- 表面结构：最外层表面应保持克制、统一，让留白、字体层级和内容组织先承担主要的视觉结构，再谨慎补充必要的表面区分。
-- 背景处理：优先使用宿主提供的背景与 surface token 引用，让视觉重点落在主内容表面本身，而不是外围舞台式背景。
-- 字体：使用系统字体栈 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif。标题通常 18-22px，正文 14-15px，说明文字 12px，行高至少 1.5。每个区块尽量只使用常规和 semibold 两种字重。
-- 色彩：通过 color-scheme: light dark 和兼容 Canvas/CanvasText 的颜色适配浅色/深色。默认使用单一主强调色，例如 #3B82F6。数据可视化优先克制配色，如 #3B82F6、#10B981、#F59E0B、#EF4444、#8B5CF6，不要彩虹色乱铺。
-- 图表与可视化：在相关场景中始终补齐坐标轴标签与单位，网格线保持轻量。入场动画只在首次加载时出现，控制在约 200-400ms ease-out，不要每次交互都重播。提示信息优先使用 hover/tap tooltip，不要默认把所有标签一直铺开。静态图优先 SVG，点位多或动画多时再用 Canvas。
-- 交互：按钮最小点击区域 36px，圆角约 8px，并提供清晰的 hover/active 状态。输入框需要明显的主色 focus ring、内联校验，以及 reset/clear 操作。任何输入驱动视图都应有友好的空状态，而不是空白画布。
-- 质感：优先轻阴影，如 0 1px 3px rgba(0,0,0,0.08)，统一使用 6-12px 圆角，状态变化提供约 150-250ms 的短过渡。除非语境明确需要，否则不要在数据可视化里使用 emoji。
-- 可访问性：满足 WCAG AA 对比度；不要只依赖颜色表达含义；用文字或形状辅助编码；可交互控件应支持键盘聚焦。
+</technical_constraints>
 ''';

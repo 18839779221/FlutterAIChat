@@ -427,6 +427,8 @@ class AppSettingsRepository {
   }
 
   /// Returns the Chat Completions adapter type: `'sdk'` (default) or `'legacy'`.
+  ///
+  /// `legacy` 仅用于极端兼容排障，默认不应再作为日常维护或功能优化目标。
   Future<String> getChatCompletionsAdapterType() async {
     return _preferences.getString(_chatCompletionsAdapterKey) ?? 'sdk';
   }

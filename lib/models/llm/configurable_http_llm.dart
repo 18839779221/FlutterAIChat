@@ -27,6 +27,7 @@ import 'adapters/sdk_chat_completions_adapter.dart';
 import 'api_protocol_resolver.dart';
 import 'base_llm.dart';
 import 'llm_cache_usage.dart';
+import 'llm_cache_request_options.dart';
 import 'llm_cache_strategy.dart';
 import 'llm_config.dart';
 import 'llm_request_purpose.dart';
@@ -57,9 +58,15 @@ class ConfigurableHttpLLM
       Duration(minutes: 3);
   static const int _defaultMainFlowNetworkRetryAttempts = 5;
 
+  // Provider 维护边界：
+  // - 这三条自研 adapter 都只作为迁移期语义层保留，统一按 deprecated 对待。
+  // - chatCompletions / responses / anthropicMessages 的目标主链路都应保持 SDK-first / runtime-first。
+  // - 后续 provider 兼容、缓存命中与真实请求优化不要继续堆在这些自研 adapter 上。
   static const Map<ApiStyle, ApiStyleAdapter> _defaultAdapters = {
     ApiStyle.chatCompletions: SdkChatCompletionsAdapter(),
+    // ignore: deprecated_member_use_from_same_package
     ApiStyle.responses: ResponsesAdapter(),
+    // ignore: deprecated_member_use_from_same_package
     ApiStyle.anthropicMessages: AnthropicMessagesAdapter(),
   };
 
@@ -163,8 +170,9 @@ class ConfigurableHttpLLM
   /// [type] should be `'sdk'` or `'legacy'`. Any other value defaults to SDK.
   void setChatCompletionsAdapter(String type) {
     final adapter = type == 'legacy'
+        // ignore: deprecated_member_use_from_same_package
         ? const LegacyChatCompletionsAdapter()
-        : SdkChatCompletionsAdapter();
+        : const SdkChatCompletionsAdapter();
     _adapters = Map.of(_adapters)..[ApiStyle.chatCompletions] = adapter;
   }
 
@@ -710,7 +718,24 @@ class ConfigurableHttpLLM
         purpose: purpose,
       ),
       allowReasoning: true,
+      cache: _defaultCacheOptionsFor(apiStyle),
     );
+  }
+
+  LlmCacheRequestOptions _defaultCacheOptionsFor(ApiStyle apiStyle) {
+    switch (apiStyle) {
+      case ApiStyle.responses:
+      case ApiStyle.chatCompletions:
+        return const LlmCacheRequestOptions(
+          strategy: LlmCacheStrategy.providerHints,
+          retention: 'in-memory',
+        );
+      case ApiStyle.anthropicMessages:
+        return const LlmCacheRequestOptions(
+          strategy: LlmCacheStrategy.providerHints,
+          markStableSystemPrefix: true,
+        );
+    }
   }
 
   int _resolveMaxOutputTokens({
@@ -744,6 +769,9 @@ class ConfigurableHttpLLM
       estimatedInputTokens: _estimateInputTokens(messages),
       messageCount: messageCount,
       cacheStrategy: requestOptions.cache.strategy,
+      cacheKey: requestOptions.cache.cacheKey,
+      cacheRetention: requestOptions.cache.retention,
+      markStableSystemPrefix: requestOptions.cache.markStableSystemPrefix,
       startedAt: DateTime.now(),
     );
   }
@@ -786,6 +814,10 @@ class ConfigurableHttpLLM
         'messageCount': context.messageCount,
         'payloadBytes': _payloadBytes(payload),
         'cacheStrategy': context.cacheStrategy.name,
+        'cacheKeyPresent': context.cacheKey != null && context.cacheKey!.isNotEmpty,
+        if ((context.cacheRetention ?? '').isNotEmpty)
+          'cacheRetention': context.cacheRetention,
+        if (context.markStableSystemPrefix) 'markStableSystemPrefix': true,
       },
     );
   }
@@ -838,6 +870,9 @@ class ConfigurableHttpLLM
           'cacheWriteInputTokens': cacheUsage.cacheWriteInputTokens,
         if (cacheUsage != null)
           'cacheMissInputTokens': cacheUsage.cacheMissInputTokens,
+        if (cacheUsage != null) 'usageKeys': cacheUsage.rawUsage.keys.toList(),
+        if (cacheUsage != null && cacheUsage.rawUsage.isNotEmpty)
+          'rawUsage': cacheUsage.rawUsage,
       },
     );
   }
@@ -1138,6 +1173,9 @@ class _RequestTraceContext {
   final int estimatedInputTokens;
   final int messageCount;
   final LlmCacheStrategy cacheStrategy;
+  final String? cacheKey;
+  final String? cacheRetention;
+  final bool markStableSystemPrefix;
   final DateTime startedAt;
 
   const _RequestTraceContext({
@@ -1148,6 +1186,9 @@ class _RequestTraceContext {
     required this.estimatedInputTokens,
     required this.messageCount,
     required this.cacheStrategy,
+    required this.cacheKey,
+    required this.cacheRetention,
+    required this.markStableSystemPrefix,
     required this.startedAt,
   });
 }

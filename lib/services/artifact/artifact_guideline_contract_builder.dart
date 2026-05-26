@@ -16,40 +16,32 @@ class ArtifactGuidelineContractBuilder {
 
     return ArtifactGuidelineContract(
       usage:
-          'This is the current host contract for the next explanatory create_artifact call. Reuse these token references instead of hardcoding theme-specific visual values.',
+          'This result is the required authoring contract for the next explanatory create_artifact call. Apply it directly in the generated source. Your source is authored for placement inside #artifact-root. Before writing source, verify all of the following: author only content for #artifact-root; do not generate a full page document structure; do not use html or body as the primary authored surface; do not declare a replacement root theme token set.',
       hostMarkupContract: '''
-<html>
-  <head>
-    <style>
-      :root {
+<!--
+The app runtime already provides the outer host wrapper.
+Do not generate a full page document structure.
+Author only the content rendered inside #artifact-root.
+-->
+<style>
+  :root {
 $rootLines
-      }
+  }
 
-      html, body {
-        margin: 0;
-        padding: 0;
-        background: var(--app-artifact-page-bg);
-        color: var(--app-artifact-text-primary);
-        font-family: var(--app-artifact-font-ui);
-      }
+  * {
+    box-sizing: border-box;
+  }
 
-      * {
-        box-sizing: border-box;
-      }
-
-      #artifact-root {
-        width: 100%;
-        background: var(--app-artifact-page-bg);
-        color: var(--app-artifact-text-primary);
-      }
-    </style>
-  </head>
-  <body>
-    <div id="artifact-root">
-      <!-- model-generated content goes here -->
-    </div>
-  </body>
-</html>
+  #artifact-root {
+    width: 100%;
+    background: var(--app-artifact-page-bg);
+    color: var(--app-artifact-text-primary);
+    font-family: var(--app-artifact-font-ui);
+  }
+</style>
+<div id="artifact-root">
+  <!-- model-authored artifact content goes here -->
+</div>
 ''',
       layoutConstraints: const <String>[
         'Keep the artifact flow-driven and avoid giant fixed-height outer wrappers.',

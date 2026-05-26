@@ -20,6 +20,7 @@ import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/session_context_service.dart';
 import 'package:ai_chat/services/tool_result_context_projector.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
+import 'llm_cache_stats_service.dart';
 
 class DebugTurnInspectorProjectionService {
   DebugTurnInspectorProjectionService({
@@ -38,6 +39,7 @@ class DebugTurnInspectorProjectionService {
     ChatGroup? currentGroup,
     String? systemPromptOverride,
     PromptBuilderService? promptBuilder,
+    LlmCacheStatsService? cacheStatsService,
   })  : _chatTurnRepository = chatTurnRepository,
         _chatEventRepository = chatEventRepository,
         _sessionContextService = sessionContextService,
@@ -50,7 +52,8 @@ class DebugTurnInspectorProjectionService {
         _activeAskUserQuestionMessage = activeAskUserQuestionMessage,
         _currentGroup = currentGroup,
         _systemPromptOverride = systemPromptOverride,
-        _promptBuilder = promptBuilder ?? const PromptBuilderService();
+        _promptBuilder = promptBuilder ?? const PromptBuilderService(),
+        _cacheStatsService = cacheStatsService ?? LlmCacheStatsService();
 
   final ChatTurnRepository _chatTurnRepository;
   final ChatEventRepository _chatEventRepository;
@@ -65,6 +68,7 @@ class DebugTurnInspectorProjectionService {
   final ChatGroup? _currentGroup;
   final String? _systemPromptOverride;
   final PromptBuilderService _promptBuilder;
+  final LlmCacheStatsService _cacheStatsService;
 
   Future<DebugTurnInspectorProjection> build({
     required int groupId,
@@ -125,6 +129,7 @@ class DebugTurnInspectorProjectionService {
           );
     final plannerMessages =
         plannerState?.plannerMessages ?? const <ChatMessage>[];
+    final cachePanel = await _cacheStatsService.readRecentStats();
 
     return DebugTurnInspectorProjection(
       turnOptions: turnOptions,
@@ -147,6 +152,7 @@ class DebugTurnInspectorProjectionService {
         transcript: transcript,
         turn: activeTurn,
       ),
+      cachePanel: cachePanel,
     );
   }
 
@@ -261,6 +267,17 @@ class DebugTurnInspectorProjectionService {
     required ChatTurn? turn,
   }) {
     return [
+      DebugTurnInspectorContextSection(
+        id: 'static-prompt-inputs',
+        title: 'Static Prompt Inputs',
+        summary: 'system prompt, tools, skills',
+        defaultExpanded: false,
+        rawJson: {
+          'systemPrompt': resolvedSystemPrompt ?? '',
+          'toolList': _extractToolList(plannerMessages),
+          'skillList': _extractSkillList(plannerMessages),
+        },
+      ),
       DebugTurnInspectorContextSection(
         id: 'resolved-system-prompt',
         title: 'Resolved System Prompt',
@@ -537,5 +554,52 @@ class DebugTurnInspectorProjectionService {
       addCandidate('turn_$turnId');
     }
     return ids;
+  }
+
+  List<String> _extractToolList(List<ChatMessage> plannerMessages) {
+    final toolNames = <String>{};
+    for (final message in plannerMessages) {
+      final payload = message.payloadJson;
+      if (payload == null) {
+        continue;
+      }
+      final tools = payload['availableTools'];
+      if (tools is! List) {
+        continue;
+      }
+      for (final entry in tools) {
+        if (entry is! Map) {
+          continue;
+        }
+        final name = entry['name']?.toString().trim() ?? '';
+        if (name.isNotEmpty) {
+          toolNames.add(name);
+        }
+      }
+    }
+    return toolNames.toList(growable: false)..sort();
+  }
+
+  List<String> _extractSkillList(List<ChatMessage> plannerMessages) {
+    final skillNames = <String>{};
+    for (final message in plannerMessages) {
+      final text = message.text;
+      if (!text.contains(
+        'The following skills are available for use with the Skill tool:',
+      )) {
+        continue;
+      }
+      for (final line in text.split('\n')) {
+        final trimmed = line.trim();
+        if (!trimmed.startsWith('- ')) {
+          continue;
+        }
+        final name = trimmed.substring(2).trim();
+        if (name.isNotEmpty) {
+          skillNames.add(name);
+        }
+      }
+    }
+    return skillNames.toList(growable: false)..sort();
   }
 }

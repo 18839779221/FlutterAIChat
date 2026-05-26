@@ -7,7 +7,6 @@ import 'code_block_builder.dart';
 import 'flutter_markdown_reader_tokens.dart';
 import 'markdown_callout_builder.dart';
 import 'markdown_math_builder.dart';
-import 'markdown_widget_impl.dart';
 import 'math_block_syntax.dart';
 import 'math_inline_syntax.dart';
 
@@ -20,12 +19,6 @@ class FlutterMarkdownImpl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (_containsMarkdownTable(data) && !_containsMarkdownMath(data)) {
-      return RepaintBoundary(
-        child: MarkdownWidgetImpl(data: data),
-      );
-    }
-
     final theme = Theme.of(context);
     final reader = FlutterMarkdownReaderTokens.build(context);
 
@@ -95,25 +88,6 @@ class FlutterMarkdownImpl extends StatelessWidget {
       throw Exception('无法打开链接: $url');
     }
   }
-
-  static bool _containsMarkdownTable(String input) {
-    final lines = input.split('\n');
-    for (var i = 0; i < lines.length - 1; i++) {
-      final header = lines[i].trim();
-      final divider = lines[i + 1].trim();
-      if (!header.contains('|')) {
-        continue;
-      }
-      if (_tableDividerPattern.hasMatch(divider)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  static final RegExp _tableDividerPattern = RegExp(
-    r'^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$',
-  );
 
   static bool _containsMarkdownMath(String input) {
     if (_blockMathPattern.hasMatch(input)) {

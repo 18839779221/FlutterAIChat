@@ -9,6 +9,8 @@ import '../../agent/planner_tool_choice.dart';
 import '../../agent/planner_tool_option.dart';
 import '../../chat_message.dart';
 import '../../context/planner_context_carrier.dart';
+import '../llm_cache_request_options.dart';
+import '../llm_cache_strategy.dart';
 import '../llm_config.dart';
 import '../llm_request_options.dart';
 import '../runtime/protocol_request_spec.dart';
@@ -103,11 +105,14 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
           },
     ];
 
-    return oai.ChatCompletionCreateRequest(
-      model: modelName,
-      messages: sdkMessages,
-      maxCompletionTokens: requestOptions.maxOutputTokens,
-    );
+    final payload = <String, dynamic>{
+      'model': modelName,
+      'messages': sdkMessages.map((message) => message.toJson()).toList(),
+      if (requestOptions.maxOutputTokens != null)
+        'max_completion_tokens': requestOptions.maxOutputTokens,
+    };
+    _applyCacheHints(payload, requestOptions.cache);
+    return oai.ChatCompletionCreateRequest.fromJson(payload);
   }
 
   @override
@@ -301,7 +306,7 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
         .toList(growable: false);
 
     final includeParallel = tools.isNotEmpty && !_isDeepSeekModel(modelName);
-    return <String, dynamic>{
+    final payload = <String, dynamic>{
       'model': modelName,
       'messages': messages,
       if (requestOptions.maxOutputTokens != null)
@@ -312,10 +317,27 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
       },
       if (includeParallel) 'parallel_tool_calls': parallelToolCalls,
     };
+    _applyCacheHints(payload, requestOptions.cache);
+    return payload;
   }
 
   bool _isDeepSeekModel(String modelName) {
     return modelName.trim().toLowerCase().startsWith('deepseek');
+  }
+
+  void _applyCacheHints(
+    Map<String, dynamic> payload,
+    LlmCacheRequestOptions cache,
+  ) {
+    if (cache.strategy != LlmCacheStrategy.providerHints) {
+      return;
+    }
+    if (cache.cacheKey != null && cache.cacheKey!.trim().isNotEmpty) {
+      payload['prompt_cache_key'] = cache.cacheKey!.trim();
+    }
+    if (cache.retention != null && cache.retention!.trim().isNotEmpty) {
+      payload['prompt_cache_retention'] = cache.retention!.trim();
+    }
   }
 
   Map<String, dynamic>? _decodeArguments(String raw) {

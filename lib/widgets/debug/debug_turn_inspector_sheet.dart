@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:ai_chat/models/debug/debug_cache_panel_projection.dart';
 import 'package:ai_chat/models/debug/debug_turn_inspector_context_section.dart';
 import 'package:ai_chat/models/debug/debug_turn_inspector_projection.dart';
+import 'package:ai_chat/models/debug/llm_cache_request_record.dart';
+import 'package:ai_chat/models/debug/llm_cache_stats_bucket.dart';
 import 'package:ai_chat/providers/debug_turn_inspector_providers.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/debug/debug_turn_inspector_projection_service.dart';
@@ -43,9 +46,9 @@ class _DebugTurnInspectorSheetState extends ConsumerState<DebugTurnInspectorShee
         .read(debugTurnInspectorPreferencesProvider)
         .getLastTabIndex();
     _tabController = TabController(
-      length: 3,
+      length: 4,
       vsync: this,
-      initialIndex: savedIndex.clamp(0, 2),
+      initialIndex: savedIndex.clamp(0, 3),
     );
     _tabController.addListener(_persistTabIndex);
   }
@@ -211,6 +214,7 @@ class _DebugTurnInspectorSheetState extends ConsumerState<DebugTurnInspectorShee
               Tab(text: 'Overview'),
               Tab(text: 'Timeline'),
               Tab(text: 'Context'),
+              Tab(text: 'Cache'),
             ],
           ),
           Expanded(
@@ -303,6 +307,10 @@ class _DebugTurnInspectorSheetState extends ConsumerState<DebugTurnInspectorShee
                       )
                       .toList(growable: false),
                 ),
+                _buildCacheTab(
+                  theme: theme,
+                  cachePanel: _projection.cachePanel,
+                ),
               ],
             ),
           ),
@@ -337,6 +345,414 @@ class _DebugTurnInspectorSheetState extends ConsumerState<DebugTurnInspectorShee
       theme: theme,
       text: section.rawText ?? 'null',
     );
+  }
+
+  Widget _buildCacheTab({
+    required ThemeData theme,
+    required DebugCachePanelProjection? cachePanel,
+  }) {
+    if (cachePanel == null) {
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(
+            'No cache request samples found.',
+            style: theme.textTheme.bodyMedium,
+          ),
+        ],
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        if ((cachePanel.warningMessage ?? '').trim().isNotEmpty) ...[
+          _buildDebugSectionCard(
+            theme: theme,
+            title: 'Warning',
+            child: Text(
+              cachePanel.warningMessage!,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        _buildDebugSectionCard(
+          theme: theme,
+          title: 'Summary',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildMetricLine(
+                theme: theme,
+                label: 'Token Hit Rate',
+                value: _formatPercent(cachePanel.summary.tokenHitRate),
+              ),
+              _buildMetricLine(
+                theme: theme,
+                label: 'Request Hit Rate',
+                value: _formatPercent(cachePanel.summary.requestHitRate),
+              ),
+              _buildMetricLine(
+                theme: theme,
+                label: 'Requests',
+                value: '${cachePanel.summary.totalRequests}',
+              ),
+              _buildMetricLine(
+                theme: theme,
+                label: 'Requests With Usage',
+                value: '${cachePanel.summary.requestsWithUsage}',
+              ),
+              _buildMetricLine(
+                theme: theme,
+                label: 'Hit Input Tokens / Total Input Tokens',
+                value:
+                    '${cachePanel.summary.hitInputTokens} / ${cachePanel.summary.totalInputTokens}',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _buildDebugSectionCard(
+          theme: theme,
+          title: 'By API Style',
+          child: cachePanel.bucketsByApiStyle.isEmpty
+              ? Text(
+                  'No cache request samples found.',
+                  style: theme.textTheme.bodySmall,
+                )
+              : Column(
+                  children: cachePanel.bucketsByApiStyle
+                      .map(
+                        (bucket) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _buildApiStyleBucket(
+                            theme: theme,
+                            bucket: bucket,
+                          ),
+                        ),
+                      )
+                      .toList(growable: false),
+                ),
+        ),
+        const SizedBox(height: 16),
+        _buildDebugSectionCard(
+          theme: theme,
+          title: 'Recent Requests',
+          child: cachePanel.recentRequests.isEmpty
+              ? Text(
+                  'No cache request samples found.',
+                  style: theme.textTheme.bodySmall,
+                )
+              : _buildRecentRequestsTable(
+                  theme: theme,
+                  requests: cachePanel.recentRequests,
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDebugSectionCard({
+    required ThemeData theme,
+    required String title,
+    required Widget child,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleSmall,
+          ),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricLine({
+    required ThemeData theme,
+    required String label,
+    required String value,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            value,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontFamily: 'JetBrainsMono',
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildApiStyleBucket({
+    required ThemeData theme,
+    required LlmCacheStatsBucket bucket,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          bucket.key,
+          style: theme.textTheme.titleSmall,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Token Hit Rate: ${_formatPercent(bucket.summary.tokenHitRate)}',
+          style: theme.textTheme.bodySmall,
+        ),
+        Text(
+          'Request Hit Rate: ${_formatPercent(bucket.summary.requestHitRate)}',
+          style: theme.textTheme.bodySmall,
+        ),
+        Text(
+          'Requests: ${bucket.summary.totalRequests}',
+          style: theme.textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRecentRequestsTable({
+    required ThemeData theme,
+    required List<LlmCacheRequestRecord> requests,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 520) {
+          return _buildCompactRecentRequestsTable(
+            theme: theme,
+            requests: requests,
+          );
+        }
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            headingRowHeight: 40,
+            dataRowMinHeight: 56,
+            dataRowMaxHeight: 72,
+            columns: const [
+              DataColumn(label: Text('Time')),
+              DataColumn(label: Text('API')),
+              DataColumn(label: Text('Model')),
+              DataColumn(label: Text('Strategy')),
+              DataColumn(label: Text('Input')),
+              DataColumn(label: Text('Hit')),
+              DataColumn(label: Text('Cached')),
+              DataColumn(label: Text('Read')),
+              DataColumn(label: Text('Miss')),
+              DataColumn(label: Text('TotalMs')),
+            ],
+            rows: requests.map((request) {
+              final hitTokens =
+                  (request.cachedInputTokens ?? 0) +
+                  (request.cacheReadInputTokens ?? 0);
+              final inputValue =
+                  request.inputTokens ?? request.estimatedInputTokens;
+              return DataRow(
+                cells: [
+                  DataCell(
+                    Text(
+                      _formatShortTimestamp(request.timestamp),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  DataCell(
+                    Text(request.apiStyle ?? '-', style: theme.textTheme.bodySmall),
+                  ),
+                  DataCell(
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 180),
+                      child: Text(
+                        request.modelName ?? '-',
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                  ),
+                  DataCell(
+                    Text(
+                      request.cacheStrategy ?? '-',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  DataCell(
+                    Text('$inputValue', style: theme.textTheme.bodySmall),
+                  ),
+                  DataCell(Text('$hitTokens', style: theme.textTheme.bodySmall)),
+                  DataCell(
+                    Text(
+                      '${request.cachedInputTokens ?? '-'}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  DataCell(
+                    Text(
+                      '${request.cacheReadInputTokens ?? '-'}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  DataCell(
+                    Text(
+                      '${request.cacheMissInputTokens ?? '-'}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  DataCell(
+                    Text('${request.totalMs ?? '-'}', style: theme.textTheme.bodySmall),
+                  ),
+                ],
+              );
+            }).toList(growable: false),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCompactRecentRequestsTable({
+    required ThemeData theme,
+    required List<LlmCacheRequestRecord> requests,
+  }) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              Expanded(child: Text('Time', style: theme.textTheme.labelSmall)),
+              SizedBox(
+                width: 52,
+                child: Text('In', style: theme.textTheme.labelSmall),
+              ),
+              SizedBox(
+                width: 52,
+                child: Text('Hit', style: theme.textTheme.labelSmall),
+              ),
+              SizedBox(
+                width: 52,
+                child: Text('Ms', style: theme.textTheme.labelSmall),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...requests.map((request) {
+          final hitTokens =
+              (request.cachedInputTokens ?? 0) +
+              (request.cacheReadInputTokens ?? 0);
+          final inputValue = request.inputTokens ?? request.estimatedInputTokens;
+          return Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLowest,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _formatShortTimestamp(request.timestamp),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                    SizedBox(
+                      width: 52,
+                      child: Text(
+                        '${inputValue ?? '-'}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontFamily: 'JetBrainsMono',
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 52,
+                      child: Text(
+                        '$hitTokens',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontFamily: 'JetBrainsMono',
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 52,
+                      child: Text(
+                        '${request.totalMs ?? '-'}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontFamily: 'JetBrainsMono',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${request.apiStyle ?? '-'} · ${request.modelName ?? '-'}',
+                  style: theme.textTheme.bodySmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'strategy=${request.cacheStrategy ?? '-'} cached=${request.cachedInputTokens ?? '-'} read=${request.cacheReadInputTokens ?? '-'} miss=${request.cacheMissInputTokens ?? '-'}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontFamily: 'JetBrainsMono',
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  String _formatShortTimestamp(DateTime timestamp) {
+    final local = timestamp.toLocal();
+    final month = local.month.toString().padLeft(2, '0');
+    final day = local.day.toString().padLeft(2, '0');
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    final second = local.second.toString().padLeft(2, '0');
+    return '$month-$day $hour:$minute:$second';
+  }
+
+  String _formatPercent(double value) {
+    return '${(value * 100).toStringAsFixed(1)}%';
   }
 
   Widget _buildMessagesSection({
