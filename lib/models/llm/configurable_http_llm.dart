@@ -1149,6 +1149,8 @@ class ConfigurableHttpLLM
         return request.toJson();
       case ResponsesRequestSpec(:final request):
         return request.toJson();
+      case AnthropicMessagesRequestSpec(:final request):
+        return request.toJson();
     }
   }
 }
