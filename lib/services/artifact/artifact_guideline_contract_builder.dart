@@ -19,35 +19,51 @@ class ArtifactGuidelineContractBuilder {
           'This result is the required authoring contract for the next explanatory create_artifact call. Apply it directly in the generated source. Your source is authored for placement inside #artifact-root. Before writing source, verify all of the following: author only content for #artifact-root; do not generate a full page document structure; do not use html or body as the primary authored surface; do not declare a replacement root theme token set.',
       hostMarkupContract: '''
 <!--
-The app runtime already provides the outer host wrapper.
-Do not generate a full page document structure.
-Author only the content rendered inside #artifact-root.
+This is the host wrapper environment your artifact will run inside.
+The app runtime provides this outer structure automatically.
+You should author only the content that goes inside #artifact-root.
+Do not generate a full page document structure yourself.
 -->
-<style>
-  :root {
+<html>
+  <head>
+    <style>
+      :root {
 $rootLines
-  }
+      }
 
-  * {
-    box-sizing: border-box;
-  }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: var(--app-artifact-page-bg);
+        color: var(--app-artifact-text-primary);
+        font-family: var(--app-artifact-font-ui);
+      }
 
-  #artifact-root {
-    width: 100%;
-    background: var(--app-artifact-page-bg);
-    color: var(--app-artifact-text-primary);
-    font-family: var(--app-artifact-font-ui);
-  }
-</style>
-<div id="artifact-root">
-  <!-- model-authored artifact content goes here -->
-</div>
+      * {
+        box-sizing: border-box;
+      }
+
+      #artifact-root {
+        width: 100%;
+        background: var(--app-artifact-page-bg);
+        color: var(--app-artifact-text-primary);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="artifact-root">
+      <!-- model-authored artifact content goes here -->
+    </div>
+  </body>
+</html>
 ''',
       layoutConstraints: const <String>[
         'Keep the artifact flow-driven and avoid giant fixed-height outer wrappers.',
         'Prefer one-screen inline content and avoid exceeding two screens unless the user explicitly asks for more.',
         'Avoid horizontal scrolling on phone-sized layouts.',
         'Use the host-provided background and surface token references instead of assuming white or transparent backgrounds.',
+        'Use host spacing tokens for consistent layout: var(--app-artifact-space-4) for section gaps, var(--app-artifact-space-5) for horizontal padding, var(--app-artifact-space-2) for tight spacing.',
+        'Ensure adequate content density: avoid cramming elements too closely together.',
       ],
       renderingRules: const <String>[
         'Use the provided token references when theme-aware values are needed.',

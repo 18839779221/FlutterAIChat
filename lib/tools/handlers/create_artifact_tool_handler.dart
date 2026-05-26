@@ -198,6 +198,9 @@ Before writing `source`, verify all of the following:
 - I am not generating a full page document structure.
 - I am not using `html` or `body` as the primary authored surface.
 - I am not declaring a replacement root theme token set such as generic `--bg`, `--surface`, `--text`, or `--border`.
+- I am not defining any custom color values in `:root` or anywhere else.
+- I am not hardcoding any color values (hex, rgb, rgba, hsl, named colors) for backgrounds, text, borders, or decorative elements.
+- I am only referencing the host-provided `--app-artifact-*` token variables for all theme-aware styling.
 </preflight_checklist>
 
 <scope_rules>
@@ -208,9 +211,20 @@ Before writing `source`, verify all of the following:
 </scope_rules>
 
 <token_rules>
-- When guideline token references are available, use them for theme-aware styling.
-- Do not invent a replacement theme token system when host token references are available.
-- Do not hardcode theme-specific page, surface, text, or border values when guideline token references already cover them.
+CRITICAL: You MUST use only the host-provided `--app-artifact-*` token references for all colors, backgrounds, text colors, borders, and theme-aware styling.
+
+Strictly forbidden:
+- Defining custom CSS color variables (e.g., `--bg`, `--surface`, `--text`, `--primary`, `--accent`)
+- Hardcoding any color values in any format: hex, rgb, rgba, hsl, or named colors
+- Duplicating host token values instead of referencing them
+- Creating your own color palette or design system
+
+Required:
+- Use `var(--app-artifact-page-bg)` for backgrounds
+- Use `var(--app-artifact-text-primary)` for text colors
+- Use `var(--app-artifact-border-subtle)` for borders
+- Use `var(--app-artifact-chart-1)` through `chart-5` for data visualization colors
+- Reference the complete token list from the guideline result
 </token_rules>
 
 <artifact_shape>
@@ -259,6 +273,9 @@ const String _chineseArtifactDescription = '''
 - 我没有生成完整页面文档结构。
 - 我没有把 `html` 或 `body` 当作主要的编写表面。
 - 我没有声明替代性的根级主题 token 集，例如通用 `--bg`、`--surface`、`--text`、`--border`。
+- 我没有在 `:root` 或任何地方定义自定义色值。
+- 我没有硬编码任何色值（hex、rgb、rgba、hsl、颜色名称）用于背景、文字、边框或装饰元素。
+- 我只引用宿主提供的 `--app-artifact-*` token 变量来处理所有主题相关样式。
 </preflight_checklist>
 
 <scope_rules>
@@ -269,9 +286,20 @@ const String _chineseArtifactDescription = '''
 </scope_rules>
 
 <token_rules>
-- 当 guideline 已提供 token 引用时，必须用它们处理主题相关样式。
-- 当宿主 token 可用时，不要自造替代性的主题 token 系统。
-- 当 guideline token 已覆盖页面、surface、文字或边框职责时，不要再硬编码主题相关视觉值。
+关键要求：必须只使用宿主提供的 `--app-artifact-*` token 引用来处理所有颜色、背景、文字颜色、边框和主题相关样式。
+
+严格禁止：
+- 定义自定义 CSS 色值变量（如 `--bg`、`--surface`、`--text`、`--primary`、`--accent`）
+- 硬编码任何格式的色值：hex、rgb、rgba、hsl 或颜色名称
+- 复制宿主 token 的值而不是引用它们
+- 创建自己的调色板或设计系统
+
+必须做到：
+- 使用 `var(--app-artifact-page-bg)` 处理背景
+- 使用 `var(--app-artifact-text-primary)` 处理文字颜色
+- 使用 `var(--app-artifact-border-subtle)` 处理边框
+- 使用 `var(--app-artifact-chart-1)` 到 `chart-5` 处理数据可视化颜色
+- 从 guideline 结果中引用完整的 token 列表
 </token_rules>
 
 <artifact_shape>
