@@ -12,7 +12,7 @@ const double _maxArtifactPreviewScreenCount = 3;
 const String _artifactHeightChannelName = 'ArtifactHeight';
 const String artifactPreviewTruncationMessage =
     '内容较长，长按进入详情页查看完整内容。';
-const Duration _streamingDebounceDelay = Duration(seconds: 1);
+const Duration _streamingDebounceDelay = Duration(milliseconds: 300);
 
 double clampArtifactPreviewHeight(
   double rawHeight, {
