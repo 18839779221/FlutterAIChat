@@ -19,7 +19,7 @@ import 'package:ai_chat/widgets/markdown/markdown_math_widgets.dart';
 import 'package:ai_chat/widgets/markdown/table_edge_fade_scroll_shell.dart';
 import 'package:ai_chat/widgets/technical_content_surface.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

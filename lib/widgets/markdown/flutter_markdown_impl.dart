@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'callout_block_syntax.dart';
@@ -7,6 +7,7 @@ import 'code_block_builder.dart';
 import 'flutter_markdown_reader_tokens.dart';
 import 'markdown_callout_builder.dart';
 import 'markdown_math_builder.dart';
+import 'markdown_table_builder.dart';
 import 'math_block_syntax.dart';
 import 'math_inline_syntax.dart';
 
@@ -71,6 +72,7 @@ class FlutterMarkdownImpl extends StatelessWidget {
           ),
         ),
         builders: {
+          'table': MarkdownTableBuilder(),
           'math-inline': MarkdownInlineMathBuilder(),
           'math-block': MarkdownBlockMathBuilder(),
           'callout': MarkdownCalloutBuilder(),
