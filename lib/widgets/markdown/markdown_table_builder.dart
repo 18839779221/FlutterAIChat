@@ -7,9 +7,26 @@ import 'table_edge_fade_scroll_shell.dart';
 
 class MarkdownTableBuilder extends MarkdownElementBuilder {
   @override
+  bool isBlockElement() => true;
+
+  @override
+  void visitElementBefore(md.Element element) {
+    print('MarkdownTableBuilder.visitElementBefore: tag=${element.tag}');
+  }
+
+  @override
+  Widget? visitText(md.Text text, TextStyle? preferredStyle) {
+    print('MarkdownTableBuilder.visitText called');
+    // 返回空 widget 阻止默认文本处理
+    return const SizedBox.shrink();
+  }
+
+  @override
   Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    print('MarkdownTableBuilder.visitElementAfter called: tag=${element.tag}');
     if (element.tag != 'table') return null;
 
+    print('Building EnhancedMarkdownTable');
     final tableData = _extractTableData(element);
 
     return EnhancedMarkdownTable(

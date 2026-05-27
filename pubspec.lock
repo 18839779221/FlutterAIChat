@@ -177,10 +177,11 @@ packages:
   flutter_markdown_plus:
     dependency: "direct main"
     description:
-      name: flutter_markdown_plus
-      sha256: "039177906850278e8fb1cd364115ee0a46281135932fa8ecea8455522166d2de"
-      url: "https://pub.flutter-io.cn"
-    source: hosted
+      path: "."
+      ref: custom-table-builder
+      resolved-ref: d7b900291e55aedb0096d883e380dc9553340080
+      url: "https://github.com/18839779221/flutter_markdown_plus.git"
+    source: git
     version: "1.0.7"
   flutter_math_fork:
     dependency: "direct main"
