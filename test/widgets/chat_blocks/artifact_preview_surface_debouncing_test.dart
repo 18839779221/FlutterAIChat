@@ -14,7 +14,6 @@ void main() {
           home: Scaffold(
             body: ArtifactPreviewSurface(
               source: '<div>Initial</div>',
-              isStale: false,
               sourcePath: 'test://artifact',
             ),
           ),
@@ -29,7 +28,6 @@ void main() {
           home: Scaffold(
             body: ArtifactPreviewSurface(
               source: '<div>Updated</div>',
-              isStale: false,
               sourcePath: 'test://artifact',
             ),
           ),
@@ -55,7 +53,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('handles stale state change immediately without debouncing',
+    testWidgets('rebuilds to empty state when source becomes unavailable',
         (WidgetTester tester) async {
       // Build initial widget
       await tester.pumpWidget(
@@ -63,7 +61,6 @@ void main() {
           home: Scaffold(
             body: ArtifactPreviewSurface(
               source: '<div>Initial</div>',
-              isStale: false,
               sourcePath: 'test://artifact',
             ),
           ),
@@ -72,13 +69,12 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Mark as stale
+      // Clear source
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
             body: ArtifactPreviewSurface(
-              source: '<div>Initial</div>',
-              isStale: true,
+              source: null,
               sourcePath: 'test://artifact',
             ),
           ),
@@ -87,8 +83,7 @@ void main() {
 
       await tester.pump();
 
-      // Should show stale message immediately
-      expect(find.text('该 artifact 已在后续回复中更新。此处保留历史引用。'), findsOneWidget);
+      expect(find.textContaining('Preview unavailable'), findsOneWidget);
     });
 
     test('buildArtifactPreviewDocument still works correctly', () {

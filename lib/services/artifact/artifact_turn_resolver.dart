@@ -21,8 +21,7 @@ class ArtifactTurnResolver {
     }
 
     final sortedMessages = [...messages]..sort(compareChatMessagesForTimeline);
-    final artifactByPath = <String, _ArtifactIdentity>{};
-    final occurrencesByArtifactId = <String, List<_ArtifactOccurrence>>{};
+    final occurrences = <ArtifactTurnProjection>[];
     var currentTurnId = '';
     var fallbackUserIndex = 0;
 
@@ -69,77 +68,23 @@ class ArtifactTurnResolver {
           continue;
         }
 
-        artifactByPath[sourcePath] = _ArtifactIdentity(
-          artifactId: artifactId,
-          title: title,
-          type: type,
-          sourcePath: sourcePath,
-        );
-        _recordOccurrence(
-          occurrencesByArtifactId,
-          _ArtifactOccurrence(
+        occurrences.add(
+          ArtifactTurnProjection(
             artifactId: artifactId,
+            turnId: currentTurnId,
             title: title,
             type: type,
             sourcePath: sourcePath,
-            turnId: currentTurnId,
+            source: _tryReadSource(sourcePath),
             sourceMessageId: message.id,
-            timestamp: message.timestamp,
-          ),
-        );
-        continue;
-      }
-
-      if (result.toolName != 'Write' && result.toolName != 'Edit') {
-        continue;
-      }
-
-      final filePath = (result.data['filePath'] ?? '').toString().trim();
-      final artifact = artifactByPath[filePath];
-      if (artifact == null) {
-        continue;
-      }
-      _recordOccurrence(
-        occurrencesByArtifactId,
-        _ArtifactOccurrence(
-          artifactId: artifact.artifactId,
-          title: artifact.title,
-          type: artifact.type,
-          sourcePath: artifact.sourcePath,
-          turnId: currentTurnId,
-          sourceMessageId: message.id,
-          timestamp: message.timestamp,
-        ),
-      );
-    }
-
-    final projections = <ArtifactTurnProjection>[];
-    for (final entry in occurrencesByArtifactId.entries) {
-      final occurrences = [...entry.value]
-        ..sort((left, right) => left.timestamp.compareTo(right.timestamp));
-      for (var index = 0; index < occurrences.length; index += 1) {
-        final occurrence = occurrences[index];
-        final isLatest = index == occurrences.length - 1;
-        final source = isLatest
-            ? _tryReadSource(occurrence.sourcePath)
-            : null;
-        projections.add(
-          ArtifactTurnProjection(
-            artifactId: occurrence.artifactId,
-            turnId: occurrence.turnId,
-            title: occurrence.title,
-            type: occurrence.type,
-            sourcePath: occurrence.sourcePath,
-            source: source,
-            isStale: !isLatest,
-            sourceMessageId: occurrence.sourceMessageId,
-            createdAt: occurrence.timestamp,
-            updatedAt: occurrence.timestamp,
+            createdAt: message.timestamp,
+            updatedAt: message.timestamp,
           ),
         );
       }
     }
 
+    final projections = occurrences;
     projections.sort((left, right) {
       final turnOrder = left.createdAt.compareTo(right.createdAt);
       if (turnOrder != 0) {
@@ -158,23 +103,6 @@ class ArtifactTurnResolver {
     }
   }
 
-  void _recordOccurrence(
-    Map<String, List<_ArtifactOccurrence>> occurrencesByArtifactId,
-    _ArtifactOccurrence occurrence,
-  ) {
-    final list =
-        occurrencesByArtifactId.putIfAbsent(occurrence.artifactId, () => []);
-    final existingIndex =
-        list.indexWhere((item) => item.turnId == occurrence.turnId);
-    if (existingIndex == -1) {
-      list.add(occurrence);
-      return;
-    }
-    if (list[existingIndex].timestamp.isBefore(occurrence.timestamp)) {
-      list[existingIndex] = occurrence;
-    }
-  }
-
   String _buildTurnId({
     required int? groupId,
     required int? messageId,
@@ -182,38 +110,4 @@ class ArtifactTurnResolver {
   }) {
     return '${groupId ?? 0}_${messageId ?? 'user_$fallbackIndex'}';
   }
-}
-
-class _ArtifactIdentity {
-  final String artifactId;
-  final String title;
-  final ArtifactType type;
-  final String sourcePath;
-
-  const _ArtifactIdentity({
-    required this.artifactId,
-    required this.title,
-    required this.type,
-    required this.sourcePath,
-  });
-}
-
-class _ArtifactOccurrence {
-  final String artifactId;
-  final String title;
-  final ArtifactType type;
-  final String sourcePath;
-  final String turnId;
-  final int? sourceMessageId;
-  final DateTime timestamp;
-
-  const _ArtifactOccurrence({
-    required this.artifactId,
-    required this.title,
-    required this.type,
-    required this.sourcePath,
-    required this.turnId,
-    required this.sourceMessageId,
-    required this.timestamp,
-  });
 }

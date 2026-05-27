@@ -8,7 +8,6 @@ class ArtifactTurnProjection {
   final ArtifactType type;
   final String sourcePath;
   final String? source;
-  final bool isStale;
   final int? sourceMessageId;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -20,7 +19,6 @@ class ArtifactTurnProjection {
     required this.type,
     required this.sourcePath,
     required this.source,
-    required this.isStale,
     required this.createdAt,
     required this.updatedAt,
     this.sourceMessageId,

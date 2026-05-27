@@ -167,13 +167,11 @@ class ArtifactPreviewSurface extends StatefulWidget {
   const ArtifactPreviewSurface({
     super.key,
     required this.source,
-    required this.isStale,
     required this.sourcePath,
     this.enableInternalScroll = false,
   });
 
   final String? source;
-  final bool isStale;
   final String sourcePath;
   final bool enableInternalScroll;
 
@@ -212,7 +210,6 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     _controller ??= _createController();
     final source = widget.source;
     if (didThemeChange &&
-        !widget.isStale &&
         source != null &&
         source.trim().isNotEmpty) {
       _updateControllerContent(source);
@@ -222,13 +219,6 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   @override
   void didUpdateWidget(covariant ArtifactPreviewSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
-
-    // Handle stale state change immediately
-    if (oldWidget.isStale != widget.isStale && widget.isStale) {
-      _debounceTimer?.cancel();
-      _pendingSource = null;
-      return;
-    }
 
     // If source changed, debounce the update
     if (oldWidget.source != widget.source) {
@@ -308,7 +298,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
 
   WebViewController? _createController() {
     final source = widget.source;
-    if (kIsWeb || widget.isStale || source == null || source.trim().isEmpty) {
+    if (kIsWeb || source == null || source.trim().isEmpty) {
       return null;
     }
 
@@ -413,12 +403,6 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   @override
   Widget build(BuildContext context) {
     final source = widget.source;
-    if (widget.isStale) {
-      return _buildInfoMessage(
-        context,
-        '该 artifact 已在后续回复中更新。此处保留历史引用。',
-      );
-    }
     if (_errorText != null) {
       return _buildInfoMessage(context, 'Preview unavailable\n$_errorText');
     }

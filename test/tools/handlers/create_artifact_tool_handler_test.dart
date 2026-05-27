@@ -79,6 +79,18 @@ void main() {
       );
       expect(
         handler.definition.descriptionForModel,
+        isNot(contains('incomplete intermediate HTML')),
+      );
+      expect(
+        handler.definition.descriptionForModel,
+        isNot(contains('degrade gracefully while the source is streaming in')),
+      );
+      expect(
+        handler.definition.descriptionForModel,
+        isNot(contains('Edit/Write operations on the same sourcePath')),
+      );
+      expect(
+        handler.definition.descriptionForModel,
         isNot(contains('#3B82F6')),
       );
       expect(
@@ -120,6 +132,10 @@ void main() {
       expect(
         handler.definition.localizedDescriptionForModel?.chinese,
         isNot(contains('优先对返回的 sourcePath 使用 Read/Edit/Write')),
+      );
+      expect(
+        handler.definition.localizedDescriptionForModel?.chinese,
+        isNot(contains('后续可能通过同一 sourcePath 上的 Edit/Write 重新渲染')),
       );
       expect(
         handler.definition.localizedDescriptionForModel?.chinese,

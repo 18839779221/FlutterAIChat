@@ -35,7 +35,6 @@ class ArtifactBlock extends StatelessWidget {
           cacheKey: _buildArtifactCacheKey(artifact),
           builder: (_) => ArtifactPreviewSurface(
             source: artifact.source,
-            isStale: artifact.isStale,
             sourcePath: artifact.sourcePath,
           ),
         ),
@@ -47,7 +46,6 @@ class ArtifactBlock extends StatelessWidget {
     return [
       artifact.artifactId,
       artifact.sourcePath,
-      artifact.isStale ? 'stale' : 'fresh',
       artifact.updatedAt.microsecondsSinceEpoch.toString(),
       artifact.source?.hashCode.toString() ?? 'no-source',
     ].join(':');

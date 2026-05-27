@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('renders inline stale preview without card chrome', (tester) async {
+  testWidgets('renders inline artifact preview without card chrome', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
@@ -18,8 +18,7 @@ void main() {
               title: '投资组合饼图',
               type: ArtifactType.html,
               sourcePath: 'artifacts/7/portfolio-pie.html',
-              source: null,
-              isStale: true,
+              source: '<div>artifact</div>',
               createdAt: DateTime(2026, 4, 30, 10),
               updatedAt: DateTime(2026, 4, 30, 10),
             ),
@@ -28,9 +27,7 @@ void main() {
       ),
     );
 
-    expect(find.textContaining('已在后续回复中更新'), findsOneWidget);
-    expect(find.text('投资组合饼图'), findsNothing);
-    expect(find.text('查看详情'), findsNothing);
+    expect(find.byType(ArtifactBlock), findsOneWidget);
     expect(find.byType(ArtifactBlock), findsOneWidget);
   });
 }

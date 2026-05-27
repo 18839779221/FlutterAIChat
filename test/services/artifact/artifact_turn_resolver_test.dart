@@ -9,7 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('ArtifactTurnResolver', () {
-    test('resolves same-turn refresh and cross-turn stale behavior', () async {
+    test('keeps only create_artifact projections and ignores Write/Edit follow-up updates', () async {
       final tempDirectory = await Directory.systemTemp.createTemp(
         'artifact-resolver-',
       );
@@ -88,12 +88,9 @@ void main() {
 
       final projections = resolver.resolve(messages: messages, groupId: 7);
 
-      expect(projections, hasLength(2));
+      expect(projections, hasLength(1));
       expect(projections.first.turnId, '7_1');
-      expect(projections.first.isStale, isTrue);
-      expect(projections[1].turnId, '7_4');
-      expect(projections[1].isStale, isFalse);
-      expect(projections[1].source, '<div>v2</div>');
+      expect(projections.first.source, '<div>v2</div>');
 
       await tempDirectory.delete(recursive: true);
     });

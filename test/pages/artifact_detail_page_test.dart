@@ -14,7 +14,6 @@ void main() {
       type: ArtifactType.html,
       sourcePath: 'artifacts/group/sales.html',
       source: source,
-      isStale: false,
       createdAt: DateTime(2026, 4, 30, 10),
       updatedAt: DateTime(2026, 4, 30, 10, 1),
     );

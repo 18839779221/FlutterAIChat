@@ -10,7 +10,6 @@ void main() {
         home: Scaffold(
           body: ArtifactPreviewSurface(
             source: '<div>Hello</div>',
-            isStale: false,
             sourcePath: 'test://artifact',
           ),
         ),

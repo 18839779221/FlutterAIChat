@@ -82,11 +82,10 @@ class _ArtifactDetailPageState extends State<ArtifactDetailPage> {
             ),
             const SizedBox(height: 12),
             Expanded(
-              child: _showSource
+                child: _showSource
                   ? _ArtifactSourceView(source: projection.source)
                   : ArtifactPreviewSurface(
                       source: projection.source,
-                      isStale: projection.isStale,
                       sourcePath: projection.sourcePath,
                       enableInternalScroll: true,
                     ),

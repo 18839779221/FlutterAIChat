@@ -246,8 +246,6 @@ Required:
 - External <script src="...">, remote CSS, and network requests are blocked by default.
 - Prefer SVG, Canvas, and vanilla JS. Do NOT rely on external CDNs or third-party hosted assets.
 - When generating HTML, make progressive inline rendering easy: prefer writing CSS first, put visible markup before scripts, and place most script logic near the end of the document.
-- Let invalid or incomplete intermediate HTML still degrade gracefully while the source is streaming in. Avoid patterns that require the final closing chunk before anything visible can appear.
-- Design for one inline card that may be re-rendered after later Edit/Write operations on the same sourcePath.
 - The preview container height is derived from the document content, so keep the document flow-driven and avoid giant fixed-height outer wrappers unless they are necessary.
 - Prefer content that fits within one screen when rendered inline. Unless the user explicitly asks for a longer experience, keep the artifact concise and avoid exceeding two screens.
 </technical_constraints>
@@ -321,7 +319,7 @@ const String _chineseArtifactDescription = '''
 - source 必须是自包含的 HTML 文档或片段，可以使用内联 <script>/<style>。
 - 默认会拦截外部 <script src="...">、远程 CSS 和网络请求。
 - 优先使用 SVG、Canvas 和原生 JS；不要依赖外部 CDN 或第三方托管资源。
-- 生成时要考虑它会作为一张内联卡片显示，后续可能通过同一 sourcePath 上的 Edit/Write 重新渲染。
+- 生成时要考虑它会作为一张内联卡片显示，因此优先按 CSS 在前、可见内容在中、脚本在后的顺序组织源码。
 - 预览容器高度会根据文档内容自适应，因此尽量保持正常文档流，不要无必要地使用超大的固定外层高度。
 - 优先让内容在内联展示时控制在 1 屏内；除非用户明确要求更长体验，否则尽量保持精简，不要超过 2 屏。
 </technical_constraints>
