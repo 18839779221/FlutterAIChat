@@ -144,6 +144,70 @@ void main() {
     expect(find.text('下一题'), findsOneWidget);
     expect(find.text('提交并继续'), findsNothing);
     expect(find.text('跳过'), findsOneWidget);
+    expect(
+      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+      isNull,
+    );
+    expect(
+      tester.widget<TextButton>(find.widgetWithText(TextButton, '跳过')).onPressed,
+      isNotNull,
+    );
+  });
+
+  testWidgets('selecting an option enables next question action', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Scaffold(
+            body: AskUserQuestionCard(
+              message: ChatMessage(
+                id: 430,
+                text: 'Need two answers',
+                role: MessageRole.assistant,
+                payloadJson: const {
+                  'questions': [
+                    {
+                      'id': 'storage_layer',
+                      'header': 'Storage',
+                      'question': 'Which storage layer should we use?',
+                      'multiSelect': false,
+                      'options': [
+                        {'label': 'SQLite', 'description': 'Local relational store'},
+                      ],
+                    },
+                    {
+                      'id': 'offline_mode',
+                      'header': 'Offline',
+                      'question': 'Do we need offline mode?',
+                      'multiSelect': false,
+                      'options': [],
+                    },
+                  ],
+                  'agentTurnId': 42,
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+      isNull,
+    );
+
+    await tester.tap(find.text('SQLite'));
+    await tester.pump();
+
+    expect(
+      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+      isNotNull,
+    );
   });
 
   testWidgets('last question shows submit action instead of next action', (

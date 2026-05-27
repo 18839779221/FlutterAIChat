@@ -331,6 +331,9 @@ class ChatTimelineRow extends ConsumerWidget {
     required ToolResult result,
     required ToolUiRendererRegistry toolUiRegistry,
   }) {
+    if (result.toolName.trim() == 'create_artifact__guideline') {
+      return null;
+    }
     final resultMessage = item.sourceMessage;
     if (resultMessage == null) {
       return null;

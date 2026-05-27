@@ -51,6 +51,7 @@ ${_indentBlock(hostStyles, spaces: 4)}
         'Use chart token references for data series, axis, grid, and highlight treatments.',
         'Keep the artifact as an explanation-enhancement surface inside the reply rather than a standalone product page.',
         'Do not rely on remote CSS, external scripts, or network requests.',
+        'For progressive rendering during streaming: write CSS first, then content HTML, then scripts last. This ensures styles are applied before content becomes visible.',
       ],
     );
   }

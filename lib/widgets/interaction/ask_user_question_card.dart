@@ -33,6 +33,10 @@ class AskUserQuestionCard extends ConsumerWidget {
     final selected = draft.selectedOptionLabelsByQuestionId[question.id] ?? const [];
     final isSkipped = draft.selectedOptionLabelsByQuestionId.containsKey(question.id) &&
         selected.isEmpty;
+    final isCurrentQuestionAnswered = isQuestionAnswered(
+      draft: draft,
+      question: question,
+    );
     final hasOther = selected.contains('Other');
     final colors = Theme.of(context).extension<AppThemeSpec>() ?? AppThemeSpec.light();
     final spacing = Theme.of(context).extension<AppSpacing>() ?? AppSpacing.base();
@@ -212,6 +216,7 @@ class AskUserQuestionCard extends ConsumerWidget {
                   messageId: messageId,
                   questionIndex: questionIndex,
                   totalQuestions: request.questions.length,
+                  isCurrentQuestionAnswered: isCurrentQuestionAnswered,
                   canSubmit: canSubmit,
                 ),
                 child: Text(
@@ -233,9 +238,13 @@ class AskUserQuestionCard extends ConsumerWidget {
     required int messageId,
     required int questionIndex,
     required int totalQuestions,
+    required bool isCurrentQuestionAnswered,
     required bool canSubmit,
   }) {
     if (questionIndex < totalQuestions - 1) {
+      if (!isCurrentQuestionAnswered) {
+        return null;
+      }
       return () => ref.read(questionCardDraftsProvider.notifier).setCurrentQuestionIndex(
             messageId: messageId,
             index: questionIndex + 1,

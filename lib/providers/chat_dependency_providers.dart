@@ -36,6 +36,7 @@ import 'package:ai_chat/services/tool_ui_renderer_registry.dart';
 import 'package:ai_chat/services/turn_harness.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:ai_chat/widgets/tool_renderers/compact_tool_row_renderer.dart';
+import 'package:ai_chat/widgets/tool_renderers/create_artifact_guideline_tool_renderer.dart';
 import 'package:ai_chat/widgets/tool_renderers/create_artifact_tool_renderer.dart';
 import 'package:ai_chat/widgets/tool_renderers/edit_tool_workflow_card.dart';
 import 'package:ai_chat/widgets/tool_renderers/fetch_webpage_tool_workflow_card.dart';
@@ -141,6 +142,7 @@ final toolUiRendererRegistryProvider = Provider<ToolUiRendererRegistry>((ref) {
       ),
       WriteToolUiRenderer(),
       EditToolUiRenderer(),
+      CreateArtifactGuidelineToolUiRenderer(),
       CreateArtifactToolUiRenderer(),
       WebSearchToolUiRenderer(),
       FetchWebpageToolUiRenderer(),

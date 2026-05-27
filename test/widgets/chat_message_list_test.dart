@@ -21,6 +21,7 @@ import 'package:ai_chat/widgets/chat_message_list.dart';
 import 'package:ai_chat/widgets/animations/message_growth_animation.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_result_card.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_timeline_card.dart';
+import 'package:ai_chat/widgets/tool_renderers/compact_tool_row_renderer.dart';
 import 'package:ai_chat/widgets/tool_renderers/web_search_tool_result_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -814,6 +815,49 @@ void main() {
 
       expect(find.text('custom workflow renderer'), findsOneWidget);
       expect(find.byType(ToolWorkflowCard), findsNothing);
+    });
+
+    testWidgets(
+        'create artifact guideline shows a lightweight hint instead of fallback workflow card',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '读取 artifact guideline',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            payloadJson: const ToolInvocation(
+              toolName: 'create_artifact__guideline',
+              arguments: {},
+              status: ToolInvocationStatus.running,
+              summary: '正在读取 artifact guideline',
+              requiresConfirmation: false,
+            ).toJson(),
+          ),
+          _buildMessage(
+            text: '已返回 artifact guideline',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolResult,
+            payloadJson: const ToolResult(
+              toolName: 'create_artifact__guideline',
+              status: ToolExecutionStatus.success,
+              summary: '已返回 artifact guideline',
+              data: {
+                'host': {'rootSelector': '#artifact-root'},
+                'tokens': {'surface': 'artifactSurface'},
+              },
+            ).toJson(),
+          ),
+        ],
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CompactToolRow), findsAtLeastNWidgets(1));
+      expect(find.text('已加载可视化规范'), findsAtLeastNWidgets(1));
+      expect(find.byType(ToolWorkflowCard), findsNothing);
+      expect(find.text('#artifact-root'), findsNothing);
+      expect(find.text('artifactSurface'), findsNothing);
     });
 
     testWidgets('renderer phase visibility can hide proposed workflow blocks', (
