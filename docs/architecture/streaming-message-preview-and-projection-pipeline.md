@@ -43,14 +43,15 @@
 
 典型现状是：
 
-- provider raw stream 被适配为 LLM 内部 streaming 中间结构
+- provider raw stream 在 runtime / adapter 层被适配为统一 `StreamingMessageEvent`
 - `StreamingDecisionAccumulator` 在 LLM 层内累积最终 `ModelTurnDecision`
-- 上层只能通过扁平 runtime snapshot 或局部临时状态看到中间结果
+- `RuntimeStreamingPreviewProjector` 消费 preview event，并维护 `RuntimeStreamingPreviewState`
+- `ChatTimelineProjectionService` 同时消费 truth state 与 runtime preview state，产出统一 timeline projection
 
-这意味着当前 preview 链路有两个明显问题：
+这意味着当前 preview 链路已经具备正式主链路，但仍有两个需要长期约束的点：
 
-1. 上层缺少一套正式的流式预览事件协议
-2. preview 链路还没有与主真相链路收敛到同一种 producer / consumer / projector 模式
+1. preview 与 truth 仍是两条不同语义的事件链，需要继续保持边界清晰
+2. preview 链路虽然已接入统一 projection 层，但替换时序和 provider 差异控制仍必须被视为架构约束
 
 ### 3. 当前 UI 汇聚点已经基本明确
 
@@ -65,20 +66,19 @@
 
 ## 当前主要问题
 
-### 1. preview 链路仍偏 snapshot / 临时拼接语义
+### 1. preview 链路已经成形，但仍需防止重新退化为局部拼接
 
-当前 runtime preview 更像：
+当前 runtime preview 已经具备正式 event pipeline，但后续迭代仍可能因为局部需求退回到：
 
-- LLM 内部中间结果的扁平快照
-- 或局部临时状态的直接拼接
-
-而不是一条正式的 runtime preview event pipeline。
+- 直接读取某个 provider 的原始 delta
+- 在 widget 层临时拼接运行中内容
+- 为单个 tool 单独维护第二套预览状态
 
 长期风险是：
 
-- provider 原生 block 结构在上层被压扁
-- text / thinking / tool-use 的边界不清晰
-- 新功能容易围绕局部 case 再开一条专门逻辑
+- provider 原生 block 结构再次泄漏到上层
+- text / thinking / tool-use 的统一 block 语义被破坏
+- 新功能围绕局部 case 再开一条专门逻辑
 
 ### 2. 临时 preview 与最终正式消息的时序边界没有被上抬为架构约束
 

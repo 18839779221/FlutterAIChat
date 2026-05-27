@@ -124,8 +124,8 @@ fvm flutter test
 - `ConfigurableHttpLLM` 现在只负责高层编排；协议语义映射由 `ApiStyleAdapter` 负责，请求执行由 `ProtocolExecutionRuntime` 负责，流式事件转换由 runtime 内部的 stream adapter 负责
 - 当前统一 runtime registry 已支持根据 Base URL 适配不同 API 风格，包括 OpenAI `responses`、OpenAI `chat/completions` 和 Anthropic `messages`
 - OpenAI `chat/completions`、`responses` 与 Anthropic `messages` 已进入统一 runtime registry；其中 OpenAI 两条协议与 Anthropic 非流请求都走 SDK-first 执行
-- Anthropic planner streaming 只保留一条正式主链路：`AnthropicMessagesRuntime -> AnthropicStreamEventAdapter -> StreamingDecisionAccumulator`
-- legacy `ApiStreamParser` 不再承载 Anthropic planner chunk 解析，避免与正式 runtime 主链路形成双实现漂移
+- planner streaming 已统一收敛到 preview-event 主链路：provider runtime / stream adapter 直接产出 `StreamingMessageEvent`，再由 accumulator 组装最终 `ModelTurnDecision`
+- `StreamingMessageEvent` 同时作为运行中 preview 的唯一正式出口，供 runtime preview projector / timeline projection 消费
 - provider adapter / runtime / live capability matrix 的详细边界见 [docs/architecture/provider-adapter-runtime-and-live-matrix.md](./docs/architecture/provider-adapter-runtime-and-live-matrix.md)
 - 本地默认配置位于 [config/local_defaults.json](./config/local_defaults.json)
 
