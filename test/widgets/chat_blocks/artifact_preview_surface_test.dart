@@ -64,6 +64,8 @@ void main() {
     expect(document, contains("overflow = 'hidden'"));
     expect(document, contains('ResizeObserver'));
     expect(document, contains('scrollHeight'));
+    expect(document, contains('artifactRectHeight'));
+    expect(document, contains('JSON.stringify'));
   });
 
   test('detail preview document can keep internal scrolling enabled', () {

@@ -1,5 +1,6 @@
 import '../../models/artifact/artifact_guideline_contract.dart';
 import '../../theme/app_theme_spec.dart';
+import 'artifact_host_style_builder.dart';
 import 'artifact_theme_token_mapper.dart';
 
 /// Builds the model-facing guideline contract for explanatory artifacts.
@@ -10,9 +11,9 @@ class ArtifactGuidelineContractBuilder {
     required AppThemeSpec spec,
   }) {
     final variables = ArtifactThemeTokenMapper.fromSpec(spec);
-    final rootLines = variables.entries
-        .map((entry) => '        ${entry.key}: ${entry.value};')
-        .join('\n');
+    final hostStyles = const ArtifactHostStyleBuilder().buildStyleBlock(
+      variables,
+    );
 
     return ArtifactGuidelineContract(
       usage:
@@ -26,29 +27,7 @@ Do not generate a full page document structure yourself.
 -->
 <html>
   <head>
-    <style>
-      :root {
-$rootLines
-      }
-
-      html, body {
-        margin: 0;
-        padding: 0;
-        background: var(--app-artifact-page-bg);
-        color: var(--app-artifact-text-primary);
-        font-family: var(--app-artifact-font-ui);
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
-      #artifact-root {
-        width: 100%;
-        background: var(--app-artifact-page-bg);
-        color: var(--app-artifact-text-primary);
-      }
-    </style>
+${_indentBlock(hostStyles, spaces: 4)}
   </head>
   <body>
     <div id="artifact-root">
@@ -75,4 +54,9 @@ $rootLines
       ],
     );
   }
+}
+
+String _indentBlock(String value, {required int spaces}) {
+  final prefix = ' ' * spaces;
+  return value.split('\n').map((line) => '$prefix$line').join('\n');
 }

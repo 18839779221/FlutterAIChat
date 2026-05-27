@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:ai_chat/services/artifact/artifact_host_style_builder.dart';
 import 'package:ai_chat/services/artifact/artifact_theme_token_mapper.dart';
 import 'package:ai_chat/theme/app_theme_spec.dart';
+import 'package:ai_chat/utils/logger.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -13,6 +16,7 @@ const String _artifactHeightChannelName = 'ArtifactHeight';
 const String artifactPreviewTruncationMessage =
     '内容较长，长按进入详情页查看完整内容。';
 const Duration _streamingDebounceDelay = Duration(seconds: 1);
+const String _artifactPreviewLogTag = 'ArtifactPreviewSurface';
 
 double clampArtifactPreviewHeight(
   double rawHeight, {
@@ -59,14 +63,29 @@ String buildArtifactPreviewDocument(
     const postHeight = () => {
       const body = document.body;
       const root = document.documentElement;
+      const artifactRoot = document.getElementById('artifact-root');
+      const artifactRectHeight = artifactRoot
+        ? artifactRoot.getBoundingClientRect().height
+        : 0;
+      const payload = {
+        event: 'height_measure',
+        artifactRectHeight,
+        bodyScrollHeight: body ? body.scrollHeight : 0,
+        bodyOffsetHeight: body ? body.offsetHeight : 0,
+        rootScrollHeight: root ? root.scrollHeight : 0,
+        rootOffsetHeight: root ? root.offsetHeight : 0
+      };
       const height = Math.max(
-        body ? body.scrollHeight : 0,
-        body ? body.offsetHeight : 0,
-        root ? root.scrollHeight : 0,
-        root ? root.offsetHeight : 0
+        payload.bodyScrollHeight,
+        payload.bodyOffsetHeight,
+        payload.rootScrollHeight,
+        payload.rootOffsetHeight
       );
       if (window.ArtifactHeight && typeof window.ArtifactHeight.postMessage === 'function') {
-        window.ArtifactHeight.postMessage(String(height));
+        window.ArtifactHeight.postMessage(JSON.stringify({
+          ...payload,
+          height
+        }));
       }
     };
     window.__artifactLockScroll__ = lockScroll;
@@ -140,38 +159,7 @@ $hostStyles
 }
 
 String buildArtifactPreviewHostStyles(Map<String, String> hostCssVariables) {
-  final variableLines = hostCssVariables.entries
-      .map((entry) => '        ${entry.key}: ${entry.value};')
-      .join('\n');
-  final rootBlock = variableLines.isEmpty
-      ? ''
-      : '''
-      :root {
-$variableLines
-      }
-''';
-  return '''
-<style>
-$rootBlock
-  html, body {
-    margin: 0;
-    padding: 0;
-    background: var(--app-artifact-page-bg, #ffffff);
-    color: var(--app-artifact-text-primary, #1f1f1e);
-    font-family: var(--app-artifact-font-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
-  }
-
-  * {
-    box-sizing: border-box;
-  }
-
-  #artifact-root {
-    width: 100%;
-    background: var(--app-artifact-page-bg, #ffffff);
-    color: var(--app-artifact-text-primary, #1f1f1e);
-  }
-</style>
-''';
+  return const ArtifactHostStyleBuilder().buildStyleBlock(hostCssVariables);
 }
 
 /// Minimal native preview surface for inline artifacts.
@@ -279,6 +267,16 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     if (controller == null) return;
 
     try {
+      Logger.temp(
+        _artifactPreviewLogTag,
+        'artifact preview reload requested',
+        reason: 'diagnose inline artifact height sync',
+        data: {
+          'sourcePath': widget.sourcePath,
+          'isInline': !widget.enableInternalScroll,
+          'sourceLength': source.length,
+        },
+      );
       controller.loadHtmlString(
         buildArtifactPreviewDocument(
           source,
@@ -340,8 +338,23 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         controller.addJavaScriptChannel(
           _artifactHeightChannelName,
           onMessageReceived: (message) {
-            final value = double.tryParse(message.message.trim());
-            if (value == null || !mounted) {
+            final payload = message.message.trim();
+            if (!mounted) {
+              return;
+            }
+            final parsed = _parseArtifactHeightPayload(payload);
+            final value = parsed.height;
+            if (value == null) {
+              Logger.temp(
+                _artifactPreviewLogTag,
+                'artifact height payload parse failed',
+                level: LogLevel.warning,
+                reason: 'diagnose inline artifact height sync',
+                data: {
+                  'sourcePath': widget.sourcePath,
+                  'payload': _truncateForLog(payload),
+                },
+              );
               return;
             }
             final viewportHeight = _resolveViewportHeight();
@@ -349,10 +362,37 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
               value,
               viewportHeight: viewportHeight,
             );
+            Logger.temp(
+              _artifactPreviewLogTag,
+              'artifact height payload received',
+              reason: 'diagnose inline artifact height sync',
+              data: {
+                'sourcePath': widget.sourcePath,
+                'rawHeight': value,
+                'clampedHeight': clampedHeight,
+                'previousHeight': _previewHeight,
+                'viewportHeight': viewportHeight,
+                'artifactRectHeight': parsed.artifactRectHeight,
+                'bodyScrollHeight': parsed.bodyScrollHeight,
+                'bodyOffsetHeight': parsed.bodyOffsetHeight,
+                'rootScrollHeight': parsed.rootScrollHeight,
+                'rootOffsetHeight': parsed.rootOffsetHeight,
+              },
+            );
             setState(() {
               _previewHeight = clampedHeight;
               _isPreviewTruncated = value > clampedHeight;
             });
+            Logger.temp(
+              _artifactPreviewLogTag,
+              'artifact height applied',
+              reason: 'diagnose inline artifact height sync',
+              data: {
+                'sourcePath': widget.sourcePath,
+                'appliedHeight': clampedHeight,
+                'isPreviewTruncated': value > clampedHeight,
+              },
+            );
           },
         );
       }
@@ -581,4 +621,63 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     const estimatedPadding = 24.0;
     return (lines * estimatedLineHeight) + estimatedPadding;
   }
+}
+
+class _ArtifactHeightPayload {
+  final double? height;
+  final double? artifactRectHeight;
+  final double? bodyScrollHeight;
+  final double? bodyOffsetHeight;
+  final double? rootScrollHeight;
+  final double? rootOffsetHeight;
+
+  const _ArtifactHeightPayload({
+    required this.height,
+    this.artifactRectHeight,
+    this.bodyScrollHeight,
+    this.bodyOffsetHeight,
+    this.rootScrollHeight,
+    this.rootOffsetHeight,
+  });
+}
+
+_ArtifactHeightPayload _parseArtifactHeightPayload(String rawPayload) {
+  final directValue = double.tryParse(rawPayload);
+  if (directValue != null) {
+    return _ArtifactHeightPayload(height: directValue);
+  }
+
+  try {
+    final decoded = jsonDecode(rawPayload);
+    if (decoded is! Map<String, dynamic>) {
+      return const _ArtifactHeightPayload(height: null);
+    }
+    return _ArtifactHeightPayload(
+      height: _toDouble(decoded['height']),
+      artifactRectHeight: _toDouble(decoded['artifactRectHeight']),
+      bodyScrollHeight: _toDouble(decoded['bodyScrollHeight']),
+      bodyOffsetHeight: _toDouble(decoded['bodyOffsetHeight']),
+      rootScrollHeight: _toDouble(decoded['rootScrollHeight']),
+      rootOffsetHeight: _toDouble(decoded['rootOffsetHeight']),
+    );
+  } catch (_) {
+    return const _ArtifactHeightPayload(height: null);
+  }
+}
+
+double? _toDouble(Object? value) {
+  if (value is num) {
+    return value.toDouble();
+  }
+  if (value is String) {
+    return double.tryParse(value);
+  }
+  return null;
+}
+
+String _truncateForLog(String text, {int maxLength = 240}) {
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return '${text.substring(0, maxLength)}...';
 }
