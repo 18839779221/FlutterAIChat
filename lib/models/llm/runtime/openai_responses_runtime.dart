@@ -247,8 +247,21 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
           normalizedJson['response'] == null) {
         normalizedJson['response_id'] = responseId;
       }
-      final typedEvent = oai.ResponseStreamEvent.fromJson(normalizedJson);
-      normalizedEvents.add(typedEvent);
+      try {
+        final typedEvent = oai.ResponseStreamEvent.fromJson(normalizedJson);
+        normalizedEvents.add(typedEvent);
+      } catch (error) {
+        final type = rawEvent['type'];
+        if (_canSkipTypedEventParseFailure(type, normalizedJson)) {
+          Logger.w(
+            'OpenAiResponsesRuntime',
+            'skip provider-incompatible responses stream event '
+            'type=${type ?? 'unknown'} error=$error',
+          );
+        } else {
+          rethrow;
+        }
+      }
 
       final rawOutputIndex = rawEvent['output_index'];
       if (rawOutputIndex is int) {
@@ -278,6 +291,20 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
     yield* _streamEventAdapter.adaptPreview(
       Stream<oai.ResponseStreamEvent>.fromIterable(normalizedEvents),
     );
+  }
+
+  bool _canSkipTypedEventParseFailure(
+    dynamic type,
+    Map<String, dynamic> normalizedJson,
+  ) {
+    if (type != 'response.completed' && type != 'response.done') {
+      return false;
+    }
+    final response = normalizedJson['response'];
+    if (response is! Map<String, dynamic>) {
+      return false;
+    }
+    return response['output'] == null;
   }
 
   Map<String, dynamic> _normalizeStreamingEventJson(

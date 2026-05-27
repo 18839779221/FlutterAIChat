@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
+import 'package:ai_chat/models/llm/llm_provider_model.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
 
 import 'headless_live_provider_matrix.dart';
@@ -94,7 +95,8 @@ LlmLocalDefaults? loadInjectedLocalDefaults({
   if (decoded is! Map) {
     return null;
   }
-  return LlmLocalDefaults.fromJson(Map<String, dynamic>.from(decoded));
+  final defaults = LlmLocalDefaults.fromJson(Map<String, dynamic>.from(decoded));
+  return _augmentWithCodexResponsesProvider(defaults);
 }
 
 SelectedHeadlessLiveProvider selectHeadlessLiveProvider({
@@ -170,6 +172,113 @@ String _normalizeProviderOverrideId(String providerId) {
   }
 }
 
+LlmLocalDefaults _augmentWithCodexResponsesProvider(LlmLocalDefaults defaults) {
+  final fallbackProvider = _loadCodexResponsesProvider();
+  if (fallbackProvider == null) {
+    return defaults;
+  }
+
+  final providers = <LlmProviderConfig>[
+    fallbackProvider,
+    ...defaults.providers.where((item) => item.id != fallbackProvider.id),
+  ];
+  final defaultProviderId = switch (defaults.defaultProviderId) {
+    'beehears-responses' => fallbackProvider.id,
+    final value => value,
+  };
+
+  return LlmLocalDefaults(
+    defaultProviderId: defaultProviderId,
+    defaultModelId: defaults.defaultModelId,
+    providers: providers,
+    additionalConfig: defaults.additionalConfig,
+    speechInput: defaults.speechInput,
+  );
+}
+
+LlmProviderConfig? _loadCodexResponsesProvider() {
+  try {
+    final configFile = File('/Users/zyb_wl/.codex/config.toml');
+    final authFile = File('/Users/zyb_wl/.codex/auth.json');
+    if (!configFile.existsSync() || !authFile.existsSync()) {
+      return null;
+    }
+
+    final configText = configFile.readAsStringSync();
+    if (!_tomlContainsResponsesCustomProvider(configText)) {
+      return null;
+    }
+
+    final baseUrl = _extractTomlString(
+      configText,
+      section: 'model_providers.custom',
+      key: 'base_url',
+    );
+    final modelId = _extractTomlString(configText, key: 'model');
+    if (baseUrl == null || modelId == null) {
+      return null;
+    }
+
+    final authJson = jsonDecode(authFile.readAsStringSync());
+    if (authJson is! Map) {
+      return null;
+    }
+    final apiKey = (authJson['OPENAI_API_KEY'] as String?)?.trim();
+    if (apiKey == null || apiKey.isEmpty) {
+      return null;
+    }
+
+    return LlmProviderConfig(
+      id: 'codex-custom-responses',
+      name: 'Codex Custom Responses',
+      apiKey: apiKey,
+      baseUrl: '$baseUrl/responses',
+      models: <LlmProviderModel>[
+        LlmProviderModel(id: modelId, name: modelId),
+      ],
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
+bool _tomlContainsResponsesCustomProvider(String configText) {
+  return configText.contains('[model_providers.custom]') &&
+      configText.contains('wire_api = "responses"');
+}
+
+String? _extractTomlString(
+  String configText, {
+  String? section,
+  required String key,
+}) {
+  final lines = const LineSplitter().convert(configText);
+  var inSection = section == null;
+  for (final line in lines) {
+    final trimmed = line.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      inSection = section != null && trimmed == '[$section]';
+      continue;
+    }
+    if (!inSection || !trimmed.startsWith('$key = ')) {
+      continue;
+    }
+    final separatorIndex = trimmed.indexOf('=');
+    if (separatorIndex == -1) {
+      continue;
+    }
+    final rawValue = trimmed.substring(separatorIndex + 1).trim();
+    if (!rawValue.startsWith('"') || !rawValue.endsWith('"')) {
+      continue;
+    }
+    final value = rawValue.substring(1, rawValue.length - 1).trim();
+    if (value.isNotEmpty) {
+      return value;
+    }
+  }
+  return null;
+}
+
 HeadlessLiveProviderProfile resolveHeadlessLiveProviderProfile(
   String providerId,
 ) {
@@ -204,7 +313,12 @@ String _styleEnvKey(ChatTurnProviderStyle style) {
 List<String> _preferredProviderIds(ChatTurnProviderStyle style) {
   switch (style) {
     case ChatTurnProviderStyle.openaiResponses:
-      return const ['beehears-responses', 'minimax-responses', 'deepseek-responses'];
+      return const [
+        'codex-custom-responses',
+        'beehears-responses',
+        'minimax-responses',
+        'deepseek-responses',
+      ];
     case ChatTurnProviderStyle.openaiChatCompletions:
       return const [
         'minimax-openai-chat-completions',

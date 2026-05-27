@@ -101,4 +101,30 @@ void main() {
     expect(selection.provider.id, 'minimax-openai-chat-completions');
     expect(selection.selectionReason, contains('alias=minimax-openai'));
   });
+
+  test('loadInjectedLocalDefaults prepends codex custom responses provider when available', () {
+    final defaults = loadInjectedLocalDefaults(
+      fallbackRelativePaths: const ['config/local_defaults.json'],
+    );
+
+    expect(defaults, isNotNull);
+    expect(defaults!.providers.first.id, 'codex-custom-responses');
+  });
+
+  test('matrix marks codex custom responses tool confirmation as opportunistic', () {
+    final profile = headlessLiveProviderMatrix['codex-custom-responses'];
+    expect(profile, isNotNull);
+    expect(
+      profile!.askUserInteraction,
+      StructuredCheckpointExpectation.required,
+    );
+    expect(
+      profile.toolConfirmation,
+      StructuredCheckpointExpectation.opportunistic,
+    );
+    expect(
+      profile.multiToolContinuation,
+      StructuredCheckpointExpectation.required,
+    );
+  });
 }

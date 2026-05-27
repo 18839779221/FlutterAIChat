@@ -1154,6 +1154,59 @@ void main() {
     });
 
     test(
+        'responses streaming planner tolerates provider-incompatible completed event',
+        () async {
+      final textChunk = jsonEncode({
+        'type': 'response.output_text.delta',
+        'response': {'id': 'resp_stream_partial'},
+        'output_index': 0,
+        'content_index': 0,
+        'delta': '最终答案',
+      });
+      final completedChunk = jsonEncode({
+        'type': 'response.completed',
+        'response': {
+          'id': 'resp_stream_partial',
+          'object': 'response',
+          'created_at': 123,
+          'status': 'completed',
+          'output': null,
+        },
+      });
+      final client = _RecordingHttpClient(
+        handler: (request) => http.StreamedResponse(
+          Stream<List<int>>.fromIterable([
+            utf8.encode('data: $textChunk\n\n'),
+            utf8.encode('data: $completedChunk\n\n'),
+            utf8.encode('data: [DONE]\n'),
+          ]),
+          200,
+          headers: {'content-type': 'text/event-stream; charset=utf-8'},
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        carriers: [
+          SyntheticCarrier.user('直接回答'),
+        ],
+        activeApiStyle: ChatTurnProviderStyle.openaiResponses,
+        currentTurnRunning: false,
+        config: ChatConfig(systemPrompt: ''),
+        availableTools: const [],
+      );
+
+      expect(client.lastRequestBody?['stream'], isTrue);
+      expect(decision, isNotNull);
+      expect(decision!.assistantMessage, '最终答案');
+      expect(decision.providerState, containsPair('response_id', 'resp_stream_partial'));
+      expect(decision.isTerminal, isTrue);
+    });
+
+    test(
         'streaming planner does not idle-timeout while chunks keep arriving',
         () async {
       final firstChunk = jsonEncode({

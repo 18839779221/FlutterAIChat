@@ -15,6 +15,11 @@ const Map<String, HeadlessLiveProviderProfile> headlessLiveProviderMatrix = {
     toolConfirmation: StructuredCheckpointExpectation.required,
     multiToolContinuation: StructuredCheckpointExpectation.required,
   ),
+  'codex-custom-responses': HeadlessLiveProviderProfile(
+    askUserInteraction: StructuredCheckpointExpectation.required,
+    toolConfirmation: StructuredCheckpointExpectation.opportunistic,
+    multiToolContinuation: StructuredCheckpointExpectation.required,
+  ),
   'minimax-openai': HeadlessLiveProviderProfile(
     askUserInteraction: StructuredCheckpointExpectation.required,
     toolConfirmation: StructuredCheckpointExpectation.required,
