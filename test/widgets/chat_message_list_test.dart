@@ -1,9 +1,10 @@
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/chat/tool_phase_visibility.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
-import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
+import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/debug/debug_test_case.dart';
+import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
@@ -123,18 +124,26 @@ void main() {
             contentType: MessageContentType.plainText,
           ),
         ],
-        runtimeStreamEntries: [
-          RuntimeStreamEntry(
-            turnId: 'planner_runtime',
-            entryId: 'planner_runtime-tool-call-1',
-            kind: RuntimeStreamEntryKind.toolCallArguments,
-            providerCallId: 'call_artifact_1',
-            toolName: 'create_artifact',
-            createdAt: DateTime(2026, 5, 5, 10, 0, 1),
-            updatedAt: DateTime(2026, 5, 5, 10, 0, 1),
-            text: '{"source":"<div>调试流内容</div>"}',
-          ),
-        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'planner_runtime',
+              createdAt: DateTime(2026, 5, 5, 10, 0, 1),
+              updatedAt: DateTime(2026, 5, 5, 10, 0, 1),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'planner_runtime:tool:0',
+                  blockType: StreamingContentBlockType.toolUse,
+                  toolUseId: 'call_artifact_1',
+                  toolName: 'create_artifact',
+                  createdAt: DateTime(2026, 5, 5, 10, 0, 1),
+                  updatedAt: DateTime(2026, 5, 5, 10, 0, 1),
+                  text: '{"source":"<div>调试流内容</div>"}',
+                ),
+              ],
+            ),
+          ],
+        ),
       );
 
       expect(find.text('Analysis'), findsNothing);
@@ -1265,7 +1274,8 @@ void main() {
 Future<void> _pumpMessageList(
   WidgetTester tester, {
   required List<ChatMessage> messages,
-  List<RuntimeStreamEntry> runtimeStreamEntries = const [],
+  RuntimeStreamingPreviewState runtimePreviewState =
+      const RuntimeStreamingPreviewState(),
   TextEditingController? textController,
   FocusNode? focusNode,
   ToolUiRendererRegistry? registry,
@@ -1333,8 +1343,8 @@ Future<void> _pumpMessageList(
             statusText: sendStatusText,
           ),
       ),
-      runtimeStreamEntriesProvider.overrideWith(
-        (ref) => RuntimeStreamEntriesController()..publish(runtimeStreamEntries),
+      runtimeStreamingPreviewStateProvider.overrideWith(
+        (ref) => RuntimeStreamingPreviewController()..state = runtimePreviewState,
       ),
       if (registry != null)
         toolUiRendererRegistryProvider.overrideWith((ref) => registry),

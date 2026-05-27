@@ -1,11 +1,11 @@
 import 'package:ai_chat/services/chat_service.dart';
 
 import '../agent/model_turn_decision.dart';
-import '../chat/runtime_stream_entry.dart';
 import '../agent/planner_tool_option.dart';
 import '../chat_message.dart';
 import '../chat_turn.dart';
 import '../context/planner_context_carrier.dart';
+import 'streaming_message_event.dart';
 
 class LlmRetryProgress {
   final String label;
@@ -24,7 +24,7 @@ class LlmRetryProgress {
 }
 
 typedef PlannerRuntimeStreamListener = void Function(
-  List<RuntimeStreamEntry> entries,
+  StreamingMessageEvent event,
 );
 
 /// Optional capability for LLMs that can surface runtime-only planner stream

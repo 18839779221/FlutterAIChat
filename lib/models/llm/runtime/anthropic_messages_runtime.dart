@@ -8,6 +8,7 @@ import '../../../utils/logger.dart';
 import '../api_protocol_resolver.dart';
 import '../llm_config.dart';
 import '../llm_usage_extractor.dart';
+import '../streaming_message_event.dart';
 import 'anthropic_stream_event_adapter.dart';
 import 'protocol_execution_runtime.dart';
 import 'protocol_request_spec.dart';
@@ -93,8 +94,8 @@ class AnthropicMessagesRuntime extends ProtocolExecutionRuntime {
       final responseText =
           await streamedResponse.stream.bytesToString().timeout(idleTimeout);
       if (responseText.trim().isEmpty) {
-        return const ProtocolStreamExecutionResult(
-          chunks: Stream.empty(),
+        return ProtocolStreamExecutionResult(
+          events: const Stream.empty(),
           nonStreamingFallbackJson: <String, dynamic>{},
         );
       }
@@ -103,7 +104,7 @@ class AnthropicMessagesRuntime extends ProtocolExecutionRuntime {
           ? LlmUsageExtractor.extract(decoded)
           : null;
       return ProtocolStreamExecutionResult(
-        chunks: const Stream.empty(),
+        events: const Stream.empty(),
         nonStreamingFallbackJson:
             decoded is Map<String, dynamic> ? decoded : <String, dynamic>{},
         cacheUsage: fallbackUsage,
@@ -117,7 +118,7 @@ class AnthropicMessagesRuntime extends ProtocolExecutionRuntime {
         ).timeout(idleTimeout);
 
     return ProtocolStreamExecutionResult(
-      chunks: _streamEventAdapter.adapt(eventStream),
+      events: _streamEventAdapter.adaptPreview(eventStream),
     );
   }
 

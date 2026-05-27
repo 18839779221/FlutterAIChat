@@ -9,11 +9,10 @@ import '../api_protocol_resolver.dart';
 import '../llm_cache_usage.dart';
 import '../llm_config.dart';
 import '../llm_usage_extractor.dart';
-import '../streaming_planner_chunk.dart';
+import '../streaming_message_event.dart';
 import 'responses_stream_event_adapter.dart';
 import 'protocol_execution_runtime.dart';
 import 'protocol_request_spec.dart';
-import 'stream_tool_call_tracker.dart';
 
 typedef OpenAiResponsesStreamRequestExecutor =
     Stream<oai.ResponseStreamEvent> Function({
@@ -112,33 +111,60 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
     if (!contentType.toLowerCase().contains('text/event-stream')) {
       final responseText =
           await streamedResponse.stream.bytesToString().timeout(idleTimeout);
+      final statusCode = streamedResponse.statusCode;
+      final reasonPhrase = streamedResponse.reasonPhrase;
       if (responseText.trim().isEmpty) {
-        return const ProtocolStreamExecutionResult(
-          chunks: Stream.empty(),
-          nonStreamingFallbackJson: <String, dynamic>{},
+        Logger.w(
+          'OpenAiResponsesRuntime',
+          'responses stream returned non-SSE empty body '
+          'status=$statusCode reason=${reasonPhrase ?? ''}',
+        );
+        return ProtocolStreamExecutionResult(
+          events: const Stream.empty(),
+          nonStreamingFallbackJson: <String, dynamic>{
+            '_http_status': statusCode,
+            if (reasonPhrase != null && reasonPhrase.isNotEmpty)
+              '_http_reason': reasonPhrase,
+          },
         );
       }
       final decoded = jsonDecode(responseText);
+      if (statusCode < 200 || statusCode >= 300) {
+        Logger.w(
+          'OpenAiResponsesRuntime',
+          'responses stream returned non-SSE error '
+          'status=$statusCode reason=${reasonPhrase ?? ''} body=$responseText',
+        );
+      }
       final fallbackUsage = decoded is Map<String, dynamic>
           ? LlmUsageExtractor.extract(decoded)
           : null;
       return ProtocolStreamExecutionResult(
-        chunks: const Stream.empty(),
+        events: const Stream.empty(),
         nonStreamingFallbackJson: decoded is Map<String, dynamic>
-            ? decoded
-            : <String, dynamic>{},
+            ? <String, dynamic>{
+                ...decoded,
+                '_http_status': statusCode,
+                if (reasonPhrase != null && reasonPhrase.isNotEmpty)
+                  '_http_reason': reasonPhrase,
+              }
+            : <String, dynamic>{
+                '_http_status': statusCode,
+                if (reasonPhrase != null && reasonPhrase.isNotEmpty)
+                  '_http_reason': reasonPhrase,
+              },
         cacheUsage: fallbackUsage,
       );
     }
 
     LlmCacheUsage? collectedUsage;
     return ProtocolStreamExecutionResult(
-      chunks: _streamRequestExecutor == null
-          ? _createAdaptedChunkStream(
+      events: _streamRequestExecutor == null
+          ? _createAdaptedEventStream(
               streamedResponse: streamedResponse,
               onUsageExtracted: (usage) => collectedUsage = usage,
             ).timeout(idleTimeout)
-          : _streamEventAdapter.adapt(
+          : _streamEventAdapter.adaptPreview(
               _streamRequestExecutor!(
                 request: spec.request,
                 streamedResponse: streamedResponse,
@@ -170,7 +196,10 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
   }) async {
     final response = await (_httpClient ?? http.Client())
         .post(
-          Uri.parse('${runtimeConfig.apiUrl.replaceFirst(RegExp(r'/+$'), '')}/responses'),
+          ApiProtocolResolver().buildRequestUri(
+            runtimeConfig.apiUrl,
+            ApiStyle.responses,
+          ),
           headers: {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer ${runtimeConfig.apiKey}',
@@ -183,17 +212,18 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
     );
   }
 
-  Stream<StreamingPlannerChunk> _createAdaptedChunkStream({
+  Stream<StreamingMessageEvent> _createAdaptedEventStream({
     required http.StreamedResponse streamedResponse,
     void Function(LlmCacheUsage?)? onUsageExtracted,
   }) async* {
     final parser = oai.SseParser();
-    final emittedReasoningChunks = <String>{};
-    final toolCallTracker = StreamToolCallTracker();
     var fallbackOutputIndex = 0;
     final latestToolArgumentsByOutputIndex = <int, String>{};
+    final normalizedEvents = <oai.ResponseStreamEvent>[];
+    String? responseId;
 
     await for (final rawEvent in parser.parse(streamedResponse.stream)) {
+      responseId ??= _extractResponseId(rawEvent);
       // Extract usage from response.done event
       if (rawEvent['type'] == 'response.done') {
         final response = rawEvent['response'];
@@ -204,40 +234,21 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
             Logger.trace('OpenAiResponsesRuntime', 'stream usage extracted: inputTokens=${usage.inputTokens}, '
                 'cachedInputTokens=${usage.cachedInputTokens}');
           }
-          // Emit usage as metadata in a keepalive chunk
-          yield StreamingPlannerChunk.keepalive(
-            providerMetadata: <String, dynamic>{
-              '_usage': <String, dynamic>{
-                if (usage?.inputTokens != null) 'inputTokens': usage!.inputTokens,
-                if (usage?.outputTokens != null) 'outputTokens': usage!.outputTokens,
-                if (usage?.cachedInputTokens != null) 'cachedInputTokens': usage!.cachedInputTokens,
-                if (usage?.cacheReadInputTokens != null) 'cacheReadInputTokens': usage!.cacheReadInputTokens,
-                if (usage?.cacheWriteInputTokens != null) 'cacheWriteInputTokens': usage!.cacheWriteInputTokens,
-              },
-            },
-          );
         }
       }
 
-      final responseId = _extractResponseId(rawEvent);
-      if (responseId != null) {
-        yield StreamingPlannerChunk.keepalive(
-          providerMetadata: <String, dynamic>{'response_id': responseId},
-        );
+      final normalizedJson = _normalizeStreamingEventJson(
+        rawEvent,
+        fallbackOutputIndex: fallbackOutputIndex,
+        latestToolArgumentsByOutputIndex: latestToolArgumentsByOutputIndex,
+      );
+      if (responseId != null &&
+          normalizedJson['response_id'] == null &&
+          normalizedJson['response'] == null) {
+        normalizedJson['response_id'] = responseId;
       }
-
-      final typedEvent = oai.ResponseStreamEvent.fromJson(
-        _normalizeStreamingEventJson(
-          rawEvent,
-          fallbackOutputIndex: fallbackOutputIndex,
-          latestToolArgumentsByOutputIndex: latestToolArgumentsByOutputIndex,
-        ),
-      );
-      yield* _streamEventAdapter.adaptEvent(
-        typedEvent,
-        emittedReasoningChunks: emittedReasoningChunks,
-        toolCallTracker: toolCallTracker,
-      );
+      final typedEvent = oai.ResponseStreamEvent.fromJson(normalizedJson);
+      normalizedEvents.add(typedEvent);
 
       final rawOutputIndex = rawEvent['output_index'];
       if (rawOutputIndex is int) {
@@ -258,7 +269,15 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
       }
     }
 
-    yield const StreamingPlannerChunk.streamCompleted();
+    if (responseId != null) {
+      yield StreamingMessageStartEvent(
+        messageId: responseId!,
+        providerMetadata: {'response_id': responseId},
+      );
+    }
+    yield* _streamEventAdapter.adaptPreview(
+      Stream<oai.ResponseStreamEvent>.fromIterable(normalizedEvents),
+    );
   }
 
   Map<String, dynamic> _normalizeStreamingEventJson(
@@ -328,4 +347,5 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
     }
     return null;
   }
+
 }

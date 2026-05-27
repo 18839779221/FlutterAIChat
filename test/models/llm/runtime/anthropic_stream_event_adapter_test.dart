@@ -1,13 +1,13 @@
 import 'package:ai_chat/models/llm/runtime/anthropic_stream_event_adapter.dart';
-import 'package:ai_chat/models/llm/streaming_planner_chunk.dart';
+import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:anthropic_sdk_dart/anthropic_sdk_dart.dart' as anthropic;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('adapts anthropic tool_use chunks into planner tool call deltas', () async {
+  test('adapts anthropic tool_use events into preview tool lifecycle', () async {
     const adapter = AnthropicStreamEventAdapter();
-    final chunks = await adapter
-        .adapt(
+    final previewEvents = await adapter
+        .adaptPreview(
           Stream<anthropic.MessageStreamEvent>.fromIterable(const [
             anthropic.ContentBlockStartEvent(
               index: 0,
@@ -27,16 +27,34 @@ void main() {
         )
         .toList();
 
-    expect(chunks.where((c) => c.type == StreamingPlannerChunkType.toolCallStarted), isNotEmpty);
-    expect(chunks.where((c) => c.type == StreamingPlannerChunkType.toolCallArgumentsDelta), isNotEmpty);
-    expect(chunks.where((c) => c.type == StreamingPlannerChunkType.toolCallCompleted), isNotEmpty);
+    expect(
+      previewEvents.whereType<StreamingContentBlockStartEvent>().any(
+            (event) =>
+                event.blockType == StreamingContentBlockType.toolUse &&
+                event.toolUseId == 'toolu_1' &&
+                event.toolName == 'web_search',
+          ),
+      isTrue,
+    );
+    expect(
+      previewEvents.whereType<StreamingContentBlockDeltaEvent>().any(
+            (event) =>
+                event.deltaType == StreamingContentDeltaType.inputJson &&
+                event.value == '{"query":"google ai"}',
+          ),
+      isTrue,
+    );
+    expect(
+      previewEvents.whereType<StreamingContentBlockStopEvent>(),
+      isNotEmpty,
+    );
   });
 
   test('preserves tool metadata across anthropic tool_use delta lifecycle',
       () async {
     const adapter = AnthropicStreamEventAdapter();
-    final chunks = await adapter
-        .adapt(
+    final previewEvents = await adapter
+        .adaptPreview(
           Stream<anthropic.MessageStreamEvent>.fromIterable(const [
             anthropic.ContentBlockStartEvent(
               index: 2,
@@ -56,56 +74,42 @@ void main() {
         )
         .toList();
 
-    final argsChunk = chunks.firstWhere(
-      (c) => c.type == StreamingPlannerChunkType.toolCallArgumentsDelta,
-    );
-    final doneChunk = chunks.firstWhere(
-      (c) => c.type == StreamingPlannerChunkType.toolCallCompleted,
-    );
+    final toolStart = previewEvents
+        .whereType<StreamingContentBlockStartEvent>()
+        .firstWhere((event) => event.blockType == StreamingContentBlockType.toolUse);
+    final toolDelta = previewEvents
+        .whereType<StreamingContentBlockDeltaEvent>()
+        .firstWhere((event) => event.deltaType == StreamingContentDeltaType.inputJson);
 
-    expect(argsChunk.toolCallIndex, 2);
-    expect(argsChunk.providerCallId, 'toolu_meta');
-    expect(argsChunk.toolName, 'create_artifact');
-    expect(doneChunk.toolCallIndex, 2);
-    expect(doneChunk.providerCallId, 'toolu_meta');
-    expect(doneChunk.toolName, 'create_artifact');
+    expect(toolStart.toolUseId, 'toolu_meta');
+    expect(toolStart.toolName, 'create_artifact');
+    expect(toolDelta.value, '{"source":"<div>ok</div>"}');
   });
 
-  test('captures anthropic thinking signature and ping as keepalive chunks',
-      () async {
+  test('captures anthropic thinking signature as signature delta', () async {
     const adapter = AnthropicStreamEventAdapter();
-    final chunks = await adapter
-        .adapt(
+    final previewEvents = await adapter
+        .adaptPreview(
           Stream<anthropic.MessageStreamEvent>.fromIterable(const [
             anthropic.ContentBlockDeltaEvent(
               index: 0,
               delta: anthropic.SignatureDelta('sig_thinking_1'),
             ),
-            anthropic.PingEvent(),
             anthropic.MessageStopEvent(),
           ]),
         )
         .toList();
 
-    final keepaliveChunks = chunks
-        .where((c) => c.type == StreamingPlannerChunkType.keepalive)
-        .toList();
-    expect(keepaliveChunks, hasLength(2));
-    expect(
-      keepaliveChunks.first.providerMetadata?['anthropic_thinking_signature'],
-      'sig_thinking_1',
-    );
-    expect(
-      keepaliveChunks.last.providerMetadata?['anthropic_event_type'],
-      'ping',
-    );
+    final signatureDelta = previewEvents
+        .whereType<StreamingContentBlockDeltaEvent>()
+        .firstWhere((event) => event.deltaType == StreamingContentDeltaType.signature);
+    expect(signatureDelta.value, 'sig_thinking_1');
   });
 
-  test('captures anthropic message id from message_start for continuation',
-      () async {
+  test('captures anthropic message id from message_start', () async {
     const adapter = AnthropicStreamEventAdapter();
-    final chunks = await adapter
-        .adapt(
+    final previewEvents = await adapter
+        .adaptPreview(
           Stream<anthropic.MessageStreamEvent>.fromIterable([
             anthropic.MessageStartEvent(
               message: anthropic.Message(
@@ -123,11 +127,10 @@ void main() {
         )
         .toList();
 
-    final keepaliveChunk = chunks.firstWhere(
-      (c) =>
-          c.type == StreamingPlannerChunkType.keepalive &&
-          c.providerMetadata?['message_id'] == 'msg_stream_1',
-    );
-    expect(keepaliveChunk.providerMetadata?['message_id'], 'msg_stream_1');
+    final messageStart = previewEvents.firstWhere(
+      (event) => event is StreamingMessageStartEvent,
+    ) as StreamingMessageStartEvent;
+    expect(messageStart.messageId, 'msg_stream_1');
+    expect(messageStart.providerMetadata?['message_id'], 'msg_stream_1');
   });
 }

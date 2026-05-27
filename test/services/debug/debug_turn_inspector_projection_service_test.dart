@@ -1,12 +1,13 @@
 import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
-import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
+import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
+import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/models/trace/chat_trace_event.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
@@ -83,18 +84,26 @@ void main() {
       chatEventRepository: eventRepository,
       sessionContextService: sessionContextService,
       traceRecorder: traceRecorder,
-      runtimeStreamEntries: [
-        RuntimeStreamEntry(
-          turnId: 'planner_runtime',
-          entryId: 'planner_runtime-tool-call-1',
-          kind: RuntimeStreamEntryKind.toolCallArguments,
-          providerCallId: 'call_artifact_1',
-          toolName: 'create_artifact',
-          text: '{"source":"<div>hello</div>"}',
-          createdAt: DateTime(2026, 5, 5, 18, 0, 0),
-          updatedAt: DateTime(2026, 5, 5, 18, 0, 1),
-        ),
-      ],
+      runtimePreviewState: RuntimeStreamingPreviewState(
+        messages: [
+          RuntimeStreamingPreviewMessage(
+            messageId: 'message_1',
+            createdAt: DateTime(2026, 5, 5, 18, 0, 0),
+            updatedAt: DateTime(2026, 5, 5, 18, 0, 1),
+            blocks: [
+              RuntimeStreamingPreviewBlock(
+                contentBlockId: 'message_1:tool:0',
+                blockType: StreamingContentBlockType.toolUse,
+                toolUseId: 'call_artifact_1',
+                toolName: 'create_artifact',
+                text: '{"source":"<div>hello</div>"}',
+                createdAt: DateTime(2026, 5, 5, 18, 0, 0),
+                updatedAt: DateTime(2026, 5, 5, 18, 0, 1),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
 
     final projection = await service.build(groupId: groupId);
@@ -102,7 +111,7 @@ void main() {
     expect(projection.turnOptions, isNotEmpty);
     expect(projection.selectedTurnId, turnId);
     expect(projection.activeTurnOverview, isNotNull);
-    expect(projection.activeTurnOverview!.runtimeStreamEntryCount, 1);
+    expect(projection.activeTurnOverview!.runtimePreviewMessageCount, 1);
     expect(projection.timelineEntries, isNotEmpty);
     expect(
       projection.timelineEntries.any((entry) => entry.kind == 'userMessage'),
@@ -118,7 +127,7 @@ void main() {
           'Skills',
           'Transcript Events',
           'Provider State',
-          'Runtime Stream Entries',
+          'Runtime Preview State',
         ],
       ),
     );

@@ -12,6 +12,7 @@ import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
+import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/skill/skill_descriptor.dart';
 import 'package:ai_chat/models/skill/skill_catalog_entry.dart';
@@ -108,6 +109,84 @@ void main() {
           .lastWhere((message) => message.role == MessageRole.assistant);
       expect(persistedAssistant.text, '你好，世界');
       expect(persistedAssistant.status, MessageStatus.completed);
+    });
+
+    test('final answer clears runtime preview before completed message settles',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.finalAnswer,
+            role: MessageRole.assistant,
+            content: '最终回答',
+            payloadJson: const {'previewMessageId': 'preview_1'},
+          ),
+        ],
+      );
+      final container = await _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId = await databaseHelper.insertGroup(
+        ChatGroup(
+          title: 'group',
+          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        ),
+      );
+      container.read(currentGroupProvider.notifier).state = ChatGroup(
+            id: groupId,
+            title: 'group',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          );
+
+      final previewNotifier =
+          container.read(runtimeStreamingPreviewStateProvider.notifier);
+      previewNotifier.publish(
+        const StreamingMessageStartEvent(messageId: 'preview_1'),
+      );
+      previewNotifier.publish(
+        const StreamingContentBlockStartEvent(
+          messageId: 'preview_1',
+          contentBlockId: 'preview_1:text',
+          blockType: StreamingContentBlockType.text,
+        ),
+      );
+      previewNotifier.publish(
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'preview_1',
+          contentBlockId: 'preview_1:text',
+          deltaType: StreamingContentDeltaType.text,
+          value: '临时草稿',
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 140));
+
+      expect(
+        container.read(runtimeStreamingPreviewStateProvider).messages,
+        hasLength(1),
+      );
+
+      await container.read(chatSendCoordinatorProvider).sendMessage(
+            '直接给我结果',
+            scheduleAutoSummary: () {},
+            cancelActiveStream:
+                container.read(chatControllerProvider).cancelStreamSubscription,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(container.read(runtimeStreamingPreviewStateProvider).isEmpty, isTrue);
+      final assistant = container
+          .read(messagesProvider)
+          .lastWhere((message) => message.role == MessageRole.assistant);
+      expect(assistant.text, '最终回答');
+      expect(assistant.status, MessageStatus.completed);
     });
 
     test('explicit slash skill injects reminder before real user message in transcript', () async {

@@ -1,10 +1,10 @@
 import 'package:ai_chat/models/llm/runtime/responses_stream_event_adapter.dart';
-import 'package:ai_chat/models/llm/streaming_planner_chunk.dart';
+import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openai_dart/openai_dart.dart' as oai;
 
 void main() {
-  test('adapts responses sdk events into planner chunks', () async {
+  test('adapts responses sdk events into preview events', () async {
     const adapter = ResponsesStreamEventAdapter();
     final events = Stream<oai.ResponseStreamEvent>.fromIterable([
       oai.OutputTextDeltaEvent(
@@ -33,14 +33,23 @@ void main() {
       }),
     ]);
 
-    final chunks = await adapter.adapt(events).toList();
+    final previewEvents = await adapter.adaptPreview(events).toList();
 
-    expect(chunks[0].type, StreamingPlannerChunkType.contentDelta);
-    expect(chunks[0].content, 'Hello');
-    expect(chunks[1].type, StreamingPlannerChunkType.toolCallStarted);
-    expect(chunks[1].providerCallId, 'call_1');
-    expect(chunks[2].type, StreamingPlannerChunkType.toolCallArgumentsDelta);
-    expect(chunks[2].argumentsTextDelta, '{"query":"flutter"}');
-    expect(chunks.last.type, StreamingPlannerChunkType.streamCompleted);
+    expect(previewEvents.first, isA<StreamingMessageStartEvent>());
+
+    final textDelta = previewEvents.whereType<StreamingContentBlockDeltaEvent>()
+        .firstWhere((event) => event.deltaType == StreamingContentDeltaType.text);
+    expect(textDelta.value, 'Hello');
+
+    final toolStart = previewEvents.whereType<StreamingContentBlockStartEvent>()
+        .firstWhere((event) => event.blockType == StreamingContentBlockType.toolUse);
+    expect(toolStart.toolUseId, 'call_1');
+    expect(toolStart.toolName, 'web_search');
+
+    final toolDelta = previewEvents.whereType<StreamingContentBlockDeltaEvent>()
+        .firstWhere((event) => event.deltaType == StreamingContentDeltaType.inputJson);
+    expect(toolDelta.value, '{"query":"flutter"}');
+
+    expect(previewEvents.last, isA<StreamingMessageStopEvent>());
   });
 }

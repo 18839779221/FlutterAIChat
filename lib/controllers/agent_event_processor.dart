@@ -96,6 +96,13 @@ class AgentEventProcessor {
     if (_disposed) {
       return;
     }
+    await _ref.read(turnProjectionDispatcherProvider).dispatchTruthEvent(
+      event,
+      _handleTruthEvent,
+    );
+  }
+
+  Future<void> _handleTruthEvent(ChatEvent event) async {
     final dbHelper = _ref.read(databaseProvider);
     if (event.eventType != ChatEventType.assistantReasoningDelta) {
       _toolUseReasoningMessageId = null;
@@ -246,7 +253,7 @@ class AgentEventProcessor {
     await _assistantStreamBuffer?.cancel();
     _assistantStreamBuffer?.dispose();
     _assistantStreamBuffer = null;
-    _ref.read(runtimeStreamEntriesProvider.notifier).clear();
+    await _ref.read(turnProjectionDispatcherProvider).clearRuntimePreview();
   }
 
   // --- Private helpers ------------------------------------------------------
@@ -484,7 +491,6 @@ class AgentEventProcessor {
     _assistantStreamBuffer = null;
     _assistantDraftStage = null;
     _ref.read(runtimeAssistantDraftProvider.notifier).state = null;
-    _ref.read(runtimeStreamEntriesProvider.notifier).clear();
     _ref.read(chatSendStateProvider.notifier).update(
           isGenerating: false,
           phase: ChatSendPhase.idle,

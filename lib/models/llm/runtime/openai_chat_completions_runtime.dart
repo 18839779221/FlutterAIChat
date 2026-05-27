@@ -9,7 +9,8 @@ import '../api_protocol_resolver.dart';
 import '../llm_cache_usage.dart';
 import '../llm_config.dart';
 import '../llm_usage_extractor.dart';
-import '../streaming_planner_chunk.dart';
+import '../streaming_message_event.dart';
+import 'chat_completions_stream_event_adapter.dart';
 import 'protocol_execution_runtime.dart';
 import 'protocol_request_spec.dart';
 
@@ -23,6 +24,8 @@ class OpenAiChatCompletionsRuntime extends ProtocolExecutionRuntime {
 
   final http.Client? _httpClient;
   final http.Client Function()? _streamClientFactory;
+  static const ChatCompletionsStreamEventAdapter _streamEventAdapter =
+      ChatCompletionsStreamEventAdapter();
 
   @override
   Future<ProtocolExecutionResult> execute({
@@ -82,8 +85,8 @@ class OpenAiChatCompletionsRuntime extends ProtocolExecutionRuntime {
       final responseText =
           await streamedResponse.stream.bytesToString().timeout(idleTimeout);
       if (responseText.trim().isEmpty) {
-        return const ProtocolStreamExecutionResult(
-          chunks: Stream.empty(),
+        return ProtocolStreamExecutionResult(
+          events: const Stream.empty(),
           nonStreamingFallbackJson: <String, dynamic>{},
         );
       }
@@ -92,7 +95,7 @@ class OpenAiChatCompletionsRuntime extends ProtocolExecutionRuntime {
           ? LlmUsageExtractor.extract(decoded)
           : null;
       return ProtocolStreamExecutionResult(
-        chunks: const Stream.empty(),
+        events: const Stream.empty(),
         nonStreamingFallbackJson:
             decoded is Map<String, dynamic> ? decoded : <String, dynamic>{},
         cacheUsage: fallbackUsage,
@@ -101,7 +104,7 @@ class OpenAiChatCompletionsRuntime extends ProtocolExecutionRuntime {
 
     LlmCacheUsage? collectedUsage;
     return ProtocolStreamExecutionResult(
-      chunks: _createAdaptedChunkStream(
+      events: _createAdaptedEventStream(
         streamedResponse: streamedResponse,
         onUsageExtracted: (usage) => collectedUsage = usage,
       ).timeout(idleTimeout),
@@ -109,10 +112,11 @@ class OpenAiChatCompletionsRuntime extends ProtocolExecutionRuntime {
     );
   }
 
-  Stream<StreamingPlannerChunk> _createAdaptedChunkStream({
+  Stream<StreamingMessageEvent> _createAdaptedEventStream({
     required http.StreamedResponse streamedResponse,
     void Function(LlmCacheUsage?)? onUsageExtracted,
   }) async* {
+    final normalizedChunks = <Map<String, dynamic>>[];
     await for (final line in streamedResponse.stream
         .transform(utf8.decoder)
         .transform(const LineSplitter())) {
@@ -140,18 +144,6 @@ class OpenAiChatCompletionsRuntime extends ProtocolExecutionRuntime {
             Logger.trace('OpenAiChatCompletionsRuntime', 'stream usage extracted: inputTokens=${extractedUsage.inputTokens}, '
                 'cachedInputTokens=${extractedUsage.cachedInputTokens}');
           }
-          // Emit usage as metadata in a keepalive chunk
-          yield StreamingPlannerChunk.keepalive(
-            providerMetadata: <String, dynamic>{
-              '_usage': <String, dynamic>{
-                if (extractedUsage?.inputTokens != null) 'inputTokens': extractedUsage!.inputTokens,
-                if (extractedUsage?.outputTokens != null) 'outputTokens': extractedUsage!.outputTokens,
-                if (extractedUsage?.cachedInputTokens != null) 'cachedInputTokens': extractedUsage!.cachedInputTokens,
-                if (extractedUsage?.cacheReadInputTokens != null) 'cacheReadInputTokens': extractedUsage!.cacheReadInputTokens,
-                if (extractedUsage?.cacheWriteInputTokens != null) 'cacheWriteInputTokens': extractedUsage!.cacheWriteInputTokens,
-              },
-            },
-          );
         }
 
         final choices = data['choices'];
@@ -167,66 +159,24 @@ class OpenAiChatCompletionsRuntime extends ProtocolExecutionRuntime {
           continue;
         }
 
-        final content = _normalizeText(delta['content']);
-        if (content != null) {
-          yield StreamingPlannerChunk.contentDelta(
-            content,
-            providerMetadata: _providerStateFromChatCompletions(data),
-          );
-        }
-        final reasoning = _normalizeText(
-          delta['reasoning_content'] ?? delta['reasoning'] ?? delta['thinking'],
-        );
-        if (reasoning != null) {
-          yield StreamingPlannerChunk.reasoningDelta(
-            reasoning,
-            providerMetadata: _providerStateFromChatCompletions(data),
-          );
-        }
-
-        final toolCalls = delta['tool_calls'];
-        if (toolCalls is! List) {
-          continue;
-        }
-        for (var toolCallPosition = 0;
-            toolCallPosition < toolCalls.length;
-            toolCallPosition += 1) {
-          final toolCall = toolCalls[toolCallPosition];
-          if (toolCall is! Map) {
-            continue;
-          }
-          final function = toolCall['function'];
-          final toolCallIndex = _normalizeInt(toolCall['index']);
-          final providerCallId = _normalizeText(toolCall['id']);
-          String? toolName;
-          String? argumentsDelta;
-          if (function is Map) {
-            toolName = _normalizeText(function['name']);
-            argumentsDelta = _normalizeText(function['arguments']);
-          }
-          if (providerCallId != null || toolName != null) {
-            yield StreamingPlannerChunk.toolCallStarted(
-              toolCallIndex: toolCallIndex,
-              providerCallId: providerCallId,
-              toolName: toolName,
-              providerMetadata: _providerStateFromChatCompletions(data),
-            );
-          }
-          if (argumentsDelta != null) {
-            yield StreamingPlannerChunk.toolCallArgumentsDelta(
-              toolCallIndex: toolCallIndex,
-              providerCallId: providerCallId,
-              toolName: toolName,
-              argumentsTextDelta: argumentsDelta,
-              providerMetadata: _providerStateFromChatCompletions(data),
-            );
-          }
-        }
+        normalizedChunks.add(data);
       } catch (e) {
         Logger.e('OpenAiChatCompletionsRuntime', 'Chat Completions planner JSON解析错误: $e');
       }
     }
-    yield const StreamingPlannerChunk.streamCompleted();
+    yield* _streamEventAdapter.adapt(
+      Stream<Map<String, dynamic>>.fromIterable(normalizedChunks),
+    );
+    if (normalizedChunks.isNotEmpty) {
+      final lastChunk = normalizedChunks.last;
+      final messageId = _normalizeText(lastChunk['id']);
+      if (messageId != null) {
+        yield StreamingMessageStopEvent(
+          messageId: messageId,
+          providerMetadata: _providerStateFromChatCompletions(lastChunk),
+        );
+      }
+    }
   }
 
   Map<String, dynamic>? _providerStateFromChatCompletions(
@@ -244,16 +194,6 @@ class OpenAiChatCompletionsRuntime extends ProtocolExecutionRuntime {
       return null;
     }
     return value.isEmpty ? null : value;
-  }
-
-  int? _normalizeInt(Object? value) {
-    if (value is int) {
-      return value;
-    }
-    if (value is String) {
-      return int.tryParse(value.trim());
-    }
-    return null;
   }
 
   oai.OpenAIClient _buildClient(

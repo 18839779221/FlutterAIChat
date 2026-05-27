@@ -3,7 +3,8 @@ import 'dart:io';
 import 'package:ai_chat/models/artifact/artifact_type.dart';
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
-import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
+import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
+import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -323,7 +324,7 @@ void main() {
     });
 
     test(
-        'projects runtime create_artifact preview from generic runtime stream entries',
+        'projects runtime create_artifact preview from runtime preview state',
         () {
       final projection = service.build(
         groupId: 7,
@@ -335,23 +336,27 @@ void main() {
             timestamp: DateTime(2026, 4, 30, 10, 0, 0),
           ),
         ],
-        runtimeStreamEntries: [
-          RuntimeStreamEntry(
-            turnId: '7_30',
-            entryId: '7_30-tool-call-1',
-            kind: RuntimeStreamEntryKind.toolCallArguments,
-            providerCallId: 'call_artifact_1',
-            toolName: 'create_artifact',
-            createdAt: DateTime(2026, 4, 30, 10, 0, 1),
-            updatedAt: DateTime(2026, 4, 30, 10, 0, 1),
-            text:
-                '{"id":"food-rank","type":"html","title":"中国美食","source":"<div>渐进预览</div>"}',
-            payload: const {
-              'toolCallIndex': 0,
-              'isCompleted': false,
-            },
-          ),
-        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'message_1',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 1),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_1:tool:0',
+                  blockType: StreamingContentBlockType.toolUse,
+                  toolUseId: 'call_artifact_1',
+                  toolName: 'create_artifact',
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  text:
+                      '{"id":"food-rank","type":"html","title":"中国美食","source":"<div>渐进预览</div>"}',
+                ),
+              ],
+            ),
+          ],
+        ),
       );
 
       final runtimeArtifactBlocks = projection.assistantBlocks
@@ -360,8 +365,11 @@ void main() {
       expect(runtimeArtifactBlocks, hasLength(1));
       expect(runtimeArtifactBlocks.single.payload?['isRuntimePreview'], isTrue);
       expect(runtimeArtifactBlocks.single.text, contains('渐进预览'));
-      expect(projection.runtimeStreamEntries, hasLength(1));
-      expect(projection.runtimeStreamEntries.single.toolName, 'create_artifact');
+      expect(projection.runtimePreviewState.messages, hasLength(1));
+      expect(
+        projection.runtimePreviewState.messages.single.blocks.single.toolName,
+        'create_artifact',
+      );
     });
 
     test(

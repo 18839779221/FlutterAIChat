@@ -1,6 +1,5 @@
 import 'package:ai_chat/models/llm/streaming_decision_accumulator.dart';
-import 'package:ai_chat/models/llm/streaming_planner_chunk.dart';
-import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
+import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -8,18 +7,38 @@ void main() {
     test('aggregates terminal assistant text and reasoning', () {
       final accumulator = StreamingDecisionAccumulator();
 
-      accumulator.consume(
-        const StreamingPlannerChunk.reasoningDelta('先分析'),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.contentDelta('最终'),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.contentDelta('答案'),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.streamCompleted(),
-      );
+      _consumeAll(accumulator, [
+        const StreamingMessageStartEvent(messageId: 'm1'),
+        const StreamingContentBlockStartEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:thinking',
+          blockType: StreamingContentBlockType.thinking,
+        ),
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:thinking',
+          deltaType: StreamingContentDeltaType.thinking,
+          value: '先分析',
+        ),
+        const StreamingContentBlockStartEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:text',
+          blockType: StreamingContentBlockType.text,
+        ),
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:text',
+          deltaType: StreamingContentDeltaType.text,
+          value: '最终',
+        ),
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:text',
+          deltaType: StreamingContentDeltaType.text,
+          value: '答案',
+        ),
+        const StreamingMessageStopEvent(messageId: 'm1'),
+      ]);
 
       final decision = accumulator.buildDecision();
 
@@ -33,24 +52,45 @@ void main() {
     test('preserves whitespace-only deltas inside assistant markdown', () {
       final accumulator = StreamingDecisionAccumulator();
 
-      accumulator.consume(
-        const StreamingPlannerChunk.contentDelta('# 标题'),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.contentDelta('\n\n'),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.contentDelta('```dart'),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.contentDelta('\n'),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.contentDelta('ListView.builder();'),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.streamCompleted(),
-      );
+      _consumeAll(accumulator, [
+        const StreamingMessageStartEvent(messageId: 'm1'),
+        const StreamingContentBlockStartEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:text',
+          blockType: StreamingContentBlockType.text,
+        ),
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:text',
+          deltaType: StreamingContentDeltaType.text,
+          value: '# 标题',
+        ),
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:text',
+          deltaType: StreamingContentDeltaType.text,
+          value: '\n\n',
+        ),
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:text',
+          deltaType: StreamingContentDeltaType.text,
+          value: '```dart',
+        ),
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:text',
+          deltaType: StreamingContentDeltaType.text,
+          value: '\n',
+        ),
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:text',
+          deltaType: StreamingContentDeltaType.text,
+          value: 'ListView.builder();',
+        ),
+        const StreamingMessageStopEvent(messageId: 'm1'),
+      ]);
 
       final decision = accumulator.buildDecision();
 
@@ -64,37 +104,33 @@ void main() {
     test('aggregates completed tool call arguments by tool call index', () {
       final accumulator = StreamingDecisionAccumulator();
 
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallStarted(
-          toolCallIndex: 0,
-          providerCallId: 'call_1',
+      _consumeAll(accumulator, [
+        const StreamingMessageStartEvent(messageId: 'm1'),
+        const StreamingContentBlockStartEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
+          blockType: StreamingContentBlockType.toolUse,
+          toolUseId: 'call_1',
           toolName: 'write_file',
         ),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallArgumentsDelta(
-          toolCallIndex: 0,
-          providerCallId: 'call_1',
-          argumentsTextDelta: '{"path":"a.txt",',
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
+          deltaType: StreamingContentDeltaType.inputJson,
+          value: '{"path":"a.txt",',
         ),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallArgumentsDelta(
-          toolCallIndex: 0,
-          providerCallId: 'call_1',
-          argumentsTextDelta: '"content":"hello"}',
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
+          deltaType: StreamingContentDeltaType.inputJson,
+          value: '"content":"hello"}',
         ),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallCompleted(
-          toolCallIndex: 0,
-          providerCallId: 'call_1',
-          toolName: 'write_file',
+        const StreamingContentBlockStopEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
         ),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.streamCompleted(),
-      );
+        const StreamingMessageStopEvent(messageId: 'm1'),
+      ]);
 
       final decision = accumulator.buildDecision();
 
@@ -102,69 +138,66 @@ void main() {
       expect(decision!.toolCalls, hasLength(1));
       expect(decision.toolCalls.single.providerCallId, 'call_1');
       expect(decision.toolCalls.single.toolName, 'write_file');
-      expect(
-        decision.toolCalls.single.arguments,
-        {
-          'path': 'a.txt',
-          'content': 'hello',
-        },
-      );
+      expect(decision.toolCalls.single.arguments, {
+        'path': 'a.txt',
+        'content': 'hello',
+      });
       expect(decision.isTerminal, isFalse);
     });
 
-    test('exposes runtime snapshot for streaming tool call arguments', () {
+    test('exposes structured snapshot for streaming tool call arguments', () {
       final accumulator = StreamingDecisionAccumulator();
 
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallStarted(
-          toolCallIndex: 0,
-          providerCallId: 'call_artifact_1',
+      _consumeAll(accumulator, [
+        const StreamingMessageStartEvent(messageId: 'm1'),
+        const StreamingContentBlockStartEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
+          blockType: StreamingContentBlockType.toolUse,
+          toolUseId: 'call_artifact_1',
           toolName: 'create_artifact',
         ),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallArgumentsDelta(
-          toolCallIndex: 0,
-          providerCallId: 'call_artifact_1',
-          toolName: 'create_artifact',
-          argumentsTextDelta: '{"source":"<div>Hello',
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
+          deltaType: StreamingContentDeltaType.inputJson,
+          value: '{"source":"<div>Hello',
         ),
-      );
+      ]);
 
-      final snapshots = accumulator.runtimeSnapshots(
-        turnId: '7_runtime',
-        now: DateTime(2026, 5, 5, 10),
-      );
+      final snapshot = accumulator.currentSnapshot();
 
-      expect(snapshots, hasLength(1));
-      expect(snapshots.single.kind, RuntimeStreamEntryKind.toolCallArguments);
-      expect(snapshots.single.providerCallId, 'call_artifact_1');
-      expect(snapshots.single.payload?['toolCallIndex'], 0);
-      expect(snapshots.single.toolName, 'create_artifact');
-      expect(snapshots.single.text, contains('<div>Hello'));
+      expect(snapshot.blocks, hasLength(1));
+      expect(snapshot.blocks.single.type, StreamingContentBlockType.toolUse);
+      expect(snapshot.blocks.single.toolUseId, 'call_artifact_1');
+      expect(snapshot.blocks.single.toolName, 'create_artifact');
+      expect(snapshot.blocks.single.text, contains('<div>Hello'));
+      expect(snapshot.blocks.single.isStopped, isFalse);
     });
 
-    test('keeps anonymous argument deltas attached to latest unfinished indexed tool call',
+    test(
+        'keeps anonymous argument deltas attached to latest unfinished indexed tool call',
         () {
       final accumulator = StreamingDecisionAccumulator();
 
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallStarted(
-          toolCallIndex: 0,
-          providerCallId: 'call_artifact_2',
+      _consumeAll(accumulator, [
+        const StreamingMessageStartEvent(messageId: 'm1'),
+        const StreamingContentBlockStartEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
+          blockType: StreamingContentBlockType.toolUse,
+          toolUseId: 'call_artifact_2',
           toolName: 'create_artifact',
         ),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallArgumentsDelta(
-          toolCallIndex: 0,
-          providerCallId: 'call_artifact_2',
-          argumentsTextDelta: '{"id":"demo","type":"html","title":"Demo","source":"<div>Hello</div>"}',
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
+          deltaType: StreamingContentDeltaType.inputJson,
+          value:
+              '{"id":"demo","type":"html","title":"Demo","source":"<div>Hello</div>"}',
         ),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.streamCompleted(),
-      );
+        const StreamingMessageStopEvent(messageId: 'm1'),
+      ]);
 
       final decision = accumulator.buildDecision();
 
@@ -182,34 +215,38 @@ void main() {
         () {
       final accumulator = StreamingDecisionAccumulator();
 
-      accumulator.consume(
-        const StreamingPlannerChunk.reasoningDelta('先整理页面结构'),
-      );
-
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallStarted(
-          toolCallIndex: 0,
-          providerCallId: 'call_invalid_1',
+      _consumeAll(accumulator, [
+        const StreamingMessageStartEvent(messageId: 'm1'),
+        const StreamingContentBlockStartEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:thinking',
+          blockType: StreamingContentBlockType.thinking,
+        ),
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:thinking',
+          deltaType: StreamingContentDeltaType.thinking,
+          value: '先整理页面结构',
+        ),
+        const StreamingContentBlockStartEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
+          blockType: StreamingContentBlockType.toolUse,
+          toolUseId: 'call_invalid_1',
           toolName: 'write_file',
         ),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallArgumentsDelta(
-          toolCallIndex: 0,
-          providerCallId: 'call_invalid_1',
-          argumentsTextDelta: '{"path":',
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
+          deltaType: StreamingContentDeltaType.inputJson,
+          value: '{"path":',
         ),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallCompleted(
-          toolCallIndex: 0,
-          providerCallId: 'call_invalid_1',
-          toolName: 'write_file',
+        const StreamingContentBlockStopEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
         ),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.streamCompleted(),
-      );
+        const StreamingMessageStopEvent(messageId: 'm1'),
+      ]);
 
       final decision = accumulator.buildDecision();
       expect(decision, isNotNull);
@@ -232,43 +269,45 @@ void main() {
         () {
       final accumulator = StreamingDecisionAccumulator();
 
-      accumulator.consume(
-        const StreamingPlannerChunk.reasoningDelta('先整理页面结构。'),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallStarted(
-          toolCallIndex: 0,
-          providerCallId: 'call_artifact_bad_1',
+      _consumeAll(accumulator, [
+        const StreamingMessageStartEvent(messageId: 'm1'),
+        const StreamingContentBlockStartEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:thinking',
+          blockType: StreamingContentBlockType.thinking,
+        ),
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:thinking',
+          deltaType: StreamingContentDeltaType.thinking,
+          value: '先整理页面结构。',
+        ),
+        const StreamingContentBlockStartEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
+          blockType: StreamingContentBlockType.toolUse,
+          toolUseId: 'call_artifact_bad_1',
           toolName: 'create_artifact',
         ),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallArgumentsDelta(
-          toolCallIndex: 0,
-          providerCallId: 'call_artifact_bad_1',
-          toolName: 'create_artifact',
-          argumentsTextDelta:
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
+          deltaType: StreamingContentDeltaType.inputJson,
+          value:
               '{"id":"china-food-ranking","type":"html","title":"中国美食排行","source":"<div>ok</div>"}',
         ),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallArgumentsDelta(
-          toolCallIndex: 0,
-          providerCallId: 'call_artifact_bad_1',
-          toolName: 'create_artifact',
-          argumentsTextDelta: '\n<unexpected-tail>',
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
+          deltaType: StreamingContentDeltaType.inputJson,
+          value: '\n<unexpected-tail>',
         ),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallCompleted(
-          toolCallIndex: 0,
-          providerCallId: 'call_artifact_bad_1',
-          toolName: 'create_artifact',
+        const StreamingContentBlockStopEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
         ),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.streamCompleted(),
-      );
+        const StreamingMessageStopEvent(messageId: 'm1'),
+      ]);
 
       final decision = accumulator.buildDecision();
 
@@ -289,23 +328,23 @@ void main() {
     test('finalizes chat-completions style tool call on stream completion', () {
       final accumulator = StreamingDecisionAccumulator();
 
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallStarted(
-          toolCallIndex: 0,
-          providerCallId: 'call_search_1',
+      _consumeAll(accumulator, [
+        const StreamingMessageStartEvent(messageId: 'm1'),
+        const StreamingContentBlockStartEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
+          blockType: StreamingContentBlockType.toolUse,
+          toolUseId: 'call_search_1',
           toolName: 'search_chat_history',
         ),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallArgumentsDelta(
-          toolCallIndex: 0,
-          providerCallId: 'call_search_1',
-          argumentsTextDelta: '{"query":"数据库版本"}',
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
+          deltaType: StreamingContentDeltaType.inputJson,
+          value: '{"query":"数据库版本"}',
         ),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.streamCompleted(),
-      );
+        const StreamingMessageStopEvent(messageId: 'm1'),
+      ]);
 
       final decision = accumulator.buildDecision();
 
@@ -320,36 +359,49 @@ void main() {
     test('keeps assistant text and reasoning when tool call streams too', () {
       final accumulator = StreamingDecisionAccumulator();
 
-      accumulator.consume(
-        const StreamingPlannerChunk.reasoningDelta('先确认上下文。'),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.contentDelta('我先读取文件。'),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallStarted(
-          toolCallIndex: 0,
-          providerCallId: 'call_read_1',
+      _consumeAll(accumulator, [
+        const StreamingMessageStartEvent(messageId: 'm1'),
+        const StreamingContentBlockStartEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:thinking',
+          blockType: StreamingContentBlockType.thinking,
+        ),
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:thinking',
+          deltaType: StreamingContentDeltaType.thinking,
+          value: '先确认上下文。',
+        ),
+        const StreamingContentBlockStartEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:text',
+          blockType: StreamingContentBlockType.text,
+        ),
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:text',
+          deltaType: StreamingContentDeltaType.text,
+          value: '我先读取文件。',
+        ),
+        const StreamingContentBlockStartEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
+          blockType: StreamingContentBlockType.toolUse,
+          toolUseId: 'call_read_1',
           toolName: 'read_file',
         ),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallArgumentsDelta(
-          toolCallIndex: 0,
-          providerCallId: 'call_read_1',
-          argumentsTextDelta: '{"path":"README.md"}',
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
+          deltaType: StreamingContentDeltaType.inputJson,
+          value: '{"path":"README.md"}',
         ),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.toolCallCompleted(
-          toolCallIndex: 0,
-          providerCallId: 'call_read_1',
-          toolName: 'read_file',
+        const StreamingContentBlockStopEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:tool:0',
         ),
-      );
-      accumulator.consume(
-        const StreamingPlannerChunk.streamCompleted(),
-      );
+        const StreamingMessageStopEvent(messageId: 'm1'),
+      ]);
 
       final decision = accumulator.buildDecision();
 
@@ -368,10 +420,19 @@ void main() {
       final accumulator = StreamingDecisionAccumulator();
 
       accumulator.consume(
-        const StreamingPlannerChunk.streamCompleted(),
+        const StreamingMessageStopEvent(messageId: 'm1'),
       );
 
       expect(accumulator.buildDecision(), isNull);
     });
   });
+}
+
+void _consumeAll(
+  StreamingDecisionAccumulator accumulator,
+  List<StreamingMessageEvent> events,
+) {
+  for (final event in events) {
+    accumulator.consume(event);
+  }
 }

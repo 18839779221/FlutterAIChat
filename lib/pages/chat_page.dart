@@ -231,7 +231,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       sessionContextService: ref.read(sessionContextServiceProvider),
       traceRecorder: ref.read(traceRecorderProvider),
       runtimeAssistantDraft: ref.read(runtimeAssistantDraftProvider),
-      runtimeStreamEntries: ref.read(runtimeStreamEntriesProvider),
+      runtimePreviewState: ref.read(runtimeStreamingPreviewStateProvider),
       toolPresentationEvents:
           ref.read(chatTimelineProjectionProvider).toolPresentationEvents,
       sendPhase: ref.read(chatSendStateProvider).phase,

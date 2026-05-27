@@ -1,9 +1,8 @@
 import 'dart:async';
 
-import '../../chat/runtime_stream_entry.dart';
 import '../llm_cache_usage.dart';
 import '../llm_config.dart';
-import '../streaming_planner_chunk.dart';
+import '../streaming_message_event.dart';
 import 'protocol_request_spec.dart';
 
 /// Unified execution interface for provider protocol runtimes.
@@ -41,21 +40,17 @@ class ProtocolExecutionResult {
 }
 
 class ProtocolStreamExecutionResult {
-  const ProtocolStreamExecutionResult({
-    required this.chunks,
+  ProtocolStreamExecutionResult({
+    required this.events,
     this.nonStreamingFallbackJson,
-    this.runtimeSnapshots = const <RuntimeStreamEntry>[],
     this.cacheUsage,
   });
 
-  /// Streaming planner chunks consumed by `StreamingDecisionAccumulator`.
-  final Stream<StreamingPlannerChunk> chunks;
+  /// Unified preview events consumed by accumulator and preview projector.
+  final Stream<StreamingMessageEvent> events;
 
   /// Some providers may answer a streaming request with a single JSON body.
   final Map<String, dynamic>? nonStreamingFallbackJson;
-
-  /// Optional runtime-only snapshots surfaced while streaming.
-  final List<RuntimeStreamEntry> runtimeSnapshots;
 
   /// Optional normalized usage extracted from streaming response.
   final LlmCacheUsage? cacheUsage;

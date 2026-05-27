@@ -2,13 +2,13 @@ import 'package:ai_chat/models/agent/agent_loop_limits.dart';
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/agent/model_tool_call.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
-import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
+import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/models/tool/tool_argument_property.dart';
 import 'package:ai_chat/models/tool/tool_argument_schema.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
@@ -2127,7 +2127,7 @@ void main() {
     });
     test('forwards runtime planner stream entries without changing decision flow',
         () async {
-      final emittedEntries = <List<RuntimeStreamEntry>>[];
+      final emittedEvents = <StreamingMessageEvent>[];
       final llm = _RuntimeStreamingDecisionLLM(
         decision: const ModelTurnDecision(
           toolCalls: [],
@@ -2135,23 +2135,20 @@ void main() {
           providerState: {},
           isTerminal: true,
         ),
-        runtimeEntries: [
-          RuntimeStreamEntry(
-            turnId: 'runtime_turn',
-            entryId: 'runtime_turn-tool-1',
-            kind: RuntimeStreamEntryKind.toolCallArguments,
-            providerCallId: 'call_1',
+        runtimeEvents: const [
+          StreamingContentBlockStartEvent(
+            messageId: 'runtime_turn',
+            contentBlockId: 'runtime_turn:tool:0',
+            blockType: StreamingContentBlockType.toolUse,
+            toolUseId: 'call_1',
             toolName: 'create_artifact',
-            createdAt: DateTime(2026, 5, 5, 10),
-            updatedAt: DateTime(2026, 5, 5, 10),
-            text: '{"source":"<div>',
           ),
         ],
       );
       final service = AgentPlannerService(
         llm: llm,
-        onPlannerRuntimeStream: (entries) {
-          emittedEntries.add(List<RuntimeStreamEntry>.from(entries));
+        onPlannerRuntimeStream: (event) {
+          emittedEvents.add(event);
         },
       );
 
@@ -2167,8 +2164,12 @@ void main() {
       );
 
       expect(decision?.assistantMessage, 'ok');
-      expect(emittedEntries, hasLength(1));
-      expect(emittedEntries.single.single.toolName, 'create_artifact');
+      expect(emittedEvents, hasLength(1));
+      expect(
+        emittedEvents.single,
+        isA<StreamingContentBlockStartEvent>()
+            .having((event) => event.messageId, 'messageId', 'runtime_turn'),
+      );
       expect(llm.listenerClearedAfterCall, isTrue);
     });
   });
@@ -2373,11 +2374,11 @@ class _RuntimeStreamingDecisionLLM
     implements BaseLLM, PlannerRuntimeStreamingCapable {
   _RuntimeStreamingDecisionLLM({
     required this.decision,
-    required this.runtimeEntries,
+    required this.runtimeEvents,
   });
 
   final ModelTurnDecision decision;
-  final List<RuntimeStreamEntry> runtimeEntries;
+  final List<StreamingMessageEvent> runtimeEvents;
   PlannerRuntimeStreamListener? _listener;
   bool listenerClearedAfterCall = false;
 
@@ -2396,7 +2397,9 @@ class _RuntimeStreamingDecisionLLM
     required List<PlannerToolOption> availableTools,
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
-    _listener?.call(runtimeEntries);
+    for (final event in runtimeEvents) {
+      _listener?.call(event);
+    }
     return decision;
   }
 

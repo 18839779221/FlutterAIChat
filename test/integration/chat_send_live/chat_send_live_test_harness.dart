@@ -162,6 +162,8 @@ class ChatSendLiveTestHarness {
             ? const HeadlessLiveProviderProfile(
                 askUserInteraction: StructuredCheckpointExpectation.required,
                 toolConfirmation: StructuredCheckpointExpectation.required,
+                multiToolContinuation:
+                    StructuredCheckpointExpectation.required,
               )
             : resolveHeadlessLiveProviderProfile(selectedProvider.id);
 

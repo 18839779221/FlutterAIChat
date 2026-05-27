@@ -27,6 +27,7 @@ import 'package:ai_chat/models/llm/runtime/protocol_execution_runtime.dart';
 import 'package:ai_chat/models/llm/runtime/protocol_request_spec.dart';
 import 'package:ai_chat/models/llm/runtime/protocol_runtime_registry.dart';
 import 'package:ai_chat/models/llm/streaming_decision_accumulator.dart';
+import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
 import 'package:ai_chat/services/chat_service.dart';
@@ -190,8 +191,8 @@ void main() {
 
     test('planner fallback json is parsed through adapter contract', () async {
       final runtime = _CountingRuntime(
-        streamResult: const ProtocolStreamExecutionResult(
-          chunks: Stream.empty(),
+        streamResult: ProtocolStreamExecutionResult(
+          events: const Stream.empty(),
           nonStreamingFallbackJson: {
             'choices': [
               {
@@ -1937,8 +1938,8 @@ void main() {
     test('anthropic planner streaming uses runtime registry dispatch',
         () async {
       final runtime = _CountingRuntime(
-        streamResult: const ProtocolStreamExecutionResult(
-          chunks: Stream.empty(),
+        streamResult: ProtocolStreamExecutionResult(
+          events: const Stream.empty(),
           nonStreamingFallbackJson: {
             'id': 'msg_123',
             'content': [
@@ -2394,10 +2395,11 @@ class _RecordingHttpClient extends http.BaseClient {
 class _CountingRuntime extends ProtocolExecutionRuntime {
   _CountingRuntime({
     this.executeResult = const ProtocolExecutionResult(rawResponseJson: {}),
-    this.streamResult = const ProtocolStreamExecutionResult(
-      chunks: Stream.empty(),
-    ),
-  });
+    ProtocolStreamExecutionResult? streamResult,
+  }) : streamResult = streamResult ?? ProtocolStreamExecutionResult(
+          events: const Stream.empty(),
+        );
+  
 
   int executeCalls = 0;
   int streamExecuteCalls = 0;
@@ -2544,4 +2546,27 @@ class _NonStreamingResponsesAdapter extends SdkResponsesAdapter {
         supportsPlannerStreaming: false,
         supportsParallelToolCalls: true,
       );
+
+  @override
+  ProtocolRequestSpec buildPlannerRequestSpecFromCarriers({
+    required List<PlannerContextCarrier> carriers,
+    required ChatConfig config,
+    required String modelName,
+    required List<PlannerToolOption> availableTools,
+    required bool parallelToolCalls,
+    required LLMConfig runtimeConfig,
+    LlmRequestOptions requestOptions = const LlmRequestOptions(),
+  }) {
+    return JsonProtocolRequestSpec(
+      payload: buildPlannerPayloadFromCarriers(
+        carriers: carriers,
+        config: config,
+        modelName: modelName,
+        availableTools: availableTools,
+        parallelToolCalls: parallelToolCalls,
+        requestOptions: requestOptions,
+      ),
+      headers: buildHeaders(runtimeConfig),
+    );
+  }
 }

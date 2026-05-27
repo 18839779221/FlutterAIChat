@@ -1,6 +1,6 @@
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
-import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
+import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
@@ -14,7 +14,7 @@ class ChatTimelineProjection {
     this.assistantBlocks = const <AssistantTurnBlock>[],
     this.toolPresentationEvents = const <ToolPresentationEvent>[],
     this.runtimeAssistantDraft,
-    this.runtimeStreamEntries = const <RuntimeStreamEntry>[],
+    this.runtimePreviewState = const RuntimeStreamingPreviewState(),
   });
 
   /// Latest unresolved ask-user-question prompt, when present.
@@ -32,8 +32,8 @@ class ChatTimelineProjection {
   /// Runtime-only stage draft used to render active streaming/reasoning UI.
   final RuntimeAssistantDraft? runtimeAssistantDraft;
 
-  /// Runtime-only generic stream entries for transient streaming UI.
-  final List<RuntimeStreamEntry> runtimeStreamEntries;
+  /// Runtime-only structured preview state for transient streaming UI.
+  final RuntimeStreamingPreviewState runtimePreviewState;
 }
 
 /// Stable pending-confirmation projection exposed outside provider-specific

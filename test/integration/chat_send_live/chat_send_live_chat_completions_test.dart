@@ -43,6 +43,18 @@ void main() {
         state,
         expectedStatus: ChatTurnStatus.completed,
       );
+      final shouldValidateMultiTool = expectOptionalMultiToolContinuation(
+        state,
+        toolName: 'web_search',
+        minimumDistinctCallCount: 2,
+        supportsStructuredContinuation:
+            harness.providerProfile.multiToolContinuation ==
+            StructuredCheckpointExpectation.required,
+      );
+      if (!shouldValidateMultiTool) {
+        await harness.dispose();
+        return;
+      }
       expectToolCallContinuationCoverage(
         state,
         toolName: 'web_search',

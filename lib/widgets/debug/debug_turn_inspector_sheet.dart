@@ -140,7 +140,7 @@ class _DebugTurnInspectorSheetState extends ConsumerState<DebugTurnInspectorShee
       sessionContextService: ref.read(sessionContextServiceProvider),
       traceRecorder: ref.read(traceRecorderProvider),
       runtimeAssistantDraft: ref.read(runtimeAssistantDraftProvider),
-      runtimeStreamEntries: ref.read(runtimeStreamEntriesProvider),
+      runtimePreviewState: ref.read(runtimeStreamingPreviewStateProvider),
       toolPresentationEvents:
           ref.read(chatTimelineProjectionProvider).toolPresentationEvents,
       sendPhase: ref.read(chatSendStateProvider).phase,
@@ -237,8 +237,8 @@ class _DebugTurnInspectorSheetState extends ConsumerState<DebugTurnInspectorShee
                         'diagnosticCode': overview?.diagnosticCode,
                         'errorMessage': overview?.errorMessage,
                         'hasRuntimeDraft': overview?.hasRuntimeDraft,
-                        'runtimeStreamEntryCount':
-                            overview?.runtimeStreamEntryCount,
+                        'runtimePreviewMessageCount':
+                            overview?.runtimePreviewMessageCount,
                         'hasPendingConfirmation':
                             overview?.hasPendingConfirmation,
                         'hasActiveQuestion': overview?.hasActiveQuestion,

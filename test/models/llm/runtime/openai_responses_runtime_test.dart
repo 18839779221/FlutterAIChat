@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:ai_chat/models/llm/llm_config.dart';
 import 'package:ai_chat/models/llm/runtime/openai_responses_runtime.dart';
 import 'package:ai_chat/models/llm/runtime/protocol_request_spec.dart';
-import 'package:ai_chat/models/llm/streaming_planner_chunk.dart';
+import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:openai_dart/openai_dart.dart' as oai;
@@ -44,7 +44,7 @@ void main() {
     expect(result.rawResponseJson['id'], 'resp_1');
   });
 
-  test('streams responses planner chunks through typed event adapter', () async {
+  test('streams responses preview events through typed event adapter', () async {
     final capturedRequests = <oai.CreateResponseRequest>[];
     final runtime = OpenAiResponsesRuntime(
       httpClient: _FakeHttpClient(
@@ -103,37 +103,37 @@ void main() {
       overallTimeout: const Duration(seconds: 3),
     );
 
-    final chunks = await result.chunks.toList();
+    final events = await result.events.toList();
 
     expect(capturedRequests, hasLength(1));
     expect(capturedRequests.single.toJson()['stream'], isNot(true));
     expect(
-      chunks.any(
-        (chunk) =>
-            chunk.type == StreamingPlannerChunkType.toolCallStarted &&
-            chunk.toolCallIndex == 0 &&
-            chunk.providerCallId == 'call_1' &&
-            chunk.toolName == 'web_search',
+      events.any(
+        (event) =>
+            event is StreamingContentBlockStartEvent &&
+            event.toolUseId == 'call_1' &&
+            event.toolName == 'web_search',
       ),
       isTrue,
     );
     expect(
-      chunks.any(
-        (chunk) =>
-            chunk.type == StreamingPlannerChunkType.toolCallArgumentsDelta &&
-            chunk.argumentsTextDelta == '{"query":"flutter"}',
+      events.any(
+        (event) =>
+            event is StreamingContentBlockDeltaEvent &&
+            event.deltaType == StreamingContentDeltaType.inputJson &&
+            event.value == '{"query":"flutter"}',
       ),
       isTrue,
     );
     expect(
-      chunks.any(
-        (chunk) =>
-            chunk.type == StreamingPlannerChunkType.toolCallCompleted &&
-            chunk.providerCallId == 'call_1',
+      events.any(
+        (event) =>
+            event is StreamingContentBlockStopEvent &&
+            event.contentBlockId == 'response_stream:item:call_1',
       ),
       isTrue,
     );
-    expect(chunks.last.type, StreamingPlannerChunkType.streamCompleted);
+    expect(events.last, isA<StreamingMessageStopEvent>());
   });
 
   test('falls back to non-stream json when responses stream returns json body',
@@ -174,9 +174,53 @@ void main() {
       overallTimeout: const Duration(seconds: 3),
     );
 
-    expect(await result.chunks.toList(), isEmpty);
+    expect(await result.events.toList(), isEmpty);
     expect(streamExecutorCalled, isFalse);
     expect(result.nonStreamingFallbackJson?['id'], 'resp_fallback');
+    expect(result.nonStreamingFallbackJson?['_http_status'], 200);
+  });
+
+  test('preserves http error metadata when responses stream returns json error',
+      () async {
+    final runtime = OpenAiResponsesRuntime(
+      httpClient: _FakeHttpClient(
+        response: http.Response(
+          jsonEncode({
+            'error': {
+              'message': 'Invalid token',
+              'type': 'new_api_error',
+            },
+          }),
+          401,
+          headers: {'content-type': 'application/json'},
+          reasonPhrase: 'Unauthorized',
+        ),
+      ),
+    );
+
+    final result = await runtime.streamExecute(
+      requestSpec: ResponsesRequestSpec(
+        request: oai.CreateResponseRequest(
+          model: 'gpt-5.4',
+          input: const oai.ResponseInput.text('fallback'),
+        ),
+      ),
+      runtimeConfig: const LLMConfig(
+        apiKey: 'k',
+        apiUrl: 'https://responses.example/v1',
+        model: 'gpt-5.4',
+      ),
+      idleTimeout: const Duration(seconds: 1),
+      overallTimeout: const Duration(seconds: 3),
+    );
+
+    expect(await result.events.toList(), isEmpty);
+    expect(result.nonStreamingFallbackJson?['_http_status'], 401);
+    expect(result.nonStreamingFallbackJson?['_http_reason'], 'Unauthorized');
+    expect(
+      (result.nonStreamingFallbackJson?['error'] as Map<String, dynamic>)['message'],
+      'Invalid token',
+    );
   });
 }
 

@@ -383,7 +383,7 @@ DebugTurnInspectorProjection _buildProjection({
       diagnosticCode: null,
       errorMessage: null,
       hasRuntimeDraft: false,
-      runtimeStreamEntryCount: 0,
+      runtimePreviewMessageCount: 0,
       hasPendingConfirmation: false,
       hasActiveQuestion: false,
       startedAt: DateTime(2026, 5, 5, 12, 0),

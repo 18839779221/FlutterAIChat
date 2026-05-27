@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:ai_chat/models/llm/llm_config.dart';
 import 'package:ai_chat/models/llm/runtime/anthropic_messages_runtime.dart';
 import 'package:ai_chat/models/llm/runtime/protocol_request_spec.dart';
-import 'package:ai_chat/models/llm/streaming_planner_chunk.dart';
+import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:anthropic_sdk_dart/anthropic_sdk_dart.dart' as anthropic;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -34,13 +34,12 @@ void main() {
     );
 
     final result = await runtime.execute(
-      requestSpec: const JsonProtocolRequestSpec(
-        payload: {
-          'model': 'claude-sonnet-4-6',
-          'max_tokens': 256,
-          'messages': [],
-        },
-        headers: {'x-api-key': 'k'},
+      requestSpec: AnthropicMessagesRequestSpec(
+        request: anthropic.MessageCreateRequest(
+          model: 'claude-sonnet-4-6',
+          maxTokens: 256,
+          messages: const [],
+        ),
       ),
       runtimeConfig: const LLMConfig(
         apiKey: 'k',
@@ -80,13 +79,12 @@ void main() {
     );
 
     final result = await runtime.execute(
-      requestSpec: const JsonProtocolRequestSpec(
-        payload: {
-          'model': 'deepseek-chat',
-          'max_tokens': 128,
-          'messages': [],
-        },
-        headers: {'x-api-key': 'k'},
+      requestSpec: AnthropicMessagesRequestSpec(
+        request: anthropic.MessageCreateRequest(
+          model: 'deepseek-chat',
+          maxTokens: 128,
+          messages: const [],
+        ),
       ),
       runtimeConfig: const LLMConfig(
         apiKey: 'k',
@@ -131,13 +129,12 @@ void main() {
     );
 
     final result = await runtime.streamExecute(
-      requestSpec: const JsonProtocolRequestSpec(
-        payload: {
-          'model': 'claude-sonnet-4-6',
-          'max_tokens': 256,
-          'messages': [],
-        },
-        headers: {'x-api-key': 'k'},
+      requestSpec: AnthropicMessagesRequestSpec(
+        request: anthropic.MessageCreateRequest(
+          model: 'claude-sonnet-4-6',
+          maxTokens: 256,
+          messages: const [],
+        ),
       ),
       runtimeConfig: const LLMConfig(
         apiKey: 'k',
@@ -148,35 +145,25 @@ void main() {
       overallTimeout: const Duration(seconds: 3),
     );
 
-    final chunks = await result.chunks.toList();
+    final events = await result.events.toList();
     expect(capturedRequests, hasLength(1));
     expect(capturedRequests.single.toJson()['stream'], isNot(true));
 
     expect(
-      chunks.any(
-        (chunk) =>
-            chunk.type == StreamingPlannerChunkType.toolCallStarted &&
-            chunk.toolCallIndex == 0 &&
-            chunk.providerCallId == 'toolu_1' &&
-            chunk.toolName == 'write_file',
+      events.any(
+        (event) =>
+            event is StreamingContentBlockStartEvent &&
+            event.toolUseId == 'toolu_1' &&
+            event.toolName == 'write_file',
       ),
       isTrue,
     );
     expect(
-      chunks.any(
-        (chunk) =>
-            chunk.type == StreamingPlannerChunkType.toolCallArgumentsDelta &&
-            chunk.toolCallIndex == 0 &&
-            chunk.providerCallId == 'toolu_1' &&
-            chunk.argumentsTextDelta == '{"path":"a.txt"}',
-      ),
-      isTrue,
-    );
-    expect(
-      chunks.any(
-        (chunk) =>
-            chunk.type == StreamingPlannerChunkType.toolCallCompleted &&
-            chunk.toolCallIndex == 0,
+      events.any(
+        (event) =>
+            event is StreamingContentBlockDeltaEvent &&
+            event.deltaType == StreamingContentDeltaType.inputJson &&
+            event.value == '{"path":"a.txt"}',
       ),
       isTrue,
     );
@@ -206,13 +193,12 @@ void main() {
     );
 
     final result = await runtime.streamExecute(
-      requestSpec: const JsonProtocolRequestSpec(
-        payload: {
-          'model': 'claude-sonnet-4-6',
-          'max_tokens': 256,
-          'messages': [],
-        },
-        headers: {'x-api-key': 'k'},
+      requestSpec: AnthropicMessagesRequestSpec(
+        request: anthropic.MessageCreateRequest(
+          model: 'claude-sonnet-4-6',
+          maxTokens: 256,
+          messages: const [],
+        ),
       ),
       runtimeConfig: const LLMConfig(
         apiKey: 'k',
@@ -223,7 +209,7 @@ void main() {
       overallTimeout: const Duration(seconds: 3),
     );
 
-    expect(await result.chunks.toList(), isEmpty);
+    expect(await result.events.toList(), isEmpty);
     expect(streamExecutorCalled, isFalse);
     expect(result.nonStreamingFallbackJson?['id'], 'msg_fallback');
   });
@@ -256,13 +242,12 @@ void main() {
     );
 
     final result = await runtime.streamExecute(
-      requestSpec: const JsonProtocolRequestSpec(
-        payload: {
-          'model': 'claude-sonnet-4-6',
-          'max_tokens': 256,
-          'messages': [],
-        },
-        headers: {'x-api-key': 'k'},
+      requestSpec: AnthropicMessagesRequestSpec(
+        request: anthropic.MessageCreateRequest(
+          model: 'claude-sonnet-4-6',
+          maxTokens: 256,
+          messages: const [],
+        ),
       ),
       runtimeConfig: const LLMConfig(
         apiKey: 'k',
@@ -273,40 +258,40 @@ void main() {
       overallTimeout: const Duration(seconds: 3),
     );
 
-    final chunks = await result.chunks.toList();
+    final events = await result.events.toList();
 
     expect(
-      chunks.any(
-        (chunk) =>
-            chunk.type == StreamingPlannerChunkType.reasoningDelta &&
-            chunk.content == '先分析',
+      events.any(
+        (event) =>
+            event is StreamingContentBlockDeltaEvent &&
+            event.deltaType == StreamingContentDeltaType.thinking &&
+            event.value == '先分析',
       ),
       isTrue,
     );
     expect(
-      chunks.any(
-        (chunk) =>
-            chunk.type == StreamingPlannerChunkType.toolCallStarted &&
-            chunk.toolCallIndex == 0 &&
-            chunk.providerCallId == 'toolu_2' &&
-            chunk.toolName == 'write_file',
+      events.any(
+        (event) =>
+            event is StreamingContentBlockStartEvent &&
+            event.toolUseId == 'toolu_2' &&
+            event.toolName == 'write_file',
       ),
       isTrue,
     );
     expect(
-      chunks.any(
-        (chunk) =>
-            chunk.type == StreamingPlannerChunkType.toolCallArgumentsDelta &&
-            chunk.toolCallIndex == 0 &&
-            chunk.argumentsTextDelta == '{"path":"b.txt"}',
+      events.any(
+        (event) =>
+            event is StreamingContentBlockDeltaEvent &&
+            event.deltaType == StreamingContentDeltaType.inputJson &&
+            event.value == '{"path":"b.txt"}',
       ),
       isTrue,
     );
     expect(
-      chunks.any(
-        (chunk) =>
-            chunk.type == StreamingPlannerChunkType.toolCallCompleted &&
-            chunk.toolCallIndex == 0,
+      events.any(
+        (event) =>
+            event is StreamingContentBlockStopEvent &&
+            event.messageId == 'anthropic_message',
       ),
       isTrue,
     );
@@ -338,13 +323,12 @@ void main() {
     );
 
     final result = await runtime.streamExecute(
-      requestSpec: const JsonProtocolRequestSpec(
-        payload: {
-          'model': 'claude-sonnet-4-6',
-          'max_tokens': 256,
-          'messages': [],
-        },
-        headers: {'x-api-key': 'k'},
+      requestSpec: AnthropicMessagesRequestSpec(
+        request: anthropic.MessageCreateRequest(
+          model: 'claude-sonnet-4-6',
+          maxTokens: 256,
+          messages: const [],
+        ),
       ),
       runtimeConfig: const LLMConfig(
         apiKey: 'k',
@@ -355,12 +339,13 @@ void main() {
       overallTimeout: const Duration(seconds: 3),
     );
 
-    final chunks = await result.chunks.toList();
+    final events = await result.events.toList();
     expect(
-      chunks.any(
-        (chunk) =>
-            chunk.type == StreamingPlannerChunkType.reasoningDelta &&
-            chunk.content == '，再继续',
+      events.any(
+        (event) =>
+            event is StreamingContentBlockDeltaEvent &&
+            event.deltaType == StreamingContentDeltaType.thinking &&
+            event.value == '，再继续',
       ),
       isTrue,
     );

@@ -1,5 +1,5 @@
 import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
-import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
+import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
@@ -53,7 +53,7 @@ class DebugTurnOverview {
   final String? diagnosticCode;
   final String? errorMessage;
   final bool hasRuntimeDraft;
-  final int runtimeStreamEntryCount;
+  final int runtimePreviewMessageCount;
   final bool hasPendingConfirmation;
   final bool hasActiveQuestion;
   final DateTime startedAt;
@@ -73,7 +73,7 @@ class DebugTurnOverview {
     required this.diagnosticCode,
     required this.errorMessage,
     required this.hasRuntimeDraft,
-    required this.runtimeStreamEntryCount,
+    required this.runtimePreviewMessageCount,
     required this.hasPendingConfirmation,
     required this.hasActiveQuestion,
     required this.startedAt,
@@ -86,13 +86,13 @@ class DebugTurnOverview {
 class DebugTurnRuntimeSnapshot {
   final ChatMessage? activeAskUserQuestionMessage;
   final RuntimeAssistantDraft? runtimeAssistantDraft;
-  final List<RuntimeStreamEntry> runtimeStreamEntries;
+  final RuntimeStreamingPreviewState runtimePreviewState;
   final List<ToolPresentationEvent> toolPresentationEvents;
 
   const DebugTurnRuntimeSnapshot({
     required this.activeAskUserQuestionMessage,
     required this.runtimeAssistantDraft,
-    required this.runtimeStreamEntries,
+    required this.runtimePreviewState,
     required this.toolPresentationEvents,
   });
 }

@@ -12,7 +12,6 @@ import '../../repositories/app_settings_repository.dart';
 import '../../services/model_budget_registry.dart';
 import '../../utils/logger.dart';
 import '../agent/model_turn_decision.dart';
-import '../chat/runtime_stream_entry.dart';
 import '../agent/planner_tool_option.dart';
 import '../chat_message.dart';
 import '../chat_turn.dart';
@@ -35,7 +34,7 @@ import 'llm_request_options.dart';
 import 'llm_usage_extractor.dart';
 import 'planner_invariant_validator.dart';
 import 'streaming_decision_accumulator.dart';
-import 'streaming_planner_chunk.dart';
+import 'streaming_message_event.dart';
 import 'runtime/anthropic_messages_runtime.dart';
 import 'runtime/openai_chat_completions_runtime.dart';
 import 'runtime/openai_responses_runtime.dart';
@@ -515,7 +514,7 @@ class ConfigurableHttpLLM
     DateTime? firstChunkAt;
     LlmCacheUsage? streamUsage;
     await _consumePlannerStreamWithTimeouts(
-      stream: execution.chunks,
+      events: execution.events,
       accumulator: accumulator,
       onFirstChunk: () {
         firstChunkAt ??= DateTime.now();
@@ -524,9 +523,9 @@ class ConfigurableHttpLLM
           firstChunkMs: firstChunkAt!.difference(traceContext.startedAt).inMilliseconds,
         );
       },
-      onChunk: (chunk) {
-        // Extract usage from chunk metadata
-        final metadata = chunk.providerMetadata;
+      onEvent: (event) {
+        _plannerRuntimeStreamListener?.call(event);
+        final metadata = event.providerMetadata;
         if (metadata != null && metadata.containsKey('_usage')) {
           final usageMap = metadata['_usage'] as Map<String, dynamic>?;
           if (usageMap != null) {
@@ -572,17 +571,14 @@ class ConfigurableHttpLLM
     return _StreamingPlannerAttemptResult.completed(
       decisionWithRaw,
       debugSnapshot: debugSnapshot,
-      runtimeSnapshots: accumulator.runtimeSnapshots(
-        turnId: 'planner_runtime',
-      ),
     );
   }
 
   Future<void> _consumePlannerStreamWithTimeouts({
-    required Stream<StreamingPlannerChunk> stream,
+    required Stream<StreamingMessageEvent> events,
     required StreamingDecisionAccumulator accumulator,
     void Function()? onFirstChunk,
-    void Function(StreamingPlannerChunk)? onChunk,
+    void Function(StreamingMessageEvent)? onEvent,
   }) {
     final startedAt = DateTime.now();
     var chunkCount = 0;
@@ -625,7 +621,7 @@ class ConfigurableHttpLLM
 
     return (() async {
       var firstChunkEmitted = false;
-      await for (final chunk in stream.timeout(
+      await for (final event in events.timeout(
         _plannerStreamIdleTimeout,
         onTimeout: (sink) {
           Logger.temp(
@@ -665,14 +661,11 @@ class ConfigurableHttpLLM
         }
         chunkCount += 1;
         lastChunkAt = DateTime.now();
-        onChunk?.call(chunk);
-        accumulator.consume(chunk);
+        onEvent?.call(event);
+        accumulator.consume(event);
         if (chunkCount <= 3 || chunkCount % 20 == 0) {
           logChunkProgress('progress');
         }
-        _plannerRuntimeStreamListener?.call(
-          accumulator.runtimeSnapshots(turnId: 'planner_runtime'),
-        );
       }
       logChunkProgress('completed');
     }()).timeout(
@@ -1178,12 +1171,10 @@ class _StreamingPlannerAttemptResult {
   const _StreamingPlannerAttemptResult.completed(
     this.decision, {
     this.debugSnapshot,
-    this.runtimeSnapshots = const <RuntimeStreamEntry>[],
   });
 
   final ModelTurnDecision? decision;
   final Map<String, dynamic>? debugSnapshot;
-  final List<RuntimeStreamEntry> runtimeSnapshots;
 }
 
 class _RequestTraceContext {

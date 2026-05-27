@@ -266,6 +266,39 @@ bool expectOptionalStructuredToolConfirmationFlow(
   return false;
 }
 
+bool expectOptionalMultiToolContinuation(
+  ChatSendLiveStateSnapshot state, {
+  required String toolName,
+  required int minimumDistinctCallCount,
+  required bool supportsStructuredContinuation,
+}) {
+  final toolCallEvents = state.events.where((event) {
+    if (event.eventType != ChatEventType.assistantToolCall) {
+      return false;
+    }
+    final payload = event.payloadJson ?? const <String, dynamic>{};
+    return payload['toolName'] == toolName;
+  }).toList(growable: false);
+
+  if (supportsStructuredContinuation ||
+      toolCallEvents.length >= minimumDistinctCallCount) {
+    return true;
+  }
+
+  expectNoPlannerRequestFailure(state);
+  expectTurnState(
+    state,
+    expectedStatus: ChatTurnStatus.completed,
+  );
+  expectEventTypes(
+    state,
+    includes: const [
+      ChatEventType.finalAnswer,
+    ],
+  );
+  return false;
+}
+
 void expectToolBatchWithDistinctCalls(
   ChatSendLiveStateSnapshot state, {
   required String toolName,

@@ -65,7 +65,7 @@ run_live_test_for_provider() {
 
 if [[ $# -eq 0 ]]; then
   echo "Usage: bash scripts/run_live_llm_contract_tests.sh <provider-id> [provider-id ...]" >&2
-  echo "Example: bash scripts/run_live_llm_contract_tests.sh minimax-openai minimax-anthropic" >&2
+  echo "Example: bash scripts/run_live_llm_contract_tests.sh minimax-openai-chat-completions minimax-anthropic" >&2
   echo "Tip: set LIVE_LLM_LOCAL_DEFAULTS_PATH when this worktree does not contain config/local_defaults.json" >&2
   exit 1
 fi

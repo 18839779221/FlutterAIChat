@@ -203,9 +203,11 @@ void main() async {
               );
         },
         onPlannerRuntimeStream: (entries) {
-          container
-              .read(runtimeStreamEntriesProvider.notifier)
-              .publish(entries);
+          unawaited(
+            container
+                .read(turnProjectionDispatcherProvider)
+                .dispatchPreviewEvent(entries),
+          );
         },
       ),
       turnRepository: turnRepository,

@@ -1,4 +1,5 @@
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
@@ -160,6 +161,54 @@ void main() {
             .activeAskUserQuestionMessage
             ?.id,
         12,
+      );
+    });
+
+    test('timeline projection provider reads runtime preview state', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      container.read(messagesProvider.notifier).setMessages([
+        ChatMessage(
+          id: 30,
+          text: '做个 artifact',
+          role: MessageRole.user,
+        ),
+      ]);
+
+      final notifier =
+          container.read(runtimeStreamingPreviewStateProvider.notifier);
+      notifier.publish(
+        const StreamingMessageStartEvent(messageId: 'preview_1'),
+      );
+      notifier.publish(
+        const StreamingContentBlockStartEvent(
+          messageId: 'preview_1',
+          contentBlockId: 'preview_1:tool:0',
+          blockType: StreamingContentBlockType.toolUse,
+          toolUseId: 'call_1',
+          toolName: 'create_artifact',
+        ),
+      );
+      notifier.publish(
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'preview_1',
+          contentBlockId: 'preview_1:tool:0',
+          deltaType: StreamingContentDeltaType.inputJson,
+          value:
+              '{"id":"demo","type":"html","title":"Demo","source":"<div>Hello</div>"}',
+        ),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 140));
+
+      final projection = container.read(chatTimelineProjectionProvider);
+      expect(projection.runtimePreviewState.messages, hasLength(1));
+      expect(
+        projection.assistantBlocks.any(
+          (block) => block.payload?['isRuntimePreview'] == true,
+        ),
+        isTrue,
       );
     });
   });

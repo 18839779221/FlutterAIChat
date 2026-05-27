@@ -2,40 +2,46 @@ import 'dart:convert';
 
 import 'package:ai_chat/models/artifact/artifact_type.dart';
 import 'package:ai_chat/models/artifact/runtime_artifact_preview.dart';
-import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
+import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
+import 'package:ai_chat/models/llm/streaming_message_event.dart';
 
 /// Parses runtime-only artifact previews from raw streamed tool-call arguments.
 class RuntimeArtifactPreviewParser {
   const RuntimeArtifactPreviewParser();
 
-  RuntimeArtifactPreview? parse(RuntimeStreamEntry entry) {
-    if (entry.kind != RuntimeStreamEntryKind.toolCallArguments) {
+  RuntimeArtifactPreview? parse({
+    required RuntimeStreamingPreviewMessage message,
+    required RuntimeStreamingPreviewBlock block,
+    required String turnId,
+  }) {
+    if (block.blockType != StreamingContentBlockType.toolUse) {
       return null;
     }
-    if ((entry.toolName ?? '').trim() != 'create_artifact') {
+    if ((block.toolName ?? '').trim() != 'create_artifact') {
       return null;
     }
 
-    final source = _extractJsonStringValue(entry.text, 'source');
+    final source = _extractJsonStringValue(block.text, 'source');
     if (source == null || source.trim().isEmpty) {
       return null;
     }
-    final artifactId = _extractJsonStringValue(entry.text, 'id')?.trim();
-    final title = _extractJsonStringValue(entry.text, 'title')?.trim();
-    final typeName = _extractJsonStringValue(entry.text, 'type')?.trim();
+    final artifactId = _extractJsonStringValue(block.text, 'id')?.trim();
+    final title = _extractJsonStringValue(block.text, 'title')?.trim();
+    final typeName = _extractJsonStringValue(block.text, 'type')?.trim();
     final type = ArtifactTypeX.fromWireValue(typeName ?? 'html');
 
     return RuntimeArtifactPreview(
-      turnId: entry.turnId,
-      entryId: entry.entryId,
+      turnId: turnId,
+      entryId: block.contentBlockId,
       artifactId:
           artifactId == null || artifactId.isEmpty ? 'runtime-artifact' : artifactId,
       title: title == null || title.isEmpty ? '正在生成 Artifact' : title,
       type: type,
       source: source,
-      sourcePath: 'runtime://create_artifact/${entry.providerCallId ?? entry.entryId}',
-      createdAt: entry.createdAt,
-      updatedAt: entry.updatedAt,
+      sourcePath:
+          'runtime://create_artifact/${block.toolUseId ?? block.contentBlockId}',
+      createdAt: block.createdAt,
+      updatedAt: block.updatedAt,
     );
   }
 

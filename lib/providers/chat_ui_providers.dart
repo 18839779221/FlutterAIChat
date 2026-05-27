@@ -2,16 +2,19 @@ import 'dart:async';
 
 import 'package:ai_chat/models/chat/chat_timeline_projection.dart';
 import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
-import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
+import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/session/context_window_snapshot.dart';
 import 'package:ai_chat/models/debug/debug_test_case.dart';
+import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/controllers/voice_input_controller.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/debug_test_case_loader.dart';
+import 'package:ai_chat/services/runtime_streaming_preview_projector.dart';
+import 'package:ai_chat/services/turn_projection_dispatcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -130,10 +133,15 @@ final activeSendCancellationProvider =
 final runtimeAssistantDraftProvider =
     StateProvider<RuntimeAssistantDraft?>((ref) => null);
 
-/// Runtime-only generic stream entries used by projection/UI consumers.
-final runtimeStreamEntriesProvider = StateNotifierProvider<
-    RuntimeStreamEntriesController, List<RuntimeStreamEntry>>((ref) {
-  return RuntimeStreamEntriesController();
+/// Runtime-only structured preview state used by projection/UI consumers.
+final runtimeStreamingPreviewStateProvider = StateNotifierProvider<
+    RuntimeStreamingPreviewController, RuntimeStreamingPreviewState>((ref) {
+  return RuntimeStreamingPreviewController();
+});
+
+/// Shared serialized commit pipeline for runtime preview and truth events.
+final turnProjectionDispatcherProvider = Provider<TurnProjectionDispatcher>((ref) {
+  return TurnProjectionDispatcher(ref);
 });
 
 /// Pair of the message that currently owns the confirmation step and the
@@ -154,12 +162,12 @@ final chatTimelineProjectionProvider = Provider<ChatTimelineProjection>((ref) {
   final groupId = ref.watch(currentGroupProvider)?.id;
   final messages = ref.watch(messagesProvider);
   final runtimeDraft = ref.watch(runtimeAssistantDraftProvider);
-  final runtimeStreamEntries = ref.watch(runtimeStreamEntriesProvider);
+  final runtimePreviewState = ref.watch(runtimeStreamingPreviewStateProvider);
   return ref.watch(chatTimelineProjectionServiceProvider).build(
         messages: messages,
         groupId: groupId,
         runtimeDraft: runtimeDraft,
-        runtimeStreamEntries: runtimeStreamEntries,
+        runtimePreviewState: runtimePreviewState,
       );
 });
 
@@ -185,26 +193,24 @@ final activePendingToolConfirmationProvider =
   );
 });
 
-class RuntimeStreamEntriesController
-    extends StateNotifier<List<RuntimeStreamEntry>> {
-  RuntimeStreamEntriesController() : super(const <RuntimeStreamEntry>[]);
+class RuntimeStreamingPreviewController
+    extends StateNotifier<RuntimeStreamingPreviewState> {
+  RuntimeStreamingPreviewController()
+      : _projector = RuntimeStreamingPreviewProjector(),
+        super(const RuntimeStreamingPreviewState());
 
   static const Duration _minPublishInterval = Duration(milliseconds: 120);
 
+  final RuntimeStreamingPreviewProjector _projector;
   Timer? _flushTimer;
   DateTime? _lastPublishedAt;
-  List<RuntimeStreamEntry>? _pendingEntries;
+  final List<StreamingMessageEvent> _pendingEvents = <StreamingMessageEvent>[];
 
-  void publish(List<RuntimeStreamEntry> entries) {
+  void publish(StreamingMessageEvent event) {
     if (!mounted) {
       return;
     }
-    if (entries.isEmpty) {
-      clear();
-      return;
-    }
-
-    _pendingEntries = List<RuntimeStreamEntry>.from(entries);
+    _pendingEvents.add(event);
     final now = DateTime.now();
     final lastPublishedAt = _lastPublishedAt;
     if (lastPublishedAt == null ||
@@ -222,29 +228,33 @@ class RuntimeStreamEntriesController
   void clear() {
     _flushTimer?.cancel();
     _flushTimer = null;
-    _pendingEntries = null;
-    if (mounted && state.isNotEmpty) {
-      state = const <RuntimeStreamEntry>[];
+    _pendingEvents.clear();
+    _projector.clear();
+    if (mounted && !state.isEmpty) {
+      state = const RuntimeStreamingPreviewState();
     }
   }
 
   void _flushPending(DateTime now) {
     _flushTimer?.cancel();
     _flushTimer = null;
-    final pendingEntries = _pendingEntries;
-    _pendingEntries = null;
-    if (!mounted || pendingEntries == null) {
+    if (!mounted || _pendingEvents.isEmpty) {
       return;
     }
+    final events = List<StreamingMessageEvent>.from(_pendingEvents);
+    _pendingEvents.clear();
+    for (final event in events) {
+      _projector.consume(event, now: now);
+    }
     _lastPublishedAt = now;
-    state = pendingEntries;
+    state = _projector.currentState();
   }
 
   @override
   void dispose() {
     _flushTimer?.cancel();
     _flushTimer = null;
-    _pendingEntries = null;
+    _pendingEvents.clear();
     super.dispose();
   }
 }

@@ -3,6 +3,7 @@ import 'package:ai_chat/models/llm/llm_config.dart';
 import 'package:ai_chat/models/llm/runtime/protocol_execution_runtime.dart';
 import 'package:ai_chat/models/llm/runtime/protocol_request_spec.dart';
 import 'package:ai_chat/models/llm/runtime/protocol_runtime_registry.dart';
+import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -41,6 +42,6 @@ class _FakeRuntime extends ProtocolExecutionRuntime {
     required Duration idleTimeout,
     required Duration overallTimeout,
   }) async {
-    return ProtocolStreamExecutionResult(chunks: const Stream.empty());
+    return ProtocolStreamExecutionResult(events: const Stream.empty());
   }
 }

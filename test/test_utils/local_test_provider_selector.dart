@@ -38,6 +38,7 @@ class HeadlessLiveProviderProfile {
   const HeadlessLiveProviderProfile({
     required this.askUserInteraction,
     required this.toolConfirmation,
+    required this.multiToolContinuation,
   });
 
   /// Live expectation for the structured `ask_user_question` checkpoint.
@@ -45,6 +46,11 @@ class HeadlessLiveProviderProfile {
 
   /// Live expectation for the shared write-confirmation checkpoint.
   final StructuredCheckpointExpectation toolConfirmation;
+
+  /// Live expectation for whether the provider stably continues with multiple
+  /// sequential tool decisions instead of collapsing to one tool or one final
+  /// answer in the same scenario.
+  final StructuredCheckpointExpectation multiToolContinuation;
 }
 
 String? resolveInjectedLocalDefaultsPath({
@@ -100,7 +106,10 @@ SelectedHeadlessLiveProvider selectHeadlessLiveProvider({
   final resolvedEnvironment = environment ?? Platform.environment;
   final overrideId = _styleOverrideKey(style, resolvedEnvironment);
   if (overrideId != null) {
-    final provider = defaults.providers.where((item) => item.id == overrideId).firstOrNull;
+    final normalizedOverrideId = _normalizeProviderOverrideId(overrideId);
+    final provider = defaults.providers
+        .where((item) => item.id == normalizedOverrideId)
+        .firstOrNull;
     if (provider == null) {
       throw StateError(
         'Injected provider "$overrideId" from ${_styleEnvKey(style)} was not found in local defaults.',
@@ -108,7 +117,10 @@ SelectedHeadlessLiveProvider selectHeadlessLiveProvider({
     }
     return SelectedHeadlessLiveProvider(
       provider: provider,
-      selectionReason: 'selected from ${_styleEnvKey(style)} override',
+      selectionReason:
+          normalizedOverrideId == overrideId
+              ? 'selected from ${_styleEnvKey(style)} override'
+              : 'selected from ${_styleEnvKey(style)} override alias=$overrideId',
     );
   }
 
@@ -147,6 +159,17 @@ SelectedHeadlessLiveProvider selectHeadlessLiveProvider({
   );
 }
 
+String _normalizeProviderOverrideId(String providerId) {
+  switch (providerId) {
+    case 'minimax-openai':
+      return 'minimax-openai-chat-completions';
+    case 'deepseek-openai':
+      return 'deepseek-openai-chat-completions';
+    default:
+      return providerId;
+  }
+}
+
 HeadlessLiveProviderProfile resolveHeadlessLiveProviderProfile(
   String providerId,
 ) {
@@ -154,6 +177,7 @@ HeadlessLiveProviderProfile resolveHeadlessLiveProviderProfile(
       const HeadlessLiveProviderProfile(
         askUserInteraction: StructuredCheckpointExpectation.required,
         toolConfirmation: StructuredCheckpointExpectation.required,
+        multiToolContinuation: StructuredCheckpointExpectation.required,
       );
 }
 
@@ -180,9 +204,14 @@ String _styleEnvKey(ChatTurnProviderStyle style) {
 List<String> _preferredProviderIds(ChatTurnProviderStyle style) {
   switch (style) {
     case ChatTurnProviderStyle.openaiResponses:
-      return const ['minimax-responses', 'deepseek-responses'];
+      return const ['beehears-responses', 'minimax-responses', 'deepseek-responses'];
     case ChatTurnProviderStyle.openaiChatCompletions:
-      return const ['minimax-openai', 'deepseek-openai'];
+      return const [
+        'minimax-openai-chat-completions',
+        'deepseek-openai-chat-completions',
+        'minimax-openai',
+        'deepseek-openai',
+      ];
     case ChatTurnProviderStyle.anthropicMessages:
       return const ['deepseek-anthropic', 'minimax-anthropic'];
   }

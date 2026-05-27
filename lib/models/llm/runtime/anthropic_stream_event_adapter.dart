@@ -2,84 +2,169 @@ import 'dart:async';
 
 import 'package:anthropic_sdk_dart/anthropic_sdk_dart.dart' as anthropic;
 
-import '../streaming_planner_chunk.dart';
-import 'stream_tool_call_tracker.dart';
+import '../streaming_message_event.dart';
 
-/// Converts typed `anthropic_sdk_dart` message stream events into planner
-/// chunks consumed by `StreamingDecisionAccumulator`.
+/// Converts typed `anthropic_sdk_dart` message stream events into unified
+/// preview events.
 class AnthropicStreamEventAdapter {
   const AnthropicStreamEventAdapter();
 
-  Stream<StreamingPlannerChunk> adapt(
+  Stream<StreamingMessageEvent> adaptPreview(
     Stream<anthropic.MessageStreamEvent> events,
   ) async* {
-    final toolCallTracker = StreamToolCallTracker();
+    String? messageId;
+    final blockIdsByKey = <String, String>{};
+    var startedMessage = false;
+
+    String blockKey(int index, StreamingContentBlockType type) =>
+        '$index:${type.name}';
 
     await for (final event in events) {
-      switch (event) {
-        case anthropic.ContentBlockStartEvent():
-          final block = event.contentBlock;
-          if (block is anthropic.ToolUseBlock) {
-            yield toolCallTracker.started(
-              index: event.index,
-              toolName: block.name,
-              providerCallId: block.id,
-            );
-          }
-        case anthropic.ContentBlockDeltaEvent():
-          final delta = event.delta;
-          if (delta is anthropic.TextDelta) {
-            yield StreamingPlannerChunk.contentDelta(delta.text);
-          } else if (delta is anthropic.ThinkingDelta) {
-            yield StreamingPlannerChunk.reasoningDelta(delta.thinking);
-          } else if (delta is anthropic.InputJsonDelta) {
-            yield toolCallTracker.argumentsDelta(
-              index: event.index,
-              argumentsTextDelta: delta.partialJson,
-            );
-          } else if (delta is anthropic.SignatureDelta) {
-            yield StreamingPlannerChunk.keepalive(
-              providerMetadata: <String, dynamic>{
-                'anthropic_thinking_signature': delta.signature,
-              },
-            );
-          }
-        case anthropic.ContentBlockStopEvent():
-          yield toolCallTracker.completed(
-            index: event.index,
+      if (event is anthropic.MessageStartEvent) {
+        messageId = event.message.id;
+        if (!startedMessage) {
+          startedMessage = true;
+          yield StreamingMessageStartEvent(
+            messageId: messageId!,
+            providerMetadata: {'message_id': messageId},
           );
-        case anthropic.MessageStopEvent():
-          yield const StreamingPlannerChunk.streamCompleted();
-        case anthropic.PingEvent():
-          yield const StreamingPlannerChunk.keepalive(
-            providerMetadata: <String, dynamic>{
-              'anthropic_event_type': 'ping',
-            },
+        } else {
+          yield StreamingMessageStartEvent(messageId: messageId!);
+        }
+        continue;
+      }
+
+      if (event is anthropic.ContentBlockStartEvent) {
+        final currentMessageId = messageId ?? 'anthropic_message';
+        if (!startedMessage) {
+          startedMessage = true;
+          yield StreamingMessageStartEvent(messageId: currentMessageId);
+        }
+        final block = event.contentBlock;
+        final blockType = block is anthropic.ToolUseBlock
+            ? StreamingContentBlockType.toolUse
+            : block is anthropic.ThinkingBlock
+                ? StreamingContentBlockType.thinking
+                : StreamingContentBlockType.text;
+        final blockId = '$currentMessageId:block:${event.index}:${blockType.name}';
+        blockIdsByKey[blockKey(event.index, blockType)] = blockId;
+        if (block is anthropic.ToolUseBlock) {
+          yield StreamingContentBlockStartEvent(
+            messageId: currentMessageId,
+            contentBlockId: blockId,
+            blockType: StreamingContentBlockType.toolUse,
+            toolUseId: block.id,
+            toolName: block.name,
           );
-        case anthropic.ErrorEvent():
-          throw StateError(
-            'Anthropic stream error: ${event.errorType}: ${event.message}',
+        } else if (block is anthropic.TextBlock) {
+          yield StreamingContentBlockStartEvent(
+            messageId: currentMessageId,
+            contentBlockId: blockId,
+            blockType: StreamingContentBlockType.text,
           );
-        case anthropic.MessageStartEvent():
-          yield StreamingPlannerChunk.keepalive(
-            providerMetadata: <String, dynamic>{
-              'message_id': event.message.id,
-            },
+        } else if (block is anthropic.ThinkingBlock) {
+          yield StreamingContentBlockStartEvent(
+            messageId: currentMessageId,
+            contentBlockId: blockId,
+            blockType: StreamingContentBlockType.thinking,
           );
-        case anthropic.MessageDeltaEvent():
-          // Extract usage from message delta
-          final usage = event.usage;
-          if (usage != null) {
-            yield StreamingPlannerChunk.keepalive(
-              providerMetadata: <String, dynamic>{
-                '_usage': <String, dynamic>{
-                  'input_tokens': usage.inputTokens,
-                  'output_tokens': usage.outputTokens,
-                },
-              },
-            );
-          }
+        }
+        continue;
+      }
+
+      if (event is anthropic.ContentBlockDeltaEvent) {
+        final currentMessageId = messageId ?? 'anthropic_message';
+        final delta = event.delta;
+        final inferredType = delta is anthropic.TextDelta
+            ? StreamingContentBlockType.text
+            : delta is anthropic.ThinkingDelta
+                ? StreamingContentBlockType.thinking
+                : delta is anthropic.InputJsonDelta
+                    ? StreamingContentBlockType.toolUse
+                    : delta is anthropic.SignatureDelta
+                        ? StreamingContentBlockType.thinking
+                    : null;
+        if (inferredType == null) {
           continue;
+        }
+        var blockId = blockIdsByKey[blockKey(event.index, inferredType)];
+        if (blockId == null) {
+          blockId = '$currentMessageId:auto:${event.index}:${inferredType.name}';
+          blockIdsByKey[blockKey(event.index, inferredType)] = blockId;
+          yield StreamingContentBlockStartEvent(
+            messageId: currentMessageId,
+            contentBlockId: blockId,
+            blockType: inferredType,
+          );
+        }
+        if (delta is anthropic.TextDelta) {
+          yield StreamingContentBlockDeltaEvent(
+            messageId: currentMessageId,
+            contentBlockId: blockId,
+            deltaType: StreamingContentDeltaType.text,
+            value: delta.text,
+          );
+        } else if (delta is anthropic.ThinkingDelta) {
+          yield StreamingContentBlockDeltaEvent(
+            messageId: currentMessageId,
+            contentBlockId: blockId,
+            deltaType: StreamingContentDeltaType.thinking,
+            value: delta.thinking,
+          );
+        } else if (delta is anthropic.InputJsonDelta) {
+          yield StreamingContentBlockDeltaEvent(
+            messageId: currentMessageId,
+            contentBlockId: blockId,
+            deltaType: StreamingContentDeltaType.inputJson,
+            value: delta.partialJson,
+          );
+        } else if (delta is anthropic.SignatureDelta) {
+          yield StreamingContentBlockDeltaEvent(
+            messageId: currentMessageId,
+            contentBlockId: blockId,
+            deltaType: StreamingContentDeltaType.signature,
+            value: delta.signature,
+          );
+        }
+        continue;
+      }
+
+      if (event is anthropic.ContentBlockStopEvent) {
+        final currentMessageId = messageId ?? 'anthropic_message';
+        for (final type in StreamingContentBlockType.values) {
+          final blockId = blockIdsByKey[blockKey(event.index, type)];
+          if (blockId == null) {
+            continue;
+          }
+          yield StreamingContentBlockStopEvent(
+            messageId: currentMessageId,
+            contentBlockId: blockId,
+          );
+        }
+        continue;
+      }
+
+      if (event is anthropic.MessageStopEvent) {
+        final currentMessageId = messageId ?? 'anthropic_message';
+        yield StreamingMessageStopEvent(messageId: currentMessageId);
+        continue;
+      }
+
+      if (event is anthropic.PingEvent || event is anthropic.MessageDeltaEvent) {
+        final currentMessageId = messageId ?? 'anthropic_message';
+        if (!startedMessage) {
+          startedMessage = true;
+          yield StreamingMessageStartEvent(messageId: currentMessageId);
+        } else {
+          yield StreamingMessageStartEvent(messageId: currentMessageId);
+        }
+        continue;
+      }
+
+      if (event is anthropic.ErrorEvent) {
+        throw StateError(
+          'Anthropic stream error: ${event.errorType}: ${event.message}',
+        );
       }
     }
   }

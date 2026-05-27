@@ -5,12 +5,12 @@ import '../models/agent/chat_turn_step.dart';
 import '../models/agent/model_tool_call.dart';
 import '../models/agent/model_turn_decision.dart';
 import '../models/agent/planner_tool_option.dart';
-import '../models/chat/runtime_stream_entry.dart';
 import '../models/chat_event.dart';
 import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/context/planner_context_carrier.dart';
 import '../models/llm/base_llm.dart';
+import '../models/llm/streaming_message_event.dart';
 import '../models/tool/tool_access_snapshot.dart';
 import '../models/tool/tool_definition.dart';
 import '../models/tool/tool_result.dart';
@@ -39,8 +39,7 @@ class AgentPlannerService {
   final PromptBuilderService _promptBuilder;
   final ToolResultContextProjector _toolResultContextProjector;
   final void Function(LlmRetryProgress progress)? _onPlannerRetryScheduled;
-  final void Function(List<RuntimeStreamEntry> entries)?
-      _onPlannerRuntimeStream;
+  final void Function(StreamingMessageEvent event)? _onPlannerRuntimeStream;
 
   AgentPlannerService({
     required BaseLLM llm,
@@ -50,7 +49,7 @@ class AgentPlannerService {
     PromptBuilderService? promptBuilder,
     ToolResultContextProjector? toolResultContextProjector,
     void Function(LlmRetryProgress progress)? onPlannerRetryScheduled,
-    void Function(List<RuntimeStreamEntry> entries)? onPlannerRuntimeStream,
+    void Function(StreamingMessageEvent event)? onPlannerRuntimeStream,
   })  : _llm = llm,
         _availableTools = availableTools,
         _toolExposureService =

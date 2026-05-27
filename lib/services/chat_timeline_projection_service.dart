@@ -2,7 +2,7 @@ import 'package:ai_chat/models/artifact/artifact_turn_projection.dart';
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat/chat_timeline_projection.dart';
 import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
-import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
+import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
@@ -35,7 +35,8 @@ class ChatTimelineProjectionService {
     required List<ChatMessage> messages,
     int? groupId,
     RuntimeAssistantDraft? runtimeDraft,
-    List<RuntimeStreamEntry> runtimeStreamEntries = const <RuntimeStreamEntry>[],
+    RuntimeStreamingPreviewState runtimePreviewState =
+        const RuntimeStreamingPreviewState(),
   }) {
     final runtimeTurnId = _resolveActiveRuntimeTurnId(
       messages: messages,
@@ -64,7 +65,7 @@ class ChatTimelineProjectionService {
         ...toolBlocks,
         if (runtimeDraftBlock != null) runtimeDraftBlock,
       ],
-      runtimeStreamEntries: runtimeStreamEntries,
+      runtimePreviewState: runtimePreviewState,
       resolvedTurnId: runtimeTurnId,
     );
     return ChatTimelineProjection(
@@ -83,7 +84,7 @@ class ChatTimelineProjectionService {
       ),
       toolPresentationEvents: toolPresentationEvents,
       runtimeAssistantDraft: runtimeDraft,
-      runtimeStreamEntries: runtimeStreamEntries,
+      runtimePreviewState: runtimePreviewState,
     );
   }
 
@@ -239,56 +240,62 @@ class ChatTimelineProjectionService {
 
   List<AssistantTurnBlock> _buildRuntimeArtifactBlocks({
     required List<AssistantTurnBlock> projectedAssistantBlocks,
-    required List<RuntimeStreamEntry> runtimeStreamEntries,
+    required RuntimeStreamingPreviewState runtimePreviewState,
     required String? resolvedTurnId,
   }) {
-    if (runtimeStreamEntries.isEmpty) {
+    if (runtimePreviewState.isEmpty) {
       return const <AssistantTurnBlock>[];
     }
 
     final runtimeArtifactBlocks = <AssistantTurnBlock>[];
-    for (final entry in runtimeStreamEntries) {
-      final preview = _runtimeArtifactPreviewParser.parse(entry);
-      if (preview == null) {
-        continue;
-      }
-      final targetTurnId = _resolveProjectedRuntimeTurnId(
-        entryTurnId: preview.turnId,
-        fallbackTurnId: resolvedTurnId,
-      );
-      final alreadyResolved = projectedAssistantBlocks.any(
-        (block) =>
-            block.type == AssistantTurnBlockType.artifact &&
-            block.turnId == targetTurnId,
-      );
-      if (alreadyResolved) {
-        continue;
-      }
-      runtimeArtifactBlocks.add(
-        AssistantTurnBlock(
-          id: preview.entryId,
+    for (final message in runtimePreviewState.messages) {
+      for (final block in message.blocks) {
+        final targetTurnId = _resolveProjectedRuntimeTurnId(
+          entryTurnId: 'preview:${message.messageId}',
+          fallbackTurnId: resolvedTurnId,
+        );
+        final preview = _runtimeArtifactPreviewParser.parse(
+          message: message,
+          block: block,
           turnId: targetTurnId,
-          type: AssistantTurnBlockType.artifact,
-          sequence: 99998,
-          createdAt: preview.createdAt,
-          updatedAt: preview.updatedAt,
-          title: preview.title,
-          text: preview.source,
-          payload: const {
-            'isRuntimePreview': true,
-          },
-          artifactProjection: ArtifactTurnProjection(
-            artifactId: preview.artifactId,
-            turnId: preview.turnId,
-            title: preview.title,
-            type: preview.type,
-            sourcePath: preview.sourcePath,
-            source: preview.source,
+        );
+        if (preview == null) {
+          continue;
+        }
+        final alreadyResolved = projectedAssistantBlocks.any(
+          (projectedBlock) =>
+              projectedBlock.type == AssistantTurnBlockType.artifact &&
+              projectedBlock.turnId == targetTurnId,
+        );
+        if (alreadyResolved) {
+          continue;
+        }
+        runtimeArtifactBlocks.add(
+          AssistantTurnBlock(
+            id: preview.entryId,
+            turnId: targetTurnId,
+            type: AssistantTurnBlockType.artifact,
+            sequence: 99998,
             createdAt: preview.createdAt,
             updatedAt: preview.updatedAt,
+            title: preview.title,
+            text: preview.source,
+            payload: const {
+              'isRuntimePreview': true,
+            },
+            artifactProjection: ArtifactTurnProjection(
+              artifactId: preview.artifactId,
+              turnId: preview.turnId,
+              title: preview.title,
+              type: preview.type,
+              sourcePath: preview.sourcePath,
+              source: preview.source,
+              createdAt: preview.createdAt,
+              updatedAt: preview.updatedAt,
+            ),
           ),
-        ),
-      );
+        );
+      }
     }
     return runtimeArtifactBlocks;
   }

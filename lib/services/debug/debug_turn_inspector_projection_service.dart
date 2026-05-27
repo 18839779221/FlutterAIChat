@@ -1,5 +1,5 @@
 import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
-import 'package:ai_chat/models/chat/runtime_stream_entry.dart';
+import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
@@ -29,8 +29,8 @@ class DebugTurnInspectorProjectionService {
     required SessionContextService sessionContextService,
     required ChatTraceRecorder traceRecorder,
     RuntimeAssistantDraft? runtimeAssistantDraft,
-    List<RuntimeStreamEntry> runtimeStreamEntries =
-        const <RuntimeStreamEntry>[],
+    RuntimeStreamingPreviewState runtimePreviewState =
+        const RuntimeStreamingPreviewState(),
     List<ToolPresentationEvent> toolPresentationEvents =
         const <ToolPresentationEvent>[],
     ChatSendPhase? sendPhase,
@@ -45,7 +45,7 @@ class DebugTurnInspectorProjectionService {
         _sessionContextService = sessionContextService,
         _traceRecorder = traceRecorder,
         _runtimeAssistantDraft = runtimeAssistantDraft,
-        _runtimeStreamEntries = runtimeStreamEntries,
+        _runtimePreviewState = runtimePreviewState,
         _toolPresentationEvents = toolPresentationEvents,
         _sendPhase = sendPhase,
         _sendStatusText = sendStatusText,
@@ -60,7 +60,7 @@ class DebugTurnInspectorProjectionService {
   final SessionContextService _sessionContextService;
   final ChatTraceRecorder _traceRecorder;
   final RuntimeAssistantDraft? _runtimeAssistantDraft;
-  final List<RuntimeStreamEntry> _runtimeStreamEntries;
+  final RuntimeStreamingPreviewState _runtimePreviewState;
   final List<ToolPresentationEvent> _toolPresentationEvents;
   final ChatSendPhase? _sendPhase;
   final String? _sendStatusText;
@@ -138,7 +138,7 @@ class DebugTurnInspectorProjectionService {
           ? null
           : _buildOverview(
               turn: activeTurn,
-              runtimeStreamEntries: _runtimeStreamEntries,
+              runtimePreviewState: _runtimePreviewState,
               runtimeAssistantDraft: _runtimeAssistantDraft,
             ),
       timelineEntries: _buildTimelineEntries(
@@ -168,7 +168,7 @@ class DebugTurnInspectorProjectionService {
 
   DebugTurnOverview _buildOverview({
     required ChatTurn turn,
-    required List<RuntimeStreamEntry> runtimeStreamEntries,
+    required RuntimeStreamingPreviewState runtimePreviewState,
     required RuntimeAssistantDraft? runtimeAssistantDraft,
   }) {
     final durationMs = turn.completedAt == null
@@ -187,7 +187,7 @@ class DebugTurnInspectorProjectionService {
       diagnosticCode: turn.stopReason,
       errorMessage: turn.errorMessage,
       hasRuntimeDraft: runtimeAssistantDraft != null,
-      runtimeStreamEntryCount: runtimeStreamEntries.length,
+      runtimePreviewMessageCount: runtimePreviewState.messages.length,
       hasPendingConfirmation: false,
       hasActiveQuestion: _activeAskUserQuestionMessage != null,
       startedAt: turn.createdAt,
@@ -366,22 +366,31 @@ class DebugTurnInspectorProjectionService {
       ),
       DebugTurnInspectorContextSection(
         id: 'runtime-stream',
-        title: 'Runtime Stream Entries',
-        summary: '${_runtimeStreamEntries.length} items',
+        title: 'Runtime Preview State',
+        summary: '${_runtimePreviewState.messages.length} messages',
         defaultExpanded: false,
         rawJson: {
-          'entries': _runtimeStreamEntries
+          'messages': _runtimePreviewState.messages
               .map(
-                (entry) => {
-                  'turnId': entry.turnId,
-                  'entryId': entry.entryId,
-                  'kind': entry.kind.name,
-                  'providerCallId': entry.providerCallId,
-                  'toolName': entry.toolName,
-                  'text': entry.text,
-                  'payload': entry.payload,
-                  'createdAt': entry.createdAt.toIso8601String(),
-                  'updatedAt': entry.updatedAt.toIso8601String(),
+                (message) => {
+                  'messageId': message.messageId,
+                  'createdAt': message.createdAt.toIso8601String(),
+                  'updatedAt': message.updatedAt.toIso8601String(),
+                  'isCompleted': message.isCompleted,
+                  'blocks': message.blocks
+                      .map(
+                        (block) => {
+                          'contentBlockId': block.contentBlockId,
+                          'blockType': block.blockType.name,
+                          'toolUseId': block.toolUseId,
+                          'toolName': block.toolName,
+                          'text': block.text,
+                          'createdAt': block.createdAt.toIso8601String(),
+                          'updatedAt': block.updatedAt.toIso8601String(),
+                          'isCompleted': block.isCompleted,
+                        },
+                      )
+                      .toList(growable: false),
                 },
               )
               .toList(growable: false),
