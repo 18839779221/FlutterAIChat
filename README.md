@@ -118,6 +118,13 @@ fvm flutter analyze
 fvm flutter test
 ```
 
+## 文档排版调试页
+
+- 仓库内提供独立的文档排版调试页，用于稳定回归大模型文档回复中的 Markdown 排版效果
+- 页面入口路由为 `RouteConstant.layoutDebugPage`
+- 固定案例库位于 [lib/debug/layout_debug_cases.dart](./lib/debug/layout_debug_cases.dart)
+- 调试页直接复用真实 `AssistantDocBlock` 和现有 Markdown 渲染链，不依赖真实 LLM 回复
+
 ## 模型与运行时配置
 
 - 模型配置采用 provider-first 结构，可在设置页管理提供方和模型目录

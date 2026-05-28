@@ -198,6 +198,45 @@ class ChatDrawer extends ConsumerWidget {
               borderRadius: BorderRadius.circular(radius.md),
               child: ListTile(
                 leading: Icon(
+                  Icons.draw_outlined,
+                  color: colors.secondaryText,
+                ),
+                title: Text(
+                  '调试界面',
+                  style: TextStyle(color: colors.primaryText),
+                ),
+                subtitle: Text(
+                  '文档排版调试',
+                  style: TextStyle(
+                    color: colors.secondaryText,
+                    fontSize: 12,
+                  ),
+                ),
+                enabled: !isSendInFlight,
+                onTap: isSendInFlight
+                    ? null
+                    : () {
+                        Navigator.pop(context);
+                        Navigator.pushNamed(
+                          context,
+                          RouteConstant.layoutDebugPage,
+                        );
+                      },
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              spacing.md,
+              spacing.sm,
+              spacing.md,
+              0,
+            ),
+            child: Material(
+              color: colors.assistantSurface,
+              borderRadius: BorderRadius.circular(radius.md),
+              child: ListTile(
+                leading: Icon(
                   Icons.settings_outlined,
                   color: colors.secondaryText,
                 ),

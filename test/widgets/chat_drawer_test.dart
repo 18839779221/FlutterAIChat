@@ -1,7 +1,9 @@
+import 'package:ai_chat/constants/route_constant.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
+import 'package:ai_chat/pages/layout_debug_page.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_drawer.dart';
@@ -97,6 +99,49 @@ void main() {
 
     expect(find.text('Claude'), findsOneWidget);
     expect(find.text('GPT'), findsOneWidget);
+  });
+
+  testWidgets('chat drawer opens layout debug page from debug entry', (
+    tester,
+  ) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          routes: {
+            RouteConstant.layoutDebugPage: (context) => const LayoutDebugPage(),
+          },
+          home: const Scaffold(
+            body: ChatDrawer(),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('调试界面'), findsOneWidget);
+
+    await tester.tap(find.text('调试界面'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LayoutDebugPage), findsOneWidget);
+    expect(find.text('文档排版调试'), findsOneWidget);
   });
 }
 
