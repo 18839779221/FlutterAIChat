@@ -1,5 +1,6 @@
 import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
 import 'package:ai_chat/models/llm/streaming_message_event.dart';
+import 'package:ai_chat/utils/logger.dart';
 
 /// Folds streaming preview events into one runtime-only read model.
 class RuntimeStreamingPreviewProjector {
@@ -88,6 +89,16 @@ class RuntimeStreamingPreviewProjector {
       return;
     }
     if (event is StreamingContentBlockDeltaEvent) {
+      Logger.temp(
+        'RuntimeStreamingPreviewProjector',
+        'delta consumed',
+        reason: 'diagnose streaming performance',
+        data: {
+          'deltaType': event.deltaType.name,
+          'timestampMicros': timestamp.microsecondsSinceEpoch,
+          'valueLength': event.value.length,
+        },
+      );
       _upsertMessage(event.messageId, (current) {
         final base = current ??
             RuntimeStreamingPreviewMessage(

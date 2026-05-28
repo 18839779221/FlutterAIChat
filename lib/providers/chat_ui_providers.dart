@@ -7,6 +7,7 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/session/context_window_snapshot.dart';
 import 'package:ai_chat/models/debug/debug_test_case.dart';
 import 'package:ai_chat/models/llm/streaming_message_event.dart';
+import 'package:ai_chat/utils/logger.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/controllers/voice_input_controller.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
@@ -199,7 +200,7 @@ class RuntimeStreamingPreviewController
       : _projector = RuntimeStreamingPreviewProjector(),
         super(const RuntimeStreamingPreviewState());
 
-  static const Duration _minPublishInterval = Duration(milliseconds: 120);
+  static const Duration _minPublishInterval = Duration(milliseconds: 1000);
 
   final RuntimeStreamingPreviewProjector _projector;
   Timer? _flushTimer;
@@ -210,6 +211,35 @@ class RuntimeStreamingPreviewController
     if (!mounted) {
       return;
     }
+
+    // Log tool_use events for artifact diagnosis
+    if (event is StreamingContentBlockStartEvent &&
+        event.blockType == StreamingContentBlockType.toolUse) {
+      Logger.temp(
+        'RuntimeStreamingPreviewController',
+        'tool_use block started',
+        reason: 'diagnose streaming performance',
+        data: {
+          'messageId': event.messageId,
+          'contentBlockId': event.contentBlockId,
+          'toolName': event.toolName,
+        },
+      );
+    }
+    if (event is StreamingContentBlockDeltaEvent &&
+        event.deltaType == StreamingContentDeltaType.inputJson) {
+      Logger.temp(
+        'RuntimeStreamingPreviewController',
+        'inputJson delta received',
+        reason: 'diagnose streaming performance',
+        data: {
+          'messageId': event.messageId,
+          'contentBlockId': event.contentBlockId,
+          'valueLength': event.value.length,
+        },
+      );
+    }
+
     _pendingEvents.add(event);
     final now = DateTime.now();
     final lastPublishedAt = _lastPublishedAt;
@@ -244,10 +274,26 @@ class RuntimeStreamingPreviewController
     final events = List<StreamingMessageEvent>.from(_pendingEvents);
     _pendingEvents.clear();
     for (final event in events) {
-      _projector.consume(event, now: now);
+      _projector.consume(event, now: DateTime.now());
     }
     _lastPublishedAt = now;
-    state = _projector.currentState();
+    final newState = _projector.currentState();
+
+    Logger.temp(
+      'RuntimeStreamingPreviewController',
+      'state flushed',
+      reason: 'diagnose streaming performance',
+      data: {
+        'eventCount': events.length,
+        'messageCount': newState.messages.length,
+        'totalBlocks': newState.messages.fold<int>(
+          0,
+          (sum, msg) => sum + msg.blocks.length,
+        ),
+      },
+    );
+
+    state = newState;
   }
 
   @override

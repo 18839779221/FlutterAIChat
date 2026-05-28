@@ -90,6 +90,7 @@ main() {
 
   echo "Installing debug APK with adb overwrite install (-r -t)..."
   adb -s "$device_id" install -r -t "$APK_PATH"
+  echo "Installation completed at: $(date '+%Y-%m-%d %H:%M:%S')"
 }
 
 main "$@"

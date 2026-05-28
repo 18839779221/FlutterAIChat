@@ -1,5 +1,6 @@
 import 'package:ai_chat/models/artifact/artifact_turn_projection.dart';
 import 'package:ai_chat/pages/artifact_detail_page.dart';
+import 'package:ai_chat/utils/logger.dart';
 import 'package:ai_chat/widgets/chat_blocks/artifact_preview_surface.dart';
 import 'package:ai_chat/widgets/chat_timeline/stable_artifact_block.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +17,17 @@ class ArtifactBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final artifact = projection;
+    Logger.temp(
+      'ArtifactBlock',
+      'build called',
+      reason: 'diagnose streaming performance',
+      data: {
+        'hasArtifact': artifact != null,
+        'artifactId': artifact?.artifactId ?? 'null',
+        'sourceLength': artifact?.source?.length ?? 0,
+        'sourcePath': artifact?.sourcePath ?? 'null',
+      },
+    );
     if (artifact == null) {
       return const SizedBox.shrink();
     }
@@ -33,7 +45,7 @@ class ArtifactBlock extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 10),
         child: StableArtifactBlock(
           cacheKey: _buildArtifactCacheKey(artifact),
-          builder: (_) => ArtifactPreviewSurface(
+          builder: (context) => ArtifactPreviewSurface(
             source: artifact.source,
             sourcePath: artifact.sourcePath,
           ),

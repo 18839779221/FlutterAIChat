@@ -9,6 +9,7 @@ import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/chat_block_builder.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
+import 'package:ai_chat/utils/logger.dart';
 import 'package:ai_chat/widgets/chat_empty_state.dart';
 import 'package:ai_chat/widgets/chat_timeline/chat_timeline_item.dart';
 import 'package:ai_chat/widgets/chat_timeline/chat_timeline_row.dart';
@@ -118,6 +119,17 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final sendState = ref.watch(chatSendStateProvider);
     final sendPhase = sendState.phase;
     final timelineProjection = ref.watch(chatTimelineProjectionProvider);
+    Logger.temp(
+      'ChatMessageList',
+      'build called',
+      reason: 'diagnose streaming performance',
+      data: {
+        'assistantBlockCount': timelineProjection.assistantBlocks.length,
+        'artifactBlockCount': timelineProjection.assistantBlocks
+            .where((b) => b.type == AssistantTurnBlockType.artifact)
+            .length,
+      },
+    );
     final hasMoreMessages = ref.watch(hasMoreMessagesProvider);
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final textController = ref.read(textControllerProvider);
@@ -213,6 +225,18 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     if (messages.isEmpty) {
       return const [];
     }
+
+    Logger.temp(
+      'ChatMessageList',
+      '_buildTimelineItems received blocks',
+      reason: 'diagnose streaming performance',
+      data: {
+        'projectedBlockCount': projectedAssistantBlocks.length,
+        'projectedBlockTypes': projectedAssistantBlocks.map((b) => b.type.name).join(','),
+        'projectedArtifactCount': projectedAssistantBlocks.where((b) => b.type == AssistantTurnBlockType.artifact).length,
+        'allProjectedTurnIds': projectedAssistantBlocks.map((b) => '${b.type.name}:${b.turnId}').join(' | '),
+      },
+    );
 
     final currentGroup = ref.read(currentGroupProvider);
     final sortedMessages = [...messages]..sort(compareChatMessagesForTimeline);
@@ -331,6 +355,15 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     required List<AssistantTurnBlock> blocks,
     required String? runningTailText,
   }) {
+    Logger.temp(
+      'ChatMessageList',
+      '_buildAssistantItems called',
+      reason: 'diagnose streaming performance',
+      data: {
+        'blockCount': blocks.length,
+        'blockTypes': blocks.map((b) => b.type.name).join(','),
+      },
+    );
     final items = <ChatTimelineItem>[];
     for (var index = 0; index < blocks.length; index += 1) {
       final block = blocks[index];
@@ -369,9 +402,31 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
 
     final turnId =
         '${groupId ?? 0}_${userAnchor.id ?? 'user_$fallbackUserIndex'}';
+    Logger.temp(
+      'ChatMessageList',
+      '_blocksForSegment filtering',
+      reason: 'diagnose streaming performance',
+      data: {
+        'targetTurnId': turnId,
+        'projectedBlockCount': projectedAssistantBlocks.length,
+        'projectedBlockTypes': projectedAssistantBlocks.map((b) => b.type.name).join(','),
+        'projectedArtifactCount': projectedAssistantBlocks.where((b) => b.type == AssistantTurnBlockType.artifact).length,
+        'allBlockTurnIds': projectedAssistantBlocks.map((b) => '${b.type.name}:${b.turnId}').join(' | '),
+      },
+    );
     final blocks = projectedAssistantBlocks
         .where((block) => block.turnId == turnId)
         .toList(growable: false);
+    Logger.temp(
+      'ChatMessageList',
+      '_blocksForSegment filtered result',
+      reason: 'diagnose streaming performance',
+      data: {
+        'filteredBlockCount': blocks.length,
+        'filteredBlockTypes': blocks.map((b) => b.type.name).join(','),
+        'filteredArtifactCount': blocks.where((b) => b.type == AssistantTurnBlockType.artifact).length,
+      },
+    );
     if (blocks.isNotEmpty) {
       return blocks;
     }
@@ -433,7 +488,19 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     AssistantTurnBlock block,
     ChatMessage? sourceMessage,
   ) {
-    return block.id;
+    final key = '${block.id}:${block.updatedAt.microsecondsSinceEpoch}';
+    Logger.temp(
+      'ChatMessageList',
+      'stableKey generated',
+      reason: 'diagnose streaming performance',
+      data: {
+        'blockId': block.id,
+        'blockType': block.type.name,
+        'updatedAtMicros': block.updatedAt.microsecondsSinceEpoch,
+        'stableKey': key,
+      },
+    );
+    return key;
   }
 
   ChatMessage? _resolveSourceMessage(

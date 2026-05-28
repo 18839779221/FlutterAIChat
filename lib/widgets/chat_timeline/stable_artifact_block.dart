@@ -1,3 +1,4 @@
+import 'package:ai_chat/utils/logger.dart';
 import 'package:flutter/material.dart';
 
 /// Keeps an artifact subtree stable across unrelated parent rebuilds.
@@ -29,7 +30,18 @@ class _StableArtifactBlockState extends State<StableArtifactBlock>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    if (_cachedKey != widget.cacheKey || _cachedChild == null) {
+    final willRebuild = _cachedKey != widget.cacheKey || _cachedChild == null;
+    Logger.temp(
+      'StableArtifactBlock',
+      'build called',
+      reason: 'diagnose streaming performance',
+      data: {
+        'cacheKey': widget.cacheKey,
+        'cachedKey': _cachedKey,
+        'willRebuild': willRebuild,
+      },
+    );
+    if (willRebuild) {
       _cachedKey = widget.cacheKey;
       _cachedChild = widget.builder(context);
     }

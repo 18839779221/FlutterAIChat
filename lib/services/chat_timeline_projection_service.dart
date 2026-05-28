@@ -3,6 +3,7 @@ import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat/chat_timeline_projection.dart';
 import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
 import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
+import 'package:ai_chat/utils/logger.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
@@ -38,6 +39,19 @@ class ChatTimelineProjectionService {
     RuntimeStreamingPreviewState runtimePreviewState =
         const RuntimeStreamingPreviewState(),
   }) {
+    Logger.temp(
+      'ChatTimelineProjectionService',
+      'build called',
+      reason: 'diagnose streaming performance',
+      data: {
+        'messageCount': messages.length,
+        'previewMessageCount': runtimePreviewState.messages.length,
+        'previewBlockCount': runtimePreviewState.messages.fold<int>(
+          0,
+          (sum, msg) => sum + msg.blocks.length,
+        ),
+      },
+    );
     final runtimeTurnId = _resolveActiveRuntimeTurnId(
       messages: messages,
       groupId: groupId,
@@ -68,20 +82,33 @@ class ChatTimelineProjectionService {
       runtimePreviewState: runtimePreviewState,
       resolvedTurnId: runtimeTurnId,
     );
+    final mergedBlocks = _mergeBlocks(
+      baseBlocks: [
+        ...blocks,
+        ...toolBlocks,
+        if (runtimeDraftBlock != null) runtimeDraftBlock,
+      ],
+      artifactBlocks: [
+        ...artifactBlocks,
+        ...runtimeArtifactBlocks,
+      ],
+    );
+    Logger.temp(
+      'ChatTimelineProjectionService',
+      'build completed',
+      reason: 'diagnose streaming performance',
+      data: {
+        'totalAssistantBlocks': mergedBlocks.length,
+        'runtimeArtifactBlockCount': runtimeArtifactBlocks.length,
+        'artifactBlockCount': artifactBlocks.length,
+        'finalMergedBlockTypes': mergedBlocks.map((b) => b.type.name).join(','),
+        'finalMergedTurnIds': mergedBlocks.map((b) => '${b.type.name}:${b.turnId}').join(' | '),
+      },
+    );
     return ChatTimelineProjection(
       activeAskUserQuestionMessage: _findActiveAskUserQuestion(messages),
       pendingToolConfirmation: _findPendingConfirmation(messages),
-      assistantBlocks: _mergeBlocks(
-        baseBlocks: [
-          ...blocks,
-          ...toolBlocks,
-          if (runtimeDraftBlock != null) runtimeDraftBlock,
-        ],
-        artifactBlocks: [
-          ...artifactBlocks,
-          ...runtimeArtifactBlocks,
-        ],
-      ),
+      assistantBlocks: mergedBlocks,
       toolPresentationEvents: toolPresentationEvents,
       runtimeAssistantDraft: runtimeDraft,
       runtimePreviewState: runtimePreviewState,
@@ -247,9 +274,29 @@ class ChatTimelineProjectionService {
       return const <AssistantTurnBlock>[];
     }
 
+    Logger.temp(
+      'ChatTimelineProjectionService',
+      'building runtime artifact blocks',
+      reason: 'diagnose streaming performance',
+      data: {
+        'messageCount': runtimePreviewState.messages.length,
+      },
+    );
+
     final runtimeArtifactBlocks = <AssistantTurnBlock>[];
     for (final message in runtimePreviewState.messages) {
       for (final block in message.blocks) {
+        Logger.temp(
+          'ChatTimelineProjectionService',
+          'processing preview block',
+          reason: 'diagnose streaming performance',
+          data: {
+            'blockType': block.blockType.name,
+            'toolName': block.toolName,
+            'textLength': block.text.length,
+          },
+        );
+
         final targetTurnId = _resolveProjectedRuntimeTurnId(
           entryTurnId: 'preview:${message.messageId}',
           fallbackTurnId: resolvedTurnId,
@@ -260,41 +307,82 @@ class ChatTimelineProjectionService {
           turnId: targetTurnId,
         );
         if (preview == null) {
+          Logger.temp(
+            'ChatTimelineProjectionService',
+            'preview parse returned null',
+            reason: 'diagnose streaming performance',
+            data: {
+              'blockType': block.blockType.name,
+              'toolName': block.toolName,
+            },
+          );
           continue;
         }
-        final alreadyResolved = projectedAssistantBlocks.any(
-          (projectedBlock) =>
-              projectedBlock.type == AssistantTurnBlockType.artifact &&
-              projectedBlock.turnId == targetTurnId,
+
+        Logger.temp(
+          'ChatTimelineProjectionService',
+          'preview parsed successfully',
+          reason: 'diagnose streaming performance',
+          data: {
+            'artifactId': preview.artifactId,
+            'sourceLength': preview.source?.length ?? 0,
+          },
         );
-        if (alreadyResolved) {
-          continue;
-        }
-        runtimeArtifactBlocks.add(
-          AssistantTurnBlock(
-            id: preview.entryId,
-            turnId: targetTurnId,
-            type: AssistantTurnBlockType.artifact,
-            sequence: 99998,
+        // 注释掉 alreadyResolved 检查，允许 runtime artifact 始终被创建
+        // 这样可以在流式传输过程中看到渐进式更新，即使 artifact 已经持久化
+        // final alreadyResolved = projectedAssistantBlocks.any(
+        //   (projectedBlock) =>
+        //       projectedBlock.type == AssistantTurnBlockType.artifact &&
+        //       projectedBlock.turnId == targetTurnId,
+        // );
+        // Logger.temp(
+        //   'ChatTimelineProjectionService',
+        //   'alreadyResolved check',
+        //   reason: 'diagnose streaming performance',
+        //   data: {
+        //     'alreadyResolved': alreadyResolved,
+        //     'targetTurnId': targetTurnId,
+        //     'artifactId': preview.artifactId,
+        //   },
+        // );
+        // if (alreadyResolved) {
+        //   continue;
+        // }
+        final artifactBlock = AssistantTurnBlock(
+          id: preview.entryId,
+          turnId: targetTurnId,
+          type: AssistantTurnBlockType.artifact,
+          sequence: 99998,
+          createdAt: preview.createdAt,
+          updatedAt: preview.updatedAt,
+          title: preview.title,
+          text: preview.source,
+          payload: const {
+            'isRuntimePreview': true,
+          },
+          artifactProjection: ArtifactTurnProjection(
+            artifactId: preview.artifactId,
+            turnId: preview.turnId,
+            title: preview.title,
+            type: preview.type,
+            sourcePath: preview.sourcePath,
+            source: preview.source,
             createdAt: preview.createdAt,
             updatedAt: preview.updatedAt,
-            title: preview.title,
-            text: preview.source,
-            payload: const {
-              'isRuntimePreview': true,
-            },
-            artifactProjection: ArtifactTurnProjection(
-              artifactId: preview.artifactId,
-              turnId: preview.turnId,
-              title: preview.title,
-              type: preview.type,
-              sourcePath: preview.sourcePath,
-              source: preview.source,
-              createdAt: preview.createdAt,
-              updatedAt: preview.updatedAt,
-            ),
           ),
         );
+        Logger.temp(
+          'ChatTimelineProjectionService',
+          'artifact block created',
+          reason: 'diagnose streaming performance',
+          data: {
+            'blockId': artifactBlock.id,
+            'blockTurnId': artifactBlock.turnId,
+            'updatedAtMicros': artifactBlock.updatedAt.microsecondsSinceEpoch,
+            'artifactId': preview.artifactId,
+          },
+        );
+        runtimeArtifactBlocks.add(artifactBlock);
       }
     }
     return runtimeArtifactBlocks;
@@ -329,14 +417,26 @@ class ChatTimelineProjectionService {
     required String entryTurnId,
     required String? fallbackTurnId,
   }) {
-    if (!_isTransientRuntimeTurnId(entryTurnId)) {
-      return entryTurnId;
-    }
-    return fallbackTurnId ?? entryTurnId;
+    final result = !_isTransientRuntimeTurnId(entryTurnId)
+        ? entryTurnId
+        : (fallbackTurnId ?? entryTurnId);
+    Logger.temp(
+      'ChatTimelineProjectionService',
+      '_resolveProjectedRuntimeTurnId',
+      reason: 'diagnose streaming performance',
+      data: {
+        'entryTurnId': entryTurnId,
+        'fallbackTurnId': fallbackTurnId ?? 'null',
+        'resolvedTurnId': result,
+      },
+    );
+    return result;
   }
 
   bool _isTransientRuntimeTurnId(String turnId) {
-    return turnId == 'planner_runtime' || turnId.contains('_runtime_');
+    return turnId == 'planner_runtime' ||
+           turnId.contains('_runtime_') ||
+           turnId.startsWith('preview:');
   }
 
   List<AssistantTurnBlock> _mergeBlocks({
@@ -377,6 +477,19 @@ class ChatTimelineProjectionService {
       turnBlocks.sort(_compareTurnBlocks);
       merged.addAll(turnBlocks);
     }
+    Logger.temp(
+      'ChatTimelineProjectionService',
+      '_mergeBlocks result',
+      reason: 'diagnose streaming performance',
+      data: {
+        'baseBlockCount': baseBlocks.length,
+        'artifactBlockCount': artifactBlocks.length,
+        'mergedBlockCount': merged.length,
+        'mergedBlockTypes': merged.map((b) => b.type.name).join(','),
+        'mergedArtifactCount': merged.where((b) => b.type == AssistantTurnBlockType.artifact).length,
+        'allMergedTurnIds': merged.map((b) => '${b.type.name}:${b.turnId}').join(' | '),
+      },
+    );
     return merged;
   }
 

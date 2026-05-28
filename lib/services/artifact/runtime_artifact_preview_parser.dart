@@ -4,6 +4,7 @@ import 'package:ai_chat/models/artifact/artifact_type.dart';
 import 'package:ai_chat/models/artifact/runtime_artifact_preview.dart';
 import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
 import 'package:ai_chat/models/llm/streaming_message_event.dart';
+import 'package:ai_chat/utils/logger.dart';
 
 /// Parses runtime-only artifact previews from raw streamed tool-call arguments.
 class RuntimeArtifactPreviewParser {
@@ -21,15 +22,25 @@ class RuntimeArtifactPreviewParser {
       return null;
     }
 
+    Logger.temp(
+      'RuntimeArtifactPreviewParser',
+      'parsing create_artifact block',
+      reason: 'diagnose streaming performance',
+      data: {
+        'textLength': block.text.length,
+        'textPreview': block.text.length > 200
+            ? '${block.text.substring(0, 200)}...'
+            : block.text,
+      },
+    );
+
     final source = _extractJsonStringValue(block.text, 'source');
-    if (source == null || source.trim().isEmpty) {
-      return null;
-    }
     final artifactId = _extractJsonStringValue(block.text, 'id')?.trim();
     final title = _extractJsonStringValue(block.text, 'title')?.trim();
     final typeName = _extractJsonStringValue(block.text, 'type')?.trim();
     final type = ArtifactTypeX.fromWireValue(typeName ?? 'html');
 
+    // Return preview even if source is empty (streaming in progress)
     return RuntimeArtifactPreview(
       turnId: turnId,
       entryId: block.contentBlockId,
@@ -37,7 +48,7 @@ class RuntimeArtifactPreviewParser {
           artifactId == null || artifactId.isEmpty ? 'runtime-artifact' : artifactId,
       title: title == null || title.isEmpty ? '正在生成 Artifact' : title,
       type: type,
-      source: source,
+      source: source ?? '', // Allow empty source during streaming
       sourcePath:
           'runtime://create_artifact/${block.toolUseId ?? block.contentBlockId}',
       createdAt: block.createdAt,

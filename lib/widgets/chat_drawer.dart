@@ -191,68 +191,56 @@ class ChatDrawer extends ConsumerWidget {
               spacing.md,
               spacing.sm,
               spacing.md,
-              0,
+              spacing.sm,
             ),
-            child: Material(
-              color: colors.assistantSurface,
-              borderRadius: BorderRadius.circular(radius.md),
-              child: ListTile(
-                leading: Icon(
-                  Icons.draw_outlined,
-                  color: colors.secondaryText,
-                ),
-                title: Text(
-                  '调试界面',
-                  style: TextStyle(color: colors.primaryText),
-                ),
-                subtitle: Text(
-                  '文档排版调试',
-                  style: TextStyle(
-                    color: colors.secondaryText,
-                    fontSize: 12,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Material(
+                    color: colors.assistantSurface,
+                    borderRadius: BorderRadius.circular(radius.md),
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.settings_outlined,
+                        color: colors.secondaryText,
+                      ),
+                      title: Text(
+                        '设置',
+                        style: TextStyle(color: colors.primaryText),
+                      ),
+                      enabled: !isSendInFlight,
+                      onTap: isSendInFlight
+                          ? null
+                          : () {
+                              Navigator.pop(context);
+                              Navigator.pushNamed(
+                                  context, RouteConstant.settingsPage);
+                            },
+                    ),
                   ),
                 ),
-                enabled: !isSendInFlight,
-                onTap: isSendInFlight
-                    ? null
-                    : () {
-                        Navigator.pop(context);
-                        Navigator.pushNamed(
-                          context,
-                          RouteConstant.layoutDebugPage,
-                        );
-                      },
-              ),
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              spacing.md,
-              spacing.sm,
-              spacing.md,
-              0,
-            ),
-            child: Material(
-              color: colors.assistantSurface,
-              borderRadius: BorderRadius.circular(radius.md),
-              child: ListTile(
-                leading: Icon(
-                  Icons.settings_outlined,
-                  color: colors.secondaryText,
+                SizedBox(width: spacing.sm),
+                Material(
+                  color: colors.assistantSurface,
+                  borderRadius: BorderRadius.circular(radius.md),
+                  child: IconButton(
+                    icon: Icon(
+                      Icons.bug_report_outlined,
+                      color: colors.secondaryText,
+                    ),
+                    tooltip: '调试中心',
+                    onPressed: isSendInFlight
+                        ? null
+                        : () {
+                            Navigator.pop(context);
+                            Navigator.pushNamed(
+                              context,
+                              RouteConstant.debugHubPage,
+                            );
+                          },
+                  ),
                 ),
-                title: Text(
-                  '设置',
-                  style: TextStyle(color: colors.primaryText),
-                ),
-                enabled: !isSendInFlight,
-                onTap: isSendInFlight
-                    ? null
-                    : () {
-                        Navigator.pop(context);
-                        Navigator.pushNamed(
-                            context, RouteConstant.settingsPage);
-                      },
-              ),
+              ],
             ),
           ),
           Padding(

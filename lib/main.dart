@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:ai_chat/constants/route_constant.dart';
+import 'package:ai_chat/pages/debug_hub_page.dart';
 import 'package:ai_chat/pages/layout_debug_page.dart';
+import 'package:ai_chat/pages/webview_debug_page.dart';
 import 'package:ai_chat/repositories/artifact_repository.dart';
 import 'package:ai_chat/pages/test_page.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
@@ -287,7 +289,9 @@ class MyApp extends ConsumerWidget {
       RouteConstant.chatPage: (context) => const ChatPage(title: 'AI Chat'),
       RouteConstant.settingsPage: (context) => const SettingsPage(),
       RouteConstant.testPage: (context) => const TestPage(),
+      RouteConstant.debugHubPage: (context) => const DebugHubPage(),
       RouteConstant.layoutDebugPage: (context) => const LayoutDebugPage(),
+      RouteConstant.webviewDebugPage: (context) => const WebviewDebugPage(),
     };
   }
 }

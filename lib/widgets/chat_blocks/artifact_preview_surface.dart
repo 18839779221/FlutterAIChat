@@ -15,7 +15,8 @@ const double _maxArtifactPreviewScreenCount = 3;
 const String _artifactHeightChannelName = 'ArtifactHeight';
 const String artifactPreviewTruncationMessage =
     '内容较长，长按进入详情页查看完整内容。';
-const Duration _streamingDebounceDelay = Duration(seconds: 1);
+const Duration _streamingDebounceDelay = Duration(milliseconds: 150);
+const Duration _heightUpdateDebounceDelay = Duration(milliseconds: 100);
 const String _artifactPreviewLogTag = 'ArtifactPreviewSurface';
 
 double clampArtifactPreviewHeight(
@@ -191,6 +192,11 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   String? _lastRenderedSource;
   String? _lastThemeSignature;
 
+  // Height update debouncing
+  Timer? _heightDebounceTimer;
+  double? _pendingHeight;
+  bool? _pendingTruncated;
+
   @override
   void initState() {
     super.initState();
@@ -222,6 +228,20 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
 
     // If source changed, debounce the update
     if (oldWidget.source != widget.source) {
+      final oldLength = oldWidget.source?.length ?? 0;
+      final newLength = widget.source?.length ?? 0;
+      Logger.temp(
+        _artifactPreviewLogTag,
+        'source changed, scheduling update',
+        reason: 'diagnose streaming performance',
+        data: {
+          'sourcePath': widget.sourcePath,
+          'oldLength': oldLength,
+          'newLength': newLength,
+          'delta': newLength - oldLength,
+        },
+      );
+
       _pendingSource = widget.source;
       _debounceTimer?.cancel();
 
@@ -233,7 +253,26 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         _pendingSource = null;
 
         // Only update if source actually changed from last render
-        if (newSource == _lastRenderedSource) return;
+        if (newSource == _lastRenderedSource) {
+          Logger.temp(
+            _artifactPreviewLogTag,
+            'skipped: source unchanged from last render',
+            reason: 'diagnose streaming performance',
+            data: {'sourcePath': widget.sourcePath},
+          );
+          return;
+        }
+
+        Logger.temp(
+          _artifactPreviewLogTag,
+          'executing debounced update',
+          reason: 'diagnose streaming performance',
+          data: {
+            'sourcePath': widget.sourcePath,
+            'sourceLength': newSource.length,
+            'lastRenderedLength': _lastRenderedSource?.length ?? 0,
+          },
+        );
 
         _lastRenderedSource = newSource;
 
@@ -252,18 +291,82 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     }
   }
 
-  void _updateControllerContent(String source) {
+  void _updateControllerContent(String source) async {
     final controller = _controller;
     if (controller == null) return;
 
     try {
+      // Try incremental update via JavaScript injection if we already have content
+      if (_lastRenderedSource != null && _lastRenderedSource!.isNotEmpty) {
+        Logger.temp(
+          _artifactPreviewLogTag,
+          'using incremental update path',
+          reason: 'diagnose streaming performance',
+          data: {
+            'sourcePath': widget.sourcePath,
+            'sourceLength': source.length,
+          },
+        );
+
+        final escapedSource = source
+            .replaceAll('\\', '\\\\')
+            .replaceAll('`', '\\`')
+            .replaceAll('\$', '\\\$');
+
+        final updateScript = '''
+          (function() {
+            try {
+              const root = document.getElementById('artifact-root');
+              if (root) {
+                root.innerHTML = `$escapedSource`;
+                if (window.__artifactHeight__) {
+                  window.__artifactHeight__();
+                  setTimeout(() => window.__artifactHeight__(), 50);
+                  setTimeout(() => window.__artifactHeight__(), 150);
+                }
+                return 'success';
+              }
+              return 'no-root';
+            } catch (e) {
+              return 'error:' + e.message;
+            }
+          })();
+        ''';
+
+        try {
+          final result = await controller.runJavaScriptReturningResult(updateScript);
+          Logger.temp(
+            _artifactPreviewLogTag,
+            'incremental update completed',
+            reason: 'diagnose streaming performance',
+            data: {
+              'sourcePath': widget.sourcePath,
+              'result': result.toString(),
+            },
+          );
+          return;
+        } catch (e) {
+          Logger.temp(
+            _artifactPreviewLogTag,
+            'incremental update exception',
+            level: LogLevel.error,
+            reason: 'diagnose streaming performance',
+            data: {
+              'sourcePath': widget.sourcePath,
+              'error': e.toString(),
+            },
+          );
+          return;
+        }
+      }
+
+      // First load: use full reload
       Logger.temp(
         _artifactPreviewLogTag,
-        'artifact preview reload requested',
-        reason: 'diagnose inline artifact height sync',
+        'using full reload path',
+        reason: 'diagnose streaming performance',
         data: {
           'sourcePath': widget.sourcePath,
-          'isInline': !widget.enableInternalScroll,
           'sourceLength': source.length,
         },
       );
@@ -274,13 +377,6 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
           hostCssVariables: _resolveHostCssVariables(),
         ),
       );
-      // Reset height state for new content
-      if (mounted) {
-        setState(() {
-          _previewHeight = _defaultArtifactPreviewHeight;
-          _isPreviewTruncated = false;
-        });
-      }
     } catch (error) {
       if (mounted) {
         setState(() {
@@ -293,6 +389,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _heightDebounceTimer?.cancel();
     super.dispose();
   }
 
@@ -369,20 +466,28 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
                 'rootOffsetHeight': parsed.rootOffsetHeight,
               },
             );
-            setState(() {
-              _previewHeight = clampedHeight;
-              _isPreviewTruncated = value > clampedHeight;
+
+            // Debounce height updates to avoid jitter
+            _pendingHeight = clampedHeight;
+            _pendingTruncated = value > clampedHeight;
+            _heightDebounceTimer?.cancel();
+            _heightDebounceTimer = Timer(_heightUpdateDebounceDelay, () {
+              if (!mounted) return;
+              setState(() {
+                _previewHeight = _pendingHeight ?? _previewHeight;
+                _isPreviewTruncated = _pendingTruncated ?? _isPreviewTruncated;
+              });
+              Logger.temp(
+                _artifactPreviewLogTag,
+                'artifact height applied',
+                reason: 'diagnose inline artifact height sync',
+                data: {
+                  'sourcePath': widget.sourcePath,
+                  'appliedHeight': _pendingHeight,
+                  'isPreviewTruncated': _pendingTruncated,
+                },
+              );
             });
-            Logger.temp(
-              _artifactPreviewLogTag,
-              'artifact height applied',
-              reason: 'diagnose inline artifact height sync',
-              data: {
-                'sourcePath': widget.sourcePath,
-                'appliedHeight': clampedHeight,
-                'isPreviewTruncated': value > clampedHeight,
-              },
-            );
           },
         );
       }
@@ -403,6 +508,17 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   @override
   Widget build(BuildContext context) {
     final source = widget.source;
+    Logger.temp(
+      _artifactPreviewLogTag,
+      'build called',
+      reason: 'diagnose streaming performance',
+      data: {
+        'sourcePath': widget.sourcePath,
+        'sourceLength': source?.length ?? 0,
+        'sourceHashCode': source?.hashCode ?? 0,
+        'hasController': _controller != null,
+      },
+    );
     if (_errorText != null) {
       return _buildInfoMessage(context, 'Preview unavailable\n$_errorText');
     }
