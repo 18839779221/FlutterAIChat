@@ -211,10 +211,12 @@ class ChatTimelineRow extends ConsumerWidget {
         break;
       case AssistantTurnBlockType.artifact:
         blockWidget = GestureDetector(
+          key: ValueKey('gesture_${block.artifactProjection?.artifactId}'),
           onLongPress: sourceMessage == null
               ? null
               : () => onLongPressMessage(sourceMessage),
           child: ArtifactBlock(
+            key: ValueKey(block.artifactProjection?.artifactId),
             projection: block.artifactProjection,
           ),
         );

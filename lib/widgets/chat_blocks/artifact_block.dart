@@ -33,6 +33,7 @@ class ArtifactBlock extends StatelessWidget {
     }
 
     return GestureDetector(
+      key: ValueKey('inner_gesture_${_buildArtifactCacheKey(artifact)}'),
       behavior: HitTestBehavior.opaque,
       onLongPress: () {
         Navigator.of(context).push(
@@ -44,6 +45,7 @@ class ArtifactBlock extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: StableArtifactBlock(
+          key: ValueKey(_buildArtifactCacheKey(artifact)),
           cacheKey: _buildArtifactCacheKey(artifact),
           builder: (context) => ArtifactPreviewSurface(
             source: artifact.source,
@@ -55,11 +57,6 @@ class ArtifactBlock extends StatelessWidget {
   }
 
   String _buildArtifactCacheKey(ArtifactTurnProjection artifact) {
-    return [
-      artifact.artifactId,
-      artifact.sourcePath,
-      artifact.updatedAt.microsecondsSinceEpoch.toString(),
-      artifact.source?.hashCode.toString() ?? 'no-source',
-    ].join(':');
+    return artifact.artifactId;
   }
 }
