@@ -373,6 +373,96 @@ void main() {
     });
 
     test(
+        'prefers persisted artifact over runtime preview for the same create_artifact tool call',
+        () async {
+      final tempDirectory = await Directory.systemTemp.createTemp(
+        'timeline-artifact-takeover-',
+      );
+      final fileStorageService =
+          ArtifactFileStorageService(rootDirectory: tempDirectory);
+      await fileStorageService.saveArtifactSource(
+        groupId: 7,
+        artifactId: 'food-rank',
+        title: '中国美食',
+        type: ArtifactType.html,
+        source: '<div>最终落盘内容</div>',
+      );
+      final service = ChatTimelineProjectionService(
+        artifactTurnResolver: ArtifactTurnResolver(
+          fileStorageService: fileStorageService,
+        ),
+      );
+
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我做个 artifact',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 31,
+            text: '已创建 artifact：food-rank',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolResult,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 2),
+            payloadJson: const {
+              'toolName': 'create_artifact',
+              'status': 'success',
+              'summary': '已创建 artifact：food-rank',
+              'providerCallId': 'call_artifact_1',
+              'data': {
+                'artifactId': 'food-rank',
+                'title': '中国美食',
+                'type': 'html',
+                'sourcePath': 'artifacts/7/food-rank.html',
+              },
+            },
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'message_1',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 1),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_1:tool:0',
+                  blockType: StreamingContentBlockType.toolUse,
+                  toolUseId: 'call_artifact_1',
+                  toolName: 'create_artifact',
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  text:
+                      '{"id":"food-rank","type":"html","title":"中国美食","source":"<div>渐进预览</div>"}',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final artifactBlocks = projection.assistantBlocks
+          .where((block) => block.type == AssistantTurnBlockType.artifact)
+          .toList(growable: false);
+      expect(artifactBlocks, hasLength(1));
+      expect(artifactBlocks.single.payload?['isRuntimePreview'], isNot(true));
+      expect(
+        artifactBlocks.single.artifactProjection?.sourcePath,
+        'artifacts/7/food-rank.html',
+      );
+      expect(
+        artifactBlocks.single.artifactProjection?.source,
+        '<div>最终落盘内容</div>',
+      );
+
+      await tempDirectory.delete(recursive: true);
+    });
+
+    test(
         'create artifact renderer can hide tool phases while keeping artifact projection',
         () async {
       final tempDirectory = await Directory.systemTemp.createTemp(

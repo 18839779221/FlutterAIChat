@@ -200,12 +200,12 @@ class RuntimeStreamingPreviewController
       : _projector = RuntimeStreamingPreviewProjector(),
         super(const RuntimeStreamingPreviewState());
 
-  static const Duration _minPublishInterval = Duration(milliseconds: 1000);
+  static const Duration _minPublishInterval = Duration(milliseconds: 16);
 
   final RuntimeStreamingPreviewProjector _projector;
   Timer? _flushTimer;
   DateTime? _lastPublishedAt;
-  final List<StreamingMessageEvent> _pendingEvents = <StreamingMessageEvent>[];
+  int _pendingPublishedEventCount = 0;
 
   void publish(StreamingMessageEvent event) {
     if (!mounted) {
@@ -240,51 +240,50 @@ class RuntimeStreamingPreviewController
       );
     }
 
-    _pendingEvents.add(event);
     final now = DateTime.now();
+    _projector.consume(event, now: now);
+    _pendingPublishedEventCount += 1;
     final lastPublishedAt = _lastPublishedAt;
     if (lastPublishedAt == null ||
         now.difference(lastPublishedAt) >= _minPublishInterval) {
-      _flushPending(now);
+      _publishState(now);
       return;
     }
 
     _flushTimer ??= Timer(
       _minPublishInterval - now.difference(lastPublishedAt),
-      () => _flushPending(DateTime.now()),
+      () => _publishState(DateTime.now()),
     );
   }
 
   void clear() {
     _flushTimer?.cancel();
     _flushTimer = null;
-    _pendingEvents.clear();
+    _pendingPublishedEventCount = 0;
+    _lastPublishedAt = null;
     _projector.clear();
     if (mounted && !state.isEmpty) {
       state = const RuntimeStreamingPreviewState();
     }
   }
 
-  void _flushPending(DateTime now) {
+  void _publishState(DateTime now) {
     _flushTimer?.cancel();
     _flushTimer = null;
-    if (!mounted || _pendingEvents.isEmpty) {
+    if (!mounted || _pendingPublishedEventCount == 0) {
       return;
-    }
-    final events = List<StreamingMessageEvent>.from(_pendingEvents);
-    _pendingEvents.clear();
-    for (final event in events) {
-      _projector.consume(event, now: DateTime.now());
     }
     _lastPublishedAt = now;
     final newState = _projector.currentState();
+    final eventCount = _pendingPublishedEventCount;
+    _pendingPublishedEventCount = 0;
 
     Logger.temp(
       'RuntimeStreamingPreviewController',
       'state flushed',
       reason: 'diagnose streaming performance',
       data: {
-        'eventCount': events.length,
+        'eventCount': eventCount,
         'messageCount': newState.messages.length,
         'totalBlocks': newState.messages.fold<int>(
           0,
@@ -300,7 +299,7 @@ class RuntimeStreamingPreviewController
   void dispose() {
     _flushTimer?.cancel();
     _flushTimer = null;
-    _pendingEvents.clear();
+    _pendingPublishedEventCount = 0;
     super.dispose();
   }
 }

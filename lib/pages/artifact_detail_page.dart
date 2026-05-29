@@ -85,6 +85,7 @@ class _ArtifactDetailPageState extends State<ArtifactDetailPage> {
                 child: _showSource
                   ? _ArtifactSourceView(source: projection.source)
                   : ArtifactPreviewSurface(
+                      artifactId: projection.artifactId,
                       source: projection.source,
                       sourcePath: projection.sourcePath,
                       enableInternalScroll: true,

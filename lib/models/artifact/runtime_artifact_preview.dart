@@ -10,6 +10,8 @@ class RuntimeArtifactPreview {
   final String artifactId;
   final String title;
   final ArtifactType type;
+  /// Provider-native tool call id for the streamed create_artifact block.
+  final String? providerCallId;
   final String? source;
   final String sourcePath;
   final DateTime createdAt;
@@ -21,6 +23,7 @@ class RuntimeArtifactPreview {
     required this.artifactId,
     required this.title,
     required this.type,
+    this.providerCallId,
     required this.source,
     required this.sourcePath,
     required this.createdAt,

@@ -1,18 +1,17 @@
-import 'dart:async';
-
 import 'package:ai_chat/widgets/chat_blocks/artifact_preview_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('ArtifactPreviewSurface debouncing', () {
-    testWidgets('cancels debounce timer when widget is disposed',
+  group('ArtifactPreviewSurface streaming updates', () {
+    testWidgets('cancels scheduled update loop when widget is disposed',
         (WidgetTester tester) async {
       // Build widget
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
             body: ArtifactPreviewSurface(
+              artifactId: 'artifact-1',
               source: '<div>Initial</div>',
               sourcePath: 'test://artifact',
             ),
@@ -22,11 +21,12 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Update source to trigger debouncing
+      // Update source to trigger scheduled updates.
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
             body: ArtifactPreviewSurface(
+              artifactId: 'artifact-1',
               source: '<div>Updated</div>',
               sourcePath: 'test://artifact',
             ),
@@ -36,7 +36,7 @@ void main() {
 
       await tester.pump();
 
-      // Dispose widget before debounce completes
+      // Dispose widget before the scheduled update runs.
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
@@ -45,21 +45,22 @@ void main() {
         ),
       );
 
-      // Wait for debounce delay
+      // Wait longer than the scheduled update interval.
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
 
-      // Should not crash (timer was properly cancelled)
+      // Should not crash.
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('rebuilds to empty state when source becomes unavailable',
+    testWidgets('rebuilds to unavailable state when source becomes unavailable',
         (WidgetTester tester) async {
       // Build initial widget
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
             body: ArtifactPreviewSurface(
+              artifactId: 'artifact-1',
               source: '<div>Initial</div>',
               sourcePath: 'test://artifact',
             ),
@@ -74,6 +75,7 @@ void main() {
         const MaterialApp(
           home: Scaffold(
             body: ArtifactPreviewSurface(
+              artifactId: 'artifact-1',
               source: null,
               sourcePath: 'test://artifact',
             ),
@@ -87,51 +89,12 @@ void main() {
     });
 
     test('buildArtifactPreviewDocument still works correctly', () {
-      final document = buildArtifactPreviewDocument('<div>Test</div>');
+      final document = buildArtifactPreviewDocument();
 
       expect(document, contains('<!DOCTYPE html>'));
-      expect(document, contains('<div>Test</div>'));
+      expect(document, contains('window.__applyArtifactSource__'));
+      expect(document, contains('window.__applyArtifactPayload__'));
       expect(document, contains('Content-Security-Policy'));
-    });
-  });
-
-  group('Debouncing logic unit tests', () {
-    test('Timer cancellation prevents callback execution', () async {
-      var callbackExecuted = false;
-      final timer = Timer(const Duration(milliseconds: 100), () {
-        callbackExecuted = true;
-      });
-
-      // Cancel immediately
-      timer.cancel();
-
-      // Wait longer than the timer duration
-      await Future.delayed(const Duration(milliseconds: 200));
-
-      expect(callbackExecuted, isFalse);
-    });
-
-    test('Timer executes callback after delay', () async {
-      var callbackExecuted = false;
-      Timer(const Duration(milliseconds: 50), () {
-        callbackExecuted = true;
-      });
-
-      // Wait for timer to fire
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      expect(callbackExecuted, isTrue);
-    });
-
-    test('Multiple timer cancellations are safe', () {
-      final timer = Timer(const Duration(milliseconds: 100), () {});
-
-      // Multiple cancellations should not throw
-      expect(() {
-        timer.cancel();
-        timer.cancel();
-        timer.cancel();
-      }, returnsNormally);
     });
   });
 }

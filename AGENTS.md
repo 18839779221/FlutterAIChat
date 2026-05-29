@@ -131,6 +131,23 @@ fvm flutter test
 - Prefer a unique smoke message per run to avoid false positives from old chat history
 - The deterministic driver smoke saves screenshots under `build/droidrun/driver-smoke`
 
+### Android Repro Logging Workflow
+- For Android/native repro debugging, default to the app-private file log instead of `logcat`
+- The stable log source is `app.log` created by `Logger` under the native application support directory
+- On Android, `getApplicationSupportDirectory()` maps to the app-private `files` directory, so the expected log path is `files/logs/app.log` inside the app sandbox
+- Before each new repro, clear the existing `app.log` so the file contains only the current run's logs
+- After the repro completes, read `app.log` directly for analysis; treat `logcat` as supplemental only when file-log evidence is insufficient
+- When accessing the file from a connected Android device, prefer `adb shell run-as <package> ...` against the app-private `files/logs/app.log` path rather than long-running `logcat` capture
+- Current Android debug package is `com.example.ai_chat`, so the default commands are:
+  - clear: `adb -s <device_id> shell run-as com.example.ai_chat sh -c '> files/logs/app.log'`
+  - inspect: `adb -s <device_id> shell run-as com.example.ai_chat cat files/logs/app.log`
+  - export: `adb -s <device_id> shell run-as com.example.ai_chat cat files/logs/app.log > build/artifact-debug/<name>.log`
+- Prefer the project helper script for this workflow:
+  - `bash scripts/android_capture_app_log.sh clear [device_id]`
+  - `bash scripts/android_capture_app_log.sh show [device_id]`
+  - `bash scripts/android_capture_app_log.sh export <name> [device_id]`
+- Keep detailed logging architecture, log taxonomy, and cleanup policy in `docs/architecture/logging.md`; use this section only as the default repro workflow
+
 ### Building
 ```bash
 # Android

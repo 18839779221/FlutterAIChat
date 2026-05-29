@@ -72,15 +72,16 @@ class ChatTimelineProjectionService {
       messages: messages,
       groupId: groupId,
     );
+    final resolvedArtifactProviderCallIds = artifactBlocks
+        .map((block) => block.artifactProjection?.providerCallId?.trim())
+        .whereType<String>()
+        .where((value) => value.isNotEmpty)
+        .toSet();
     final runtimeDraftBlock = _buildRuntimeDraftBlock(runtimeDraft);
     final runtimeArtifactBlocks = _buildRuntimeArtifactBlocks(
-      projectedAssistantBlocks: [
-        ...blocks,
-        ...toolBlocks,
-        if (runtimeDraftBlock != null) runtimeDraftBlock,
-      ],
       runtimePreviewState: runtimePreviewState,
       resolvedTurnId: runtimeTurnId,
+      resolvedArtifactProviderCallIds: resolvedArtifactProviderCallIds,
     );
     final mergedBlocks = _mergeBlocks(
       baseBlocks: [
@@ -258,6 +259,8 @@ class ChatTimelineProjectionService {
           'artifactId': projection.artifactId,
           'type': projection.type.name,
           'sourcePath': projection.sourcePath,
+          if ((projection.providerCallId ?? '').trim().isNotEmpty)
+            'providerCallId': projection.providerCallId,
           if (projection.source != null) 'source': projection.source,
         },
         artifactProjection: projection,
@@ -266,9 +269,9 @@ class ChatTimelineProjectionService {
   }
 
   List<AssistantTurnBlock> _buildRuntimeArtifactBlocks({
-    required List<AssistantTurnBlock> projectedAssistantBlocks,
     required RuntimeStreamingPreviewState runtimePreviewState,
     required String? resolvedTurnId,
+    required Set<String> resolvedArtifactProviderCallIds,
   }) {
     if (runtimePreviewState.isEmpty) {
       return const <AssistantTurnBlock>[];
@@ -328,26 +331,22 @@ class ChatTimelineProjectionService {
             'sourceLength': preview.source?.length ?? 0,
           },
         );
-        // 注释掉 alreadyResolved 检查，允许 runtime artifact 始终被创建
-        // 这样可以在流式传输过程中看到渐进式更新，即使 artifact 已经持久化
-        // final alreadyResolved = projectedAssistantBlocks.any(
-        //   (projectedBlock) =>
-        //       projectedBlock.type == AssistantTurnBlockType.artifact &&
-        //       projectedBlock.turnId == targetTurnId,
-        // );
-        // Logger.temp(
-        //   'ChatTimelineProjectionService',
-        //   'alreadyResolved check',
-        //   reason: 'diagnose streaming performance',
-        //   data: {
-        //     'alreadyResolved': alreadyResolved,
-        //     'targetTurnId': targetTurnId,
-        //     'artifactId': preview.artifactId,
-        //   },
-        // );
-        // if (alreadyResolved) {
-        //   continue;
-        // }
+        final providerCallId = preview.providerCallId?.trim();
+        if (providerCallId != null &&
+            providerCallId.isNotEmpty &&
+            resolvedArtifactProviderCallIds.contains(providerCallId)) {
+          Logger.temp(
+            'ChatTimelineProjectionService',
+            'runtime artifact hidden after persisted takeover',
+            reason: 'diagnose streaming performance',
+            data: {
+              'providerCallId': providerCallId,
+              'artifactId': preview.artifactId,
+              'turnId': targetTurnId,
+            },
+          );
+          continue;
+        }
         final artifactBlock = AssistantTurnBlock(
           id: preview.entryId,
           turnId: targetTurnId,
@@ -357,14 +356,17 @@ class ChatTimelineProjectionService {
           updatedAt: preview.updatedAt,
           title: preview.title,
           text: preview.source,
-          payload: const {
+          payload: {
             'isRuntimePreview': true,
+            if (providerCallId != null && providerCallId.isNotEmpty)
+              'providerCallId': providerCallId,
           },
           artifactProjection: ArtifactTurnProjection(
             artifactId: preview.artifactId,
             turnId: preview.turnId,
             title: preview.title,
             type: preview.type,
+            providerCallId: providerCallId,
             sourcePath: preview.sourcePath,
             source: preview.source,
             createdAt: preview.createdAt,

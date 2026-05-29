@@ -48,6 +48,7 @@ class RuntimeArtifactPreviewParser {
           artifactId == null || artifactId.isEmpty ? 'runtime-artifact' : artifactId,
       title: title == null || title.isEmpty ? '正在生成 Artifact' : title,
       type: type,
+      providerCallId: block.toolUseId?.trim(),
       source: source ?? '', // Allow empty source during streaming
       sourcePath:
           'runtime://create_artifact/${block.toolUseId ?? block.contentBlockId}',

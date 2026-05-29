@@ -74,6 +74,7 @@ class ArtifactTurnResolver {
             turnId: currentTurnId,
             title: title,
             type: type,
+            providerCallId: result.providerCallId,
             sourcePath: sourcePath,
             source: _tryReadSource(sourcePath),
             sourceMessageId: message.id,

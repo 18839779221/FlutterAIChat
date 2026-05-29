@@ -488,7 +488,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     AssistantTurnBlock block,
     ChatMessage? sourceMessage,
   ) {
-    final key = '${block.id}:${block.updatedAt.microsecondsSinceEpoch}';
+    final key = block.id;
     Logger.temp(
       'ChatMessageList',
       'stableKey generated',

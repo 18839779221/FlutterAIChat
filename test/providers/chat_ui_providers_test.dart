@@ -211,5 +211,56 @@ void main() {
         isTrue,
       );
     });
+
+    test('runtime preview consumes deltas immediately within publish throttle window',
+        () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final notifier =
+          container.read(runtimeStreamingPreviewStateProvider.notifier);
+
+      notifier.publish(
+        const StreamingMessageStartEvent(messageId: 'preview_2'),
+      );
+      notifier.publish(
+        const StreamingContentBlockStartEvent(
+          messageId: 'preview_2',
+          contentBlockId: 'preview_2:tool:0',
+          blockType: StreamingContentBlockType.toolUse,
+          toolUseId: 'call_2',
+          toolName: 'create_artifact',
+        ),
+      );
+      notifier.publish(
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'preview_2',
+          contentBlockId: 'preview_2:tool:0',
+          deltaType: StreamingContentDeltaType.inputJson,
+          value: '{"source":"<div>Hello',
+        ),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      notifier.publish(
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'preview_2',
+          contentBlockId: 'preview_2:tool:0',
+          deltaType: StreamingContentDeltaType.inputJson,
+          value: ' world</div>"}',
+        ),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final state = container.read(runtimeStreamingPreviewStateProvider);
+      expect(state.messages, hasLength(1));
+      expect(state.messages.single.blocks, hasLength(1));
+      expect(
+        state.messages.single.blocks.single.text,
+        '{"source":"<div>Hello world</div>"}',
+      );
+    });
   });
 }

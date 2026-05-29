@@ -448,6 +448,86 @@ void main() {
     });
 
     testWidgets(
+        'runtime preview block keeps the same timeline row key when updatedAt changes',
+        (tester) async {
+      const previewBlockId = 'preview_message:block:0:toolUse';
+      final initialPreviewState = RuntimeStreamingPreviewState(
+        messages: [
+          RuntimeStreamingPreviewMessage(
+            messageId: 'preview_message',
+            createdAt: DateTime(2026, 5, 29, 14, 0, 0),
+            updatedAt: DateTime(2026, 5, 29, 14, 0, 0),
+            blocks: [
+              RuntimeStreamingPreviewBlock(
+                contentBlockId: previewBlockId,
+                blockType: StreamingContentBlockType.toolUse,
+                createdAt: DateTime(2026, 5, 29, 14, 0, 0),
+                updatedAt: DateTime(2026, 5, 29, 14, 0, 0),
+                toolUseId: 'call_preview_1',
+                toolName: 'create_artifact',
+                text:
+                    '{"id":"demo-artifact","type":"html","title":"Demo","source":"<div>1</div>"}',
+              ),
+            ],
+          ),
+        ],
+      );
+
+      await _pumpMessageList(
+        tester,
+        messages: [
+          ChatMessage(
+            id: 1,
+            text: '做个 artifact',
+            role: MessageRole.user,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+        runtimePreviewState: initialPreviewState,
+      );
+
+      expect(
+        find.byKey(const ValueKey('timeline-block-preview_message:block:0:toolUse')),
+        findsOneWidget,
+      );
+
+      final updatedPreviewState = RuntimeStreamingPreviewState(
+        messages: [
+          RuntimeStreamingPreviewMessage(
+            messageId: 'preview_message',
+            createdAt: DateTime(2026, 5, 29, 14, 0, 0),
+            updatedAt: DateTime(2026, 5, 29, 14, 0, 1),
+            blocks: [
+              RuntimeStreamingPreviewBlock(
+                contentBlockId: previewBlockId,
+                blockType: StreamingContentBlockType.toolUse,
+                createdAt: DateTime(2026, 5, 29, 14, 0, 0),
+                updatedAt: DateTime(2026, 5, 29, 14, 0, 1),
+                toolUseId: 'call_preview_1',
+                toolName: 'create_artifact',
+                text:
+                    '{"id":"demo-artifact","type":"html","title":"Demo","source":"<div>12</div>"}',
+              ),
+            ],
+          ),
+        ],
+      );
+
+      final element = tester.element(find.byType(ChatMessageList));
+      final container = ProviderScope.containerOf(element);
+      final notifier =
+          container.read(runtimeStreamingPreviewStateProvider.notifier);
+      notifier.state = updatedPreviewState;
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey('timeline-block-preview_message:block:0:toolUse')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
         'adding a later streaming message does not downgrade previous completed markdown block',
         (tester) async {
       final container = ProviderContainer(

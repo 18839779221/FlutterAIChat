@@ -2,7 +2,6 @@ import 'package:ai_chat/models/artifact/artifact_turn_projection.dart';
 import 'package:ai_chat/pages/artifact_detail_page.dart';
 import 'package:ai_chat/utils/logger.dart';
 import 'package:ai_chat/widgets/chat_blocks/artifact_preview_surface.dart';
-import 'package:ai_chat/widgets/chat_timeline/stable_artifact_block.dart';
 import 'package:flutter/material.dart';
 
 /// Lightweight inline artifact card.
@@ -44,13 +43,11 @@ class ArtifactBlock extends StatelessWidget {
       },
       child: Padding(
         padding: const EdgeInsets.only(bottom: 10),
-        child: StableArtifactBlock(
+        child: ArtifactPreviewSurface(
           key: ValueKey(_buildArtifactCacheKey(artifact)),
-          cacheKey: _buildArtifactCacheKey(artifact),
-          builder: (context) => ArtifactPreviewSurface(
-            source: artifact.source,
-            sourcePath: artifact.sourcePath,
-          ),
+          artifactId: artifact.artifactId,
+          source: artifact.source,
+          sourcePath: artifact.sourcePath,
         ),
       ),
     );

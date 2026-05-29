@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('mounts artifact preview without inherited widget initState error',
+  testWidgets(
+      'mounts artifact preview without inherited widget initState error',
       (WidgetTester tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(
           body: ArtifactPreviewSurface(
+            artifactId: 'artifact-1',
             source: '<div>Hello</div>',
             sourcePath: 'test://artifact',
           ),
@@ -21,9 +23,27 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  test('wraps fragment source into constrained html document', () {
+  testWidgets('does not expose raw source text before preview controller is ready',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: ArtifactPreviewSurface(
+            artifactId: 'artifact-1',
+            source: '<div>Hello artifact</div>',
+            sourcePath: 'test://artifact',
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+
+    expect(find.textContaining('Hello artifact'), findsNothing);
+  });
+
+  test('wraps fragment source into constrained host document', () {
     final document = buildArtifactPreviewDocument(
-      '<div>Hello</div>',
       hostCssVariables: const <String, String>{
         '--app-artifact-page-bg': '#faf9f5',
         '--app-artifact-text-primary': '#1f1f1e',
@@ -36,30 +56,37 @@ void main() {
     expect(document, contains(':root'));
     expect(document, contains('--app-artifact-page-bg: #faf9f5;'));
     expect(document, contains('#artifact-root'));
-    expect(document, contains('<div>Hello</div>'));
+    expect(document, contains('window.__applyArtifactSource__'));
+    expect(document, contains('window.__applyArtifactPayload__'));
+    expect(document, contains('<div id="artifact-root"></div>'));
+    expect(document, isNot(contains('<div>Hello</div>')));
   });
 
-  test('injects constrained head content into existing html', () {
+  test('keeps host shell even when source is a full html document', () {
     const source = '<html><head><title>A</title></head><body>Hi</body></html>';
 
     final document = buildArtifactPreviewDocument(
-      source,
       hostCssVariables: const <String, String>{
         '--app-artifact-page-bg': '#faf9f5',
       },
     );
 
-    expect(document, contains('<title>A</title>'));
     expect(document, contains('Content-Security-Policy'));
     expect(document, contains('<base target="_self">'));
     expect(document, contains('--app-artifact-page-bg: #faf9f5;'));
+    expect(document, contains('window.__applyArtifactSource__'));
+    expect(document, contains('DOMParser'));
+    expect(document, contains('applyManagedHead'));
+    expect(document, contains('<div id="artifact-root"></div>'));
+    expect(document, isNot(contains(source)));
   });
 
   test('injects height reporter script into preview document', () {
-    final document = buildArtifactPreviewDocument('<div style="height: 480px"></div>');
+    final document = buildArtifactPreviewDocument();
 
     expect(document, contains('__artifactHeight__'));
     expect(document, contains('__artifactLockScroll__'));
+    expect(document, contains('__applyArtifactPayload__'));
     expect(document, contains("overflow = 'hidden'"));
     expect(document, contains('ResizeObserver'));
     expect(document, contains('scrollHeight'));
@@ -67,9 +94,17 @@ void main() {
     expect(document, contains('JSON.stringify'));
   });
 
+  test('does not inline artifact source into the host document script context', () {
+    const source = '<div>before</div><script>console.log("x")</script><div>after</div>';
+
+    final document = buildArtifactPreviewDocument();
+
+    expect(document, isNot(contains(source)));
+    expect(document, isNot(contains('console.log("x")')));
+  });
+
   test('detail preview document can keep internal scrolling enabled', () {
     final document = buildArtifactPreviewDocument(
-      '<div style="height: 480px"></div>',
       lockScroll: false,
       hostCssVariables: const <String, String>{
         '--app-artifact-page-bg': '#faf9f5',
@@ -93,7 +128,8 @@ void main() {
     expect(artifactPreviewTruncationMessage, contains('完整内容'));
   });
 
-  test('artifact inline preview keeps details page wording as the overflow path',
+  test(
+      'artifact inline preview keeps details page wording as the overflow path',
       () {
     expect(artifactPreviewTruncationMessage, contains('详情页'));
     expect(artifactPreviewTruncationMessage, isNot(contains('展开更多')));

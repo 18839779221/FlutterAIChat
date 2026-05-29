@@ -169,8 +169,11 @@ class _WebviewDebugPageState extends State<WebviewDebugPage> {
                               'isStreaming=$_isStreaming, '
                               'enableInternalScroll=true');
                           return ArtifactPreviewSurface(
+                            artifactId:
+                                'debug-${_artifactFiles[_selectedFileIndex].name}',
                             source: _currentSource,
-                            sourcePath: 'debug-${_artifactFiles[_selectedFileIndex].name}',
+                            sourcePath:
+                                'debug-${_artifactFiles[_selectedFileIndex].name}',
                             enableInternalScroll: false,
                           );
                         },
