@@ -207,6 +207,138 @@ $hostStyles
 ''';
 }
 
+/// Builds the final preview document by loading the complete source as a
+/// browser document, with only host measurement and containment injected.
+String buildFinalArtifactPreviewDocument(
+  String source, {
+  bool lockScroll = true,
+  Map<String, String> hostCssVariables = const <String, String>{},
+}) {
+  final headInjection = _buildArtifactPreviewHeadInjection(
+    lockScroll: lockScroll,
+    hostCssVariables: hostCssVariables,
+  );
+  final htmlTagPattern = RegExp(r'<html[\s>]', caseSensitive: false);
+  final headTagPattern = RegExp(r'<head[^>]*>', caseSensitive: false);
+  final hasHtmlTag = htmlTagPattern.hasMatch(source);
+  final headMatch = headTagPattern.firstMatch(source);
+  if (headMatch != null) {
+    final matchedHead = headMatch.group(0)!;
+    return source.replaceFirst(matchedHead, '$matchedHead$headInjection');
+  }
+  if (hasHtmlTag) {
+    final htmlMatch =
+        RegExp(r'<html[^>]*>', caseSensitive: false).firstMatch(source);
+    if (htmlMatch != null) {
+      final matchedHtml = htmlMatch.group(0)!;
+      return source.replaceFirst(
+        matchedHtml,
+        '$matchedHtml<head>$headInjection</head>',
+      );
+    }
+  }
+  return '''
+<!DOCTYPE html>
+<html>
+  <head>
+    $headInjection
+  </head>
+  <body>
+    <div id="artifact-root">
+      $source
+    </div>
+  </body>
+</html>
+''';
+}
+
+String _buildArtifactPreviewHeadInjection({
+  required bool lockScroll,
+  required Map<String, String> hostCssVariables,
+}) {
+  final hostStyles = buildArtifactPreviewHostStyles(hostCssVariables);
+  return '''
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: https: http:; style-src 'unsafe-inline' data: https: http:; font-src data: https: http:; script-src 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'none'; media-src data: blob:; frame-src data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'; navigate-to 'none'">
+<base target="_self">
+<script>
+  (function() {
+    const lockScroll = () => {
+      if (document.documentElement) {
+        document.documentElement.style.overflow = '${lockScroll ? 'hidden' : 'auto'}';
+        document.documentElement.style.touchAction = '${lockScroll ? 'none' : 'auto'}';
+      }
+      if (document.body) {
+        document.body.style.overflow = '${lockScroll ? 'hidden' : 'auto'}';
+        document.body.style.touchAction = '${lockScroll ? 'none' : 'auto'}';
+      }
+    };
+    const postHeight = () => {
+      const body = document.body;
+      const root = document.documentElement;
+      const artifactRoot = document.getElementById('artifact-root');
+      const artifactRectHeight = artifactRoot
+        ? artifactRoot.getBoundingClientRect().height
+        : 0;
+      const payload = {
+        event: 'height_measure',
+        artifactRectHeight,
+        bodyScrollHeight: body ? body.scrollHeight : 0,
+        bodyOffsetHeight: body ? body.offsetHeight : 0,
+        rootScrollHeight: root ? root.scrollHeight : 0,
+        rootOffsetHeight: root ? root.offsetHeight : 0
+      };
+      const height = Math.max(
+        payload.bodyScrollHeight,
+        payload.bodyOffsetHeight,
+        payload.rootScrollHeight,
+        payload.rootOffsetHeight
+      );
+      if (window.ArtifactHeight && typeof window.ArtifactHeight.postMessage === 'function') {
+        window.ArtifactHeight.postMessage(JSON.stringify({
+          ...payload,
+          height
+        }));
+      }
+    };
+    window.__artifactLockScroll__ = lockScroll;
+    window.__artifactHeight__ = postHeight;
+    lockScroll();
+    window.addEventListener('load', () => {
+      lockScroll();
+      postHeight();
+      requestAnimationFrame(postHeight);
+      setTimeout(postHeight, 120);
+      setTimeout(postHeight, 360);
+    });
+    window.addEventListener('resize', () => {
+      lockScroll();
+      postHeight();
+    });
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(() => {
+        lockScroll();
+        postHeight();
+      });
+      window.addEventListener('DOMContentLoaded', () => {
+        if (document.body) observer.observe(document.body);
+        if (document.documentElement) observer.observe(document.documentElement);
+        lockScroll();
+        postHeight();
+      });
+    } else {
+      window.addEventListener('DOMContentLoaded', () => {
+        lockScroll();
+        postHeight();
+      });
+    }
+  })();
+</script>
+$hostStyles
+''';
+}
+
 String buildArtifactPreviewHostStyles(Map<String, String> hostCssVariables) {
   return const ArtifactHostStyleBuilder().buildStyleBlock(hostCssVariables);
 }
@@ -218,12 +350,14 @@ class ArtifactPreviewSurface extends StatefulWidget {
     required this.artifactId,
     required this.source,
     required this.sourcePath,
+    this.isRuntimePreview = false,
     this.enableInternalScroll = false,
   });
 
   final String artifactId;
   final String? source;
   final String sourcePath;
+  final bool isRuntimePreview;
   final bool enableInternalScroll;
 
   @override
@@ -232,6 +366,7 @@ class ArtifactPreviewSurface extends StatefulWidget {
 
 class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   WebViewController? _controller;
+  WebViewController? _pendingFinalController;
   String? _errorText;
   double _previewHeight = _defaultArtifactPreviewHeight;
   bool _isPreviewTruncated = false;
@@ -240,6 +375,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   Timer? _streamingUpdateTimer;
   bool _isStreamingUpdateInFlight = false;
   String? _pendingSource;
+  String? _pendingFinalSource;
   String? _lastRenderedSource;
   String? _lastThemeSignature;
   bool _isControllerReady = false;
@@ -270,7 +406,11 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     _controller ??= _createController();
     final source = widget.source;
     if (didThemeChange && source != null && source.trim().isNotEmpty) {
-      _updateControllerContent(source);
+      if (widget.isRuntimePreview) {
+        _updateControllerContent(source);
+      } else {
+        _loadFinalSource(source);
+      }
     }
   }
 
@@ -278,7 +418,8 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   void didUpdateWidget(covariant ArtifactPreviewSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (oldWidget.source != widget.source) {
+    if (oldWidget.source != widget.source ||
+        oldWidget.isRuntimePreview != widget.isRuntimePreview) {
       final oldLength = oldWidget.source?.length ?? 0;
       final newLength = widget.source?.length ?? 0;
       Logger.temp(
@@ -293,8 +434,19 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         },
       );
 
-      _pendingSource = widget.source;
-      _ensureStreamingUpdateLoop();
+      final source = widget.source;
+      if (source == null || source.trim().isEmpty) {
+        _pendingSource = source;
+        _ensureStreamingUpdateLoop();
+      } else if (widget.isRuntimePreview) {
+        _pendingSource = source;
+        _ensureStreamingUpdateLoop();
+      } else {
+        _pendingSource = null;
+        _streamingUpdateTimer?.cancel();
+        _streamingUpdateTimer = null;
+        _loadFinalSource(source);
+      }
     }
   }
 
@@ -369,6 +521,46 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     final controller = _controller;
     if (controller == null) return;
     await _applySourceToController(controller, source);
+  }
+
+  void _loadFinalSource(String source) {
+    if (_lastRenderedSource == source &&
+        _pendingFinalController == null &&
+        !widget.isRuntimePreview) {
+      return;
+    }
+    if (_pendingFinalSource == source && _pendingFinalController != null) {
+      return;
+    }
+    final controller = _createFinalController(source);
+    if (controller == null) {
+      return;
+    }
+    setState(() {
+      _errorText = null;
+      _pendingFinalSource = source;
+      _pendingFinalController = controller;
+    });
+  }
+
+  void _promotePendingFinalController(
+    WebViewController controller,
+    String source,
+  ) {
+    if (!mounted ||
+        widget.isRuntimePreview ||
+        widget.source != source ||
+        _pendingFinalController != controller) {
+      return;
+    }
+    setState(() {
+      _controller = controller;
+      _pendingFinalController = null;
+      _pendingFinalSource = null;
+      _lastRenderedSource = source;
+      _isControllerReady = true;
+      _controllerReadyCompleter?.complete();
+    });
   }
 
   Future<void> _applySourceToController(
@@ -478,93 +670,154 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
           ),
         );
       if (!widget.enableInternalScroll) {
-        controller.addJavaScriptChannel(
-          _artifactHeightChannelName,
-          onMessageReceived: (message) {
-            final payload = message.message.trim();
-            if (!mounted) {
-              return;
-            }
-            final parsed = _parseArtifactHeightPayload(payload);
-            final value = parsed.height;
-            if (value == null) {
-              Logger.temp(
-                _artifactPreviewLogTag,
-                'artifact height payload parse failed',
-                level: LogLevel.warning,
-                reason: 'diagnose inline artifact height sync',
-                data: {
-                  'sourcePath': widget.sourcePath,
-                  'payload': _truncateForLog(payload),
-                },
-              );
-              return;
-            }
-            final viewportHeight = _resolveViewportHeight();
-            final clampedHeight = clampArtifactPreviewHeight(
-              value,
-              viewportHeight: viewportHeight,
-            );
-            Logger.temp(
-              _artifactPreviewLogTag,
-              'artifact height payload received',
-              reason: 'diagnose inline artifact height sync',
-              data: {
-                'sourcePath': widget.sourcePath,
-                'rawHeight': value,
-                'clampedHeight': clampedHeight,
-                'previousHeight': _previewHeight,
-                'viewportHeight': viewportHeight,
-                'artifactRectHeight': parsed.artifactRectHeight,
-                'bodyScrollHeight': parsed.bodyScrollHeight,
-                'bodyOffsetHeight': parsed.bodyOffsetHeight,
-                'rootScrollHeight': parsed.rootScrollHeight,
-                'rootOffsetHeight': parsed.rootOffsetHeight,
-              },
-            );
-
-            // Debounce height updates to avoid jitter
-            _pendingHeight = clampedHeight;
-            _pendingTruncated = value > clampedHeight;
-            _heightDebounceTimer?.cancel();
-            _heightDebounceTimer = Timer(_heightUpdateDebounceDelay, () {
-              if (!mounted) return;
-              final nextHeight = _pendingHeight ?? _previewHeight;
-              final nextTruncated = _pendingTruncated ?? _isPreviewTruncated;
-              setState(() {
-                _previewHeight = nextHeight;
-                _isPreviewTruncated = nextTruncated;
-              });
-              _persistPreviewStateToPageStorage(
-                previewHeight: nextHeight,
-                isPreviewTruncated: nextTruncated,
-              );
-              Logger.temp(
-                _artifactPreviewLogTag,
-                'artifact height applied',
-                reason: 'diagnose inline artifact height sync',
-                data: {
-                  'sourcePath': widget.sourcePath,
-                  'appliedHeight': _pendingHeight,
-                  'isPreviewTruncated': _pendingTruncated,
-                },
-              );
-            });
-          },
-        );
+        _addArtifactHeightChannel(controller);
       }
       controller.loadHtmlString(
-        buildArtifactPreviewDocument(
-          lockScroll: !widget.enableInternalScroll,
-          hostCssVariables: _resolveHostCssVariables(),
-        ),
+        widget.isRuntimePreview
+            ? buildArtifactPreviewDocument(
+                lockScroll: !widget.enableInternalScroll,
+                hostCssVariables: _resolveHostCssVariables(),
+              )
+            : buildFinalArtifactPreviewDocument(
+                source,
+                lockScroll: !widget.enableInternalScroll,
+                hostCssVariables: _resolveHostCssVariables(),
+              ),
       );
-      unawaited(_applySourceToController(controller, source));
+      if (widget.isRuntimePreview) {
+        unawaited(_applySourceToController(controller, source));
+      } else {
+        _lastRenderedSource = source;
+      }
       return controller;
     } catch (error) {
       _errorText = '$error';
       return null;
     }
+  }
+
+  WebViewController? _createFinalController(String source) {
+    if (kIsWeb || source.trim().isEmpty) {
+      return null;
+    }
+
+    try {
+      late final WebViewController controller;
+      controller = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..enableZoom(false)
+        ..setNavigationDelegate(
+          NavigationDelegate(
+            onNavigationRequest: (request) {
+              if (request.url == 'about:blank') {
+                return NavigationDecision.navigate;
+              }
+              return NavigationDecision.prevent;
+            },
+            onPageFinished: (_) {
+              _promotePendingFinalController(controller, source);
+            },
+            onWebResourceError: (error) {
+              if (!mounted) {
+                return;
+              }
+              setState(() {
+                _errorText = error.description;
+              });
+            },
+          ),
+        );
+      if (!widget.enableInternalScroll) {
+        _addArtifactHeightChannel(controller);
+      }
+      controller.loadHtmlString(
+        buildFinalArtifactPreviewDocument(
+          source,
+          lockScroll: !widget.enableInternalScroll,
+          hostCssVariables: _resolveHostCssVariables(),
+        ),
+      );
+      return controller;
+    } catch (error) {
+      _errorText = '$error';
+      return null;
+    }
+  }
+
+  void _addArtifactHeightChannel(WebViewController controller) {
+    controller.addJavaScriptChannel(
+      _artifactHeightChannelName,
+      onMessageReceived: (message) {
+        final payload = message.message.trim();
+        if (!mounted) {
+          return;
+        }
+        final parsed = _parseArtifactHeightPayload(payload);
+        final value = parsed.height;
+        if (value == null) {
+          Logger.temp(
+            _artifactPreviewLogTag,
+            'artifact height payload parse failed',
+            level: LogLevel.warning,
+            reason: 'diagnose inline artifact height sync',
+            data: {
+              'sourcePath': widget.sourcePath,
+              'payload': _truncateForLog(payload),
+            },
+          );
+          return;
+        }
+        final viewportHeight = _resolveViewportHeight();
+        final clampedHeight = clampArtifactPreviewHeight(
+          value,
+          viewportHeight: viewportHeight,
+        );
+        Logger.temp(
+          _artifactPreviewLogTag,
+          'artifact height payload received',
+          reason: 'diagnose inline artifact height sync',
+          data: {
+            'sourcePath': widget.sourcePath,
+            'rawHeight': value,
+            'clampedHeight': clampedHeight,
+            'previousHeight': _previewHeight,
+            'viewportHeight': viewportHeight,
+            'artifactRectHeight': parsed.artifactRectHeight,
+            'bodyScrollHeight': parsed.bodyScrollHeight,
+            'bodyOffsetHeight': parsed.bodyOffsetHeight,
+            'rootScrollHeight': parsed.rootScrollHeight,
+            'rootOffsetHeight': parsed.rootOffsetHeight,
+          },
+        );
+
+        _pendingHeight = clampedHeight;
+        _pendingTruncated = value > clampedHeight;
+        _heightDebounceTimer?.cancel();
+        _heightDebounceTimer = Timer(_heightUpdateDebounceDelay, () {
+          if (!mounted) return;
+          final nextHeight = _pendingHeight ?? _previewHeight;
+          final nextTruncated = _pendingTruncated ?? _isPreviewTruncated;
+          setState(() {
+            _previewHeight = nextHeight;
+            _isPreviewTruncated = nextTruncated;
+          });
+          _persistPreviewStateToPageStorage(
+            previewHeight: nextHeight,
+            isPreviewTruncated: nextTruncated,
+          );
+          Logger.temp(
+            _artifactPreviewLogTag,
+            'artifact height applied',
+            reason: 'diagnose inline artifact height sync',
+            data: {
+              'sourcePath': widget.sourcePath,
+              'appliedHeight': _pendingHeight,
+              'isPreviewTruncated': _pendingTruncated,
+            },
+          );
+        });
+      },
+    );
   }
 
   Future<void> _awaitControllerReady() async {
@@ -618,6 +871,19 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
                 ),
               ),
             ),
+            if (_pendingFinalController != null)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Opacity(
+                    opacity: 0,
+                    child: RepaintBoundary(
+                      child: WebViewWidget(
+                        controller: _pendingFinalController!,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             if (isUpdating)
               Positioned(
                 top: 8,
@@ -638,10 +904,29 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
             children: [
               SizedBox(
                 height: _previewHeight,
-                child: RepaintBoundary(
-                  child: WebViewWidget(
-                    controller: _controller!,
-                  ),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: RepaintBoundary(
+                        child: WebViewWidget(
+                          controller: _controller!,
+                        ),
+                      ),
+                    ),
+                    if (_pendingFinalController != null)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: Opacity(
+                            opacity: 0,
+                            child: RepaintBoundary(
+                              child: WebViewWidget(
+                                controller: _pendingFinalController!,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               if (isUpdating)

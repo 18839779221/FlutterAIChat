@@ -367,6 +367,7 @@ class ChatTimelineProjectionService {
             title: preview.title,
             type: preview.type,
             providerCallId: providerCallId,
+            isRuntimePreview: true,
             sourcePath: preview.sourcePath,
             source: preview.source,
             createdAt: preview.createdAt,

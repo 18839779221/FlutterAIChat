@@ -48,6 +48,7 @@ class ArtifactBlock extends StatelessWidget {
           artifactId: artifact.artifactId,
           source: artifact.source,
           sourcePath: artifact.sourcePath,
+          isRuntimePreview: artifact.isRuntimePreview,
         ),
       ),
     );

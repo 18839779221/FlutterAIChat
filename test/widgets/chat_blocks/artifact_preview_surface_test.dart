@@ -103,6 +103,38 @@ void main() {
     expect(document, isNot(contains('console.log("x")')));
   });
 
+  test('runtime preview host does not emulate artifact script execution', () {
+    final document = buildArtifactPreviewDocument();
+
+    expect(document, isNot(contains('executeArtifactScripts')));
+    expect(document, isNot(contains("document.createElement('script')")));
+    expect(document, isNot(contains('original.replaceWith')));
+  });
+
+  test('final preview document loads the complete source with host injection', () {
+    const source = '''
+<!DOCTYPE html>
+<html>
+  <head><title>A</title></head>
+  <body><button>Toggle</button><script>window.ready = true;</script></body>
+</html>
+''';
+
+    final document = buildFinalArtifactPreviewDocument(
+      source,
+      hostCssVariables: const <String, String>{
+        '--app-artifact-page-bg': '#faf9f5',
+      },
+    );
+
+    expect(document, contains('<title>A</title>'));
+    expect(document, contains('<button>Toggle</button>'));
+    expect(document, contains('<script>window.ready = true;</script>'));
+    expect(document, contains('Content-Security-Policy'));
+    expect(document, contains('__artifactHeight__'));
+    expect(document, contains('--app-artifact-page-bg: #faf9f5;'));
+  });
+
   test('detail preview document can keep internal scrolling enabled', () {
     final document = buildArtifactPreviewDocument(
       lockScroll: false,

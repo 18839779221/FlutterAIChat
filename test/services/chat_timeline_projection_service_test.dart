@@ -364,6 +364,10 @@ void main() {
           .toList(growable: false);
       expect(runtimeArtifactBlocks, hasLength(1));
       expect(runtimeArtifactBlocks.single.payload?['isRuntimePreview'], isTrue);
+      expect(
+        runtimeArtifactBlocks.single.artifactProjection?.isRuntimePreview,
+        isTrue,
+      );
       expect(runtimeArtifactBlocks.single.text, contains('渐进预览'));
       expect(projection.runtimePreviewState.messages, hasLength(1));
       expect(
@@ -450,6 +454,10 @@ void main() {
           .toList(growable: false);
       expect(artifactBlocks, hasLength(1));
       expect(artifactBlocks.single.payload?['isRuntimePreview'], isNot(true));
+      expect(
+        artifactBlocks.single.artifactProjection?.isRuntimePreview,
+        isFalse,
+      );
       expect(
         artifactBlocks.single.artifactProjection?.sourcePath,
         'artifacts/7/food-rank.html',

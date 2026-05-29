@@ -9,6 +9,9 @@ class ArtifactTurnProjection {
   /// Provider-native tool call id used to pair runtime preview and the
   /// persisted artifact result for the same create_artifact execution.
   final String? providerCallId;
+  /// Whether this projection comes from transient streaming tool arguments
+  /// instead of the persisted create_artifact result.
+  final bool isRuntimePreview;
   final String sourcePath;
   final String? source;
   final int? sourceMessageId;
@@ -21,6 +24,7 @@ class ArtifactTurnProjection {
     required this.title,
     required this.type,
     this.providerCallId,
+    this.isRuntimePreview = false,
     required this.sourcePath,
     required this.source,
     required this.createdAt,

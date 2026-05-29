@@ -31,6 +31,7 @@ $rootBlock
     width: 100%;
     background: var(--app-artifact-page-bg, #ffffff);
     color: var(--app-artifact-text-primary, #1f1f1e);
+    -webkit-tap-highlight-color: transparent;
   }
 </style>
 ''';
