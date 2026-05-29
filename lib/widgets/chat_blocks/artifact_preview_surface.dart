@@ -636,11 +636,8 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         children: [
           Stack(
             children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOut,
+              SizedBox(
                 height: _previewHeight,
-                color: Colors.transparent,
                 child: RepaintBoundary(
                   child: WebViewWidget(
                     controller: _controller!,
