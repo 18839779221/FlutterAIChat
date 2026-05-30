@@ -595,7 +595,8 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         })();
       ''';
 
-      final result = await controller.runJavaScriptReturningResult(updateScript);
+      final result =
+          await controller.runJavaScriptReturningResult(updateScript);
       _lastRenderedSource = source;
       Logger.temp(
         _artifactPreviewLogTag,
@@ -849,6 +850,9 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
       return _buildInfoMessage(context, 'Preview unavailable\n$_errorText');
     }
     if (source == null || source.trim().isEmpty) {
+      if (widget.isRuntimePreview) {
+        return _buildPreviewPlaceholder(context, label: '正在准备预览');
+      }
       return _buildInfoMessage(
         context,
         'Preview unavailable\n${widget.sourcePath}',
@@ -1071,26 +1075,46 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     );
   }
 
-  Widget _buildPreviewPlaceholder(BuildContext context) {
+  Widget _buildPreviewPlaceholder(
+    BuildContext context, {
+    String? label,
+  }) {
     final theme = Theme.of(context);
     return Container(
       width: double.infinity,
       height: _previewHeight,
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+        color:
+            theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
         borderRadius: BorderRadius.circular(12),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 96,
-            height: 12,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.42),
-              borderRadius: BorderRadius.circular(999),
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 96,
+                height: 12,
+                decoration: BoxDecoration(
+                  color:
+                      theme.colorScheme.outlineVariant.withValues(alpha: 0.42),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              if (label != null) ...[
+                const SizedBox(width: 10),
+                Text(
+                  label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.2,
+                  ),
+                ),
+              ],
+            ],
           ),
           const SizedBox(height: 14),
           Container(

@@ -88,6 +88,28 @@ void main() {
       expect(find.textContaining('Preview unavailable'), findsOneWidget);
     });
 
+    testWidgets(
+        'keeps runtime preview in a waiting state before source arrives',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: ArtifactPreviewSurface(
+              artifactId: 'artifact-1',
+              source: null,
+              sourcePath: 'runtime://create_artifact/tool_1',
+              isRuntimePreview: true,
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+
+      expect(find.textContaining('Preview unavailable'), findsNothing);
+      expect(find.textContaining('正在准备预览'), findsOneWidget);
+    });
+
     test('buildArtifactPreviewDocument still works correctly', () {
       final document = buildArtifactPreviewDocument();
 
