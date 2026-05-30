@@ -133,6 +133,8 @@ fvm flutter test
 - OpenAI `chat/completions`、`responses` 与 Anthropic `messages` 已进入统一 runtime registry；其中 OpenAI 两条协议与 Anthropic 非流请求都走 SDK-first 执行
 - planner streaming 已统一收敛到 preview-event 主链路：provider runtime / stream adapter 直接产出 `StreamingMessageEvent`，再由 accumulator 组装最终 `ModelTurnDecision`
 - `StreamingMessageEvent` 同时作为运行中 preview 的唯一正式出口，供 runtime preview projector / timeline projection 消费
+- 运行中 assistant 正文 / thinking / tool_use / artifact 现在统一由 `runtimeStreamingPreviewState` 投影到 timeline；旧的 generating assistant message 只保留最小兼容兜底，不再作为常规正文流式显示主路径
+- `finalAnswer` 只负责最终 truth takeover：在落盘 completed assistant message 前清空对应 runtime preview，避免运行中 preview 与最终回答双轨并存
 - provider adapter / runtime / live capability matrix 的详细边界见 [docs/architecture/provider-adapter-runtime-and-live-matrix.md](./docs/architecture/provider-adapter-runtime-and-live-matrix.md)
 - 本地默认配置位于 [config/local_defaults.json](./config/local_defaults.json)
 

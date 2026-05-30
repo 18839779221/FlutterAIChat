@@ -234,6 +234,8 @@ The app uses **flutter_riverpod** with a split provider/controller architecture:
   - `ConfigurableHttpLLM` / accumulator may consume streaming deltas internally, but legacy parallel streaming contracts must not be reintroduced
   - upper layers must still consume one final `ModelTurnDecision`
   - do not make `TurnHarness`、`AgentPlannerService`、projection providers, or widgets depend on planner mid-stream delta events unless the architecture is explicitly revised
+  - runtime assistant 正文 / thinking / tool_use / artifact 的运行中显示主路径应统一走 `runtimeStreamingPreviewState -> ChatTimelineProjectionService -> ChatTimelineRow`
+  - `finalAnswer` truth event 只负责最终 takeover 与落盘 completed message；不要重新把普通正文 streaming 主显示退回到 truth-side generating assistant message
 - Streaming planner timeout policy should distinguish `idle timeout` from `overall timeout`:
   - idle timeout means no provider delta arrives for a sustained period
   - overall timeout is a coarse upper bound for one streaming attempt

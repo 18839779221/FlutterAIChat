@@ -46,6 +46,87 @@ void main() {
       databaseFactory = databaseFactoryFfi;
     });
 
+    test(
+        'preview-driven streaming response avoids persisted generating assistant message',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final afterEventsGate = Completer<void>();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.assistantTextDelta,
+            role: MessageRole.assistant,
+            content: '你好，',
+          ),
+        ],
+        afterEventsGate: afterEventsGate,
+      );
+      final container = await _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId = await databaseHelper.insertGroup(
+        ChatGroup(
+          title: 'group',
+          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        ),
+      );
+      container.read(currentGroupProvider.notifier).state = ChatGroup(
+            id: groupId,
+            title: 'group',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          );
+
+      final previewNotifier =
+          container.read(runtimeStreamingPreviewStateProvider.notifier);
+      previewNotifier.publish(
+        const StreamingMessageStartEvent(messageId: 'preview_1'),
+      );
+      previewNotifier.publish(
+        const StreamingContentBlockStartEvent(
+          messageId: 'preview_1',
+          contentBlockId: 'preview_1:text',
+          blockType: StreamingContentBlockType.text,
+        ),
+      );
+      previewNotifier.publish(
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'preview_1',
+          contentBlockId: 'preview_1:text',
+          deltaType: StreamingContentDeltaType.text,
+          value: '你好，',
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 140));
+
+      final sendFuture = container.read(chatSendCoordinatorProvider).sendMessage(
+            '打一声招呼',
+            scheduleAutoSummary: () {},
+            cancelActiveStream:
+                container.read(chatControllerProvider).cancelStreamSubscription,
+          );
+
+      await _waitForSendPhase(container, ChatSendPhase.streamingResponse);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(
+        container
+            .read(messagesProvider)
+            .where((message) => message.role == MessageRole.assistant),
+        isEmpty,
+      );
+      expect(container.read(runtimeAssistantDraftProvider), isNull);
+
+      afterEventsGate.complete();
+      await sendFuture.timeout(const Duration(seconds: 1));
+    });
+
     test('completes a streamed assistant reply on final answer', () async {
       final databaseHelper = _createTestDatabaseHelper();
       final harness = _FakeTurnHarness(
@@ -109,6 +190,109 @@ void main() {
           .lastWhere((message) => message.role == MessageRole.assistant);
       expect(persistedAssistant.text, '你好，世界');
       expect(persistedAssistant.status, MessageStatus.completed);
+    });
+
+    test(
+        'preview-driven streamed reply settles as one completed assistant message',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.assistantTextDelta,
+            role: MessageRole.assistant,
+            content: '你好，',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.assistantTextDelta,
+            role: MessageRole.assistant,
+            content: '世界',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.finalAnswer,
+            role: MessageRole.assistant,
+            content: '你好，世界',
+            payloadJson: const {
+              'previewMessageId': 'preview_1',
+            },
+          ),
+        ],
+      );
+      final container = await _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId = await databaseHelper.insertGroup(
+        ChatGroup(
+          title: 'group',
+          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        ),
+      );
+      container.read(currentGroupProvider.notifier).state = ChatGroup(
+            id: groupId,
+            title: 'group',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          );
+
+      final previewNotifier =
+          container.read(runtimeStreamingPreviewStateProvider.notifier);
+      previewNotifier.publish(
+        const StreamingMessageStartEvent(messageId: 'preview_1'),
+      );
+      previewNotifier.publish(
+        const StreamingContentBlockStartEvent(
+          messageId: 'preview_1',
+          contentBlockId: 'preview_1:text',
+          blockType: StreamingContentBlockType.text,
+        ),
+      );
+      previewNotifier.publish(
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'preview_1',
+          contentBlockId: 'preview_1:text',
+          deltaType: StreamingContentDeltaType.text,
+          value: '你好，世界',
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 140));
+
+      await container.read(chatSendCoordinatorProvider).sendMessage(
+            '打一声招呼',
+            scheduleAutoSummary: () {},
+            cancelActiveStream:
+                container.read(chatControllerProvider).cancelStreamSubscription,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      final assistantMessages = container
+          .read(messagesProvider)
+          .where((message) => message.role == MessageRole.assistant)
+          .toList(growable: false);
+      expect(assistantMessages, hasLength(1));
+      expect(assistantMessages.single.text, '你好，世界');
+      expect(assistantMessages.single.status, MessageStatus.completed);
+      expect(container.read(runtimeStreamingPreviewStateProvider).isEmpty, isTrue);
+      expect(container.read(runtimeAssistantDraftProvider), isNull);
+
+      final persisted = await databaseHelper.getMessagesByGroup(groupId);
+      final persistedAssistantMessages = persisted
+          .where((message) => message.role == MessageRole.assistant)
+          .toList(growable: false);
+      expect(persistedAssistantMessages, hasLength(1));
+      expect(persistedAssistantMessages.single.text, '你好，世界');
+      expect(persistedAssistantMessages.single.status, MessageStatus.completed);
     });
 
     test('final answer clears runtime preview before completed message settles',
@@ -667,6 +851,95 @@ void main() {
       expect(turns, isNotEmpty);
       expect(turns.single.status, ChatTurnStatus.cancelled);
       expect(turns.single.stopReason, 'cancelled_by_user');
+    });
+
+    test(
+        'cancelled preview-driven response projects interrupted partial text without generating placeholder',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final afterEventsGate = Completer<void>();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.assistantTextDelta,
+            role: MessageRole.assistant,
+            content: '正在生成中',
+          ),
+        ],
+        afterEventsGate: afterEventsGate,
+      );
+      final container = await _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId = await databaseHelper.insertGroup(
+        ChatGroup(
+          title: 'group',
+          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        ),
+      );
+      container.read(currentGroupProvider.notifier).state = ChatGroup(
+            id: groupId,
+            title: 'group',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          );
+
+      final previewNotifier =
+          container.read(runtimeStreamingPreviewStateProvider.notifier);
+      previewNotifier.publish(
+        const StreamingMessageStartEvent(messageId: 'preview_1'),
+      );
+      previewNotifier.publish(
+        const StreamingContentBlockStartEvent(
+          messageId: 'preview_1',
+          contentBlockId: 'preview_1:text',
+          blockType: StreamingContentBlockType.text,
+        ),
+      );
+      previewNotifier.publish(
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'preview_1',
+          contentBlockId: 'preview_1:text',
+          deltaType: StreamingContentDeltaType.text,
+          value: '正在生成中',
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 140));
+
+      final sendFuture = container.read(chatControllerProvider).sendMessage(
+            '请开始生成',
+          );
+
+      await _waitForSendPhase(container, ChatSendPhase.streamingResponse);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(
+        container
+            .read(messagesProvider)
+            .where((message) => message.role == MessageRole.assistant),
+        isEmpty,
+      );
+
+      container.read(chatControllerProvider).cancelStreamSubscription();
+      afterEventsGate.complete();
+      await sendFuture.timeout(const Duration(seconds: 1));
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      final assistant = container
+          .read(messagesProvider)
+          .lastWhere((message) => message.role == MessageRole.assistant);
+      expect(assistant.text, '正在生成中');
+      expect(assistant.status, MessageStatus.interrupted);
+      expect(
+        container.read(runtimeStreamingPreviewStateProvider).isEmpty,
+        isTrue,
+      );
     });
 
     test('cancelled turn during preparing appends visible cancellation summary',

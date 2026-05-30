@@ -264,6 +264,126 @@ void main() {
       );
     });
 
+    test('projects runtime text preview into final response block', () {
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我回答',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'message_text_1',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_text_1:text',
+                  blockType: StreamingContentBlockType.text,
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  text: '这是运行中的正文',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final runtimeResponseBlocks = projection.assistantBlocks
+          .where((block) => block.type == AssistantTurnBlockType.finalResponse)
+          .toList(growable: false);
+      expect(runtimeResponseBlocks, hasLength(1));
+      expect(runtimeResponseBlocks.single.text, '这是运行中的正文');
+      expect(runtimeResponseBlocks.single.payload?['isRuntimePreview'], isTrue);
+    });
+
+    test('projects runtime thinking preview into analysis block', () {
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我回答',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'message_thinking_1',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_thinking_1:thinking',
+                  blockType: StreamingContentBlockType.thinking,
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  text: '先整理回答结构',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final runtimeAnalysisBlocks = projection.assistantBlocks
+          .where((block) => block.type == AssistantTurnBlockType.analysis)
+          .toList(growable: false);
+      expect(runtimeAnalysisBlocks, hasLength(1));
+      expect(runtimeAnalysisBlocks.single.reasoningText, '先整理回答结构');
+      expect(runtimeAnalysisBlocks.single.payload?['isRuntimePreview'], isTrue);
+    });
+
+    test('projects runtime tool use preview into tool workflow block', () {
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '查一下天气',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'message_tool_1',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_tool_1:tool:0',
+                  blockType: StreamingContentBlockType.toolUse,
+                  toolUseId: 'call_weather_1',
+                  toolName: 'fetch_weather',
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  text: '{"city":"Shanghai"}',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final runtimeWorkflowBlocks = projection.assistantBlocks
+          .where((block) => block.type == AssistantTurnBlockType.toolWorkflow)
+          .toList(growable: false);
+      expect(runtimeWorkflowBlocks, hasLength(1));
+      expect(runtimeWorkflowBlocks.single.payload?['isRuntimePreview'], isTrue);
+      expect(runtimeWorkflowBlocks.single.payload?['toolName'], 'fetch_weather');
+      expect(runtimeWorkflowBlocks.single.payload?['rawArgumentsText'], '{"city":"Shanghai"}');
+    });
+
     test('projects artifact block into assistant timeline snapshot', () async {
       final tempDirectory = await Directory.systemTemp.createTemp(
         'timeline-artifact-',
@@ -373,6 +493,67 @@ void main() {
       expect(
         projection.runtimePreviewState.messages.single.blocks.single.toolName,
         'create_artifact',
+      );
+    });
+
+    test(
+        'keeps generic runtime response preview alongside runtime create_artifact preview',
+        () {
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '边写说明边生成 artifact',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'message_1',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_1:text',
+                  blockType: StreamingContentBlockType.text,
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  text: '先给你正文说明',
+                ),
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_1:tool:0',
+                  blockType: StreamingContentBlockType.toolUse,
+                  toolUseId: 'call_artifact_1',
+                  toolName: 'create_artifact',
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  text:
+                      '{"id":"food-rank","type":"html","title":"中国美食","source":"<div>渐进预览</div>"}',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final runtimeResponseBlocks = projection.assistantBlocks
+          .where((block) => block.type == AssistantTurnBlockType.finalResponse)
+          .toList(growable: false);
+      final runtimeArtifactBlocks = projection.assistantBlocks
+          .where((block) => block.type == AssistantTurnBlockType.artifact)
+          .toList(growable: false);
+
+      expect(runtimeResponseBlocks, hasLength(1));
+      expect(runtimeResponseBlocks.single.text, '先给你正文说明');
+      expect(runtimeResponseBlocks.single.payload?['isRuntimePreview'], isTrue);
+      expect(runtimeArtifactBlocks, hasLength(1));
+      expect(runtimeArtifactBlocks.single.payload?['isRuntimePreview'], isTrue);
+      expect(
+        runtimeArtifactBlocks.single.artifactProjection?.isRuntimePreview,
+        isTrue,
       );
     });
 

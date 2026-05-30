@@ -325,6 +325,12 @@ class _DebugTurnInspectorSheetState extends ConsumerState<DebugTurnInspectorShee
   }) {
     final rawJson = section.rawJson;
     if (rawJson is Map<String, dynamic>) {
+      if (section.id == 'runtime-stream') {
+        return _buildRuntimePreviewSection(
+          theme: theme,
+          rawJson: rawJson,
+        );
+      }
       final messages = rawJson['messages'];
       if (messages is List) {
         return _buildMessagesSection(
@@ -344,6 +350,38 @@ class _DebugTurnInspectorSheetState extends ConsumerState<DebugTurnInspectorShee
     return _buildDecodedTextBlock(
       theme: theme,
       text: section.rawText ?? 'null',
+    );
+  }
+
+  Widget _buildRuntimePreviewSection({
+    required ThemeData theme,
+    required Map<String, dynamic> rawJson,
+  }) {
+    final messages = rawJson['messages'];
+    final previewSummary = rawJson['previewSummary'];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (previewSummary != null) ...[
+          _buildLabeledValue(
+            theme: theme,
+            label: 'previewSummary',
+            value: previewSummary,
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (messages is List)
+          _buildLabeledValue(
+            theme: theme,
+            label: 'messages',
+            value: messages,
+          )
+        else
+          _buildStructuredValue(
+            theme: theme,
+            value: rawJson,
+          ),
+      ],
     );
   }
 

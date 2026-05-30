@@ -3,6 +3,8 @@ import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat/chat_timeline_projection.dart';
 import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
 import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
+import 'package:ai_chat/models/chat/tool_workflow_step.dart';
+import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/utils/logger.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -78,6 +80,10 @@ class ChatTimelineProjectionService {
         .where((value) => value.isNotEmpty)
         .toSet();
     final runtimeDraftBlock = _buildRuntimeDraftBlock(runtimeDraft);
+    final runtimePreviewBlocks = _buildRuntimePreviewBlocks(
+      runtimePreviewState: runtimePreviewState,
+      resolvedTurnId: runtimeTurnId,
+    );
     final runtimeArtifactBlocks = _buildRuntimeArtifactBlocks(
       runtimePreviewState: runtimePreviewState,
       resolvedTurnId: runtimeTurnId,
@@ -87,6 +93,7 @@ class ChatTimelineProjectionService {
       baseBlocks: [
         ...blocks,
         ...toolBlocks,
+        ...runtimePreviewBlocks,
         if (runtimeDraftBlock != null) runtimeDraftBlock,
       ],
       artifactBlocks: [
@@ -100,6 +107,7 @@ class ChatTimelineProjectionService {
       reason: 'diagnose streaming performance',
       data: {
         'totalAssistantBlocks': mergedBlocks.length,
+        'runtimePreviewBlockCount': runtimePreviewBlocks.length,
         'runtimeArtifactBlockCount': runtimeArtifactBlocks.length,
         'artifactBlockCount': artifactBlocks.length,
         'finalMergedBlockTypes': mergedBlocks.map((b) => b.type.name).join(','),
@@ -268,6 +276,37 @@ class ChatTimelineProjectionService {
     }).toList(growable: false);
   }
 
+  List<AssistantTurnBlock> _buildRuntimePreviewBlocks({
+    required RuntimeStreamingPreviewState runtimePreviewState,
+    required String? resolvedTurnId,
+  }) {
+    if (runtimePreviewState.isEmpty) {
+      return const <AssistantTurnBlock>[];
+    }
+
+    final runtimePreviewBlocks = <AssistantTurnBlock>[];
+    for (final message in runtimePreviewState.messages) {
+      var sequence = 90000;
+      for (final block in message.blocks) {
+        final targetTurnId = _resolveProjectedRuntimeTurnId(
+          entryTurnId: 'preview:${message.messageId}',
+          fallbackTurnId: resolvedTurnId,
+        );
+        final projected = _buildRuntimePreviewBlock(
+          message: message,
+          block: block,
+          turnId: targetTurnId,
+          sequence: sequence,
+        );
+        if (projected != null) {
+          runtimePreviewBlocks.add(projected);
+          sequence += 1;
+        }
+      }
+    }
+    return runtimePreviewBlocks;
+  }
+
   List<AssistantTurnBlock> _buildRuntimeArtifactBlocks({
     required RuntimeStreamingPreviewState runtimePreviewState,
     required String? resolvedTurnId,
@@ -389,6 +428,119 @@ class ChatTimelineProjectionService {
       }
     }
     return runtimeArtifactBlocks;
+  }
+
+  AssistantTurnBlock? _buildRuntimePreviewBlock({
+    required RuntimeStreamingPreviewMessage message,
+    required RuntimeStreamingPreviewBlock block,
+    required String turnId,
+    required int sequence,
+  }) {
+    if (block.blockType == StreamingContentBlockType.text) {
+      if (block.text.isEmpty) {
+        return null;
+      }
+      return AssistantTurnBlock(
+        id: block.contentBlockId,
+        turnId: turnId,
+        type: AssistantTurnBlockType.finalResponse,
+        sequence: sequence,
+        createdAt: block.createdAt,
+        updatedAt: block.updatedAt,
+        text: block.text,
+        payload: _runtimePreviewPayload(
+          messageId: message.messageId,
+          block: block,
+        ),
+      );
+    }
+
+    if (block.blockType == StreamingContentBlockType.thinking) {
+      if (block.text.isEmpty) {
+        return null;
+      }
+      return AssistantTurnBlock(
+        id: block.contentBlockId,
+        turnId: turnId,
+        type: AssistantTurnBlockType.analysis,
+        sequence: sequence,
+        createdAt: block.createdAt,
+        updatedAt: block.updatedAt,
+        reasoningText: block.text,
+        payload: _runtimePreviewPayload(
+          messageId: message.messageId,
+          block: block,
+        ),
+      );
+    }
+
+    if ((block.toolName ?? '').trim() == 'create_artifact') {
+      return null;
+    }
+    final toolName = (block.toolName ?? '').trim();
+    if (toolName.isEmpty) {
+      return null;
+    }
+    final step = ToolWorkflowStep(
+      stepId: block.toolUseId?.trim().isNotEmpty == true
+          ? block.toolUseId!.trim()
+          : '${turnId}-runtime-tool-$sequence',
+      turnId: turnId,
+      toolName: toolName,
+      title: '正在执行工具',
+      summary: '正在执行工具：$toolName',
+      status: ToolWorkflowStepStatus.running,
+      requiresConfirmation: false,
+      details: {
+        if (block.text.isNotEmpty) 'rawArgumentsText': block.text,
+      },
+    );
+    return AssistantTurnBlock(
+      id: block.contentBlockId,
+      turnId: turnId,
+      type: AssistantTurnBlockType.toolWorkflow,
+      sequence: sequence,
+      createdAt: block.createdAt,
+      updatedAt: block.updatedAt,
+      status: ToolWorkflowStepStatus.running.name,
+      title: step.title,
+      text: step.summary,
+      payload: {
+        ..._runtimePreviewPayload(
+          messageId: message.messageId,
+          block: block,
+        ),
+        'toolName': toolName,
+        if (block.text.isNotEmpty) 'rawArgumentsText': block.text,
+        'steps': [
+          {
+            'stepId': step.stepId,
+            'turnId': step.turnId,
+            'toolName': step.toolName,
+            'title': step.title,
+            'summary': step.summary,
+            'status': step.status.name,
+            'requiresConfirmation': step.requiresConfirmation,
+            'details': step.details,
+          },
+        ],
+      },
+      workflowSteps: [step],
+    );
+  }
+
+  Map<String, dynamic> _runtimePreviewPayload({
+    required String messageId,
+    required RuntimeStreamingPreviewBlock block,
+  }) {
+    return {
+      'isRuntimePreview': true,
+      'previewMessageId': messageId,
+      'previewContentBlockId': block.contentBlockId,
+      'previewBlockType': block.blockType.name,
+      if (block.toolUseId?.trim().isNotEmpty == true)
+        'providerCallId': block.toolUseId!.trim(),
+    };
   }
 
   String? _resolveActiveRuntimeTurnId({

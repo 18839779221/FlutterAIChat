@@ -11,6 +11,7 @@ import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/artifact_preview_surface.dart';
 import 'package:ai_chat/widgets/chat_blocks/streaming_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_outcome_card.dart';
@@ -112,6 +113,83 @@ void main() {
     });
 
     testWidgets(
+        'runtime preview text block renders as streaming response without generating assistant message',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我回答',
+            role: MessageRole.user,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'preview_message_1',
+              createdAt: DateTime(2026, 5, 5, 10, 0, 1),
+              updatedAt: DateTime(2026, 5, 5, 10, 0, 2),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'preview_message_1:text',
+                  blockType: StreamingContentBlockType.text,
+                  createdAt: DateTime(2026, 5, 5, 10, 0, 1),
+                  updatedAt: DateTime(2026, 5, 5, 10, 0, 2),
+                  text: '这是运行中的正文',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      expect(find.byType(StreamingResponseBlock), findsOneWidget);
+      expect(find.byType(FinalResponseBlock), findsNothing);
+      expect(find.text('这是运行中的正文'), findsOneWidget);
+    });
+
+    testWidgets(
+        'runtime preview thinking block renders visible analysis without persisted assistant message',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我回答',
+            role: MessageRole.user,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'preview_message_2',
+              createdAt: DateTime(2026, 5, 5, 10, 0, 1),
+              updatedAt: DateTime(2026, 5, 5, 10, 0, 2),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'preview_message_2:thinking',
+                  blockType: StreamingContentBlockType.thinking,
+                  createdAt: DateTime(2026, 5, 5, 10, 0, 1),
+                  updatedAt: DateTime(2026, 5, 5, 10, 0, 2),
+                  text: '先整理答案结构',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      expect(find.text('思考过程'), findsOneWidget);
+      expect(find.text('先整理答案结构'), findsOneWidget);
+    });
+
+    testWidgets(
         'runtime create_artifact debug stream stays out of the normal timeline',
         (tester) async {
       await _pumpMessageList(
@@ -149,6 +227,55 @@ void main() {
 
       expect(find.text('Analysis'), findsNothing);
       expect(find.textContaining('调试流内容'), findsNothing);
+    });
+
+    testWidgets(
+        'runtime response preview can coexist with runtime create_artifact preview',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '边回答边生成 artifact',
+            role: MessageRole.user,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'planner_runtime',
+              createdAt: DateTime(2026, 5, 5, 10, 0, 1),
+              updatedAt: DateTime(2026, 5, 5, 10, 0, 2),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'planner_runtime:text',
+                  blockType: StreamingContentBlockType.text,
+                  createdAt: DateTime(2026, 5, 5, 10, 0, 1),
+                  updatedAt: DateTime(2026, 5, 5, 10, 0, 2),
+                  text: '先给你正文说明',
+                ),
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'planner_runtime:tool:0',
+                  blockType: StreamingContentBlockType.toolUse,
+                  toolUseId: 'call_artifact_1',
+                  toolName: 'create_artifact',
+                  createdAt: DateTime(2026, 5, 5, 10, 0, 1),
+                  updatedAt: DateTime(2026, 5, 5, 10, 0, 2),
+                  text:
+                      '{"id":"demo-artifact","type":"html","title":"Demo","source":"<div>artifact body</div>"}',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      expect(find.byType(StreamingResponseBlock), findsOneWidget);
+      expect(find.text('先给你正文说明'), findsOneWidget);
+      expect(find.byType(ArtifactPreviewSurface), findsOneWidget);
     });
 
     testWidgets('completed final-answer reasoning stays collapsed until tapped',

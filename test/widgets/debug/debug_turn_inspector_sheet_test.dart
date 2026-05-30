@@ -230,6 +230,96 @@ void main() {
     expect(find.text('skillList'), findsOneWidget);
   });
 
+  testWidgets('context shows runtime preview summary for streaming response', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      'debug.turn_inspector.last_tab_index': 2,
+    });
+    final preferences = await SharedPreferences.getInstance();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              height: 1800,
+              child: DebugTurnInspectorSheet(
+                groupId: 7,
+                initialProjection: _buildProjection(
+                  contextSections: const [
+                    DebugTurnInspectorContextSection(
+                      id: 'runtime-stream',
+                      title: 'Runtime Preview State',
+                      summary: '1 messages, 2 blocks, text/thinking',
+                      defaultExpanded: false,
+                      rawJson: {
+                        'previewSummary': {
+                          'messageCount': 1,
+                          'blockCount': 2,
+                          'blockTypes': ['text', 'thinking'],
+                        },
+                        'messages': [
+                          {
+                            'messageId': 'preview_1',
+                            'blocks': [
+                              {'blockType': 'text', 'text': 'hello'},
+                              {'blockType': 'thinking', 'text': 'plan'},
+                            ],
+                          },
+                        ],
+                      },
+                    ),
+                  ],
+                ),
+                projectionLoader: (groupId, selectedTurnId) async {
+                  return _buildProjection(
+                    contextSections: const [
+                      DebugTurnInspectorContextSection(
+                        id: 'runtime-stream',
+                        title: 'Runtime Preview State',
+                        summary: '1 messages, 2 blocks, text/thinking',
+                        defaultExpanded: false,
+                        rawJson: {
+                          'previewSummary': {
+                            'messageCount': 1,
+                            'blockCount': 2,
+                            'blockTypes': ['text', 'thinking'],
+                          },
+                          'messages': [
+                            {
+                              'messageId': 'preview_1',
+                              'blocks': [
+                                {'blockType': 'text', 'text': 'hello'},
+                                {'blockType': 'thinking', 'text': 'plan'},
+                              ],
+                            },
+                          ],
+                        },
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Context'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Runtime Preview State'), findsOneWidget);
+    expect(find.text('1 messages, 2 blocks, text/thinking'), findsOneWidget);
+    expect(find.text('previewSummary'), findsOneWidget);
+    expect(find.text('blockTypes'), findsOneWidget);
+  });
+
   testWidgets('cache tab renders summary and recent requests', (tester) async {
     SharedPreferences.setMockInitialValues({
       'debug.turn_inspector.last_tab_index': 3,
@@ -360,6 +450,7 @@ void main() {
 DebugTurnInspectorProjection _buildProjection({
   ChatTurnStatus status = ChatTurnStatus.running,
   DebugCachePanelProjection? cachePanel,
+  List<DebugTurnInspectorContextSection>? contextSections,
 }) {
   return DebugTurnInspectorProjection(
     turnOptions: [
@@ -401,95 +492,96 @@ DebugTurnInspectorProjection _buildProjection({
         severity: DebugTimelineSeverity.info,
       ),
     ],
-    contextSections: const [
-      DebugTurnInspectorContextSection(
-        id: 'static-prompt-inputs',
-        title: 'Static Prompt Inputs',
-        summary: 'system prompt, tools, skills',
-        defaultExpanded: false,
-        rawJson: {
-          'systemPrompt': 'core rule line 1\\n\\nplanner stage line 2\\n\\nuser prompt line 3',
-          'toolList': ['create_artifact', 'create_artifact__guideline'],
-          'skillList': ['edge-to-edge', 'artifact-authoring'],
-        },
-      ),
-      DebugTurnInspectorContextSection(
-        id: 'resolved-system-prompt',
-        title: 'Resolved System Prompt',
-        summary: 'system prompt preview',
-        defaultExpanded: true,
-        rawText: 'core rule line 1\\n\\nplanner stage line 2\\n\\nuser prompt line 3',
-      ),
-      DebugTurnInspectorContextSection(
-        id: 'planner-messages',
-        title: 'Planner Messages',
-        summary: '2 items',
-        defaultExpanded: true,
-        rawJson: {
-          'messages': [
-            {
-              'id': 101,
-              'role': 'system',
-              'status': 'completed',
-              'timestamp': '2026-05-05T12:00:00.000',
-              'text': 'line1\\nline2\\nline3',
+    contextSections: contextSections ??
+        const [
+          DebugTurnInspectorContextSection(
+            id: 'static-prompt-inputs',
+            title: 'Static Prompt Inputs',
+            summary: 'system prompt, tools, skills',
+            defaultExpanded: false,
+            rawJson: {
+              'systemPrompt': 'core rule line 1\\n\\nplanner stage line 2\\n\\nuser prompt line 3',
+              'toolList': ['create_artifact', 'create_artifact__guideline'],
+              'skillList': ['edge-to-edge', 'artifact-authoring'],
             },
-            {
-              'id': 102,
-              'role': 'user',
-              'status': 'completed',
-              'timestamp': '2026-05-05T12:00:10.000',
-              'text': 'second line A\\nsecond line B',
-              'payloadJson': {
-                'prompt': 'alpha\\nbeta',
-              },
+          ),
+          DebugTurnInspectorContextSection(
+            id: 'resolved-system-prompt',
+            title: 'Resolved System Prompt',
+            summary: 'system prompt preview',
+            defaultExpanded: true,
+            rawText: 'core rule line 1\\n\\nplanner stage line 2\\n\\nuser prompt line 3',
+          ),
+          DebugTurnInspectorContextSection(
+            id: 'planner-messages',
+            title: 'Planner Messages',
+            summary: '2 items',
+            defaultExpanded: true,
+            rawJson: {
+              'messages': [
+                {
+                  'id': 101,
+                  'role': 'system',
+                  'status': 'completed',
+                  'timestamp': '2026-05-05T12:00:00.000',
+                  'text': 'line1\\nline2\\nline3',
+                },
+                {
+                  'id': 102,
+                  'role': 'user',
+                  'status': 'completed',
+                  'timestamp': '2026-05-05T12:00:10.000',
+                  'text': 'second line A\\nsecond line B',
+                  'payloadJson': {
+                    'prompt': 'alpha\\nbeta',
+                  },
+                },
+              ],
             },
-          ],
-        },
-      ),
-      DebugTurnInspectorContextSection(
-        id: 'transcript-events',
-        title: 'Transcript Events',
-        summary: '1 items',
-        defaultExpanded: false,
-        rawJson: {'events': []},
-      ),
-      DebugTurnInspectorContextSection(
-        id: 'provider-state',
-        title: 'Provider State',
-        summary: '1 items',
-        defaultExpanded: false,
-        rawJson: {'state': []},
-      ),
-      DebugTurnInspectorContextSection(
-        id: 'runtime-stream',
-        title: 'Runtime Stream Entries',
-        summary: '0 items',
-        defaultExpanded: false,
-        rawJson: {'entries': []},
-      ),
-      DebugTurnInspectorContextSection(
-        id: 'trace-events',
-        title: 'Trace Events',
-        summary: '0 items',
-        defaultExpanded: false,
-        rawJson: {'events': []},
-      ),
-      DebugTurnInspectorContextSection(
-        id: 'runtime-draft',
-        title: 'Runtime Draft',
-        summary: 'null',
-        defaultExpanded: false,
-        rawJson: {'draft': null},
-      ),
-      DebugTurnInspectorContextSection(
-        id: 'active-question',
-        title: 'Active Question',
-        summary: 'null',
-        defaultExpanded: false,
-        rawJson: {'question': null},
-      ),
-    ],
+          ),
+          DebugTurnInspectorContextSection(
+            id: 'transcript-events',
+            title: 'Transcript Events',
+            summary: '1 items',
+            defaultExpanded: false,
+            rawJson: {'events': []},
+          ),
+          DebugTurnInspectorContextSection(
+            id: 'provider-state',
+            title: 'Provider State',
+            summary: '1 items',
+            defaultExpanded: false,
+            rawJson: {'state': []},
+          ),
+          DebugTurnInspectorContextSection(
+            id: 'runtime-stream',
+            title: 'Runtime Stream Entries',
+            summary: '0 items',
+            defaultExpanded: false,
+            rawJson: {'entries': []},
+          ),
+          DebugTurnInspectorContextSection(
+            id: 'trace-events',
+            title: 'Trace Events',
+            summary: '0 items',
+            defaultExpanded: false,
+            rawJson: {'events': []},
+          ),
+          DebugTurnInspectorContextSection(
+            id: 'runtime-draft',
+            title: 'Runtime Draft',
+            summary: 'null',
+            defaultExpanded: false,
+            rawJson: {'draft': null},
+          ),
+          DebugTurnInspectorContextSection(
+            id: 'active-question',
+            title: 'Active Question',
+            summary: 'null',
+            defaultExpanded: false,
+            rawJson: {'question': null},
+          ),
+        ],
     cachePanel: cachePanel ??
         DebugCachePanelProjection(
           sampleSize: 100,

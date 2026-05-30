@@ -338,7 +338,11 @@ class AgentEventProcessor {
     required ChatEvent event,
   }) async {
     _ensureAssistantDraftStage(_AssistantDraftStage.response);
-    if (_assistantMessageId == null) {
+    final hasRuntimePreview = _ref
+        .read(runtimeStreamingPreviewStateProvider)
+        .messages
+        .isNotEmpty;
+    if (!hasRuntimePreview && _assistantMessageId == null) {
       final placeholder = ChatMessage(
         text: '',
         role: MessageRole.assistant,
@@ -357,8 +361,11 @@ class AgentEventProcessor {
           isGenerating: true,
           phase: ChatSendPhase.streamingResponse,
         );
-    final activeId = _assistantMessageId!;
-    final activeMessage = _assistantMessage!;
+    final activeId = _assistantMessageId;
+    final activeMessage = _assistantMessage;
+    if (activeId == null || activeMessage == null) {
+      return;
+    }
     _assistantStreamBuffer ??= _createAssistantStreamBuffer(
       messageId: activeId,
       message: activeMessage,

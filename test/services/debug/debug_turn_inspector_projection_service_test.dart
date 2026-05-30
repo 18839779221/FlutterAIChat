@@ -131,6 +131,22 @@ void main() {
         ],
       ),
     );
+    final runtimePreviewSection = projection.contextSections.firstWhere(
+      (section) => section.title == 'Runtime Preview State',
+    );
+    final runtimePreviewRawJson =
+        runtimePreviewSection.rawJson as Map<String, dynamic>;
+    expect(runtimePreviewSection.summary, contains('1 messages'));
+    expect(runtimePreviewSection.summary, contains('1 blocks'));
+    expect(runtimePreviewSection.summary, contains('toolUse'));
+    expect(
+      runtimePreviewRawJson['previewSummary'],
+      {
+        'messageCount': 1,
+        'blockCount': 1,
+        'blockTypes': ['toolUse'],
+      },
+    );
 
     await storage.deleteGroup(groupId);
   });

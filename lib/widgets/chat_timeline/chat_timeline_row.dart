@@ -119,11 +119,13 @@ class ChatTimelineRow extends ConsumerWidget {
         );
         break;
       case AssistantTurnBlockType.finalResponse:
+        final isRuntimePreview = block.payload?['isRuntimePreview'] == true;
         blockWidget = GestureDetector(
           onLongPress: sourceMessage == null
               ? null
               : () => onLongPressMessage(sourceMessage),
-          child: sourceMessage?.status == MessageStatus.generating
+          child: sourceMessage?.status == MessageStatus.generating ||
+                  isRuntimePreview
               ? StreamingResponseBlock(
                   text: block.text ?? '',
                   reasoningText: block.reasoningText,

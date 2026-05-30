@@ -367,9 +367,10 @@ class DebugTurnInspectorProjectionService {
       DebugTurnInspectorContextSection(
         id: 'runtime-stream',
         title: 'Runtime Preview State',
-        summary: '${_runtimePreviewState.messages.length} messages',
+        summary: _buildRuntimePreviewSummary(),
         defaultExpanded: false,
         rawJson: {
+          'previewSummary': _buildRuntimePreviewSummaryJson(),
           'messages': _runtimePreviewState.messages
               .map(
                 (message) => {
@@ -436,6 +437,34 @@ class DebugTurnInspectorProjectionService {
         },
       ),
     ];
+  }
+
+  String _buildRuntimePreviewSummary() {
+    final summary = _buildRuntimePreviewSummaryJson();
+    final messageCount = summary['messageCount'] as int? ?? 0;
+    final blockCount = summary['blockCount'] as int? ?? 0;
+    final blockTypes =
+        (summary['blockTypes'] as List<dynamic>? ?? const <dynamic>[])
+            .cast<String>();
+    final blockTypesText =
+        blockTypes.isEmpty ? 'none' : blockTypes.join('/');
+    return '$messageCount messages, $blockCount blocks, $blockTypesText';
+  }
+
+  Map<String, dynamic> _buildRuntimePreviewSummaryJson() {
+    final blockCount = _runtimePreviewState.messages.fold<int>(
+      0,
+      (sum, message) => sum + message.blocks.length,
+    );
+    final blockTypes = <String>{
+      for (final message in _runtimePreviewState.messages)
+        for (final block in message.blocks) block.blockType.name,
+    }.toList(growable: false);
+    return {
+      'messageCount': _runtimePreviewState.messages.length,
+      'blockCount': blockCount,
+      'blockTypes': blockTypes,
+    };
   }
 
   DebugTurnInspectorContextSection _buildSkillsSection({

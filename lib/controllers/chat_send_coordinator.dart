@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
@@ -487,6 +488,16 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       return;
     }
 
+    final runtimePreviewText = _resolveLatestRuntimePreviewResponseText();
+    if (runtimePreviewText != null) {
+      await _insertAssistantStatusMessage(
+        groupId: groupId,
+        text: runtimePreviewText,
+        status: MessageStatus.interrupted,
+      );
+      return;
+    }
+
     await _upsertAssistantCancelledMessage(
       groupId: groupId,
       assistantMessageId: assistantMessageId,
@@ -598,6 +609,24 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     return message != null &&
         message.status == MessageStatus.interrupted &&
         message.text.trim().isNotEmpty;
+  }
+
+  String? _resolveLatestRuntimePreviewResponseText() {
+    final blocks = _ref.read(chatTimelineProjectionProvider).assistantBlocks;
+    for (final block in blocks.reversed) {
+      if (block.type != AssistantTurnBlockType.finalResponse) {
+        continue;
+      }
+      if (block.payload?['isRuntimePreview'] != true) {
+        continue;
+      }
+      final text = block.text?.trim();
+      if (text == null || text.isEmpty) {
+        continue;
+      }
+      return block.text;
+    }
+    return null;
   }
 
   Future<void> _insertAssistantStatusMessage({
