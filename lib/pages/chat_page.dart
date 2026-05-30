@@ -9,6 +9,7 @@ import '../theme/app_theme_spec.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../providers/chat_providers.dart';
+import '../widgets/chat_blocks/unified_turn_status_bar.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/chat_drawer.dart';
@@ -45,6 +46,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final systemPrompt = ref.watch(systemPromptProvider);
     final isLoadingMore = ref.watch(isLoadingMoreProvider);
     final pendingConfirmation = ref.watch(activePendingToolConfirmationProvider);
+    final activeTurnStatus = ref.watch(activeTurnStatusPresentationProvider);
+    final shouldShowFloatingActiveStatus =
+        ref.watch(activeTurnStatusFloatingVisibilityProvider);
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final chatController = ref.read(chatControllerProvider);
@@ -140,6 +144,24 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                           chatController.confirmToolInvocation(
                         pendingConfirmation.message,
                         trustTool: true,
+                      ),
+                    ),
+                  if (activeTurnStatus != null &&
+                      activeTurnStatus.allowFloating &&
+                      shouldShowFloatingActiveStatus)
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        spacing.md - 2,
+                        0,
+                        spacing.md - 2,
+                        spacing.xxs,
+                      ),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: KeyedSubtree(
+                          key: const ValueKey('floating-turn-status-bar'),
+                          child: UnifiedTurnStatusBar(status: activeTurnStatus),
+                        ),
                       ),
                     ),
                   ChatInput(

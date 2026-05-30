@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:ai_chat/models/chat/active_turn_status_presentation.dart';
 import 'package:ai_chat/models/chat/chat_timeline_projection.dart';
 import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
 import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
@@ -12,6 +13,7 @@ import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/controllers/voice_input_controller.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
+import 'package:ai_chat/providers/chat_send_state_providers.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/debug_test_case_loader.dart';
 import 'package:ai_chat/services/runtime_streaming_preview_projector.dart';
@@ -192,6 +194,50 @@ final activePendingToolConfirmationProvider =
     message: projected.message,
     invocation: projected.invocation,
   );
+});
+
+/// Returns the unified active turn status derived from formal projection facts
+/// plus send-state fallbacks.
+final activeTurnStatusPresentationProvider =
+    Provider<ActiveTurnStatusPresentation?>((ref) {
+  final projection = ref.watch(chatTimelineProjectionProvider);
+  final sendState = ref.watch(chatSendStateProvider);
+  return ref
+      .watch(activeTurnStatusResolverProvider)
+      .resolve(projection: projection, sendState: sendState);
+});
+
+/// Viewport-driven state for deciding whether the active inline status should
+/// move into the floating host above the composer.
+class ActiveTurnStatusFloatingState {
+  const ActiveTurnStatusFloatingState({
+    this.turnId,
+    required this.isFloating,
+  });
+
+  /// Turn identity of the inline status anchor that produced this state.
+  final String? turnId;
+
+  /// Whether the current active status should render in the floating host.
+  final bool isFloating;
+}
+
+final activeTurnStatusFloatingStateProvider =
+    StateProvider<ActiveTurnStatusFloatingState>((ref) {
+  return const ActiveTurnStatusFloatingState(
+    turnId: null,
+    isFloating: false,
+  );
+});
+
+/// Page-level visibility switch for the floating active status host.
+final activeTurnStatusFloatingVisibilityProvider = Provider<bool>((ref) {
+  final status = ref.watch(activeTurnStatusPresentationProvider);
+  final floatingState = ref.watch(activeTurnStatusFloatingStateProvider);
+  if (status == null || !status.allowFloating) {
+    return false;
+  }
+  return floatingState.turnId == status.turnId && floatingState.isFloating;
 });
 
 class RuntimeStreamingPreviewController

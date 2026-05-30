@@ -16,13 +16,13 @@ import 'package:ai_chat/widgets/animations/message_growth_animation.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/artifact_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
-import 'package:ai_chat/widgets/chat_blocks/latest_message_running_status_tail.dart';
 import 'package:ai_chat/widgets/chat_blocks/streaming_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/structured_output_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_exception_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_outcome_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
+import 'package:ai_chat/widgets/chat_blocks/unified_turn_status_bar.dart';
 import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_card.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_result_card.dart';
@@ -72,14 +72,23 @@ class ChatTimelineRow extends ConsumerWidget {
           )
         : row;
 
-    if (item.runningTailText == null) {
+    if (item.activeStatus == null) {
       return displayRow;
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         displayRow,
-        LatestMessageRunningStatusTail(statusText: item.runningTailText!),
+        Visibility(
+          visible: !item.hideInlineStatus,
+          maintainState: true,
+          maintainAnimation: true,
+          maintainSize: true,
+          child: KeyedSubtree(
+            key: item.statusAnchorKey,
+            child: UnifiedTurnStatusBar(status: item.activeStatus!),
+          ),
+        ),
       ],
     );
   }

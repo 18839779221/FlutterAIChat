@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:ai_chat/models/chat/active_turn_status_presentation.dart';
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -16,6 +17,7 @@ import 'package:ai_chat/widgets/chat_timeline/chat_timeline_row.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -29,9 +31,16 @@ class ChatMessageList extends ConsumerStatefulWidget {
 class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   final ChatBlockBuilder _blockBuilder = ChatBlockBuilder();
   static const double _anchorThreshold = 100;
+  static const double _floatingEnterViewportMargin = 12;
+  static const double _floatingExitViewportMargin = 4;
   bool _isLoadingOlderHistory = false;
   late final ScrollController _scrollController;
+  final GlobalKey _activeStatusAnchorKey = GlobalKey(
+    debugLabel: 'active-turn-status-anchor',
+  );
   int _previousItemCount = 0;
+  bool _pendingVisibilityCheck = false;
+  int _visibilityCheckGeneration = 0;
 
   @override
   void initState() {
@@ -43,6 +52,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   @override
   void dispose() {
     _scrollController.removeListener(_scrollListener);
+    _visibilityCheckGeneration += 1;
     super.dispose();
   }
 
@@ -55,6 +65,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     if (_shouldLoadOlderHistory(scrollController)) {
       _loadOlderHistoryPreservingAnchor();
     }
+
+    _scheduleActiveStatusVisibilitySync();
   }
 
   bool _shouldLoadOlderHistory(ScrollController scrollController) {
@@ -92,6 +104,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           return;
         }
         scrollController.jumpTo(previousOffset + extentDelta);
+        _scheduleActiveStatusVisibilitySync();
       });
     } finally {
       _isLoadingOlderHistory = false;
@@ -119,6 +132,9 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final sendState = ref.watch(chatSendStateProvider);
     final sendPhase = sendState.phase;
     final timelineProjection = ref.watch(chatTimelineProjectionProvider);
+    final activeTurnStatus = ref.watch(activeTurnStatusPresentationProvider);
+    final shouldFloatActiveStatus =
+        ref.watch(activeTurnStatusFloatingVisibilityProvider);
     Logger.temp(
       'ChatMessageList',
       'build called',
@@ -140,6 +156,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       sendPhase,
       timelineProjection.assistantBlocks,
       sendState.statusText,
+      activeTurnStatus,
+      hideInlineActiveStatus: shouldFloatActiveStatus,
     );
     final itemCount = timelineItems.length + (hasMoreMessages ? 1 : 0);
     final currentGroupId = ref.read(currentGroupProvider)?.id;
@@ -149,6 +167,10 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     _previousItemCount = timelineItems.length;
 
     if (messages.isEmpty) {
+      _scheduleActiveStatusVisibilitySync(
+        activeStatus: null,
+        hasAnchor: false,
+      );
       return ChatEmptyState(
         suggestions: buildChatEmptySuggestionsFromCases(
           ref.watch(featuredDebugTestCasesProvider),
@@ -221,6 +243,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     ChatSendPhase sendPhase,
     List<AssistantTurnBlock> projectedAssistantBlocks,
     String? sendStatusText,
+    ActiveTurnStatusPresentation? activeTurnStatus,
+    {required bool hideInlineActiveStatus}
   ) {
     if (messages.isEmpty) {
       return const [];
@@ -240,13 +264,32 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
 
     final currentGroup = ref.read(currentGroupProvider);
     final sortedMessages = [...messages]..sort(compareChatMessagesForTimeline);
-    final runningTail = ref
+    final fallbackStatus = ref
         .read(latestMessageRunningStatusResolverProvider)
         .resolve(
           messages: sortedMessages,
           sendPhase: sendPhase,
           statusTextOverride: sendStatusText,
         );
+    final effectiveStatus = activeTurnStatus ??
+        (fallbackStatus == null
+            ? null
+            : ActiveTurnStatusPresentation(
+                phase: switch (sendPhase) {
+                  ChatSendPhase.awaitingConfirmation =>
+                    ActiveTurnStatusPhase.awaitingConfirmation,
+                  ChatSendPhase.executingTool =>
+                    ActiveTurnStatusPhase.executingTool,
+                  ChatSendPhase.streamingResponse =>
+                    ActiveTurnStatusPhase.streamingResponse,
+                  ChatSendPhase.preparing || ChatSendPhase.idle =>
+                    ActiveTurnStatusPhase.planning,
+                },
+                text: fallbackStatus.text,
+                turnId: 'legacy-running-tail',
+                sourceKind: ActiveTurnStatusSourceKind.sendPhaseFallback,
+                allowFloating: true,
+              ));
 
     final items = <ChatTimelineItem>[];
     var cursor = 0;
@@ -278,18 +321,30 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
             type: ChatTimelineItemType.userBubble,
             userMessage: current,
             sourceMessages: segment,
-            runningTailText:
-                isLatestTurn && !hasAssistantOutput && runningTail != null
-                    ? runningTail.text
+            activeStatus:
+                isLatestTurn && !hasAssistantOutput && effectiveStatus != null
+                    ? effectiveStatus
                     : null,
+            statusAnchorKey:
+                isLatestTurn && !hasAssistantOutput && effectiveStatus != null
+                    ? _activeStatusAnchorKey
+                    : null,
+            hideInlineStatus:
+                isLatestTurn && !hasAssistantOutput && effectiveStatus != null
+                    ? hideInlineActiveStatus
+                    : false,
           ),
         );
         items.addAll(
           _buildAssistantItems(
             sourceMessages: segment,
             blocks: blocks,
-            runningTailText:
-                isLatestTurn && hasAssistantOutput ? runningTail?.text : null,
+            activeStatus:
+                isLatestTurn && hasAssistantOutput ? effectiveStatus : null,
+            hideInlineStatus:
+                isLatestTurn && hasAssistantOutput && effectiveStatus != null
+                    ? hideInlineActiveStatus
+                    : false,
           ),
         );
         cursor = nextCursor;
@@ -306,12 +361,21 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
         _buildAssistantItems(
           sourceMessages: [current],
           blocks: orphanBlocks,
-          runningTailText:
-              cursor == sortedMessages.length - 1 ? runningTail?.text : null,
+          activeStatus:
+              cursor == sortedMessages.length - 1 ? effectiveStatus : null,
+          hideInlineStatus:
+              cursor == sortedMessages.length - 1 && effectiveStatus != null
+                  ? hideInlineActiveStatus
+                  : false,
         ),
       );
       cursor += 1;
     }
+
+    _scheduleActiveStatusVisibilitySync(
+      activeStatus: effectiveStatus,
+      hasAnchor: effectiveStatus != null,
+    );
 
     return items;
   }
@@ -353,7 +417,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   List<ChatTimelineItem> _buildAssistantItems({
     required List<ChatMessage> sourceMessages,
     required List<AssistantTurnBlock> blocks,
-    required String? runningTailText,
+    required ActiveTurnStatusPresentation? activeStatus,
+    required bool hideInlineStatus,
   }) {
     Logger.temp(
       'ChatMessageList',
@@ -375,9 +440,16 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           sourceMessage: sourceMessage,
           sourceMessages: sourceMessages,
           block: block,
-          runningTailText: runningTailText != null && index == blocks.length - 1
-              ? runningTailText
+          activeStatus: activeStatus != null && index == blocks.length - 1
+              ? activeStatus
               : null,
+          statusAnchorKey: activeStatus != null && index == blocks.length - 1
+              ? _activeStatusAnchorKey
+              : null,
+          hideInlineStatus:
+              activeStatus != null && index == blocks.length - 1
+                  ? hideInlineStatus
+                  : false,
         ),
       );
     }
@@ -569,5 +641,99 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
         ),
       ),
     );
+  }
+
+  void _scheduleActiveStatusVisibilitySync({
+    ActiveTurnStatusPresentation? activeStatus,
+    bool hasAnchor = true,
+  }) {
+    if (_pendingVisibilityCheck) {
+      return;
+    }
+    _pendingVisibilityCheck = true;
+    final generation = ++_visibilityCheckGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pendingVisibilityCheck = false;
+      if (!mounted || generation != _visibilityCheckGeneration) {
+        return;
+      }
+      _syncActiveStatusVisibility(
+        activeStatus: activeStatus ?? ref.read(activeTurnStatusPresentationProvider),
+        hasAnchor: hasAnchor,
+      );
+    });
+  }
+
+  void _syncActiveStatusVisibility({
+    required ActiveTurnStatusPresentation? activeStatus,
+    required bool hasAnchor,
+  }) {
+    if (activeStatus == null || !hasAnchor) {
+      _setActiveStatusFloatingState(
+        const ActiveTurnStatusFloatingState(
+          turnId: null,
+          isFloating: false,
+        ),
+      );
+      return;
+    }
+
+    final anchorContext = _activeStatusAnchorKey.currentContext;
+    if (anchorContext == null) {
+      _setActiveStatusFloatingState(
+        ActiveTurnStatusFloatingState(
+          turnId: activeStatus.turnId,
+          isFloating: true,
+        ),
+      );
+      return;
+    }
+
+    final anchorRenderObject = anchorContext.findRenderObject();
+    if (anchorRenderObject is! RenderBox) {
+      return;
+    }
+    if (!anchorRenderObject.hasSize) {
+      return;
+    }
+
+    final viewport = RenderAbstractViewport.maybeOf(anchorRenderObject);
+    if (viewport == null || !_scrollController.hasClients) {
+      return;
+    }
+
+    final isCurrentlyFloating =
+        ref.read(activeTurnStatusFloatingVisibilityProvider);
+    final viewportMargin = isCurrentlyFloating
+        ? _floatingExitViewportMargin
+        : _floatingEnterViewportMargin;
+    final viewportTop = _scrollController.position.pixels + viewportMargin;
+    final viewportBottom =
+        _scrollController.position.pixels +
+        _scrollController.position.viewportDimension -
+        viewportMargin;
+    final anchorTop = viewport.getOffsetToReveal(anchorRenderObject, 0).offset;
+    final anchorBottom = viewport
+        .getOffsetToReveal(anchorRenderObject, 1)
+        .offset;
+    final isFullyVisible =
+        anchorTop >= viewportTop && anchorBottom <= viewportBottom;
+
+    _setActiveStatusFloatingState(
+      ActiveTurnStatusFloatingState(
+        turnId: activeStatus.turnId,
+        isFloating: !isFullyVisible,
+      ),
+    );
+  }
+
+  void _setActiveStatusFloatingState(ActiveTurnStatusFloatingState nextState) {
+    final notifier = ref.read(activeTurnStatusFloatingStateProvider.notifier);
+    final previous = notifier.state;
+    if (previous.turnId == nextState.turnId &&
+        previous.isFloating == nextState.isFloating) {
+      return;
+    }
+    notifier.state = nextState;
   }
 }

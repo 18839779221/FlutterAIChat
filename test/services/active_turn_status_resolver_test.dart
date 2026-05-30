@@ -126,6 +126,131 @@ void main() {
       expect(status?.text, '正在规划下一步');
     });
 
+    test('idle phase suppresses stale completed tool status', () {
+      final status = resolver.resolve(
+        projection: ChatTimelineProjection(
+          toolPresentationEvents: [
+            ToolPresentationEvent(
+              toolName: 'create_artifact__guideline',
+              phase: ToolPresentationEventPhase.result,
+              turnId: 'turn-4',
+              sourceContentType: MessageContentType.toolResult,
+              sourceMessageId: 73,
+              timestamp: DateTime(2026, 5, 31, 12, 30, 0),
+            ),
+          ],
+        ),
+        sendState: const ChatSendState(
+          phase: ChatSendPhase.idle,
+          isGenerating: false,
+        ),
+      );
+
+      expect(status, isNull);
+    });
+
+    test('transient send status override wins over planning copy', () {
+      final status = resolver.resolve(
+        projection: ChatTimelineProjection(
+          toolPresentationEvents: [
+            ToolPresentationEvent(
+              toolName: 'web_search',
+              phase: ToolPresentationEventPhase.proposed,
+              turnId: 'turn-5',
+              sourceContentType: MessageContentType.toolInvocation,
+              sourceMessageId: 81,
+              timestamp: DateTime(2026, 5, 31, 13, 0, 0),
+            ),
+          ],
+        ),
+        sendState: const ChatSendState(
+          phase: ChatSendPhase.preparing,
+          isGenerating: false,
+          statusText: '请求超时，正在重试 1/5',
+        ),
+      );
+
+      expect(status, isNotNull);
+      expect(status?.phase, ActiveTurnStatusPhase.planning);
+      expect(status?.text, '请求超时，正在重试 1/5');
+    });
+
+    test('parallel active tools degrade to generic running copy', () {
+      final status = resolver.resolve(
+        projection: ChatTimelineProjection(
+          toolPresentationEvents: [
+            ToolPresentationEvent(
+              toolName: 'web_search',
+              phase: ToolPresentationEventPhase.running,
+              turnId: 'turn-6',
+              sourceContentType: MessageContentType.toolInvocation,
+              sourceMessageId: 91,
+              timestamp: DateTime(2026, 5, 31, 14, 0, 0),
+            ),
+            ToolPresentationEvent(
+              toolName: 'fetch_webpage',
+              phase: ToolPresentationEventPhase.running,
+              turnId: 'turn-6',
+              sourceContentType: MessageContentType.toolInvocation,
+              sourceMessageId: 92,
+              timestamp: DateTime(2026, 5, 31, 14, 0, 1),
+            ),
+          ],
+        ),
+        sendState: const ChatSendState(
+          phase: ChatSendPhase.executingTool,
+          isGenerating: false,
+        ),
+      );
+
+      expect(status, isNotNull);
+      expect(status?.phase, ActiveTurnStatusPhase.executingTool);
+      expect(status?.toolName, isNull);
+      expect(status?.text, '正在执行工具');
+    });
+
+    test('later result only clears the matching running tool', () {
+      final status = resolver.resolve(
+        projection: ChatTimelineProjection(
+          toolPresentationEvents: [
+            ToolPresentationEvent(
+              toolName: 'web_search',
+              phase: ToolPresentationEventPhase.running,
+              turnId: 'turn-7',
+              sourceContentType: MessageContentType.toolInvocation,
+              sourceMessageId: 101,
+              timestamp: DateTime(2026, 5, 31, 15, 0, 0),
+            ),
+            ToolPresentationEvent(
+              toolName: 'fetch_webpage',
+              phase: ToolPresentationEventPhase.running,
+              turnId: 'turn-7',
+              sourceContentType: MessageContentType.toolInvocation,
+              sourceMessageId: 102,
+              timestamp: DateTime(2026, 5, 31, 15, 0, 1),
+            ),
+            ToolPresentationEvent(
+              toolName: 'web_search',
+              phase: ToolPresentationEventPhase.result,
+              turnId: 'turn-7',
+              sourceContentType: MessageContentType.toolResult,
+              sourceMessageId: 103,
+              timestamp: DateTime(2026, 5, 31, 15, 0, 2),
+            ),
+          ],
+        ),
+        sendState: const ChatSendState(
+          phase: ChatSendPhase.executingTool,
+          isGenerating: false,
+        ),
+      );
+
+      expect(status, isNotNull);
+      expect(status?.phase, ActiveTurnStatusPhase.executingTool);
+      expect(status?.toolName, 'fetch_webpage');
+      expect(status?.text, '正在读取网页');
+    });
+
     test('streaming phase falls back to generating reply when no richer signal exists', () {
       final status = resolver.resolve(
         projection: const ChatTimelineProjection(),

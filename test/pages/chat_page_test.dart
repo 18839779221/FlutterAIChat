@@ -1,4 +1,5 @@
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat/active_turn_status_presentation.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/debug/debug_test_case.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
@@ -473,6 +474,131 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const ValueKey('debug-turn-inspector-button')), findsOneWidget);
+  });
+
+  testWidgets(
+      'chat page shows floating status above composer when anchor is not visible',
+      (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+        activeTurnStatusPresentationProvider.overrideWith(
+          (ref) => const ActiveTurnStatusPresentation(
+            phase: ActiveTurnStatusPhase.planning,
+            text: '正在规划下一步',
+            turnId: 'turn-floating',
+            sourceKind: ActiveTurnStatusSourceKind.toolEvent,
+            allowFloating: true,
+          ),
+        ),
+        activeTurnStatusFloatingVisibilityProvider.overrideWith(
+          (ref) => true,
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('floating-turn-status-bar')), findsOneWidget);
+    expect(find.text('正在规划下一步'), findsOneWidget);
+  });
+
+  testWidgets('chat page hides floating status when inline anchor is visible',
+      (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+        activeTurnStatusPresentationProvider.overrideWith(
+          (ref) => const ActiveTurnStatusPresentation(
+            phase: ActiveTurnStatusPhase.planning,
+            text: '正在规划下一步',
+            turnId: 'turn-inline',
+            sourceKind: ActiveTurnStatusSourceKind.toolEvent,
+            allowFloating: true,
+          ),
+        ),
+        activeTurnStatusFloatingVisibilityProvider.overrideWith(
+          (ref) => false,
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('floating-turn-status-bar')), findsNothing);
+  });
+
+  testWidgets('chat page omits floating status when no active turn status exists',
+      (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('floating-turn-status-bar')), findsNothing);
   });
 }
 
