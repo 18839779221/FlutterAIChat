@@ -9,6 +9,7 @@ import 'package:ai_chat/services/artifact/artifact_file_storage_service.dart';
 import 'package:ai_chat/services/artifact/artifact_guideline_contract_builder.dart';
 import 'package:ai_chat/services/artifact/artifact_theme_token_mapper.dart';
 import 'package:ai_chat/services/artifact/artifact_turn_resolver.dart';
+import 'package:ai_chat/services/active_turn_status_resolver.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_timeline_projection_service.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
@@ -110,6 +111,11 @@ final speechToTextServiceProvider = Provider<SpeechToTextService?>((ref) {
 
 final traceRecorderProvider = Provider<ChatTraceRecorder>((ref) {
   return ChatTraceRecorder();
+});
+
+final activeTurnStatusResolverProvider =
+    Provider<ActiveTurnStatusResolver>((ref) {
+  return const ActiveTurnStatusResolver();
 });
 
 final latestMessageRunningStatusResolverProvider =
