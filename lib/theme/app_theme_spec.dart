@@ -115,7 +115,12 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
         toolCard: ToolCardTokens(),
         reasoning: ReasoningTokens(),
         settings: SettingsTokens(),
-        markdown: MarkdownTokens(),
+        markdown: MarkdownTokens(
+          codeBlockBackground: Color(0xFFE6E2D6),
+          codePanelBackground: Color(0xFFF0EBDD),
+          codeForeground: Color(0xFF31414A),
+          copySuccessAccent: Color(0xFF2F6A4F),
+        ),
       ),
     );
   }
@@ -207,7 +212,14 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
         toolCard: ToolCardTokens(),
         reasoning: ReasoningTokens(),
         settings: SettingsTokens(),
-        markdown: MarkdownTokens(),
+        markdown: MarkdownTokens(
+          // 在 Olive Paper 主题下，代码块沿用工具内联表面的低饱和度绿调，
+          // 与 reading surface 形成轻微对比，无需运行时再做 alpha 合成。
+          codeBlockBackground: Color(0xFFCED7C5),
+          codePanelBackground: Color(0xFFDDE3D2),
+          codeForeground: Color(0xFF1F2A1F),
+          copySuccessAccent: Color(0xFF2F6A4F),
+        ),
       ),
     );
   }
@@ -618,7 +630,28 @@ class SettingsTokens {
   const SettingsTokens();
 }
 
+/// Markdown 阅读视图组件级 token。
+///
+/// 长答案 / 代码块表面色与主题强相关，集中收口在这里，避免阅读组件
+/// 自行用 `Color(0x...)` 硬编码而无法跟随主题切换。
 @immutable
 class MarkdownTokens {
-  const MarkdownTokens();
+  /// 围栏代码块（fenced code block）内层文本所在的"纸面"色。
+  final Color codeBlockBackground;
+
+  /// 围栏代码块外层容器底色，用来在阅读流中形成一个轻微的卡片浮起感。
+  final Color codePanelBackground;
+
+  /// 代码块默认前景色（即 fenced code block 文字色）。
+  final Color codeForeground;
+
+  /// "已复制"等内联成功提示用的强调色（小图标 / 高亮文字）。
+  final Color copySuccessAccent;
+
+  const MarkdownTokens({
+    required this.codeBlockBackground,
+    required this.codePanelBackground,
+    required this.codeForeground,
+    required this.copySuccessAccent,
+  });
 }

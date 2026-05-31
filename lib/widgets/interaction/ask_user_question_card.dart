@@ -312,7 +312,11 @@ class _QuestionOptionTile extends StatelessWidget {
                   ),
                 ),
                 child: selected
-                    ? const Icon(Icons.check, size: 12, color: Colors.white)
+                    ? Icon(
+                        Icons.check,
+                        size: 12,
+                        color: colors.semantic.text.inverse,
+                      )
                     : null,
               ),
               Expanded(

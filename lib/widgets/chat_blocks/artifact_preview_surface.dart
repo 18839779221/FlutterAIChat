@@ -1006,6 +1006,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
 
   Widget _buildStreamingIndicator(BuildContext context) {
     final theme = Theme.of(context);
+    final appColors = theme.extension<AppThemeSpec>()!;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -1013,7 +1014,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
+            color: appColors.core.elevation.shadowColor,
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),

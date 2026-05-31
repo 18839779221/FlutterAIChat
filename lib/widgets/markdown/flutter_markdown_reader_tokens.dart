@@ -13,22 +13,14 @@ class FlutterMarkdownReaderTokens {
     final theme = Theme.of(context);
     final colors = theme.extension<AppThemeSpec>()!;
     final bodyColor = theme.colorScheme.onSurface;
-    final isClaude = colors.id == 'claude';
     final secondaryColor = bodyColor.withValues(alpha: 0.82);
     final quoteBorderColor = colors.workflowRunning.withValues(alpha: 0.18);
     final quoteBackgroundColor = colors.assistantSurface.withValues(
       alpha: theme.brightness == Brightness.dark ? 0.28 : 0.18,
     );
-    final codeBlockBackgroundColor = isClaude
-        ? const Color(0xFFE6E2D6)
-        : colors.toolWorkflowSurface.withValues(
-            alpha: theme.brightness == Brightness.dark ? 0.62 : 0.38,
-          );
-    final codePanelBackgroundColor = isClaude
-        ? const Color(0xFFF0EBDD)
-        : colors.assistantSurface.withValues(
-            alpha: theme.brightness == Brightness.dark ? 0.42 : 0.58,
-          );
+    final markdownTokens = colors.components.markdown;
+    final codeBlockBackgroundColor = markdownTokens.codeBlockBackground;
+    final codePanelBackgroundColor = markdownTokens.codePanelBackground;
 
     return MarkdownReaderStyles(
       body: AppTypography.documentStyle(

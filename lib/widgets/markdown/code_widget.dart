@@ -99,6 +99,8 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
 
   Widget _highlightWidget(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final markdownTokens =
+        Theme.of(context).extension<AppThemeSpec>()!.components.markdown;
     final baseTheme = isDark ? a11yDarkTheme : a11yLightTheme;
     final highlightTheme = Map<String, TextStyle>.from(baseTheme);
     final rootStyle = highlightTheme['root'] ?? const TextStyle();
@@ -112,7 +114,7 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
       theme: highlightTheme,
       padding: EdgeInsets.zero,
       textStyle: AppTypography.codeStyle(
-        color: isDark ? const Color(0xFFE6E6E6) : const Color(0xFF31414A),
+        color: markdownTokens.codeForeground,
         fontSize: 12.5,
         height: 1.45,
       ),
@@ -155,7 +157,11 @@ class _CopyButtonState extends State<_CopyButton> {
               _isCopied ? Icons.check : Icons.copy_outlined,
               key: ValueKey(_isCopied),
               color: _isCopied
-                  ? const Color(0xFF7FBE95)
+                  ? Theme.of(context)
+                      .extension<AppThemeSpec>()!
+                      .components
+                      .markdown
+                      .copySuccessAccent
                   : Theme.of(context)
                       .extension<AppThemeSpec>()!
                       .secondaryText

@@ -50,7 +50,9 @@ class SettingsSegmentedControl<T> extends StatelessWidget {
                 child: Text(
                   entry.value,
                   style: TextStyle(
-                    color: selected ? Colors.white : colors.secondaryText,
+                    color: selected
+                        ? colors.semantic.text.inverse
+                        : colors.secondaryText,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),

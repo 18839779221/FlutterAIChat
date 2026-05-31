@@ -15,12 +15,23 @@ typedef CompactToolRowResultMapper = CompactToolRowModel Function(
   ToolResult result,
 );
 
+/// 紧凑工具行的语义状态。
+///
+/// 这里只保留"成功 / 警告 / 进行中"三档语义，颜色在 `CompactToolRow.build`
+/// 时再通过当前 `AppThemeSpec` 解析，确保主题切换后所有 Compact 卡片
+/// （Read / LS / Grep / Glob / guideline 等）的状态色都跟随主题。
+enum CompactToolRowStatus {
+  running,
+  success,
+  warning,
+}
+
 class CompactToolRowModel {
   const CompactToolRowModel({
     required this.actionLabel,
     required this.primaryText,
     required this.statusLabel,
-    required this.statusColor,
+    required this.status,
     this.isRunning = false,
   });
 
@@ -33,11 +44,27 @@ class CompactToolRowModel {
   /// Compact state label shown on the right side of the row.
   final String statusLabel;
 
-  /// Shared semantic color derived from the tool execution state.
-  final Color statusColor;
+  /// 语义状态，由 widget 在 build 时映射到主题状态色 token。
+  final CompactToolRowStatus status;
 
   /// Whether the row represents a running workflow item.
   final bool isRunning;
+}
+
+/// 把语义状态映射到当前主题的状态色 token。
+Color compactToolRowStatusColor(
+  BuildContext context,
+  CompactToolRowStatus status,
+) {
+  final colors = Theme.of(context).extension<AppThemeSpec>()!;
+  switch (status) {
+    case CompactToolRowStatus.running:
+      return colors.workflowRunning;
+    case CompactToolRowStatus.success:
+      return colors.workflowSuccess;
+    case CompactToolRowStatus.warning:
+      return colors.workflowWarning;
+  }
 }
 
 class CompactToolRow extends StatelessWidget {
@@ -53,6 +80,7 @@ class CompactToolRow extends StatelessWidget {
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
+    final statusColor = compactToolRowStatusColor(context, model.status);
 
     return SubtleRunningBreathingSurface(
       isRunning: model.isRunning,
@@ -67,7 +95,7 @@ class CompactToolRow extends StatelessWidget {
         child: Row(
           children: [
             RunningStatusDot(
-              color: model.statusColor,
+              color: statusColor,
               isRunning: model.isRunning,
               size: 7,
             ),
@@ -108,13 +136,13 @@ class CompactToolRow extends StatelessWidget {
                 vertical: spacing.xxs,
               ),
               decoration: BoxDecoration(
-                color: model.statusColor.withValues(alpha: 0.12),
+                color: statusColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(radius.pill),
               ),
               child: Text(
                 model.statusLabel,
                 style: TextStyle(
-                  color: model.statusColor,
+                  color: statusColor,
                   fontSize: 8.5,
                   fontWeight: FontWeight.w700,
                 ),
