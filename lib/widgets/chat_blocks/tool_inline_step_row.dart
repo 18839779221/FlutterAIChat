@@ -3,6 +3,7 @@ import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/widgets/tool_renderers/tool_running_effects.dart';
+import 'package:ai_chat/widgets/tool_renderers/tool_status_badge.dart';
 import 'package:flutter/material.dart';
 
 /// Compact row used for low-noise context-gathering tool steps and results.
@@ -52,23 +53,10 @@ class ToolInlineStepRow extends StatelessWidget {
                   ),
                 ),
                 if ((model.statusLabel ?? '').isNotEmpty)
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: spacing.xs,
-                      vertical: spacing.xxs,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colors.workflowRunning.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(radius.pill),
-                    ),
-                    child: Text(
-                      model.statusLabel!,
-                      style: TextStyle(
-                        color: colors.workflowRunning,
-                        fontSize: 8.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                  ToolStatusBadge(
+                    label: model.statusLabel!,
+                    statusColor: colors.workflowRunning,
+                    isRunning: model.isRunning,
                   ),
               ],
             ),

@@ -8,6 +8,7 @@ import '../../theme/app_theme_spec.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import 'tool_running_effects.dart';
+import 'tool_status_badge.dart';
 
 typedef CompactToolRowWorkflowMapper = CompactToolRowModel Function(
     List<ToolWorkflowStep> steps);
@@ -64,6 +65,19 @@ Color compactToolRowStatusColor(
       return colors.workflowSuccess;
     case CompactToolRowStatus.warning:
       return colors.workflowWarning;
+  }
+}
+
+/// 紧凑行右侧 status badge 的 icon 选择。running 没有终态，icon 留给
+/// 左侧呼吸点说话；completed 用勾号，warning 用空心警示号。
+IconData? _statusIcon(CompactToolRowStatus status) {
+  switch (status) {
+    case CompactToolRowStatus.running:
+      return null;
+    case CompactToolRowStatus.success:
+      return Icons.check_rounded;
+    case CompactToolRowStatus.warning:
+      return Icons.error_outline_rounded;
   }
 }
 
@@ -130,23 +144,11 @@ class CompactToolRow extends StatelessWidget {
               ),
             ),
             SizedBox(width: spacing.sm),
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: spacing.xs,
-                vertical: spacing.xxs,
-              ),
-              decoration: BoxDecoration(
-                color: statusColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(radius.pill),
-              ),
-              child: Text(
-                model.statusLabel,
-                style: TextStyle(
-                  color: statusColor,
-                  fontSize: 8.5,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+            ToolStatusBadge(
+              label: model.statusLabel,
+              statusColor: statusColor,
+              icon: _statusIcon(model.status),
+              isRunning: model.isRunning,
             ),
           ],
         ),

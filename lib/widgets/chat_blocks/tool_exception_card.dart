@@ -2,6 +2,7 @@ import 'package:ai_chat/models/chat/tool_card_presentation_model.dart';
 import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
+import 'package:ai_chat/widgets/tool_renderers/tool_status_badge.dart';
 import 'package:flutter/material.dart';
 
 /// Expanded card for actionable or user-visible tool failures.
@@ -44,23 +45,10 @@ class ToolExceptionCard extends StatelessWidget {
                 ),
               ),
               if ((model.statusLabel ?? '').isNotEmpty)
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: spacing.xs,
-                    vertical: spacing.xxs,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colors.workflowWarning.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(radius.pill),
-                  ),
-                  child: Text(
-                    model.statusLabel!,
-                    style: TextStyle(
-                      color: colors.workflowWarning,
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
+                ToolStatusBadge(
+                  label: model.statusLabel!,
+                  statusColor: colors.workflowWarning,
+                  icon: Icons.error_outline_rounded,
                 ),
             ],
           ),
