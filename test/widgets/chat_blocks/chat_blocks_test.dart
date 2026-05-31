@@ -130,6 +130,30 @@ void main() {
       expect(find.byType(AnimatedOpacity), findsOneWidget);
     });
 
+    testWidgets('floating unified turn status bar keeps floating decoration',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: UnifiedTurnStatusBar(
+              status: ActiveTurnStatusPresentation(
+                phase: ActiveTurnStatusPhase.planning,
+                text: '正在规划下一步',
+                turnId: 'turn-floating',
+                sourceKind: ActiveTurnStatusSourceKind.toolEvent,
+                allowFloating: true,
+              ),
+              variant: UnifiedTurnStatusBarVariant.floating,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('正在规划下一步'), findsOneWidget);
+      expect(find.byType(AnimatedOpacity), findsOneWidget);
+    });
+
     testWidgets('running status dot keeps a restrained pulse footprint',
         (tester) async {
       await tester.pumpWidget(

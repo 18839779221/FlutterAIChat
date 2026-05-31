@@ -13,12 +13,14 @@ class ReasoningSection extends StatefulWidget {
   final String text;
   final ReasoningSectionVariant variant;
   final bool initiallyExpanded;
+  final ValueChanged<bool>? onExpansionChanged;
 
   const ReasoningSection({
     super.key,
     required this.text,
     this.variant = ReasoningSectionVariant.toolUseInline,
     this.initiallyExpanded = true,
+    this.onExpansionChanged,
   });
 
   @override
@@ -123,7 +125,18 @@ class _ReasoningSectionState extends State<ReasoningSection> {
       children: [
         InkWell(
           borderRadius: BorderRadius.circular(6),
-          onTap: () => setState(() => _isExpanded = !_isExpanded),
+          onTap: () {
+            setState(() => _isExpanded = !_isExpanded);
+            final onExpansionChanged = widget.onExpansionChanged;
+            if (onExpansionChanged != null) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted) {
+                  return;
+                }
+                onExpansionChanged(_isExpanded);
+              });
+            }
+          },
           child: Padding(
             padding: EdgeInsets.symmetric(vertical: spacing.xxs),
             child: Row(

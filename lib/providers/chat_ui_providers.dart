@@ -237,7 +237,11 @@ final activeTurnStatusFloatingVisibilityProvider = Provider<bool>((ref) {
   if (status == null || !status.allowFloating) {
     return false;
   }
-  return floatingState.turnId == status.turnId && floatingState.isFloating;
+  // Keep the floating host stable while a new active status is taking over.
+  // Without this handoff tolerance, a fast status turnId swap can briefly
+  // evaluate to false before the next viewport sync updates the anchor state,
+  // which produces a visible disappear/reappear flash above the composer.
+  return floatingState.isFloating;
 });
 
 class RuntimeStreamingPreviewController

@@ -43,6 +43,7 @@ class ChatTimelineRow extends ConsumerWidget {
   final int? currentGroupId;
   final ValueChanged<ChatMessage> onLongPressMessage;
   final bool shouldAnimate;
+  final VoidCallback? onActiveStatusLayoutChanged;
 
   const ChatTimelineRow({
     super.key,
@@ -51,6 +52,7 @@ class ChatTimelineRow extends ConsumerWidget {
     required this.currentGroupId,
     required this.onLongPressMessage,
     this.shouldAnimate = false,
+    this.onActiveStatusLayoutChanged,
   });
 
   @override
@@ -72,25 +74,31 @@ class ChatTimelineRow extends ConsumerWidget {
           )
         : row;
 
+    final rowWithStatus = item.activeStatus == null
+        ? displayRow
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              displayRow,
+              KeyedSubtree(
+                key: item.statusAnchorKey,
+                child: IgnorePointer(
+                  ignoring: item.hideInlineStatus,
+                  child: Opacity(
+                    opacity: item.hideInlineStatus ? 0 : 1,
+                    alwaysIncludeSemantics: !item.hideInlineStatus,
+                    child: UnifiedTurnStatusBar(status: item.activeStatus!),
+                  ),
+                ),
+              ),
+            ],
+          );
+
     if (item.activeStatus == null) {
-      return displayRow;
+      return rowWithStatus;
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        displayRow,
-        Visibility(
-          visible: !item.hideInlineStatus,
-          maintainState: true,
-          maintainAnimation: true,
-          maintainSize: true,
-          child: KeyedSubtree(
-            key: item.statusAnchorKey,
-            child: UnifiedTurnStatusBar(status: item.activeStatus!),
-          ),
-        ),
-      ],
-    );
+
+    return SizeChangedLayoutNotifier(child: rowWithStatus);
   }
 
   Widget _buildUserBubble() {
@@ -142,6 +150,8 @@ class ChatTimelineRow extends ConsumerWidget {
                   text: block.text ?? '',
                   reasoningText: block.reasoningText,
                   markdownCacheKey: item.stableKey,
+                  onReasoningExpansionChanged: (_) =>
+                      onActiveStatusLayoutChanged?.call(),
                 ),
         );
         break;
@@ -317,6 +327,7 @@ class ChatTimelineRow extends ConsumerWidget {
                     turnId: block.turnId,
                     stepId: latestStep.stepId,
                   );
+              onActiveStatusLayoutChanged?.call();
             },
           );
     if (customWorkflowWidget != null) {
@@ -331,6 +342,7 @@ class ChatTimelineRow extends ConsumerWidget {
               turnId: block.turnId,
               stepId: stepId,
             );
+        onActiveStatusLayoutChanged?.call();
       },
     );
   }

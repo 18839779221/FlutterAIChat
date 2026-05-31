@@ -149,6 +149,22 @@ void main() {
       expect(status, isNull);
     });
 
+    test('idle phase still surfaces explicit status override for testing', () {
+      final status = resolver.resolve(
+        projection: const ChatTimelineProjection(),
+        sendState: const ChatSendState(
+          phase: ChatSendPhase.idle,
+          isGenerating: false,
+          statusText: '测试边界状态',
+        ),
+      );
+
+      expect(status, isNotNull);
+      expect(status?.phase, ActiveTurnStatusPhase.idle);
+      expect(status?.text, '测试边界状态');
+      expect(status?.sourceKind, ActiveTurnStatusSourceKind.sendPhaseFallback);
+    });
+
     test('transient send status override wins over planning copy', () {
       final status = resolver.resolve(
         projection: ChatTimelineProjection(

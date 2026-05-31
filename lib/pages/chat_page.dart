@@ -30,6 +30,7 @@ class ChatPage extends ConsumerStatefulWidget {
 }
 
 class _ChatPageState extends ConsumerState<ChatPage> {
+  static const String _debugIdleStatusText = '测试边界状态';
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
@@ -149,18 +150,29 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   if (activeTurnStatus != null &&
                       activeTurnStatus.allowFloating &&
                       shouldShowFloatingActiveStatus)
-                    Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        spacing.md - 2,
-                        0,
-                        spacing.md - 2,
-                        spacing.xxs,
-                      ),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: KeyedSubtree(
-                          key: const ValueKey('floating-turn-status-bar'),
-                          child: UnifiedTurnStatusBar(status: activeTurnStatus),
+                    IgnorePointer(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          spacing.md - 2,
+                          0,
+                          spacing.md - 2,
+                          spacing.xxs + 1,
+                        ),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 320),
+                            child: Transform.translate(
+                              offset: const Offset(0, -2),
+                              child: KeyedSubtree(
+                                key: const ValueKey('floating-turn-status-bar'),
+                                child: UnifiedTurnStatusBar(
+                                  status: activeTurnStatus,
+                                  variant: UnifiedTurnStatusBarVariant.floating,
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -213,6 +225,22 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       backgroundColor: Theme.of(context).extension<AppThemeSpec>()!.chatBackground,
       builder: (sheetContext) => DebugTestCaseSheet(
         cases: library.allCases,
+        onShowIdleStatus: () {
+          ref.read(chatSendStateProvider.notifier).update(
+                phase: ChatSendPhase.idle,
+                isGenerating: false,
+                statusText: _debugIdleStatusText,
+              );
+          Navigator.of(sheetContext).pop();
+        },
+        onClearIdleStatus: () {
+          ref.read(chatSendStateProvider.notifier).update(
+                phase: ChatSendPhase.idle,
+                isGenerating: false,
+                clearStatusText: true,
+              );
+          Navigator.of(sheetContext).pop();
+        },
         onSelected: (item) {
           final textController = ref.read(textControllerProvider);
           final focusNode = ref.read(focusNodeProvider);

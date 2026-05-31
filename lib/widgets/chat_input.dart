@@ -146,9 +146,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
             borderRadius: BorderRadius.circular(radius.lg + 8),
             boxShadow: [
               BoxShadow(
-                color: colors.primaryText.withValues(alpha: 0.065),
-                blurRadius: 20,
-                offset: const Offset(0, 9),
+                color: colors.primaryText.withValues(alpha: 0.085),
+                blurRadius: 26,
+                offset: const Offset(0, 12),
               ),
               BoxShadow(
                 color: Colors.white.withValues(alpha: 0.42),

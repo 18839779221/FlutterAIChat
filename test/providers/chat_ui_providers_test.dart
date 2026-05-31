@@ -1,4 +1,5 @@
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/chat/active_turn_status_presentation.dart';
 import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
@@ -262,5 +263,34 @@ void main() {
         '{"source":"<div>Hello world</div>"}',
       );
     });
+
+    test('floating visibility stays visible during active-status handoff', () {
+      final statusProvider = StateProvider<ActiveTurnStatusPresentation?>(
+        (ref) => const ActiveTurnStatusPresentation(
+          phase: ActiveTurnStatusPhase.executingTool,
+          text: '正在联网搜索',
+          turnId: 'turn-b',
+          sourceKind: ActiveTurnStatusSourceKind.toolEvent,
+          allowFloating: true,
+        ),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          activeTurnStatusPresentationProvider.overrideWith(
+            (ref) => ref.watch(statusProvider),
+          ),
+          activeTurnStatusFloatingStateProvider.overrideWith(
+            (ref) => const ActiveTurnStatusFloatingState(
+              turnId: 'turn-a',
+              isFloating: true,
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      expect(container.read(activeTurnStatusFloatingVisibilityProvider), isTrue);
+    });
+
   });
 }

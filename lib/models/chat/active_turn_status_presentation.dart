@@ -1,5 +1,6 @@
 /// Coarse single-line phase shown in the primary running status surface.
 enum ActiveTurnStatusPhase {
+  idle,
   planning,
   awaitingConfirmation,
   executingTool,

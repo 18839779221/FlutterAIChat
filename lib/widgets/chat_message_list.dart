@@ -17,7 +17,6 @@ import 'package:ai_chat/widgets/chat_timeline/chat_timeline_row.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -185,56 +184,64 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       );
     }
 
-    return CustomScrollView(
-      controller: _scrollController,
-      physics: const ClampingScrollPhysics(),
-      slivers: [
-        SliverPadding(
-          padding: EdgeInsets.fromLTRB(
-            spacing.sm,
-            spacing.xl * 2 + spacing.xxs,
-            spacing.sm,
-            spacing.xl * 4.2,
-          ),
-          sliver: SliverList.builder(
-            itemCount: itemCount,
-            itemBuilder: (context, index) {
-              if (hasMoreMessages && index == timelineItems.length) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: CircularProgressIndicator(),
-                  ),
-                );
-              }
+    return NotificationListener<SizeChangedLayoutNotification>(
+      onNotification: (_) {
+        _scheduleActiveStatusVisibilitySync();
+        return false;
+      },
+      child: CustomScrollView(
+        controller: _scrollController,
+        physics: const ClampingScrollPhysics(),
+        slivers: [
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              spacing.sm,
+              spacing.xl * 2 + spacing.xxs,
+              spacing.sm,
+              spacing.xl * 4.2,
+            ),
+            sliver: SliverList.builder(
+              itemCount: itemCount,
+              itemBuilder: (context, index) {
+                if (hasMoreMessages && index == timelineItems.length) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                }
 
-              final item = timelineItems[index];
-              final isLastItem = index == timelineItems.length - 1;
-              final shouldAnimate = hasNewItems && isLastItem;
+                final item = timelineItems[index];
+                final isLastItem = index == timelineItems.length - 1;
+                final shouldAnimate = hasNewItems && isLastItem;
 
-              return Align(
-                alignment: Alignment.topCenter,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxWidth: kIsWeb ? 860 : 720,
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.only(bottom: spacing.sm),
-                    child: ChatTimelineRow(
-                      key: ValueKey('timeline-block-${item.stableKey}'),
-                      item: item,
-                      blockBuilder: _blockBuilder,
-                      currentGroupId: currentGroupId,
-                      onLongPressMessage: _showMessageOptionMenu,
-                      shouldAnimate: shouldAnimate,
+                return Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: kIsWeb ? 860 : 720,
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: spacing.sm),
+                      child: ChatTimelineRow(
+                        key: ValueKey('timeline-block-${item.stableKey}'),
+                        item: item,
+                        blockBuilder: _blockBuilder,
+                        currentGroupId: currentGroupId,
+                        onLongPressMessage: _showMessageOptionMenu,
+                        shouldAnimate: shouldAnimate,
+                        onActiveStatusLayoutChanged:
+                            _scheduleActiveStatusVisibilitySync,
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -276,13 +283,15 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
             ? null
             : ActiveTurnStatusPresentation(
                 phase: switch (sendPhase) {
+                  ChatSendPhase.idle =>
+                    ActiveTurnStatusPhase.idle,
                   ChatSendPhase.awaitingConfirmation =>
                     ActiveTurnStatusPhase.awaitingConfirmation,
                   ChatSendPhase.executingTool =>
                     ActiveTurnStatusPhase.executingTool,
                   ChatSendPhase.streamingResponse =>
                     ActiveTurnStatusPhase.streamingResponse,
-                  ChatSendPhase.preparing || ChatSendPhase.idle =>
+                  ChatSendPhase.preparing =>
                     ActiveTurnStatusPhase.planning,
                 },
                 text: fallbackStatus.text,
@@ -689,16 +698,12 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       return;
     }
 
+    final listRenderObject = context.findRenderObject();
     final anchorRenderObject = anchorContext.findRenderObject();
-    if (anchorRenderObject is! RenderBox) {
+    if (listRenderObject is! RenderBox || anchorRenderObject is! RenderBox) {
       return;
     }
-    if (!anchorRenderObject.hasSize) {
-      return;
-    }
-
-    final viewport = RenderAbstractViewport.maybeOf(anchorRenderObject);
-    if (viewport == null || !_scrollController.hasClients) {
+    if (!listRenderObject.hasSize || !anchorRenderObject.hasSize) {
       return;
     }
 
@@ -707,17 +712,17 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final viewportMargin = isCurrentlyFloating
         ? _floatingExitViewportMargin
         : _floatingEnterViewportMargin;
-    final viewportTop = _scrollController.position.pixels + viewportMargin;
-    final viewportBottom =
-        _scrollController.position.pixels +
-        _scrollController.position.viewportDimension -
-        viewportMargin;
-    final anchorTop = viewport.getOffsetToReveal(anchorRenderObject, 0).offset;
-    final anchorBottom = viewport
-        .getOffsetToReveal(anchorRenderObject, 1)
-        .offset;
+    final listRect = MatrixUtils.transformRect(
+      listRenderObject.getTransformTo(null),
+      Offset.zero & listRenderObject.size,
+    );
+    final anchorRect = MatrixUtils.transformRect(
+      anchorRenderObject.getTransformTo(null),
+      Offset.zero & anchorRenderObject.size,
+    );
     final isFullyVisible =
-        anchorTop >= viewportTop && anchorBottom <= viewportBottom;
+        anchorRect.top >= listRect.top + viewportMargin &&
+            anchorRect.bottom <= listRect.bottom - viewportMargin;
 
     _setActiveStatusFloatingState(
       ActiveTurnStatusFloatingState(

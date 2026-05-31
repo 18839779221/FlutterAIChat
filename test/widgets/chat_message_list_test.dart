@@ -383,6 +383,26 @@ void main() {
       expect(find.text('正在请求模型'), findsOneWidget);
     });
 
+    testWidgets('idle phase can render explicit testing status copy',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '帮我总结一下',
+            role: MessageRole.user,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+        sendPhase: ChatSendPhase.idle,
+        sendStatusText: '测试边界状态',
+      );
+
+      expect(find.byKey(const ValueKey('latest-message-running-tail')),
+          findsOneWidget);
+      expect(find.text('测试边界状态'), findsOneWidget);
+    });
+
     testWidgets('preparing phase after assistant output shows planning text',
         (tester) async {
       await _pumpMessageList(
@@ -1399,14 +1419,19 @@ void main() {
         scrollController.dispose();
       });
 
+      final baseTime = DateTime(2026, 5, 31, 12);
       container.read(messagesProvider.notifier).setMessages([
         for (var i = 0; i < 24; i++) ...[
           _buildMessage(
+            id: i * 2 + 1,
+            timestamp: baseTime.add(Duration(minutes: i * 2)),
             text: 'older user $i',
             role: MessageRole.user,
             contentType: MessageContentType.plainText,
           ),
           _buildMessage(
+            id: i * 2 + 2,
+            timestamp: baseTime.add(Duration(minutes: i * 2 + 1)),
             text: 'older assistant $i',
             role: MessageRole.assistant,
             contentType: MessageContentType.plainText,
@@ -1475,14 +1500,19 @@ void main() {
         scrollController.dispose();
       });
 
+      final baseTime = DateTime(2026, 5, 31, 12);
       container.read(messagesProvider.notifier).setMessages([
         for (var i = 0; i < 24; i++) ...[
           _buildMessage(
+            id: i * 2 + 1,
+            timestamp: baseTime.add(Duration(minutes: i * 2)),
             text: 'older user $i',
             role: MessageRole.user,
             contentType: MessageContentType.plainText,
           ),
           _buildMessage(
+            id: i * 2 + 2,
+            timestamp: baseTime.add(Duration(minutes: i * 2 + 1)),
             text: 'older assistant $i',
             role: MessageRole.assistant,
             contentType: MessageContentType.plainText,
@@ -1559,14 +1589,19 @@ void main() {
         scrollController.dispose();
       });
 
+      final baseTime = DateTime(2026, 5, 31, 12);
       container.read(messagesProvider.notifier).setMessages([
         for (var i = 0; i < 24; i++) ...[
           _buildMessage(
+            id: i * 2 + 1,
+            timestamp: baseTime.add(Duration(minutes: i * 2)),
             text: 'older user $i',
             role: MessageRole.user,
             contentType: MessageContentType.plainText,
           ),
           _buildMessage(
+            id: i * 2 + 2,
+            timestamp: baseTime.add(Duration(minutes: i * 2 + 1)),
             text: 'older assistant $i',
             role: MessageRole.assistant,
             contentType: MessageContentType.plainText,
@@ -1614,6 +1649,93 @@ void main() {
       expect(
         container.read(activeTurnStatusFloatingVisibilityProvider),
         isFalse,
+      );
+    });
+
+    testWidgets(
+        'floating visibility updates when the active row grows after inline expansion',
+        (tester) async {
+      final scrollController = ScrollController();
+      final container = ProviderContainer(
+        overrides: [
+          hasMoreMessagesProvider.overrideWith((ref) => false),
+          scrollControllerProvider.overrideWith((ref) => scrollController),
+          activeTurnStatusPresentationProvider.overrideWith(
+            (ref) => const ActiveTurnStatusPresentation(
+              phase: ActiveTurnStatusPhase.planning,
+              text: '测试边界状态',
+              turnId: 'turn-expand',
+              sourceMessageId: 2,
+              sourceKind: ActiveTurnStatusSourceKind.toolEvent,
+              allowFloating: true,
+            ),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        container.dispose();
+        scrollController.dispose();
+      });
+
+      container.read(messagesProvider.notifier).setMessages([
+        ChatMessage(
+          id: 1,
+          text: '问题',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+        ),
+        ChatMessage(
+          id: 2,
+          text: '这是回答',
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+          reasoningContent: List.filled(80, '这里是额外展开后的长分析内容，会把状态条顶到屏幕外').join('\n'),
+        ),
+      ]);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const Scaffold(
+              body: SizedBox(
+                height: 180,
+                child: ChatMessageList(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      scrollController.jumpTo(scrollController.position.maxScrollExtent);
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        container.read(activeTurnStatusFloatingVisibilityProvider),
+        isFalse,
+      );
+
+      await tester.ensureVisible(find.text('思考过程'));
+      await tester.pump();
+      await tester.tap(find.text('思考过程'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 150));
+
+      final listRect = tester.getRect(find.byType(ChatMessageList));
+      final statusRect =
+          tester.getRect(find.byKey(const ValueKey('latest-message-running-tail')));
+      expect(statusRect.bottom, greaterThan(listRect.bottom));
+
+      expect(
+        container.read(activeTurnStatusFloatingVisibilityProvider),
+        isTrue,
       );
     });
 
@@ -1790,10 +1912,14 @@ ChatMessage _buildMessage({
   MessageStatus status = MessageStatus.completed,
   Map<String, dynamic>? payloadJson,
   String? reasoningContent,
+  int? id,
+  DateTime? timestamp,
 }) {
   return ChatMessage(
+    id: id,
     text: text,
     role: role,
+    timestamp: timestamp,
     status: status,
     reasoningContent: reasoningContent,
     contentType: contentType,

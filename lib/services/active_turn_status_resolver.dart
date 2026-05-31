@@ -29,7 +29,16 @@ class ActiveTurnStatusResolver {
     }
 
     if (sendState.phase == ChatSendPhase.idle) {
-      return null;
+      if (statusTextOverride == null) {
+        return null;
+      }
+      return ActiveTurnStatusPresentation(
+        phase: ActiveTurnStatusPhase.idle,
+        text: statusTextOverride,
+        turnId: 'idle_override',
+        sourceKind: ActiveTurnStatusSourceKind.sendPhaseFallback,
+        allowFloating: true,
+      );
     }
 
     final latestToolEvent = _latestToolEvent(projection.toolPresentationEvents);

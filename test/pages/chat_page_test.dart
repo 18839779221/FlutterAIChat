@@ -443,6 +443,61 @@ void main() {
     expect(input.controller?.text, '用一句话解释什么是 SQLite');
   });
 
+  testWidgets('debug cases panel can inject a stable idle status copy',
+      (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider.overrideWith(
+          (ref) => _StubSessionCoordinator(),
+        ),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+        debugTestCaseLoaderProvider.overrideWith(
+          (ref) => const _FakeDebugTestCaseLoader(
+            DebugTestCaseLibrary(allCases: []),
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.read(messagesProvider.notifier).setMessages([
+      ChatMessage(
+        id: 1,
+        text: '测试状态浮层',
+        role: MessageRole.user,
+        status: MessageStatus.completed,
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('debug-test-cases-button')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('debug-idle-status-button')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(find.text('测试边界状态'), findsOneWidget);
+  });
+
   testWidgets('debug turn inspector opens from header', (tester) async {
     final container = ProviderContainer(
       overrides: [
@@ -521,6 +576,10 @@ void main() {
 
     expect(find.byKey(const ValueKey('floating-turn-status-bar')), findsOneWidget);
     expect(find.text('正在规划下一步'), findsOneWidget);
+    final floatingRect = tester.getRect(
+      find.byKey(const ValueKey('floating-turn-status-bar')),
+    );
+    expect(floatingRect.width, lessThan(360));
   });
 
   testWidgets('chat page hides floating status when inline anchor is visible',
