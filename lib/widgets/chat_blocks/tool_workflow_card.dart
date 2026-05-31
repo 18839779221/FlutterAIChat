@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import 'tool_inline_step_row.dart';
 import '../tool_renderers/tool_running_effects.dart';
+import '../tool_renderers/tool_status_badge.dart';
 
 /// Foldable workflow card that only expands the active step by default.
 class ToolWorkflowCard extends StatelessWidget {
@@ -39,8 +40,9 @@ class ToolWorkflowCard extends StatelessWidget {
         spacing.sm,
       ),
       decoration: BoxDecoration(
-        color: colors.structuredSurface.withValues(alpha: 0.74),
+        color: colors.structuredSurface,
         borderRadius: BorderRadius.circular(radius.md + 2),
+        border: Border.all(color: colors.divider, width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -108,27 +110,12 @@ class ToolWorkflowCard extends StatelessWidget {
                                       ),
                                     ),
                                   ),
-                                  Container(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: spacing.xs,
-                                      vertical: spacing.xxs,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: _statusColor(
-                                        colors,
-                                        step.status,
-                                      ).withValues(alpha: 0.12),
-                                      borderRadius:
-                                          BorderRadius.circular(radius.pill),
-                                    ),
-                                    child: Text(
-                                      _statusLabel(step.status),
-                                      style: TextStyle(
-                                        color: _statusColor(colors, step.status),
-                                        fontSize: 9.5,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
+                                  ToolStatusBadge(
+                                    label: _statusLabel(step.status),
+                                    statusColor:
+                                        _statusColor(colors, step.status),
+                                    icon: _statusIcon(step.status),
+                                    isRunning: _isUnsettled(step.status),
                                   ),
                                 ],
                               ),
@@ -191,6 +178,37 @@ class ToolWorkflowCard extends StatelessWidget {
       case ToolWorkflowStepStatus.running:
       case ToolWorkflowStepStatus.proposed:
         return colors.workflowRunning;
+    }
+  }
+
+  /// 一个 step 是否还在"未终结"状态。这些状态下 badge 会启用呼吸 + 着色文字。
+  bool _isUnsettled(ToolWorkflowStepStatus status) {
+    switch (status) {
+      case ToolWorkflowStepStatus.running:
+      case ToolWorkflowStepStatus.awaitingConfirmation:
+      case ToolWorkflowStepStatus.proposed:
+        return true;
+      case ToolWorkflowStepStatus.completed:
+      case ToolWorkflowStepStatus.failed:
+      case ToolWorkflowStepStatus.cancelled:
+        return false;
+    }
+  }
+
+  /// 工作流 step 右侧 status badge 的 icon 选择。running / 待确认 /
+  /// proposed 等没有终态的状态不出 icon（由左侧呼吸点表达），completed 用
+  /// 勾号，failed / cancelled 用空心警示号。
+  IconData? _statusIcon(ToolWorkflowStepStatus status) {
+    switch (status) {
+      case ToolWorkflowStepStatus.completed:
+        return Icons.check_rounded;
+      case ToolWorkflowStepStatus.failed:
+      case ToolWorkflowStepStatus.cancelled:
+        return Icons.error_outline_rounded;
+      case ToolWorkflowStepStatus.awaitingConfirmation:
+      case ToolWorkflowStepStatus.running:
+      case ToolWorkflowStepStatus.proposed:
+        return null;
     }
   }
 }

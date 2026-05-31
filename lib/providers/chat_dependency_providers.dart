@@ -43,7 +43,6 @@ import 'package:ai_chat/widgets/tool_renderers/edit_tool_workflow_card.dart';
 import 'package:ai_chat/widgets/tool_renderers/fetch_webpage_tool_workflow_card.dart';
 import 'package:ai_chat/widgets/tool_renderers/web_search_tool_workflow_card.dart';
 import 'package:ai_chat/widgets/tool_renderers/write_tool_workflow_card.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
@@ -312,7 +311,7 @@ CompactToolRowModel _buildReadWorkflowRow(List<ToolWorkflowStep> steps) {
     actionLabel: '读取',
     primaryText: filePath.isEmpty ? '已读取文件' : filePath,
     statusLabel: latestStep == null ? '已提议' : _statusLabelForStep(latestStep),
-    statusColor: _statusColorForStep(latestStep),
+    status: _statusForStep(latestStep),
     isRunning: latestStep?.status == ToolWorkflowStepStatus.running,
   );
 }
@@ -323,7 +322,7 @@ CompactToolRowModel _buildReadResultRow(ToolResult result) {
     actionLabel: '读取',
     primaryText: filePath.isEmpty ? '已读取文件' : filePath,
     statusLabel: result.statusLabel,
-    statusColor: _statusColorForResult(result),
+    status: _statusForResult(result),
     isRunning: false,
   );
 }
@@ -336,7 +335,7 @@ CompactToolRowModel _buildLsWorkflowRow(List<ToolWorkflowStep> steps) {
     actionLabel: '列目录',
     primaryText: _compactDirectoryPath(pathValue),
     statusLabel: latestStep == null ? '已提议' : _statusLabelForStep(latestStep),
-    statusColor: _statusColorForStep(latestStep),
+    status: _statusForStep(latestStep),
     isRunning: latestStep?.status == ToolWorkflowStepStatus.running,
   );
 }
@@ -347,7 +346,7 @@ CompactToolRowModel _buildLsResultRow(ToolResult result) {
     actionLabel: '列目录',
     primaryText: _compactDirectoryPath(pathValue),
     statusLabel: result.statusLabel,
-    statusColor: _statusColorForResult(result),
+    status: _statusForResult(result),
     isRunning: false,
   );
 }
@@ -363,7 +362,7 @@ CompactToolRowModel _buildGrepWorkflowRow(List<ToolWorkflowStep> steps) {
     actionLabel: '搜索',
     primaryText: _grepPrimaryText(pattern: pattern, pathValue: pathValue),
     statusLabel: latestStep == null ? '已提议' : _statusLabelForStep(latestStep),
-    statusColor: _statusColorForStep(latestStep),
+    status: _statusForStep(latestStep),
     isRunning: latestStep?.status == ToolWorkflowStepStatus.running,
   );
 }
@@ -376,7 +375,7 @@ CompactToolRowModel _buildGrepResultRow(ToolResult result) {
       pathValue: (result.data['path'] ?? '').toString(),
     ),
     statusLabel: result.statusLabel,
-    statusColor: _statusColorForResult(result),
+    status: _statusForResult(result),
     isRunning: false,
   );
 }
@@ -392,7 +391,7 @@ CompactToolRowModel _buildGlobWorkflowRow(List<ToolWorkflowStep> steps) {
     actionLabel: '查找文件',
     primaryText: _globPrimaryText(pattern: pattern, pathValue: pathValue),
     statusLabel: latestStep == null ? '已提议' : _statusLabelForStep(latestStep),
-    statusColor: _statusColorForStep(latestStep),
+    status: _statusForStep(latestStep),
     isRunning: latestStep?.status == ToolWorkflowStepStatus.running,
   );
 }
@@ -405,7 +404,7 @@ CompactToolRowModel _buildGlobResultRow(ToolResult result) {
       pathValue: (result.data['path'] ?? '').toString(),
     ),
     statusLabel: result.statusLabel,
-    statusColor: _statusColorForResult(result),
+    status: _statusForResult(result),
     isRunning: false,
   );
 }
@@ -427,25 +426,28 @@ String _statusLabelForStep(ToolWorkflowStep step) {
   }
 }
 
-Color _statusColorForStep(ToolWorkflowStep? step) {
+/// 将工作流 step 映射到紧凑工具行的语义状态。
+/// 颜色由 widget 端从主题 token 解析，不在这里烘焙具体 Color。
+CompactToolRowStatus _statusForStep(ToolWorkflowStep? step) {
   switch (step?.status) {
     case ToolWorkflowStepStatus.completed:
-      return const Color(0xFF2F7D58);
+      return CompactToolRowStatus.success;
     case ToolWorkflowStepStatus.failed:
     case ToolWorkflowStepStatus.cancelled:
-      return const Color(0xFFD98A34);
+      return CompactToolRowStatus.warning;
     case ToolWorkflowStepStatus.awaitingConfirmation:
     case ToolWorkflowStepStatus.running:
     case ToolWorkflowStepStatus.proposed:
     case null:
-      return const Color(0xFF4A90E2);
+      return CompactToolRowStatus.running;
   }
 }
 
-Color _statusColorForResult(ToolResult result) {
+/// 将工具最终结果映射到紧凑工具行的语义状态。
+CompactToolRowStatus _statusForResult(ToolResult result) {
   return result.status == ToolExecutionStatus.success
-      ? const Color(0xFF2F7D58)
-      : const Color(0xFFD98A34);
+      ? CompactToolRowStatus.success
+      : CompactToolRowStatus.warning;
 }
 
 String _compactDirectoryPath(String rawPath) {

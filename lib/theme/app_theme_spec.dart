@@ -13,7 +13,7 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
   final Brightness brightness;
   final AppCoreTokens core;
   final AppSemanticTokens semantic;
-  final AppComponentTokens components;
+  final MarkdownTokens markdown;
 
   const AppThemeSpec({
     required this.id,
@@ -21,7 +21,7 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
     required this.brightness,
     required this.core,
     required this.semantic,
-    required this.components,
+    required this.markdown,
   });
 
   factory AppThemeSpec.light() => AppThemeSpec.claude();
@@ -29,15 +29,20 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
   factory AppThemeSpec.dark() => AppThemeSpec.olivePaper();
 
   factory AppThemeSpec.claude() {
+    // Claude app tonal hierarchy:
+    //   bg-100 (paper)   → page / reading
+    //   bg-200 (panel)   → composer / structural cards / workflow shells
+    //   bg-300 (sunken)  → tool inline / user bubble / muted surfaces
+    //   bg-400 (recessed)→ tool results / artifact muted
     const surfaces = AppSurfaceSemanticTokens(
-      pageBackground: Color(0xFFF5F4EE),
+      pageBackground: Color(0xFFFAF9F5),
       panelBackground: Color(0xFFF0EEE6),
       readingSurface: Color(0xFFFAF9F5),
-      userBubbleSurface: Color(0xFFEDEAE0),
-      toolInlineSurface: Color(0xFFF5F2EA),
-      toolResultSurface: Color(0xFFF2F1EB),
+      userBubbleSurface: Color(0xFFEDE6D6),
+      toolInlineSurface: Color(0xFFEDE6D6),
+      toolResultSurface: Color(0xFFE5DDC9),
       dangerSurface: Color(0xFFFBF1E8),
-      structuralSurface: Color(0xFFFAF9F5),
+      structuralSurface: Color(0xFFF0EEE6),
     );
     const text = AppTextSemanticTokens(
       primary: Color(0xFF1F1F1E),
@@ -47,8 +52,8 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
     );
     const state = AppStateSemanticTokens(
       running: Color(0xFFC96442),
-      success: Color(0xFF2F6A4F),
-      warning: Color(0xFF9A6C37),
+      success: Color(0xFF6F8C4C),
+      warning: Color(0xFFD4A347),
       error: Color(0xFFBE2222),
       info: Color(0xFF8A5A44),
     );
@@ -73,14 +78,6 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
       displayName: 'Claude',
       brightness: Brightness.light,
       core: AppCoreTokens(
-        colors: const AppColorTokens(
-          black: Color(0xFF1F1F1E),
-          white: Colors.white,
-          paper: Color(0xFFF5F4EE),
-          ink: Color(0xFF1F1F1E),
-          mutedInk: Color(0xFF3D3D3A),
-          shadow: Color(0x22000000),
-        ),
         typography: const AppTypographyTokens(
           uiFontFamily: 'AnthropicSans',
           documentFontFamily: 'SourceSerif4',
@@ -107,15 +104,11 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
         chart: chart,
         interaction: interactions,
       ),
-      components: const AppComponentTokens(
-        chatPage: ChatPageTokens(),
-        composer: ChatComposerTokens(),
-        assistantDocument: AssistantDocumentTokens(),
-        userBubble: UserBubbleTokens(),
-        toolCard: ToolCardTokens(),
-        reasoning: ReasoningTokens(),
-        settings: SettingsTokens(),
-        markdown: MarkdownTokens(),
+      markdown: const MarkdownTokens(
+        codeBlockBackground: Color(0xFFE6E2D6),
+        codePanelBackground: Color(0xFFF0EBDD),
+        codeForeground: Color(0xFF31414A),
+        copySuccessAccent: Color(0xFF6F8C4C),
       ),
     );
   }
@@ -165,14 +158,6 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
       displayName: 'Olive Paper',
       brightness: Brightness.light,
       core: AppCoreTokens(
-        colors: const AppColorTokens(
-          black: Color(0xFF182019),
-          white: Colors.white,
-          paper: Color(0xFFF3F1EC),
-          ink: Color(0xFF182019),
-          mutedInk: Color(0xFF596259),
-          shadow: Color(0x22000000),
-        ),
         typography: const AppTypographyTokens(
           uiFontFamily: 'AnthropicSans',
           documentFontFamily: 'SourceSerif4',
@@ -199,15 +184,11 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
         chart: chart,
         interaction: interactions,
       ),
-      components: const AppComponentTokens(
-        chatPage: ChatPageTokens(),
-        composer: ChatComposerTokens(),
-        assistantDocument: AssistantDocumentTokens(),
-        userBubble: UserBubbleTokens(),
-        toolCard: ToolCardTokens(),
-        reasoning: ReasoningTokens(),
-        settings: SettingsTokens(),
-        markdown: MarkdownTokens(),
+      markdown: const MarkdownTokens(
+        codeBlockBackground: Color(0xFFCED7C5),
+        codePanelBackground: Color(0xFFDDE3D2),
+        codeForeground: Color(0xFF1F2A1F),
+        copySuccessAccent: Color(0xFF2F6A4F),
       ),
     );
   }
@@ -249,23 +230,6 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
   Color get workflowRunning => semantic.state.running;
   Color get workflowSuccess => semantic.state.success;
   Color get workflowWarning => semantic.state.warning;
-  Color get artifactPageBackground => semantic.surfaces.pageBackground;
-  Color get artifactSurface => semantic.surfaces.readingSurface;
-  Color get artifactSurfaceMuted => semantic.surfaces.toolResultSurface;
-  Color get artifactTextPrimary => semantic.text.primary;
-  Color get artifactTextSecondary => semantic.text.secondary;
-  Color get artifactTextTertiary => semantic.text.tertiary;
-  Color get artifactBorderSubtle => semantic.interaction.subtleBorder;
-  Color get artifactBorderStrong => semantic.interaction.border;
-  Color get artifactAccent => semantic.interaction.focus;
-  Color get artifactChart1 => semantic.chart.series1;
-  Color get artifactChart2 => semantic.chart.series2;
-  Color get artifactChart3 => semantic.chart.series3;
-  Color get artifactChart4 => semantic.chart.series4;
-  Color get artifactChart5 => semantic.chart.series5;
-  Color get artifactChartGrid => semantic.chart.grid;
-  Color get artifactChartAxis => semantic.chart.axis;
-  Color get artifactChartHighlight => semantic.chart.highlight;
 
   @override
   ThemeExtension<AppThemeSpec> copyWith({
@@ -274,7 +238,7 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
     Brightness? brightness,
     AppCoreTokens? core,
     AppSemanticTokens? semantic,
-    AppComponentTokens? components,
+    MarkdownTokens? markdown,
   }) {
     return AppThemeSpec(
       id: id ?? this.id,
@@ -282,7 +246,7 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
       brightness: brightness ?? this.brightness,
       core: core ?? this.core,
       semantic: semantic ?? this.semantic,
-      components: components ?? this.components,
+      markdown: markdown ?? this.markdown,
     );
   }
 
@@ -300,14 +264,13 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
       brightness: t < 0.5 ? brightness : other.brightness,
       core: core,
       semantic: semantic.lerp(other.semantic, t),
-      components: components,
+      markdown: markdown,
     );
   }
 }
 
 @immutable
 class AppCoreTokens {
-  final AppColorTokens colors;
   final AppTypographyTokens typography;
   final AppSpacing spacing;
   final AppRadius radius;
@@ -316,32 +279,12 @@ class AppCoreTokens {
   final AppStrokeTokens stroke;
 
   const AppCoreTokens({
-    required this.colors,
     required this.typography,
     required this.spacing,
     required this.radius,
     required this.motion,
     required this.elevation,
     required this.stroke,
-  });
-}
-
-@immutable
-class AppColorTokens {
-  final Color black;
-  final Color white;
-  final Color paper;
-  final Color ink;
-  final Color mutedInk;
-  final Color shadow;
-
-  const AppColorTokens({
-    required this.black,
-    required this.white,
-    required this.paper,
-    required this.ink,
-    required this.mutedInk,
-    required this.shadow,
   });
 }
 
@@ -560,65 +503,28 @@ class AppInteractionSemanticTokens {
   }
 }
 
-@immutable
-class AppComponentTokens {
-  final ChatPageTokens chatPage;
-  final ChatComposerTokens composer;
-  final AssistantDocumentTokens assistantDocument;
-  final UserBubbleTokens userBubble;
-  final ToolCardTokens toolCard;
-  final ReasoningTokens reasoning;
-  final SettingsTokens settings;
-  final MarkdownTokens markdown;
-
-  const AppComponentTokens({
-    required this.chatPage,
-    required this.composer,
-    required this.assistantDocument,
-    required this.userBubble,
-    required this.toolCard,
-    required this.reasoning,
-    required this.settings,
-    required this.markdown,
-  });
-}
-
-@immutable
-class ChatPageTokens {
-  const ChatPageTokens();
-}
-
-@immutable
-class ChatComposerTokens {
-  const ChatComposerTokens();
-}
-
-@immutable
-class AssistantDocumentTokens {
-  const AssistantDocumentTokens();
-}
-
-@immutable
-class UserBubbleTokens {
-  const UserBubbleTokens();
-}
-
-@immutable
-class ToolCardTokens {
-  const ToolCardTokens();
-}
-
-@immutable
-class ReasoningTokens {
-  const ReasoningTokens();
-}
-
-@immutable
-class SettingsTokens {
-  const SettingsTokens();
-}
-
+/// Markdown 阅读视图组件级 token。
+///
+/// 长答案 / 代码块表面色与主题强相关，集中收口在这里，避免阅读组件
+/// 自行用 `Color(0x...)` 硬编码而无法跟随主题切换。
 @immutable
 class MarkdownTokens {
-  const MarkdownTokens();
+  /// 围栏代码块（fenced code block）内层文本所在的"纸面"色。
+  final Color codeBlockBackground;
+
+  /// 围栏代码块外层容器底色，用来在阅读流中形成一个轻微的卡片浮起感。
+  final Color codePanelBackground;
+
+  /// 代码块默认前景色（即 fenced code block 文字色）。
+  final Color codeForeground;
+
+  /// "已复制"等内联成功提示用的强调色（小图标 / 高亮文字）。
+  final Color copySuccessAccent;
+
+  const MarkdownTokens({
+    required this.codeBlockBackground,
+    required this.codePanelBackground,
+    required this.codeForeground,
+    required this.copySuccessAccent,
+  });
 }

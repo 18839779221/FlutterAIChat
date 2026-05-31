@@ -151,7 +151,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                 offset: const Offset(0, 12),
               ),
               BoxShadow(
-                color: Colors.white.withValues(alpha: 0.42),
+                // 顶部内白光高亮：在 dock 表面之上轻轻提亮一道边缘，
+                // 走主题 inverse text token 保证未来引入深色主题时自动反相。
+                color: colors.semantic.text.inverse.withValues(alpha: 0.42),
                 blurRadius: 1,
                 offset: const Offset(0, -1),
               ),
@@ -369,7 +371,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                                     ? colors.secondaryText.withValues(alpha: 0.82)
                                     : colors.workflowRunning
                                         .withValues(alpha: 0.88),
-                                foregroundColor: Colors.white,
+                                foregroundColor: colors.semantic.text.inverse,
                                 elevation: 0,
                                 shadowColor: Colors.transparent,
                               ),
@@ -395,14 +397,14 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                                         size: 18,
                                       )
                                     : isBlockingPhase
-                                    ? const SizedBox(
+                                    ? SizedBox(
                                         width: 16,
                                         height: 16,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
                                           valueColor:
                                               AlwaysStoppedAnimation<Color>(
-                                            Colors.white,
+                                            colors.semantic.text.inverse,
                                           ),
                                         ),
                                       )

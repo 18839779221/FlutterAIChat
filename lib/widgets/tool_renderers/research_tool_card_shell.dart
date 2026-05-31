@@ -6,6 +6,7 @@ import '../../theme/app_theme_spec.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import 'tool_running_effects.dart';
+import 'tool_status_badge.dart';
 
 class ResearchToolCardShell extends StatelessWidget {
   const ResearchToolCardShell({
@@ -53,9 +54,11 @@ class ResearchToolCardShell extends StatelessWidget {
             vertical: spacing.xs,
           ),
           decoration: BoxDecoration(
-            color: colors.structuredSurface
-                .withValues(alpha: expanded ? 0.46 : 0.34),
+            color: expanded
+                ? colors.structuredSurface
+                : colors.toolWorkflowSurface,
             borderRadius: BorderRadius.circular(radius.md),
+            border: Border.all(color: colors.divider, width: 1),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -98,23 +101,11 @@ class ResearchToolCardShell extends StatelessWidget {
                     ),
                   ),
                   SizedBox(width: spacing.sm),
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: spacing.xs,
-                      vertical: spacing.xxs,
-                    ),
-                    decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(radius.pill),
-                    ),
-                    child: Text(
-                      statusLabel,
-                      style: TextStyle(
-                        color: statusColor,
-                        fontSize: 8.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                  ToolStatusBadge(
+                    label: statusLabel,
+                    statusColor: statusColor,
+                    icon: toolStatusIconFor(context, statusColor),
+                    isRunning: isRunning,
                   ),
                   if (hasExpandedChild) ...[
                     SizedBox(width: spacing.xs),
@@ -237,23 +228,11 @@ class ResearchWorkflowItem extends StatelessWidget {
             ),
           ),
           SizedBox(width: spacing.sm),
-          Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: spacing.xs,
-              vertical: spacing.xxs,
-            ),
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(radius.pill),
-            ),
-            child: Text(
-              statusLabel,
-              style: TextStyle(
-                color: statusColor,
-                fontSize: 8.5,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+          ToolStatusBadge(
+            label: statusLabel,
+            statusColor: statusColor,
+            icon: toolStatusIconFor(context, statusColor),
+            isRunning: isRunning,
           ),
         ],
       ),
@@ -389,3 +368,4 @@ Color resultStatusColor(BuildContext context, ToolResult result) {
       ? colors.workflowSuccess
       : colors.workflowWarning;
 }
+

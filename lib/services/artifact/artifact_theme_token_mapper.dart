@@ -2,6 +2,31 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme_spec.dart';
 
+/// Artifact 渲染的 CSS 契约：把 [AppThemeSpec] 的 semantic token
+/// 重新命名成稳定的 `artifact*` 名字，给 mapper 内部使用。
+///
+/// 这层 extension 是导出适配层，不在 [AppThemeSpec] 公开 API 上暴露——
+/// 主 app widget 不需要也不应该读取这些名字。
+extension _ArtifactCssTokens on AppThemeSpec {
+  Color get artifactPageBackground => semantic.surfaces.pageBackground;
+  Color get artifactSurface => semantic.surfaces.readingSurface;
+  Color get artifactSurfaceMuted => semantic.surfaces.toolResultSurface;
+  Color get artifactTextPrimary => semantic.text.primary;
+  Color get artifactTextSecondary => semantic.text.secondary;
+  Color get artifactTextTertiary => semantic.text.tertiary;
+  Color get artifactBorderSubtle => semantic.interaction.subtleBorder;
+  Color get artifactBorderStrong => semantic.interaction.border;
+  Color get artifactAccent => semantic.interaction.focus;
+  Color get artifactChart1 => semantic.chart.series1;
+  Color get artifactChart2 => semantic.chart.series2;
+  Color get artifactChart3 => semantic.chart.series3;
+  Color get artifactChart4 => semantic.chart.series4;
+  Color get artifactChart5 => semantic.chart.series5;
+  Color get artifactChartGrid => semantic.chart.grid;
+  Color get artifactChartAxis => semantic.chart.axis;
+  Color get artifactChartHighlight => semantic.chart.highlight;
+}
+
 /// Maps project theme semantics to stable CSS variables for artifact rendering.
 class ArtifactThemeTokenMapper {
   const ArtifactThemeTokenMapper();

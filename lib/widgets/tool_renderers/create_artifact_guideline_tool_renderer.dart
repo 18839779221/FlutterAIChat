@@ -26,7 +26,7 @@ class CreateArtifactGuidelineToolUiRenderer extends ToolUiRenderer {
         actionLabel: '规范',
         primaryText: '已加载可视化规范',
         statusLabel: '完成',
-        statusColor: Color(0xFF2E7D32),
+        status: CompactToolRowStatus.success,
       ),
     );
   }

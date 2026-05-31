@@ -8,6 +8,7 @@ import '../../theme/app_theme_spec.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import 'tool_running_effects.dart';
+import 'tool_status_badge.dart';
 
 typedef CompactToolRowWorkflowMapper = CompactToolRowModel Function(
     List<ToolWorkflowStep> steps);
@@ -15,12 +16,23 @@ typedef CompactToolRowResultMapper = CompactToolRowModel Function(
   ToolResult result,
 );
 
+/// 紧凑工具行的语义状态。
+///
+/// 这里只保留"成功 / 警告 / 进行中"三档语义，颜色在 `CompactToolRow.build`
+/// 时再通过当前 `AppThemeSpec` 解析，确保主题切换后所有 Compact 卡片
+/// （Read / LS / Grep / Glob / guideline 等）的状态色都跟随主题。
+enum CompactToolRowStatus {
+  running,
+  success,
+  warning,
+}
+
 class CompactToolRowModel {
   const CompactToolRowModel({
     required this.actionLabel,
     required this.primaryText,
     required this.statusLabel,
-    required this.statusColor,
+    required this.status,
     this.isRunning = false,
   });
 
@@ -33,11 +45,40 @@ class CompactToolRowModel {
   /// Compact state label shown on the right side of the row.
   final String statusLabel;
 
-  /// Shared semantic color derived from the tool execution state.
-  final Color statusColor;
+  /// 语义状态，由 widget 在 build 时映射到主题状态色 token。
+  final CompactToolRowStatus status;
 
   /// Whether the row represents a running workflow item.
   final bool isRunning;
+}
+
+/// 把语义状态映射到当前主题的状态色 token。
+Color compactToolRowStatusColor(
+  BuildContext context,
+  CompactToolRowStatus status,
+) {
+  final colors = Theme.of(context).extension<AppThemeSpec>()!;
+  switch (status) {
+    case CompactToolRowStatus.running:
+      return colors.workflowRunning;
+    case CompactToolRowStatus.success:
+      return colors.workflowSuccess;
+    case CompactToolRowStatus.warning:
+      return colors.workflowWarning;
+  }
+}
+
+/// 紧凑行右侧 status badge 的 icon 选择。running 没有终态，icon 留给
+/// 左侧呼吸点说话；completed 用勾号，warning 用空心警示号。
+IconData? _statusIcon(CompactToolRowStatus status) {
+  switch (status) {
+    case CompactToolRowStatus.running:
+      return null;
+    case CompactToolRowStatus.success:
+      return Icons.check_rounded;
+    case CompactToolRowStatus.warning:
+      return Icons.error_outline_rounded;
+  }
 }
 
 class CompactToolRow extends StatelessWidget {
@@ -53,10 +94,11 @@ class CompactToolRow extends StatelessWidget {
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
+    final statusColor = compactToolRowStatusColor(context, model.status);
 
     return SubtleRunningBreathingSurface(
       isRunning: model.isRunning,
-      baseColor: colors.structuredSurface.withValues(alpha: 0.34),
+      baseColor: colors.toolWorkflowSurface.withValues(alpha: 0.85),
       borderRadius: BorderRadius.circular(radius.sm + 1),
       child: Container(
         width: double.infinity,
@@ -67,7 +109,7 @@ class CompactToolRow extends StatelessWidget {
         child: Row(
           children: [
             RunningStatusDot(
-              color: model.statusColor,
+              color: statusColor,
               isRunning: model.isRunning,
               size: 7,
             ),
@@ -102,23 +144,11 @@ class CompactToolRow extends StatelessWidget {
               ),
             ),
             SizedBox(width: spacing.sm),
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: spacing.xs,
-                vertical: spacing.xxs,
-              ),
-              decoration: BoxDecoration(
-                color: model.statusColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(radius.pill),
-              ),
-              child: Text(
-                model.statusLabel,
-                style: TextStyle(
-                  color: model.statusColor,
-                  fontSize: 8.5,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+            ToolStatusBadge(
+              label: model.statusLabel,
+              statusColor: statusColor,
+              icon: _statusIcon(model.status),
+              isRunning: model.isRunning,
             ),
           ],
         ),

@@ -339,7 +339,7 @@ class _DrawerGroupTile extends StatelessWidget {
       child: Material(
         color: isSelected
             ? colors.toolWorkflowSurface
-            : Colors.white.withValues(alpha: 0.58),
+            : colors.assistantSurface.withValues(alpha: 0.58),
         borderRadius: BorderRadius.circular(radius.md),
         shadowColor: Colors.transparent,
         elevation: isSelected ? 0 : 0,
@@ -349,7 +349,7 @@ class _DrawerGroupTile extends StatelessWidget {
           ),
           tileColor: isSelected
               ? colors.toolWorkflowSurface
-              : Colors.white.withValues(alpha: 0.58),
+              : colors.assistantSurface.withValues(alpha: 0.58),
           leading: Icon(
             Icons.chat_bubble_outline,
             color: isSelected ? colors.primaryText : colors.secondaryText,
