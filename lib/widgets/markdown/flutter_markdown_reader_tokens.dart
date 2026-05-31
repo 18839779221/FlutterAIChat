@@ -18,7 +18,7 @@ class FlutterMarkdownReaderTokens {
     final quoteBackgroundColor = colors.assistantSurface.withValues(
       alpha: theme.brightness == Brightness.dark ? 0.28 : 0.18,
     );
-    final markdownTokens = colors.components.markdown;
+    final markdownTokens = colors.markdown;
     final codeBlockBackgroundColor = markdownTokens.codeBlockBackground;
     final codePanelBackgroundColor = markdownTokens.codePanelBackground;
 

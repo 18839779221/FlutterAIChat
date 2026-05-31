@@ -253,7 +253,8 @@ class _TimelineSegmentRow extends StatelessWidget {
       case StreamingTurnTimelineSegmentType.toolCall:
         return colors.workflowRunning.withValues(alpha: isOngoing ? 0.96 : 0.84);
       case StreamingTurnTimelineSegmentType.stepWait:
-        return colors.artifactAccent.withValues(alpha: isOngoing ? 0.94 : 0.82);
+        return colors.semantic.interaction.focus
+            .withValues(alpha: isOngoing ? 0.94 : 0.82);
       case StreamingTurnTimelineSegmentType.finalAnswer:
         return colors.workflowSuccess.withValues(alpha: isOngoing ? 0.94 : 0.84);
     }

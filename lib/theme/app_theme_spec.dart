@@ -13,7 +13,7 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
   final Brightness brightness;
   final AppCoreTokens core;
   final AppSemanticTokens semantic;
-  final AppComponentTokens components;
+  final MarkdownTokens markdown;
 
   const AppThemeSpec({
     required this.id,
@@ -21,7 +21,7 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
     required this.brightness,
     required this.core,
     required this.semantic,
-    required this.components,
+    required this.markdown,
   });
 
   factory AppThemeSpec.light() => AppThemeSpec.claude();
@@ -78,14 +78,6 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
       displayName: 'Claude',
       brightness: Brightness.light,
       core: AppCoreTokens(
-        colors: const AppColorTokens(
-          black: Color(0xFF1F1F1E),
-          white: Colors.white,
-          paper: Color(0xFFFAF9F5),
-          ink: Color(0xFF1F1F1E),
-          mutedInk: Color(0xFF3D3D3A),
-          shadow: Color(0x22000000),
-        ),
         typography: const AppTypographyTokens(
           uiFontFamily: 'AnthropicSans',
           documentFontFamily: 'SourceSerif4',
@@ -112,20 +104,11 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
         chart: chart,
         interaction: interactions,
       ),
-      components: const AppComponentTokens(
-        chatPage: ChatPageTokens(),
-        composer: ChatComposerTokens(),
-        assistantDocument: AssistantDocumentTokens(),
-        userBubble: UserBubbleTokens(),
-        toolCard: ToolCardTokens(),
-        reasoning: ReasoningTokens(),
-        settings: SettingsTokens(),
-        markdown: MarkdownTokens(
-          codeBlockBackground: Color(0xFFE6E2D6),
-          codePanelBackground: Color(0xFFF0EBDD),
-          codeForeground: Color(0xFF31414A),
-          copySuccessAccent: Color(0xFF6F8C4C),
-        ),
+      markdown: const MarkdownTokens(
+        codeBlockBackground: Color(0xFFE6E2D6),
+        codePanelBackground: Color(0xFFF0EBDD),
+        codeForeground: Color(0xFF31414A),
+        copySuccessAccent: Color(0xFF6F8C4C),
       ),
     );
   }
@@ -175,14 +158,6 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
       displayName: 'Olive Paper',
       brightness: Brightness.light,
       core: AppCoreTokens(
-        colors: const AppColorTokens(
-          black: Color(0xFF182019),
-          white: Colors.white,
-          paper: Color(0xFFF3F1EC),
-          ink: Color(0xFF182019),
-          mutedInk: Color(0xFF596259),
-          shadow: Color(0x22000000),
-        ),
         typography: const AppTypographyTokens(
           uiFontFamily: 'AnthropicSans',
           documentFontFamily: 'SourceSerif4',
@@ -209,22 +184,11 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
         chart: chart,
         interaction: interactions,
       ),
-      components: const AppComponentTokens(
-        chatPage: ChatPageTokens(),
-        composer: ChatComposerTokens(),
-        assistantDocument: AssistantDocumentTokens(),
-        userBubble: UserBubbleTokens(),
-        toolCard: ToolCardTokens(),
-        reasoning: ReasoningTokens(),
-        settings: SettingsTokens(),
-        markdown: MarkdownTokens(
-          // 在 Olive Paper 主题下，代码块沿用工具内联表面的低饱和度绿调，
-          // 与 reading surface 形成轻微对比，无需运行时再做 alpha 合成。
-          codeBlockBackground: Color(0xFFCED7C5),
-          codePanelBackground: Color(0xFFDDE3D2),
-          codeForeground: Color(0xFF1F2A1F),
-          copySuccessAccent: Color(0xFF2F6A4F),
-        ),
+      markdown: const MarkdownTokens(
+        codeBlockBackground: Color(0xFFCED7C5),
+        codePanelBackground: Color(0xFFDDE3D2),
+        codeForeground: Color(0xFF1F2A1F),
+        copySuccessAccent: Color(0xFF2F6A4F),
       ),
     );
   }
@@ -266,23 +230,6 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
   Color get workflowRunning => semantic.state.running;
   Color get workflowSuccess => semantic.state.success;
   Color get workflowWarning => semantic.state.warning;
-  Color get artifactPageBackground => semantic.surfaces.pageBackground;
-  Color get artifactSurface => semantic.surfaces.readingSurface;
-  Color get artifactSurfaceMuted => semantic.surfaces.toolResultSurface;
-  Color get artifactTextPrimary => semantic.text.primary;
-  Color get artifactTextSecondary => semantic.text.secondary;
-  Color get artifactTextTertiary => semantic.text.tertiary;
-  Color get artifactBorderSubtle => semantic.interaction.subtleBorder;
-  Color get artifactBorderStrong => semantic.interaction.border;
-  Color get artifactAccent => semantic.interaction.focus;
-  Color get artifactChart1 => semantic.chart.series1;
-  Color get artifactChart2 => semantic.chart.series2;
-  Color get artifactChart3 => semantic.chart.series3;
-  Color get artifactChart4 => semantic.chart.series4;
-  Color get artifactChart5 => semantic.chart.series5;
-  Color get artifactChartGrid => semantic.chart.grid;
-  Color get artifactChartAxis => semantic.chart.axis;
-  Color get artifactChartHighlight => semantic.chart.highlight;
 
   @override
   ThemeExtension<AppThemeSpec> copyWith({
@@ -291,7 +238,7 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
     Brightness? brightness,
     AppCoreTokens? core,
     AppSemanticTokens? semantic,
-    AppComponentTokens? components,
+    MarkdownTokens? markdown,
   }) {
     return AppThemeSpec(
       id: id ?? this.id,
@@ -299,7 +246,7 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
       brightness: brightness ?? this.brightness,
       core: core ?? this.core,
       semantic: semantic ?? this.semantic,
-      components: components ?? this.components,
+      markdown: markdown ?? this.markdown,
     );
   }
 
@@ -317,14 +264,13 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
       brightness: t < 0.5 ? brightness : other.brightness,
       core: core,
       semantic: semantic.lerp(other.semantic, t),
-      components: components,
+      markdown: markdown,
     );
   }
 }
 
 @immutable
 class AppCoreTokens {
-  final AppColorTokens colors;
   final AppTypographyTokens typography;
   final AppSpacing spacing;
   final AppRadius radius;
@@ -333,32 +279,12 @@ class AppCoreTokens {
   final AppStrokeTokens stroke;
 
   const AppCoreTokens({
-    required this.colors,
     required this.typography,
     required this.spacing,
     required this.radius,
     required this.motion,
     required this.elevation,
     required this.stroke,
-  });
-}
-
-@immutable
-class AppColorTokens {
-  final Color black;
-  final Color white;
-  final Color paper;
-  final Color ink;
-  final Color mutedInk;
-  final Color shadow;
-
-  const AppColorTokens({
-    required this.black,
-    required this.white,
-    required this.paper,
-    required this.ink,
-    required this.mutedInk,
-    required this.shadow,
   });
 }
 
@@ -575,64 +501,6 @@ class AppInteractionSemanticTokens {
       subtleBorder: Color.lerp(subtleBorder, other.subtleBorder, t)!,
     );
   }
-}
-
-@immutable
-class AppComponentTokens {
-  final ChatPageTokens chatPage;
-  final ChatComposerTokens composer;
-  final AssistantDocumentTokens assistantDocument;
-  final UserBubbleTokens userBubble;
-  final ToolCardTokens toolCard;
-  final ReasoningTokens reasoning;
-  final SettingsTokens settings;
-  final MarkdownTokens markdown;
-
-  const AppComponentTokens({
-    required this.chatPage,
-    required this.composer,
-    required this.assistantDocument,
-    required this.userBubble,
-    required this.toolCard,
-    required this.reasoning,
-    required this.settings,
-    required this.markdown,
-  });
-}
-
-@immutable
-class ChatPageTokens {
-  const ChatPageTokens();
-}
-
-@immutable
-class ChatComposerTokens {
-  const ChatComposerTokens();
-}
-
-@immutable
-class AssistantDocumentTokens {
-  const AssistantDocumentTokens();
-}
-
-@immutable
-class UserBubbleTokens {
-  const UserBubbleTokens();
-}
-
-@immutable
-class ToolCardTokens {
-  const ToolCardTokens();
-}
-
-@immutable
-class ReasoningTokens {
-  const ReasoningTokens();
-}
-
-@immutable
-class SettingsTokens {
-  const SettingsTokens();
 }
 
 /// Markdown 阅读视图组件级 token。
