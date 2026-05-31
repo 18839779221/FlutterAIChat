@@ -5,6 +5,7 @@ import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/debug/streaming_trace_snapshot.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
@@ -15,9 +16,11 @@ import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/providers/chat_send_state_providers.dart';
 import 'package:ai_chat/providers/chat_ui_providers.dart';
+import 'package:ai_chat/providers/streaming_trace_providers.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
+import 'package:ai_chat/services/debug/streaming_trace_recorder.dart';
 import 'package:ai_chat/services/session_runtime_marker_service.dart';
 import 'package:ai_chat/services/skills/explicit_skill_invocation_parser.dart';
 import 'package:ai_chat/services/skills/invoked_skill_reminder_builder.dart';
@@ -241,6 +244,15 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     );
     final turnRecordId = await turnRepository.createTurn(createdTurn);
     final persistedTurn = createdTurn.copyWith(id: turnRecordId);
+    _ref.read(streamingTraceRecorderProvider.notifier).recordStage(
+          traceId: streamingTraceIdForTurn(turnRecordId),
+          turnId: turnRecordId.toString(),
+          stage: StreamingTraceStage.turnStarted,
+          timestamp: userMessage.timestamp,
+          details: {
+            'userMessagePreview': text.substring(0, text.length.clamp(0, 80)),
+          },
+        );
     await runtimeMarkerService.persistInjectedDate(
       groupId: currentGroupId,
       currentDate: runtimeMarkerPreparation.currentDate,

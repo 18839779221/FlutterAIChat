@@ -14,10 +14,12 @@ import '../widgets/chat_input.dart';
 import '../widgets/chat_drawer.dart';
 import '../widgets/debug/debug_test_case_sheet.dart';
 import '../widgets/debug/debug_turn_inspector_button.dart';
+import '../widgets/debug/streaming_trace_overlay_card.dart';
 import '../widgets/debug/debug_turn_inspector_sheet.dart';
 import '../widgets/context_window/context_window_bottom_sheet.dart';
 import '../widgets/tool_confirmation/tool_confirmation_bottom_bar.dart';
 import '../services/debug/debug_turn_inspector_projection_service.dart';
+import '../providers/streaming_trace_providers.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({super.key, required this.title});
@@ -45,9 +47,19 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final systemPrompt = ref.watch(systemPromptProvider);
     final isLoadingMore = ref.watch(isLoadingMoreProvider);
     final pendingConfirmation = ref.watch(activePendingToolConfirmationProvider);
+    final traceSnapshot = ref.watch(streamingTraceSnapshotProvider);
+    final traceOverlayState = ref.watch(streamingTraceOverlayControllerProvider);
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final chatController = ref.read(chatControllerProvider);
+
+    ref.listen(streamingTraceSnapshotProvider, (previous, next) {
+      if (next == null) {
+        ref
+            .read(streamingTraceOverlayControllerProvider.notifier)
+            .closeIfAnchorDisappeared();
+      }
+    });
 
     return Scaffold(
       key: _scaffoldKey,
@@ -123,6 +135,18 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                               ),
                             ),
                           ),
+                        if (traceSnapshot != null && traceOverlayState.isVisible)
+                          Positioned.fill(
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.translucent,
+                              onTap: () => ref
+                                  .read(
+                                    streamingTraceOverlayControllerProvider
+                                        .notifier,
+                                  )
+                                  .close(),
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -165,6 +189,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       kDebugMode ? () => _showDebugTestCases(context) : null,
                   onDebugInspectorPressed:
                       kDebugMode ? () => _showDebugTurnInspector(context) : null,
+                  onDebugInspectorLongPressed: kDebugMode
+                      ? () => ref
+                          .read(streamingTraceOverlayControllerProvider.notifier)
+                          .show(
+                            anchorId: 'debug-turn-inspector-button',
+                            hasActiveTrace: traceSnapshot != null,
+                          )
+                      : null,
                   onMorePressed: () => _showHeaderActions(
                     context,
                     hasSystemPrompt:
@@ -173,6 +205,20 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 ),
               ),
             ),
+            if (traceSnapshot != null && traceOverlayState.isVisible)
+              Positioned(
+                top: 44,
+                right: spacing.lg,
+                child: SafeArea(
+                  bottom: false,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 320),
+                    child: StreamingTraceOverlayCard(
+                      snapshot: traceSnapshot,
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -323,6 +369,7 @@ class _GhostHeader extends StatelessWidget {
   final VoidCallback onNewChatPressed;
   final VoidCallback? onDebugCasesPressed;
   final VoidCallback? onDebugInspectorPressed;
+  final VoidCallback? onDebugInspectorLongPressed;
   final VoidCallback onMorePressed;
 
   const _GhostHeader({
@@ -331,6 +378,7 @@ class _GhostHeader extends StatelessWidget {
     required this.onNewChatPressed,
     required this.onDebugCasesPressed,
     required this.onDebugInspectorPressed,
+    required this.onDebugInspectorLongPressed,
     required this.onMorePressed,
   });
 
@@ -375,6 +423,7 @@ class _GhostHeader extends StatelessWidget {
               SizedBox(width: spacing.xs),
               DebugTurnInspectorButton(
                 onPressed: onDebugInspectorPressed!,
+                onLongPress: onDebugInspectorLongPressed,
               ),
             ],
             SizedBox(width: spacing.xs),

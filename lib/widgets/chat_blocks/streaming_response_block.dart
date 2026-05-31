@@ -1,3 +1,5 @@
+import 'package:ai_chat/models/debug/streaming_trace_snapshot.dart';
+import 'package:ai_chat/providers/streaming_trace_providers.dart';
 import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_motion.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
@@ -5,17 +7,97 @@ import 'package:ai_chat/theme/app_typography.dart';
 import 'package:ai_chat/widgets/animations/streaming_cursor.dart';
 import 'package:ai_chat/widgets/chat_blocks/reasoning_section.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Lightweight text block used while the assistant is still streaming content.
-class StreamingResponseBlock extends StatelessWidget {
+class StreamingResponseBlock extends ConsumerStatefulWidget {
   final String text;
   final String? reasoningText;
+  final String? streamTraceId;
+  final String? streamTurnId;
 
   const StreamingResponseBlock({
     super.key,
     required this.text,
     this.reasoningText,
+    this.streamTraceId,
+    this.streamTurnId,
   });
+
+  @override
+  ConsumerState<StreamingResponseBlock> createState() =>
+      _StreamingResponseBlockState();
+}
+
+class _StreamingResponseBlockState extends ConsumerState<StreamingResponseBlock> {
+  bool _hasReportedFirstVisible = false;
+  String _lastReportedText = '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _reportVisibilityStages();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant StreamingResponseBlock oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text ||
+        oldWidget.streamTraceId != widget.streamTraceId ||
+        oldWidget.streamTurnId != widget.streamTurnId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _reportVisibilityStages();
+      });
+    }
+  }
+
+  void _reportVisibilityStages() {
+    if (!mounted) {
+      return;
+    }
+    final traceId = widget.streamTraceId?.trim();
+    final turnId = widget.streamTurnId?.trim();
+    final text = widget.text.trim();
+    if (traceId == null ||
+        traceId.isEmpty ||
+        turnId == null ||
+        turnId.isEmpty ||
+        text.isEmpty) {
+      return;
+    }
+    final recorder = ref.read(streamingTraceRecorderProvider.notifier);
+    final now = DateTime.now();
+    if (!_hasReportedFirstVisible) {
+      _hasReportedFirstVisible = true;
+      _lastReportedText = widget.text;
+      recorder.recordStage(
+        traceId: traceId,
+        turnId: turnId,
+        stage: StreamingTraceStage.uiFirstVisible,
+        timestamp: now,
+        details: {
+          'textLength': widget.text.length,
+          'previewText': widget.text,
+        },
+      );
+      return;
+    }
+    if (_lastReportedText != widget.text) {
+      _lastReportedText = widget.text;
+      recorder.recordStage(
+        traceId: traceId,
+        turnId: turnId,
+        stage: StreamingTraceStage.uiUpdated,
+        timestamp: now,
+        details: {
+          'textLength': widget.text.length,
+          'previewText': widget.text,
+        },
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,9 +121,9 @@ class StreamingResponseBlock extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if ((reasoningText ?? '').trim().isNotEmpty)
+              if ((widget.reasoningText ?? '').trim().isNotEmpty)
                 ReasoningSection(
-                  text: reasoningText!,
+                  text: widget.reasoningText!,
                   variant: ReasoningSectionVariant.finalAnswerCollapsible,
                   initiallyExpanded: true,
                 ),
@@ -50,7 +132,7 @@ class StreamingResponseBlock extends StatelessWidget {
                 children: [
                   Expanded(
                     child: SelectableText(
-                      text,
+                      widget.text,
                       style: AppTypography.documentStyle(
                         color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 13.2,

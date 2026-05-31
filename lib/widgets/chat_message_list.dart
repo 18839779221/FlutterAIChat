@@ -8,6 +8,7 @@ import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/chat_block_builder.dart';
+import 'package:ai_chat/services/latest_message_running_status_resolver.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/utils/logger.dart';
 import 'package:ai_chat/widgets/chat_empty_state.dart';
@@ -20,7 +21,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class ChatMessageList extends ConsumerStatefulWidget {
-  const ChatMessageList({super.key});
+  const ChatMessageList({
+    super.key,
+    this.onLongPressRunningTail,
+  });
+
+  final VoidCallback? onLongPressRunningTail;
 
   @override
   ConsumerState<ChatMessageList> createState() => _ChatMessageListState();
@@ -116,8 +122,6 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     });
 
     final messages = ref.watch(messagesProvider);
-    final sendState = ref.watch(chatSendStateProvider);
-    final sendPhase = sendState.phase;
     final timelineProjection = ref.watch(chatTimelineProjectionProvider);
     Logger.temp(
       'ChatMessageList',
@@ -134,12 +138,12 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final textController = ref.read(textControllerProvider);
     final focusNode = ref.read(focusNodeProvider);
+    final runningTail = ref.watch(latestMessageRunningStatusProvider);
 
     final timelineItems = _buildTimelineItems(
       messages,
-      sendPhase,
       timelineProjection.assistantBlocks,
-      sendState.statusText,
+      runningTail,
     );
     final itemCount = timelineItems.length + (hasMoreMessages ? 1 : 0);
     final currentGroupId = ref.read(currentGroupProvider)?.id;
@@ -204,6 +208,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
                       blockBuilder: _blockBuilder,
                       currentGroupId: currentGroupId,
                       onLongPressMessage: _showMessageOptionMenu,
+                      onLongPressRunningTail: widget.onLongPressRunningTail,
                       shouldAnimate: shouldAnimate,
                     ),
                   ),
@@ -218,9 +223,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
 
   List<ChatTimelineItem> _buildTimelineItems(
     List<ChatMessage> messages,
-    ChatSendPhase sendPhase,
     List<AssistantTurnBlock> projectedAssistantBlocks,
-    String? sendStatusText,
+    LatestMessageRunningStatusPresentation? runningTail,
   ) {
     if (messages.isEmpty) {
       return const [];
@@ -240,13 +244,6 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
 
     final currentGroup = ref.read(currentGroupProvider);
     final sortedMessages = [...messages]..sort(compareChatMessagesForTimeline);
-    final runningTail = ref
-        .read(latestMessageRunningStatusResolverProvider)
-        .resolve(
-          messages: sortedMessages,
-          sendPhase: sendPhase,
-          statusTextOverride: sendStatusText,
-        );
 
     final items = <ChatTimelineItem>[];
     var cursor = 0;

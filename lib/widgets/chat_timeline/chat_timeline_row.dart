@@ -42,6 +42,7 @@ class ChatTimelineRow extends ConsumerWidget {
   final ChatBlockBuilder blockBuilder;
   final int? currentGroupId;
   final ValueChanged<ChatMessage> onLongPressMessage;
+  final VoidCallback? onLongPressRunningTail;
   final bool shouldAnimate;
 
   const ChatTimelineRow({
@@ -50,6 +51,7 @@ class ChatTimelineRow extends ConsumerWidget {
     required this.blockBuilder,
     required this.currentGroupId,
     required this.onLongPressMessage,
+    this.onLongPressRunningTail,
     this.shouldAnimate = false,
   });
 
@@ -79,7 +81,10 @@ class ChatTimelineRow extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         displayRow,
-        LatestMessageRunningStatusTail(statusText: item.runningTailText!),
+        LatestMessageRunningStatusTail(
+          statusText: item.runningTailText!,
+          onLongPress: onLongPressRunningTail,
+        ),
       ],
     );
   }
@@ -129,6 +134,8 @@ class ChatTimelineRow extends ConsumerWidget {
               ? StreamingResponseBlock(
                   text: block.text ?? '',
                   reasoningText: block.reasoningText,
+                  streamTraceId: block.payload?['streamTraceId'] as String?,
+                  streamTurnId: block.payload?['streamTurnId'] as String?,
                 )
               : FinalResponseBlock(
                   title: block.title ?? '最终回答',

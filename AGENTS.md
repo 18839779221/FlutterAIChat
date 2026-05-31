@@ -431,6 +431,9 @@ Database version: 10
   - Keep comments concise, but do not omit them for externally consumed structures just to save lines
 - When architecture changes, update `README.md` to reflect the current structure rather than the historical structure
 - When project requirements, implementation rules, or team conventions change, update `AGENTS.md`
+- For this repository's default implementation workflow:
+  - once spec/design/plan documentation is written, implementation may begin immediately without waiting for an extra user confirmation unless the user explicitly asks for a pause
+  - prefer continuing on the current `main` branch and in the current workspace unless the user explicitly requests a different branch or a separate worktree
 - Any newly added or updated spec/design/plan documentation in this repository must be written in Chinese
   - This applies to files under `docs/superpowers/specs/`, `docs/superpowers/plans/`, and similar implementation/design docs
   - Do not default to English for newly generated spec or implementation plan content

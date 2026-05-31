@@ -6,20 +6,18 @@ import '../models/agent/model_tool_call.dart';
 import '../models/agent/model_turn_decision.dart';
 import '../models/agent/planner_tool_option.dart';
 import '../models/chat_event.dart';
-import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/context/planner_context_carrier.dart';
 import '../models/llm/base_llm.dart';
 import '../models/llm/streaming_message_event.dart';
 import '../models/tool/tool_access_snapshot.dart';
 import '../models/tool/tool_definition.dart';
-import '../models/tool/tool_result.dart';
 import 'chat_service.dart';
+import 'debug/streaming_trace_recorder.dart';
 import 'planner_tool_exposure_service.dart';
 import 'prompt/prompt_builder_service.dart';
 import 'prompt/prompt_locale.dart';
 import 'tool_policy_service.dart';
-import 'tool_result_context_projector.dart';
 import '../utils/logger.dart';
 import 'prompt/prompt_stage.dart';
 
@@ -37,7 +35,6 @@ class AgentPlannerService {
   final PlannerToolExposureService _toolExposureService;
   final ToolPolicyService? _toolPolicyService;
   final PromptBuilderService _promptBuilder;
-  final ToolResultContextProjector _toolResultContextProjector;
   final void Function(LlmRetryProgress progress)? _onPlannerRetryScheduled;
   final void Function(StreamingMessageEvent event)? _onPlannerRuntimeStream;
 
@@ -47,7 +44,6 @@ class AgentPlannerService {
     PlannerToolExposureService? toolExposureService,
     ToolPolicyService? toolPolicyService,
     PromptBuilderService? promptBuilder,
-    ToolResultContextProjector? toolResultContextProjector,
     void Function(LlmRetryProgress progress)? onPlannerRetryScheduled,
     void Function(StreamingMessageEvent event)? onPlannerRuntimeStream,
   })  : _llm = llm,
@@ -56,8 +52,6 @@ class AgentPlannerService {
             toolExposureService ?? PlannerToolExposureService(),
         _toolPolicyService = toolPolicyService,
         _promptBuilder = promptBuilder ?? const PromptBuilderService(),
-        _toolResultContextProjector =
-            toolResultContextProjector ?? const ToolResultContextProjector(),
         _onPlannerRetryScheduled = onPlannerRetryScheduled,
         _onPlannerRuntimeStream = onPlannerRuntimeStream;
 
@@ -89,11 +83,22 @@ class AgentPlannerService {
       userSystemPrompt: _resolveUserSystemPrompt(config),
       promptLocale: config.promptLocale,
     );
+    final runtimeStreamTraceId = streamingTraceIdForTurn(turn.id!);
+    final plannerRuntimeStreamListener = _onPlannerRuntimeStream == null
+        ? null
+        : (StreamingMessageEvent event) {
+            _onPlannerRuntimeStream!(
+              event.copyWithMergedRuntimeMetadata({
+                'streamTraceId': runtimeStreamTraceId,
+                'streamTurnId': turn.id.toString(),
+              }),
+            );
+          };
 
     try {
       if (_llm is PlannerRuntimeStreamingCapable) {
         (_llm as PlannerRuntimeStreamingCapable)
-            .setPlannerRuntimeStreamListener(_onPlannerRuntimeStream);
+            .setPlannerRuntimeStreamListener(plannerRuntimeStreamListener);
       }
       Logger.d(
         _tag,
@@ -320,67 +325,4 @@ class AgentPlannerService {
     return '${normalized.substring(0, 240)}...';
   }
 
-  ChatMessage? _eventToMessage(ChatEvent event) {
-    final projectedRole = _projectPlannerRole(event);
-    if (projectedRole == null) {
-      return null;
-    }
-    final content = _resolvePlannerEventContent(event);
-    if (content.isEmpty) {
-      return null;
-    }
-    return ChatMessage(
-      text: content,
-      role: projectedRole,
-      timestamp: event.createdAt,
-      status: MessageStatus.completed,
-    );
-  }
-
-  String _resolvePlannerEventContent(ChatEvent event) {
-    final modelContextText = _extractPlannerEventModelContextText(event);
-    if (modelContextText != null) {
-      return modelContextText;
-    }
-    final content = event.content?.trim() ?? '';
-    return content;
-  }
-
-  String? _extractPlannerEventModelContextText(ChatEvent event) {
-    if (event.eventType != ChatEventType.toolResult &&
-        event.eventType != ChatEventType.toolError) {
-      return null;
-    }
-    final payload = event.payloadJson;
-    if (payload == null) {
-      return null;
-    }
-    final result = ToolResult.fromJson(payload);
-    return _toolResultContextProjector.projectToContextText(result);
-  }
-
-  MessageRole? _projectPlannerRole(ChatEvent event) {
-    switch (event.eventType) {
-      case ChatEventType.userMessage:
-        return MessageRole.user;
-      case ChatEventType.userInteractionResult:
-        return MessageRole.user;
-      case ChatEventType.assistantPlannerMessage:
-      case ChatEventType.assistantQuestionPrompt:
-      case ChatEventType.toolResult:
-      case ChatEventType.toolError:
-      case ChatEventType.finalAnswer:
-        return MessageRole.assistant;
-      case ChatEventType.assistantReasoningDelta:
-      case ChatEventType.assistantTextDelta:
-      case ChatEventType.assistantTextFinal:
-      case ChatEventType.assistantToolCall:
-      case ChatEventType.assistantToolConfirmation:
-      case ChatEventType.assistantTurnSnapshot:
-      case ChatEventType.toolExecutionStarted:
-      case ChatEventType.turnStatus:
-      case ChatEventType.error:
-        return null;
-    }
-  }
 }

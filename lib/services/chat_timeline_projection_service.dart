@@ -449,6 +449,7 @@ class ChatTimelineProjectionService {
         updatedAt: block.updatedAt,
         text: block.text,
         payload: _runtimePreviewPayload(
+          message: message,
           messageId: message.messageId,
           block: block,
         ),
@@ -468,6 +469,7 @@ class ChatTimelineProjectionService {
         updatedAt: block.updatedAt,
         reasoningText: block.text,
         payload: _runtimePreviewPayload(
+          message: message,
           messageId: message.messageId,
           block: block,
         ),
@@ -484,7 +486,7 @@ class ChatTimelineProjectionService {
     final step = ToolWorkflowStep(
       stepId: block.toolUseId?.trim().isNotEmpty == true
           ? block.toolUseId!.trim()
-          : '${turnId}-runtime-tool-$sequence',
+          : '$turnId-runtime-tool-$sequence',
       turnId: turnId,
       toolName: toolName,
       title: '正在执行工具',
@@ -507,6 +509,7 @@ class ChatTimelineProjectionService {
       text: step.summary,
       payload: {
         ..._runtimePreviewPayload(
+          message: message,
           messageId: message.messageId,
           block: block,
         ),
@@ -530,6 +533,7 @@ class ChatTimelineProjectionService {
   }
 
   Map<String, dynamic> _runtimePreviewPayload({
+    required RuntimeStreamingPreviewMessage message,
     required String messageId,
     required RuntimeStreamingPreviewBlock block,
   }) {
@@ -538,6 +542,10 @@ class ChatTimelineProjectionService {
       'previewMessageId': messageId,
       'previewContentBlockId': block.contentBlockId,
       'previewBlockType': block.blockType.name,
+      if (message.streamTraceId?.trim().isNotEmpty == true)
+        'streamTraceId': message.streamTraceId!.trim(),
+      if (message.streamTurnId?.trim().isNotEmpty == true)
+        'streamTurnId': message.streamTurnId!.trim(),
       if (block.toolUseId?.trim().isNotEmpty == true)
         'providerCallId': block.toolUseId!.trim(),
     };

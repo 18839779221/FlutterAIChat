@@ -14,8 +14,12 @@ import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/debug_test_case_loader.dart';
+import 'package:ai_chat/services/latest_message_running_status_resolver.dart';
 import 'package:ai_chat/services/runtime_streaming_preview_projector.dart';
 import 'package:ai_chat/services/turn_projection_dispatcher.dart';
+import 'package:ai_chat/providers/streaming_trace_providers.dart';
+import 'package:ai_chat/models/debug/streaming_trace_snapshot.dart';
+import 'package:ai_chat/providers/chat_send_state_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -137,7 +141,7 @@ final runtimeAssistantDraftProvider =
 /// Runtime-only structured preview state used by projection/UI consumers.
 final runtimeStreamingPreviewStateProvider = StateNotifierProvider<
     RuntimeStreamingPreviewController, RuntimeStreamingPreviewState>((ref) {
-  return RuntimeStreamingPreviewController();
+  return RuntimeStreamingPreviewController(ref);
 });
 
 /// Shared serialized commit pipeline for runtime preview and truth events.
@@ -165,11 +169,11 @@ final chatTimelineProjectionProvider = Provider<ChatTimelineProjection>((ref) {
   final runtimeDraft = ref.watch(runtimeAssistantDraftProvider);
   final runtimePreviewState = ref.watch(runtimeStreamingPreviewStateProvider);
   return ref.watch(chatTimelineProjectionServiceProvider).build(
-        messages: messages,
-        groupId: groupId,
-        runtimeDraft: runtimeDraft,
-        runtimePreviewState: runtimePreviewState,
-      );
+    messages: messages,
+    groupId: groupId,
+    runtimeDraft: runtimeDraft,
+    runtimePreviewState: runtimePreviewState,
+  );
 });
 
 /// Returns the latest unresolved ask-user-question prompt so the timeline can
@@ -194,14 +198,49 @@ final activePendingToolConfirmationProvider =
   );
 });
 
+/// Shared latest-running-tail projection so page-level overlay logic and
+/// timeline rows observe the same running-status truth.
+final latestMessageRunningStatusProvider =
+    Provider<LatestMessageRunningStatusPresentation?>((ref) {
+  final messages = ref.watch(messagesProvider);
+  final sendState = ref.watch(chatSendStateProvider);
+  return ref.read(latestMessageRunningStatusResolverProvider).resolve(
+        messages: [...messages]..sort(compareChatMessagesForTimeline),
+        sendPhase: sendState.phase,
+        statusTextOverride: sendState.statusText,
+      );
+});
+
 class RuntimeStreamingPreviewController
     extends StateNotifier<RuntimeStreamingPreviewState> {
-  RuntimeStreamingPreviewController()
-      : _projector = RuntimeStreamingPreviewProjector(),
+  RuntimeStreamingPreviewController(this._ref)
+      : _projector = RuntimeStreamingPreviewProjector(
+          onEventConsumed: (message, event, timestamp) {
+            final traceId = message.streamTraceId?.trim();
+            final turnId = message.streamTurnId?.trim();
+            if (traceId == null ||
+                traceId.isEmpty ||
+                turnId == null ||
+                turnId.isEmpty) {
+              return;
+            }
+            _ref.read(streamingTraceRecorderProvider.notifier).recordStage(
+              traceId: traceId,
+              turnId: turnId,
+              stage: StreamingTraceStage.previewEventConsumed,
+              timestamp: timestamp,
+              details: {
+                'messageId': event.messageId,
+                'eventType': event.runtimeType.toString(),
+              },
+            );
+          },
+        ),
         super(const RuntimeStreamingPreviewState());
 
   static const Duration _minPublishInterval = Duration(milliseconds: 16);
 
+  final Ref _ref;
   final RuntimeStreamingPreviewProjector _projector;
   Timer? _flushTimer;
   DateTime? _lastPublishedAt;
@@ -241,6 +280,7 @@ class RuntimeStreamingPreviewController
     }
 
     final now = DateTime.now();
+    _recordToolUseTraceStage(event, now: now);
     _projector.consume(event, now: now);
     _pendingPublishedEventCount += 1;
     final lastPublishedAt = _lastPublishedAt;
@@ -254,6 +294,89 @@ class RuntimeStreamingPreviewController
       _minPublishInterval - now.difference(lastPublishedAt),
       () => _publishState(DateTime.now()),
     );
+  }
+
+  void _recordToolUseTraceStage(
+    StreamingMessageEvent event, {
+    required DateTime now,
+  }) {
+    final traceId = _readRuntimeMetadataValue(
+      event.runtimeMetadata,
+      key: 'streamTraceId',
+    );
+    final turnId = _readRuntimeMetadataValue(
+      event.runtimeMetadata,
+      key: 'streamTurnId',
+    );
+    if (traceId == null ||
+        traceId.isEmpty ||
+        turnId == null ||
+        turnId.isEmpty) {
+      return;
+    }
+
+    final recorder = _ref.read(streamingTraceRecorderProvider.notifier);
+    if (event is StreamingContentBlockStartEvent &&
+        event.blockType == StreamingContentBlockType.toolUse) {
+      final toolName = event.toolName?.trim();
+      if (toolName == null || toolName.isEmpty) {
+        return;
+      }
+      recorder.recordStage(
+        traceId: traceId,
+        turnId: turnId,
+        stage: StreamingTraceStage.toolCallStreamStarted,
+        timestamp: now,
+        details: {
+          'messageId': event.messageId,
+          'contentBlockId': event.contentBlockId,
+          'toolName': toolName,
+        },
+      );
+      return;
+    }
+
+    if (event is! StreamingContentBlockStopEvent) {
+      return;
+    }
+
+    final currentState = _projector.currentState();
+    final message = currentState.messages
+        .where((candidate) => candidate.messageId == event.messageId)
+        .lastOrNull;
+    final block = message?.blocks
+        .where((candidate) => candidate.contentBlockId == event.contentBlockId)
+        .lastOrNull;
+    final toolName = block?.toolName?.trim();
+    if (block == null ||
+        block.blockType != StreamingContentBlockType.toolUse ||
+        toolName == null ||
+        toolName.isEmpty) {
+      return;
+    }
+    recorder.recordStage(
+      traceId: traceId,
+      turnId: turnId,
+      stage: StreamingTraceStage.toolCallStreamCompleted,
+      timestamp: now,
+      details: {
+        'messageId': event.messageId,
+        'contentBlockId': event.contentBlockId,
+        'toolName': toolName,
+      },
+    );
+  }
+
+  String? _readRuntimeMetadataValue(
+    Map<String, dynamic>? metadata, {
+    required String key,
+  }) {
+    final value = metadata?[key];
+    if (value is! String) {
+      return null;
+    }
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 
   void clear() {
@@ -293,6 +416,35 @@ class RuntimeStreamingPreviewController
     );
 
     state = newState;
+
+    final tracedMessage = newState.messages
+        .where(
+          (message) =>
+              (message.streamTraceId ?? '').trim().isNotEmpty &&
+              (message.streamTurnId ?? '').trim().isNotEmpty,
+        )
+        .lastOrNull;
+    final traceId = tracedMessage?.streamTraceId?.trim();
+    final turnId = tracedMessage?.streamTurnId?.trim();
+    if (traceId != null &&
+        traceId.isNotEmpty &&
+        turnId != null &&
+        turnId.isNotEmpty) {
+      _ref.read(streamingTraceRecorderProvider.notifier).recordStage(
+        traceId: traceId,
+        turnId: turnId,
+        stage: StreamingTraceStage.previewStateCommitted,
+        timestamp: now,
+        details: {
+          'eventCount': eventCount,
+          'messageCount': newState.messages.length,
+          'totalBlocks': newState.messages.fold<int>(
+            0,
+            (sum, msg) => sum + msg.blocks.length,
+          ),
+        },
+      );
+    }
   }
 
   @override

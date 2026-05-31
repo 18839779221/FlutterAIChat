@@ -28,6 +28,8 @@ class RuntimeStreamingPreviewMessage {
     required this.messageId,
     required this.createdAt,
     required this.updatedAt,
+    this.streamTraceId,
+    this.streamTurnId,
     this.isCompleted = false,
     this.blocks = const <RuntimeStreamingPreviewBlock>[],
   });
@@ -35,6 +37,10 @@ class RuntimeStreamingPreviewMessage {
   final String messageId;
   final DateTime createdAt;
   final DateTime updatedAt;
+  /// Runtime-only trace id for observability/debug overlay correlation.
+  final String? streamTraceId;
+  /// Runtime-only turn id paired with the active streaming trace.
+  final String? streamTurnId;
   final bool isCompleted;
   final List<RuntimeStreamingPreviewBlock> blocks;
 
@@ -42,6 +48,8 @@ class RuntimeStreamingPreviewMessage {
     String? messageId,
     DateTime? createdAt,
     DateTime? updatedAt,
+    String? streamTraceId,
+    String? streamTurnId,
     bool? isCompleted,
     List<RuntimeStreamingPreviewBlock>? blocks,
   }) {
@@ -49,6 +57,8 @@ class RuntimeStreamingPreviewMessage {
       messageId: messageId ?? this.messageId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      streamTraceId: streamTraceId ?? this.streamTraceId,
+      streamTurnId: streamTurnId ?? this.streamTurnId,
       isCompleted: isCompleted ?? this.isCompleted,
       blocks: blocks ?? this.blocks,
     );

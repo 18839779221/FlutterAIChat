@@ -7,9 +7,20 @@ class RuntimeStreamingPreviewProjector {
   RuntimeStreamingPreviewProjector({
     RuntimeStreamingPreviewState initialState =
         const RuntimeStreamingPreviewState(),
-  }) : _state = initialState;
+    void Function(
+      RuntimeStreamingPreviewMessage message,
+      StreamingMessageEvent event,
+      DateTime timestamp,
+    )? onEventConsumed,
+  })  : _state = initialState,
+        _onEventConsumed = onEventConsumed;
 
   RuntimeStreamingPreviewState _state;
+  final void Function(
+    RuntimeStreamingPreviewMessage message,
+    StreamingMessageEvent event,
+    DateTime timestamp,
+  )? _onEventConsumed;
 
   RuntimeStreamingPreviewState currentState() => _state;
 
@@ -22,6 +33,14 @@ class RuntimeStreamingPreviewProjector {
     DateTime? now,
   }) {
     final timestamp = now ?? DateTime.now();
+    final traceId = _readRuntimeMetadataValue(
+      event.runtimeMetadata,
+      key: 'streamTraceId',
+    );
+    final turnId = _readRuntimeMetadataValue(
+      event.runtimeMetadata,
+      key: 'streamTurnId',
+    );
     if (event is StreamingMessageStartEvent) {
       _upsertMessage(
         event.messageId,
@@ -29,9 +48,16 @@ class RuntimeStreamingPreviewProjector {
           messageId: event.messageId,
           createdAt: current?.createdAt ?? timestamp,
           updatedAt: timestamp,
+          streamTraceId: traceId ?? current?.streamTraceId,
+          streamTurnId: turnId ?? current?.streamTurnId,
           isCompleted: false,
           blocks: current?.blocks ?? const <RuntimeStreamingPreviewBlock>[],
         ),
+      );
+      _emitConsumedEvent(
+        messageId: event.messageId,
+        event: event,
+        timestamp: timestamp,
       );
       return;
     }
@@ -46,8 +72,15 @@ class RuntimeStreamingPreviewProjector {
                 ))
             .copyWith(
           updatedAt: timestamp,
+          streamTraceId: traceId ?? current?.streamTraceId,
+          streamTurnId: turnId ?? current?.streamTurnId,
           isCompleted: true,
         ),
+      );
+      _emitConsumedEvent(
+        messageId: event.messageId,
+        event: event,
+        timestamp: timestamp,
       );
       return;
     }
@@ -82,10 +115,17 @@ class RuntimeStreamingPreviewProjector {
         }
         return base.copyWith(
           updatedAt: timestamp,
+          streamTraceId: traceId ?? base.streamTraceId,
+          streamTurnId: turnId ?? base.streamTurnId,
           isCompleted: false,
           blocks: blocks,
         );
       });
+      _emitConsumedEvent(
+        messageId: event.messageId,
+        event: event,
+        timestamp: timestamp,
+      );
       return;
     }
     if (event is StreamingContentBlockDeltaEvent) {
@@ -130,10 +170,17 @@ class RuntimeStreamingPreviewProjector {
         }
         return base.copyWith(
           updatedAt: timestamp,
+          streamTraceId: traceId ?? base.streamTraceId,
+          streamTurnId: turnId ?? base.streamTurnId,
           isCompleted: false,
           blocks: blocks,
         );
       });
+      _emitConsumedEvent(
+        messageId: event.messageId,
+        event: event,
+        timestamp: timestamp,
+      );
       return;
     }
     if (event is StreamingContentBlockStopEvent) {
@@ -166,10 +213,29 @@ class RuntimeStreamingPreviewProjector {
         }
         return base.copyWith(
           updatedAt: timestamp,
+          streamTraceId: traceId ?? base.streamTraceId,
+          streamTurnId: turnId ?? base.streamTurnId,
           blocks: blocks,
         );
       });
+      _emitConsumedEvent(
+        messageId: event.messageId,
+        event: event,
+        timestamp: timestamp,
+      );
     }
+  }
+
+  String? _readRuntimeMetadataValue(
+    Map<String, dynamic>? metadata, {
+    required String key,
+  }) {
+    final value = metadata?[key];
+    if (value is! String) {
+      return null;
+    }
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 
   StreamingContentBlockType _inferBlockType(StreamingContentDeltaType deltaType) {
@@ -200,5 +266,23 @@ class RuntimeStreamingPreviewProjector {
       messages[index] = next;
     }
     _state = _state.copyWith(messages: messages);
+  }
+
+  void _emitConsumedEvent({
+    required String messageId,
+    required StreamingMessageEvent event,
+    required DateTime timestamp,
+  }) {
+    final callback = _onEventConsumed;
+    if (callback == null) {
+      return;
+    }
+    final message = _state.messages
+        .where((entry) => entry.messageId == messageId)
+        .lastOrNull;
+    if (message == null) {
+      return;
+    }
+    callback(message, event, timestamp);
   }
 }

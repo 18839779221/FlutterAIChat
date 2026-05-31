@@ -1,9 +1,11 @@
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/debug/streaming_trace_snapshot.dart';
 import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_ui_providers.dart';
+import 'package:ai_chat/providers/streaming_trace_providers.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -212,6 +214,69 @@ void main() {
       );
     });
 
+    test('reading timeline projection does not mutate streaming trace state', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      container.read(messagesProvider.notifier).setMessages([
+        ChatMessage(
+          id: 30,
+          text: '做个 artifact',
+          role: MessageRole.user,
+        ),
+      ]);
+
+      final notifier =
+          container.read(runtimeStreamingPreviewStateProvider.notifier);
+      notifier.publish(
+        const StreamingMessageStartEvent(
+          messageId: 'preview_trace_1',
+          runtimeMetadata: {
+            'streamTraceId': 'trace_1',
+            'streamTurnId': 'turn_1',
+          },
+        ),
+      );
+      notifier.publish(
+        const StreamingContentBlockStartEvent(
+          messageId: 'preview_trace_1',
+          contentBlockId: 'preview_trace_1:text',
+          blockType: StreamingContentBlockType.text,
+          runtimeMetadata: {
+            'streamTraceId': 'trace_1',
+            'streamTurnId': 'turn_1',
+          },
+        ),
+      );
+      notifier.publish(
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'preview_trace_1',
+          contentBlockId: 'preview_trace_1:text',
+          deltaType: StreamingContentDeltaType.text,
+          value: 'hello',
+          runtimeMetadata: {
+            'streamTraceId': 'trace_1',
+            'streamTurnId': 'turn_1',
+          },
+        ),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 140));
+
+      expect(container.read(streamingTraceSnapshotProvider), isNotNull);
+
+      container.read(streamingTraceRecorderProvider.notifier).clear();
+      expect(container.read(streamingTraceSnapshotProvider), isNull);
+
+      container.read(chatTimelineProjectionProvider);
+
+      expect(
+        container.read(streamingTraceSnapshotProvider),
+        isNull,
+        reason: 'Projection reads should stay pure and avoid mutating trace state during provider build.',
+      );
+    });
+
     test('runtime preview consumes deltas immediately within publish throttle window',
         () async {
       final container = ProviderContainer();
@@ -260,6 +325,83 @@ void main() {
       expect(
         state.messages.single.blocks.single.text,
         '{"source":"<div>Hello world</div>"}',
+      );
+    });
+
+    test('runtime tool-use preview records slow tool streaming stages for trace aggregation',
+        () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final notifier =
+          container.read(runtimeStreamingPreviewStateProvider.notifier);
+
+      notifier.publish(
+        const StreamingMessageStartEvent(
+          messageId: 'preview_tool_trace_1',
+          runtimeMetadata: {
+            'streamTraceId': 'trace_tool_1',
+            'streamTurnId': 'turn_tool_1',
+          },
+        ),
+      );
+      notifier.publish(
+        const StreamingContentBlockStartEvent(
+          messageId: 'preview_tool_trace_1',
+          contentBlockId: 'preview_tool_trace_1:tool:0',
+          blockType: StreamingContentBlockType.toolUse,
+          toolUseId: 'call_tool_1',
+          toolName: 'create_artifact',
+          runtimeMetadata: {
+            'streamTraceId': 'trace_tool_1',
+            'streamTurnId': 'turn_tool_1',
+          },
+        ),
+      );
+      notifier.publish(
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'preview_tool_trace_1',
+          contentBlockId: 'preview_tool_trace_1:tool:0',
+          deltaType: StreamingContentDeltaType.inputJson,
+          value: '{"source":"<div>Hello</div>"}',
+          runtimeMetadata: {
+            'streamTraceId': 'trace_tool_1',
+            'streamTurnId': 'turn_tool_1',
+          },
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      notifier.publish(
+        const StreamingContentBlockStopEvent(
+          messageId: 'preview_tool_trace_1',
+          contentBlockId: 'preview_tool_trace_1:tool:0',
+          runtimeMetadata: {
+            'streamTraceId': 'trace_tool_1',
+            'streamTurnId': 'turn_tool_1',
+          },
+        ),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 140));
+
+      final snapshot = container.read(streamingTraceSnapshotProvider);
+      expect(snapshot, isNotNull);
+      expect(
+        snapshot!.entries.map((entry) => entry.stage),
+        containsAllInOrder([
+          StreamingTraceStage.toolCallStreamStarted,
+          StreamingTraceStage.toolCallStreamCompleted,
+        ]),
+      );
+      expect(
+        snapshot.entries
+            .where(
+              (entry) =>
+                  entry.stage == StreamingTraceStage.toolCallStreamStarted ||
+                  entry.stage == StreamingTraceStage.toolCallStreamCompleted,
+            )
+            .every((entry) => entry.details['toolName'] == 'create_artifact'),
+        isTrue,
       );
     });
   });

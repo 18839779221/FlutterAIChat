@@ -70,5 +70,39 @@ void main() {
       expect(block.toolName, 'create_artifact');
       expect(block.text, '{"source":"<div>Hello');
     });
+
+    test('preserves runtime trace metadata on the preview message', () {
+      final projector = RuntimeStreamingPreviewProjector();
+      final now = DateTime(2026, 5, 27, 12);
+
+      projector.consume(
+        const StreamingMessageStartEvent(
+          messageId: 'm1',
+          runtimeMetadata: {
+            'streamTraceId': 'trace_1',
+            'streamTurnId': 'turn_1',
+          },
+        ),
+        now: now,
+      );
+      projector.consume(
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:text',
+          deltaType: StreamingContentDeltaType.text,
+          value: 'hello',
+          runtimeMetadata: {
+            'streamTraceId': 'trace_1',
+            'streamTurnId': 'turn_1',
+          },
+        ),
+        now: now,
+      );
+
+      final message = projector.currentState().messages.single;
+      expect(message.streamTraceId, 'trace_1');
+      expect(message.streamTurnId, 'turn_1');
+      expect(message.blocks.single.text, 'hello');
+    });
   });
 }

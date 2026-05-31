@@ -1,11 +1,13 @@
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/debug/debug_test_case.dart';
+import 'package:ai_chat/models/debug/streaming_trace_snapshot.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/pages/chat_page.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
+import 'package:ai_chat/providers/streaming_trace_providers.dart';
 import 'package:ai_chat/services/debug_test_case_loader.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_message_list.dart';
@@ -473,6 +475,61 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const ValueKey('debug-turn-inspector-button')), findsOneWidget);
+  });
+
+  testWidgets(
+      'long pressing debug header button shows streaming timeline overlay and tapping outside dismisses it',
+      (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider.overrideWith(
+          (ref) => _StubSessionCoordinator(),
+        ),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.read(streamingTraceRecorderProvider.notifier).recordStage(
+      traceId: 'trace_1',
+      turnId: 'turn_1',
+      stage: StreamingTraceStage.finalTakeover,
+      timestamp: DateTime(2026, 5, 31, 12, 0, 0),
+    );
+    container.read(streamingTraceRecorderProvider.notifier).markCompleted(
+          traceId: 'trace_1',
+          takeoverAt: DateTime(2026, 5, 31, 12, 0, 0, 0, 50),
+        );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final debugButton = find.byKey(const ValueKey('debug-turn-inspector-button'));
+    expect(debugButton, findsOneWidget);
+
+    await tester.longPress(debugButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Streaming Timeline'), findsOneWidget);
+
+    await tester.tapAt(const Offset(16, 220));
+    await tester.pumpAndSettle();
+    expect(find.text('Streaming Timeline'), findsNothing);
   });
 }
 

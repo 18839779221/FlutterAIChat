@@ -34,4 +34,26 @@ void main() {
     expect(event.toolName, 'create_artifact');
     expect(event.providerMetadata, containsPair('response_id', 'resp_2'));
   });
+
+  test('events can carry runtime-only metadata without mutating provider metadata',
+      () {
+    const event = StreamingContentBlockDeltaEvent(
+      messageId: 'resp_3',
+      contentBlockId: 'resp_3:text',
+      deltaType: StreamingContentDeltaType.text,
+      value: 'hello',
+      providerMetadata: {'response_id': 'resp_3'},
+    );
+
+    final enriched = event.copyWithMergedRuntimeMetadata(
+      const {
+        'streamTraceId': 'trace_3',
+        'streamTurnId': 'turn_3',
+      },
+    );
+
+    expect(enriched.providerMetadata, containsPair('response_id', 'resp_3'));
+    expect(enriched.runtimeMetadata, containsPair('streamTraceId', 'trace_3'));
+    expect(enriched.runtimeMetadata, containsPair('streamTurnId', 'turn_3'));
+  });
 }

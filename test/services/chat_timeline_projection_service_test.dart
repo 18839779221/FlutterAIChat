@@ -303,6 +303,46 @@ void main() {
       expect(runtimeResponseBlocks.single.payload?['isRuntimePreview'], isTrue);
     });
 
+    test('carries runtime trace metadata into projected preview payload', () {
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我回答',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'message_text_1',
+              streamTraceId: 'trace_1',
+              streamTurnId: 'turn_1',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_text_1:text',
+                  blockType: StreamingContentBlockType.text,
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  text: '这是运行中的正文',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final block = projection.assistantBlocks
+          .where((entry) => entry.type == AssistantTurnBlockType.finalResponse)
+          .single;
+      expect(block.payload?['streamTraceId'], 'trace_1');
+      expect(block.payload?['streamTurnId'], 'turn_1');
+    });
+
     test('projects runtime thinking preview into analysis block', () {
       final projection = service.build(
         groupId: 7,
