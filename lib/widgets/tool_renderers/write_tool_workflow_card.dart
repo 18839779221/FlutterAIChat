@@ -44,8 +44,9 @@ class WriteToolWorkflowCard extends StatelessWidget {
         width: double.infinity,
         padding: EdgeInsets.all(spacing.md),
         decoration: BoxDecoration(
-          color: colors.structuredSurface.withValues(alpha: 0.78),
+          color: colors.structuredSurface,
           borderRadius: BorderRadius.circular(radius.md + 2),
+          border: Border.all(color: colors.divider, width: 1),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

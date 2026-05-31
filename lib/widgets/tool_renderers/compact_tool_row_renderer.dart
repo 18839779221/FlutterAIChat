@@ -84,7 +84,7 @@ class CompactToolRow extends StatelessWidget {
 
     return SubtleRunningBreathingSurface(
       isRunning: model.isRunning,
-      baseColor: colors.structuredSurface.withValues(alpha: 0.34),
+      baseColor: colors.toolWorkflowSurface.withValues(alpha: 0.85),
       borderRadius: BorderRadius.circular(radius.sm + 1),
       child: Container(
         width: double.infinity,

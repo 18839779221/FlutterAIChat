@@ -53,9 +53,11 @@ class ResearchToolCardShell extends StatelessWidget {
             vertical: spacing.xs,
           ),
           decoration: BoxDecoration(
-            color: colors.structuredSurface
-                .withValues(alpha: expanded ? 0.46 : 0.34),
+            color: expanded
+                ? colors.structuredSurface
+                : colors.toolWorkflowSurface,
             borderRadius: BorderRadius.circular(radius.md),
+            border: Border.all(color: colors.divider, width: 1),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

@@ -29,15 +29,20 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
   factory AppThemeSpec.dark() => AppThemeSpec.olivePaper();
 
   factory AppThemeSpec.claude() {
+    // Claude app tonal hierarchy:
+    //   bg-100 (paper)   → page / reading
+    //   bg-200 (panel)   → composer / structural cards / workflow shells
+    //   bg-300 (sunken)  → tool inline / user bubble / muted surfaces
+    //   bg-400 (recessed)→ tool results / artifact muted
     const surfaces = AppSurfaceSemanticTokens(
-      pageBackground: Color(0xFFF5F4EE),
+      pageBackground: Color(0xFFFAF9F5),
       panelBackground: Color(0xFFF0EEE6),
       readingSurface: Color(0xFFFAF9F5),
-      userBubbleSurface: Color(0xFFEDEAE0),
-      toolInlineSurface: Color(0xFFF5F2EA),
-      toolResultSurface: Color(0xFFF2F1EB),
+      userBubbleSurface: Color(0xFFEDE6D6),
+      toolInlineSurface: Color(0xFFEDE6D6),
+      toolResultSurface: Color(0xFFE5DDC9),
       dangerSurface: Color(0xFFFBF1E8),
-      structuralSurface: Color(0xFFFAF9F5),
+      structuralSurface: Color(0xFFF0EEE6),
     );
     const text = AppTextSemanticTokens(
       primary: Color(0xFF1F1F1E),
@@ -47,8 +52,8 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
     );
     const state = AppStateSemanticTokens(
       running: Color(0xFFC96442),
-      success: Color(0xFF2F6A4F),
-      warning: Color(0xFF9A6C37),
+      success: Color(0xFF6F8C4C),
+      warning: Color(0xFFD4A347),
       error: Color(0xFFBE2222),
       info: Color(0xFF8A5A44),
     );
@@ -76,7 +81,7 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
         colors: const AppColorTokens(
           black: Color(0xFF1F1F1E),
           white: Colors.white,
-          paper: Color(0xFFF5F4EE),
+          paper: Color(0xFFFAF9F5),
           ink: Color(0xFF1F1F1E),
           mutedInk: Color(0xFF3D3D3A),
           shadow: Color(0x22000000),
@@ -119,7 +124,7 @@ class AppThemeSpec extends ThemeExtension<AppThemeSpec> {
           codeBlockBackground: Color(0xFFE6E2D6),
           codePanelBackground: Color(0xFFF0EBDD),
           codeForeground: Color(0xFF31414A),
-          copySuccessAccent: Color(0xFF2F6A4F),
+          copySuccessAccent: Color(0xFF6F8C4C),
         ),
       ),
     );
