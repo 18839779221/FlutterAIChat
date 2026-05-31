@@ -17,7 +17,24 @@ enum AssistantTurnBlockType {
 /// UI-facing block model used to render one assistant turn in document style.
 class AssistantTurnBlock {
   /// Stable block id in the current runtime timeline.
+  ///
+  /// Identifies one block instance (preview-origin and truth-origin blocks
+  /// describing the same logical entity intentionally use different ids so
+  /// they can coexist as separate render nodes until dedup runs).
   final String id;
+
+  /// Cross-source logical identity shared by preview-origin and truth-origin
+  /// blocks that describe the same conceptual entity.
+  ///
+  /// Used by [ChatTimelineProjectionService] to drop a preview block once the
+  /// truth block carrying the same logical id has landed. Null when no
+  /// stable cross-source identity is available (e.g. analysis blocks that
+  /// only ever come from one source).
+  ///
+  /// Conventional values:
+  ///   - tool workflow / result: `tool:<providerCallId>` (fallback `tool:<turnId>:<stepId>`)
+  ///   - final response text:    `final:<turnId>` (and `final:preview:<messageId>` for transient ids)
+  final String? logicalId;
 
   /// Assistant turn owner id.
   final String turnId;
@@ -71,6 +88,7 @@ class AssistantTurnBlock {
     required this.sequence,
     required this.createdAt,
     required this.updatedAt,
+    this.logicalId,
     this.status,
     this.title,
     this.text,
@@ -90,6 +108,7 @@ class AssistantTurnBlock {
     int? sequence,
     DateTime? createdAt,
     DateTime? updatedAt,
+    String? logicalId,
     String? status,
     String? title,
     String? text,
@@ -108,6 +127,7 @@ class AssistantTurnBlock {
       sequence: sequence ?? this.sequence,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      logicalId: logicalId ?? this.logicalId,
       status: status ?? this.status,
       title: title ?? this.title,
       text: text ?? this.text,

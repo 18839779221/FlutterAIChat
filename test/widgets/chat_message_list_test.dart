@@ -13,7 +13,6 @@ import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/artifact_preview_surface.dart';
-import 'package:ai_chat/widgets/chat_blocks/streaming_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/unified_turn_status_bar.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_outcome_card.dart';
@@ -29,6 +28,15 @@ import 'package:ai_chat/widgets/tool_renderers/web_search_tool_result_card.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+// Helpers that distinguish the two visual phases of `FinalResponseBlock`
+// after the streaming/completed widgets were unified into one Markdown path.
+Finder _findStreamingFinalBlock() => find.byWidgetPredicate(
+      (widget) => widget is FinalResponseBlock && widget.isStreaming,
+    );
+Finder _findCompletedFinalBlock() => find.byWidgetPredicate(
+      (widget) => widget is FinalResponseBlock && !widget.isStreaming,
+    );
 
 void main() {
   group('ChatMessageList block rendering', () {
@@ -148,8 +156,8 @@ void main() {
         ),
       );
 
-      expect(find.byType(StreamingResponseBlock), findsOneWidget);
-      expect(find.byType(FinalResponseBlock), findsNothing);
+      expect(_findStreamingFinalBlock(), findsOneWidget);
+      expect(_findCompletedFinalBlock(), findsNothing);
       expect(find.text('这是运行中的正文'), findsOneWidget);
     });
 
@@ -275,7 +283,7 @@ void main() {
         ),
       );
 
-      expect(find.byType(StreamingResponseBlock), findsOneWidget);
+      expect(_findStreamingFinalBlock(), findsOneWidget);
       expect(find.text('先给你正文说明'), findsOneWidget);
       expect(find.byType(ArtifactPreviewSurface), findsOneWidget);
     });
@@ -340,7 +348,7 @@ void main() {
         ],
       );
 
-      expect(find.byType(StreamingResponseBlock), findsOneWidget);
+      expect(_findStreamingFinalBlock(), findsOneWidget);
       expect(find.text('思考过程'), findsOneWidget);
       expect(find.text('正在整理依据。'), findsOneWidget);
       expect(find.text('正在回答'), findsOneWidget);
@@ -465,8 +473,8 @@ void main() {
         ],
       );
 
-      expect(find.byType(StreamingResponseBlock), findsOneWidget);
-      expect(find.byType(FinalResponseBlock), findsNothing);
+      expect(_findStreamingFinalBlock(), findsOneWidget);
+      expect(_findCompletedFinalBlock(), findsNothing);
       expect(find.text('streaming reply'), findsOneWidget);
     });
 
@@ -811,8 +819,8 @@ void main() {
         ),
       );
 
-      expect(find.byType(FinalResponseBlock), findsOneWidget);
-      expect(find.byType(StreamingResponseBlock), findsNothing);
+      expect(_findCompletedFinalBlock(), findsOneWidget);
+      expect(_findStreamingFinalBlock(), findsNothing);
       expect(find.text('Title'), findsOneWidget);
 
       container.read(messagesProvider.notifier).addMessage(
@@ -839,8 +847,12 @@ void main() {
           );
       await tester.pump();
 
-      expect(find.byType(FinalResponseBlock), findsOneWidget);
-      expect(find.byType(StreamingResponseBlock), findsOneWidget);
+      // Two final-response blocks coexist after the second turn starts:
+      // the first turn's completed answer plus the streaming answer for the
+      // new turn. Phase is differentiated by the `isStreaming` flag instead
+      // of two widget types.
+      expect(_findCompletedFinalBlock(), findsOneWidget);
+      expect(_findStreamingFinalBlock(), findsOneWidget);
       expect(
         find.byKey(const ValueKey('timeline-block-0_1-analysis-1')),
         findsOneWidget,

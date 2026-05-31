@@ -15,7 +15,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('TurnProjectionDispatcher', () {
-    test('clears preview before appending final answer for the same message',
+    test(
+        'preserves preview state through finalAnswer so per-entity dedup handles takeover',
         () async {
       final callOrder = <String>[];
       final container = ProviderContainer();
@@ -64,11 +65,16 @@ void main() {
         },
       );
 
+      // Truth callback runs while the preview message is still present;
+      // projection-layer dedup is the new takeover mechanism.
       expect(
         callOrder,
-        ['truth:0'],
+        ['truth:1'],
       );
-      expect(container.read(runtimeStreamingPreviewStateProvider).isEmpty, isTrue);
+      expect(
+        container.read(runtimeStreamingPreviewStateProvider).messages,
+        hasLength(1),
+      );
     });
 
     test('drops late preview events for finalized message', () async {
@@ -101,7 +107,11 @@ void main() {
       );
       await Future<void>.delayed(const Duration(milliseconds: 140));
 
-      expect(container.read(runtimeStreamingPreviewStateProvider).isEmpty, isTrue);
+      // The pre-finalize Start event is preserved, but the late delta after
+      // finalize is filtered out.
+      final state = container.read(runtimeStreamingPreviewStateProvider);
+      expect(state.messages, hasLength(1));
+      expect(state.messages.single.blocks, isEmpty);
     });
 
     test(
@@ -116,6 +126,16 @@ void main() {
         title: 'group',
         lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
       );
+      // Seed a user message so the preview projection resolves to the same
+      // `<groupId>_<userMessageId>` turn id the persisted final answer ends
+      // up with; otherwise the dedup keys disagree and both blocks survive.
+      container.read(messagesProvider.notifier).addMessage(
+            ChatMessage(
+              id: 10,
+              text: 'hi',
+              role: MessageRole.user,
+            ),
+          );
 
       await dispatcher.dispatchPreviewEvent(
         const StreamingMessageStartEvent(messageId: 'm1'),
@@ -150,10 +170,11 @@ void main() {
         (_) async {
           container.read(messagesProvider.notifier).addMessage(
                 ChatMessage(
-                  id: 1,
+                  id: 11,
                   text: 'hello',
                   role: MessageRole.assistant,
                   status: MessageStatus.completed,
+                  payloadJson: const {'isFinalAnswer': true},
                 ),
               );
         },
@@ -171,7 +192,12 @@ void main() {
       expect(finalBlocks, hasLength(1));
       expect(finalBlocks.single.text, 'hello');
       expect(finalBlocks.single.payload?['isRuntimePreview'], isNot(true));
-      expect(container.read(runtimeStreamingPreviewStateProvider).isEmpty, isTrue);
+      expect(finalBlocks.single.logicalId, 'final:1_10');
+      // Preview state itself is kept; the dedup happens at projection time.
+      expect(
+        container.read(runtimeStreamingPreviewStateProvider).messages,
+        hasLength(1),
+      );
     });
 
     test('records current-turn trace across tool phase and final takeover',

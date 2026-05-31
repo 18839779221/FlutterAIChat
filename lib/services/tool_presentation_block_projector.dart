@@ -93,6 +93,11 @@ class ToolPresentationBlockProjector {
       sequence: sequence,
       createdAt: event.timestamp,
       updatedAt: event.timestamp,
+      logicalId: _toolLogicalId(
+        providerCallId: event.providerCallId,
+        turnId: event.turnId,
+        stepId: event.stepId,
+      ),
       status: step.status.name,
       title: step.title,
       text: step.summary,
@@ -122,6 +127,11 @@ class ToolPresentationBlockProjector {
       sequence: sequence,
       createdAt: event.timestamp,
       updatedAt: event.timestamp,
+      logicalId: _toolLogicalId(
+        providerCallId: event.providerCallId,
+        turnId: event.turnId,
+        stepId: event.stepId,
+      ),
       status: result.status.name,
       title: result.toolName,
       text: result.summary,
@@ -133,6 +143,27 @@ class ToolPresentationBlockProjector {
       },
       toolResult: result,
     );
+  }
+
+  /// Shared cross-source identity for one logical tool invocation.
+  ///
+  /// Prefers the provider-issued call id so preview tool_use blocks and
+  /// persisted toolInvocation/toolResult blocks dedup on the exact same value;
+  /// falls back to `<turnId>:<stepId>` when the provider stream omitted an id.
+  static String _toolLogicalId({
+    required String? providerCallId,
+    required String turnId,
+    required String? stepId,
+  }) {
+    final trimmedCallId = (providerCallId ?? '').trim();
+    if (trimmedCallId.isNotEmpty) {
+      return 'tool:$trimmedCallId';
+    }
+    final trimmedStepId = (stepId ?? '').trim();
+    if (trimmedStepId.isNotEmpty) {
+      return 'tool:$turnId:$trimmedStepId';
+    }
+    return 'tool:$turnId';
   }
 
   void _appendBlock(

@@ -74,7 +74,14 @@ class TurnProjectionDispatcher {
         if (finalizedMessageId != null) {
           _finalizedPreviewMessageIds.add(finalizedMessageId);
         }
-        _ref.read(runtimeStreamingPreviewStateProvider.notifier).clear();
+        // Per-entity preview takeover (see ChatTimelineProjectionService
+        // `_dropPreviewBlocksSupersededByTruth`): once the truth-side block
+        // lands carrying the same `logicalId`, the projection hides the
+        // matching preview block. A broad `clear()` here would also wipe
+        // tool_use preview blocks still flowing in the same SSE stream and
+        // re-introduce the takeover flash this refactor removes.
+        // Disposal-time cleanup in `AgentEventProcessor.dispose()` is kept as
+        // a safety net for end-of-turn.
         _activePreviewMessageId = null;
         if (finalizedTraceId.isNotEmpty) {
           _ref.read(streamingTraceRecorderProvider.notifier).recordStage(

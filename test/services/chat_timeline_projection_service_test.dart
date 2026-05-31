@@ -382,7 +382,9 @@ void main() {
       expect(runtimeAnalysisBlocks.single.payload?['isRuntimePreview'], isTrue);
     });
 
-    test('projects runtime tool use preview into tool workflow block', () {
+    test(
+        'suppresses generic runtime tool use preview so persisted toolInvocation owns the card',
+        () {
       final projection = service.build(
         groupId: 7,
         messages: [
@@ -415,13 +417,185 @@ void main() {
         ),
       );
 
+      // The bare "正在执行工具：xxx" running card adds no information for the
+      // user during streaming and is suppressed by default — the persisted
+      // toolInvocation message owns the real workflow card.
       final runtimeWorkflowBlocks = projection.assistantBlocks
           .where((block) => block.type == AssistantTurnBlockType.toolWorkflow)
           .toList(growable: false);
-      expect(runtimeWorkflowBlocks, hasLength(1));
-      expect(runtimeWorkflowBlocks.single.payload?['isRuntimePreview'], isTrue);
-      expect(runtimeWorkflowBlocks.single.payload?['toolName'], 'fetch_weather');
-      expect(runtimeWorkflowBlocks.single.payload?['rawArgumentsText'], '{"city":"Shanghai"}');
+      expect(runtimeWorkflowBlocks, isEmpty);
+    });
+
+    test(
+        'hides runtime text preview once persisted final response carries same logicalId',
+        () {
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我回答',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 31,
+            text: '这是最终回答',
+            role: MessageRole.assistant,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 3),
+            payloadJson: const {'isFinalAnswer': true},
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'message_text_1',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_text_1:text',
+                  blockType: StreamingContentBlockType.text,
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  text: '这是运行中的正文',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final finalBlocks = projection.assistantBlocks
+          .where((block) => block.type == AssistantTurnBlockType.finalResponse)
+          .toList(growable: false);
+      expect(finalBlocks, hasLength(1));
+      expect(finalBlocks.single.text, '这是最终回答');
+      expect(finalBlocks.single.payload?['isRuntimePreview'], isNot(true));
+      expect(finalBlocks.single.logicalId, 'final:7_30');
+    });
+
+    test(
+        'lets iteration-2 streaming text through when only intermediate planner message exists',
+        () {
+      // Regression: an intermediate planner message between tool iterations
+      // would previously claim `final:<turnId>` via the ChatBlockBuilder
+      // post-hoc upgrade, hiding the next iteration's streaming preview
+      // through over-aggressive logicalId dedup. Only messages tagged
+      // `isFinalAnswer == true` may own the dedup id.
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我查',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 31,
+            text: '先查询一下相关信息。',
+            role: MessageRole.assistant,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 1),
+            // Intermediate planner message — NOT tagged isFinalAnswer.
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'message_text_iter2',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 5),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 6),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_text_iter2:text',
+                  blockType: StreamingContentBlockType.text,
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 5),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 6),
+                  text: '基于查询结果的回答',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      // Two finalResponse blocks: the intermediate planner (no logicalId,
+      // truth-origin) and the preview's streaming text. Both visible —
+      // dedup does not fire because the intermediate planner does not
+      // carry the dedup id.
+      final finalBlocks = projection.assistantBlocks
+          .where((block) => block.type == AssistantTurnBlockType.finalResponse)
+          .toList(growable: false);
+      expect(finalBlocks, hasLength(2));
+      expect(
+        finalBlocks.where((b) => b.payload?['isRuntimePreview'] == true).single
+            .text,
+        '基于查询结果的回答',
+      );
+      expect(
+        finalBlocks.where((b) => b.payload?['isRuntimePreview'] != true).single
+            .logicalId,
+        isNull,
+      );
+    });
+
+    test(
+        'hides runtime tool preview once persisted toolInvocation carries same providerCallId',
+        () {
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '查一下天气',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 31,
+            text: '准备执行工具：fetch_weather',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolInvocation,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 2),
+            payloadJson: const {
+              'toolName': 'fetch_weather',
+              'providerCallId': 'call_weather_1',
+              'arguments': {'city': 'Shanghai'},
+              'status': 'running',
+              'summary': '正在查询天气',
+              'requiresConfirmation': false,
+            },
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'message_tool_1',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_tool_1:tool:0',
+                  blockType: StreamingContentBlockType.toolUse,
+                  toolUseId: 'call_weather_1',
+                  toolName: 'fetch_weather',
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  text: '{"city":"Shanghai"}',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final workflowBlocks = projection.assistantBlocks
+          .where((block) => block.type == AssistantTurnBlockType.toolWorkflow)
+          .toList(growable: false);
+      expect(workflowBlocks, hasLength(1));
+      expect(workflowBlocks.single.payload?['isRuntimePreview'], isNot(true));
+      expect(workflowBlocks.single.logicalId, 'tool:call_weather_1');
     });
 
     test('projects artifact block into assistant timeline snapshot', () async {

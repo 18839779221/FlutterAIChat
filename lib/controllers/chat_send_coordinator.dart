@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/debug/streaming_trace_snapshot.dart';
+import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
@@ -624,19 +624,22 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
   }
 
   String? _resolveLatestRuntimePreviewResponseText() {
-    final blocks = _ref.read(chatTimelineProjectionProvider).assistantBlocks;
-    for (final block in blocks.reversed) {
-      if (block.type != AssistantTurnBlockType.finalResponse) {
-        continue;
+    // Read straight from the preview state rather than from the timeline
+    // projection: once per-entity preview takeover dedup hides preview blocks
+    // whose truth counterpart has landed, the projection alone can no longer
+    // surface the streamed text we need for interruption recovery.
+    final previewState = _ref.read(runtimeStreamingPreviewStateProvider);
+    for (final message in previewState.messages.reversed) {
+      for (final block in message.blocks.reversed) {
+        if (block.blockType != StreamingContentBlockType.text) {
+          continue;
+        }
+        final text = block.text.trim();
+        if (text.isEmpty) {
+          continue;
+        }
+        return block.text;
       }
-      if (block.payload?['isRuntimePreview'] != true) {
-        continue;
-      }
-      final text = block.text?.trim();
-      if (text == null || text.isEmpty) {
-        continue;
-      }
-      return block.text;
     }
     return null;
   }

@@ -486,6 +486,11 @@ class AgentEventProcessor {
       status: MessageStatus.completed,
       reasoningContent: previousAssistantMessage?.reasoningContent ??
           _resolvedFinalAnswerReasoning(runtimeDraft),
+      // Distinguish the genuine terminal answer from intermediate planner
+      // messages. `ChatBlockBuilder` reads this to scope the `logicalId`
+      // dedup contract so a mid-turn planner message cannot block the
+      // streaming preview of a later iteration's final answer.
+      payloadJson: const {'isFinalAnswer': true},
     );
     final insertedId = await dbHelper.insertMessage(message, _groupId);
     message.id = insertedId;

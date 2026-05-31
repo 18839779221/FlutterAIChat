@@ -287,7 +287,10 @@ class RuntimeStreamingPreviewController
         ),
         super(const RuntimeStreamingPreviewState());
 
-  static const Duration _minPublishInterval = Duration(milliseconds: 16);
+  /// Coalesce preview state mutations to ~30Hz so the downstream Markdown
+  /// re-parse cost stays well under one 16ms frame budget per delta burst.
+  /// Mirrors the truth-side cadence used by `AssistantStreamOutputBuffer`.
+  static const Duration _minPublishInterval = Duration(milliseconds: 33);
 
   final Ref _ref;
   final RuntimeStreamingPreviewProjector _projector;

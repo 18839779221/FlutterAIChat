@@ -51,9 +51,20 @@ class ChatBlockBuilder {
     }
 
     for (final entry in lastAnalysisIndexByTurn.entries) {
+      final turnId = entry.key;
       final index = entry.value;
-      blocks[index] = blocks[index].copyWith(
+      final current = blocks[index];
+      // Only the genuine terminal message (tagged by `_onFinalAnswer` with
+      // `isFinalAnswer == true`) is allowed to own the `final:<turnId>`
+      // logical identity. Intermediate planner messages still get the
+      // finalResponse render type (to preserve their existing styling) but
+      // stay out of the dedup contract — otherwise the truth-side of an
+      // earlier planner message would block the streaming preview of a
+      // later iteration's final answer.
+      final isTerminalFinal = current.payload?['isFinalAnswer'] == true;
+      blocks[index] = current.copyWith(
         type: AssistantTurnBlockType.finalResponse,
+        logicalId: isTerminalFinal ? 'final:$turnId' : null,
       );
     }
 

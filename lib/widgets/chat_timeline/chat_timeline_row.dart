@@ -16,7 +16,6 @@ import 'package:ai_chat/widgets/animations/message_growth_animation.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/artifact_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
-import 'package:ai_chat/widgets/chat_blocks/streaming_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/structured_output_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_exception_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
@@ -139,26 +138,32 @@ class ChatTimelineRow extends ConsumerWidget {
         break;
       case AssistantTurnBlockType.finalResponse:
         final isRuntimePreview = block.payload?['isRuntimePreview'] == true;
+        final isStreaming =
+            sourceMessage?.status == MessageStatus.generating ||
+                isRuntimePreview;
+        // Stable cache key shared with the persisted state so the markdown
+        // KeepAlive subtree carries across the streaming→completed handoff
+        // instead of remounting. `logicalId` (when present) is the shared
+        // identity contract emitted by both projection sources.
+        final markdownCacheKey =
+            block.logicalId?.trim().isNotEmpty == true
+                ? 'final:${block.logicalId}'
+                : item.stableKey;
         blockWidget = GestureDetector(
           onLongPress: sourceMessage == null
               ? null
               : () => onLongPressMessage(sourceMessage),
-          child: sourceMessage?.status == MessageStatus.generating ||
-                  isRuntimePreview
-              ? StreamingResponseBlock(
-                  text: block.text ?? '',
-                  reasoningText: block.reasoningText,
-                  streamTraceId: block.payload?['streamTraceId'] as String?,
-                  streamTurnId: block.payload?['streamTurnId'] as String?,
-                )
-              : FinalResponseBlock(
-                  title: block.title ?? '最终回答',
-                  text: block.text ?? '',
-                  reasoningText: block.reasoningText,
-                  markdownCacheKey: item.stableKey,
-                  onReasoningExpansionChanged: (_) =>
-                      onActiveStatusLayoutChanged?.call(),
-                ),
+          child: FinalResponseBlock(
+            title: block.title ?? '最终回答',
+            text: block.text ?? '',
+            reasoningText: block.reasoningText,
+            markdownCacheKey: markdownCacheKey,
+            isStreaming: isStreaming,
+            streamTraceId: block.payload?['streamTraceId'] as String?,
+            streamTurnId: block.payload?['streamTurnId'] as String?,
+            onReasoningExpansionChanged: (_) =>
+                onActiveStatusLayoutChanged?.call(),
+          ),
         );
         break;
       case AssistantTurnBlockType.structuredOutput:

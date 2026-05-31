@@ -3,7 +3,6 @@ import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat/chat_timeline_projection.dart';
 import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
 import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
-import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/utils/logger.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
@@ -447,6 +446,7 @@ class ChatTimelineProjectionService {
         sequence: sequence,
         createdAt: block.createdAt,
         updatedAt: block.updatedAt,
+        logicalId: 'final:$turnId',
         text: block.text,
         payload: _runtimePreviewPayload(
           message: message,
@@ -476,60 +476,19 @@ class ChatTimelineProjectionService {
       );
     }
 
-    if ((block.toolName ?? '').trim() == 'create_artifact') {
-      return null;
-    }
-    final toolName = (block.toolName ?? '').trim();
-    if (toolName.isEmpty) {
-      return null;
-    }
-    final step = ToolWorkflowStep(
-      stepId: block.toolUseId?.trim().isNotEmpty == true
-          ? block.toolUseId!.trim()
-          : '$turnId-runtime-tool-$sequence',
-      turnId: turnId,
-      toolName: toolName,
-      title: '正在执行工具',
-      summary: '正在执行工具：$toolName',
-      status: ToolWorkflowStepStatus.running,
-      requiresConfirmation: false,
-      details: {
-        if (block.text.isNotEmpty) 'rawArgumentsText': block.text,
-      },
-    );
-    return AssistantTurnBlock(
-      id: block.contentBlockId,
-      turnId: turnId,
-      type: AssistantTurnBlockType.toolWorkflow,
-      sequence: sequence,
-      createdAt: block.createdAt,
-      updatedAt: block.updatedAt,
-      status: ToolWorkflowStepStatus.running.name,
-      title: step.title,
-      text: step.summary,
-      payload: {
-        ..._runtimePreviewPayload(
-          message: message,
-          messageId: message.messageId,
-          block: block,
-        ),
-        'toolName': toolName,
-        if (block.text.isNotEmpty) 'rawArgumentsText': block.text,
-        'steps': [
-          {
-            'stepId': step.stepId,
-            'turnId': step.turnId,
-            'toolName': step.toolName,
-            'title': step.title,
-            'summary': step.summary,
-            'status': step.status.name,
-            'requiresConfirmation': step.requiresConfirmation,
-            'details': step.details,
-          },
-        ],
-      },
-      workflowSteps: [step],
-    );
+    // Default: do NOT emit a generic streaming tool_use workflow card.
+    //
+    // A bare "正在执行工具：xxx" card adds no information for the user — the
+    // persisted truth `toolInvocation` message lands seconds later carrying
+    // the actual arguments and renders the proper card. Most tools
+    // (web_search, file tools, etc.) should skip the streaming preview.
+    //
+    // Tools that genuinely benefit from a live streaming view render
+    // through a dedicated pipeline:
+    //   - `create_artifact` is projected by `_buildRuntimeArtifactBlocks`
+    //   - future opt-in tools can branch on `block.toolName` here and
+    //     return their own typed runtime preview block
+    return null;
   }
 
   Map<String, dynamic> _runtimePreviewPayload({
@@ -606,8 +565,10 @@ class ChatTimelineProjectionService {
     required List<AssistantTurnBlock> baseBlocks,
     required List<AssistantTurnBlock> artifactBlocks,
   }) {
+    final filteredBaseBlocks = _dropPreviewBlocksSupersededByTruth(baseBlocks);
+
     final blocksByTurn = <String, List<AssistantTurnBlock>>{};
-    for (final block in baseBlocks) {
+    for (final block in filteredBaseBlocks) {
       blocksByTurn.putIfAbsent(block.turnId, () => []).add(block);
     }
     for (final artifactBlock in artifactBlocks) {
@@ -625,7 +586,7 @@ class ChatTimelineProjectionService {
 
     final merged = <AssistantTurnBlock>[];
     final seenTurnOrder = <String>[];
-    for (final block in baseBlocks) {
+    for (final block in filteredBaseBlocks) {
       if (!seenTurnOrder.contains(block.turnId)) {
         seenTurnOrder.add(block.turnId);
       }
@@ -654,6 +615,57 @@ class ChatTimelineProjectionService {
       },
     );
     return merged;
+  }
+
+  /// Drops preview-origin blocks whose [AssistantTurnBlock.logicalId] is
+  /// already represented by a truth-origin block.
+  ///
+  /// Implements the per-entity preview-takeover contract: once the persisted
+  /// truth ledger emits a block with the same logical identity (matching
+  /// `tool:<providerCallId>` or `final:<turnId>`), the corresponding runtime
+  /// preview block is hidden so the timeline stops rendering duplicates while
+  /// the SSE stream continues. Generalizes the artifact dedup applied at
+  /// [_buildRuntimeArtifactBlocks].
+  List<AssistantTurnBlock> _dropPreviewBlocksSupersededByTruth(
+    List<AssistantTurnBlock> blocks,
+  ) {
+    final truthLogicalIds = <String>{};
+    for (final block in blocks) {
+      if (block.payload?['isRuntimePreview'] == true) {
+        continue;
+      }
+      final logicalId = block.logicalId?.trim();
+      if (logicalId == null || logicalId.isEmpty) {
+        continue;
+      }
+      truthLogicalIds.add(logicalId);
+    }
+    if (truthLogicalIds.isEmpty) {
+      return blocks;
+    }
+    final filtered = <AssistantTurnBlock>[];
+    for (final block in blocks) {
+      final logicalId = block.logicalId?.trim();
+      final isPreview = block.payload?['isRuntimePreview'] == true;
+      if (isPreview &&
+          logicalId != null &&
+          logicalId.isNotEmpty &&
+          truthLogicalIds.contains(logicalId)) {
+        Logger.temp(
+          'ChatTimelineProjectionService',
+          'preview block superseded by truth',
+          reason: 'per-entity preview takeover',
+          data: {
+            'logicalId': logicalId,
+            'blockType': block.type.name,
+            'turnId': block.turnId,
+          },
+        );
+        continue;
+      }
+      filtered.add(block);
+    }
+    return filtered;
   }
 
   AssistantTurnBlock? _buildRuntimeDraftBlock(RuntimeAssistantDraft? draft) {

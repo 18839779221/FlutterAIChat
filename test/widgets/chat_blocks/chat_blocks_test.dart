@@ -6,7 +6,7 @@ import 'package:ai_chat/tools/core/tool_display_names.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/latest_message_running_status_tail.dart';
-import 'package:ai_chat/widgets/chat_blocks/streaming_response_block.dart';
+import 'package:ai_chat/widgets/animations/streaming_cursor.dart';
 import 'package:ai_chat/widgets/chat_blocks/unified_turn_status_bar.dart';
 import 'package:ai_chat/widgets/chat_timeline/stable_markdown_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
@@ -369,26 +369,48 @@ $$
       expect(find.byType(MarkdownBlockMath), findsOneWidget);
     });
 
-    testWidgets('streaming response stays close to completed markdown rhythm', (
+    testWidgets(
+        'streaming final response renders Markdown body without inline cursor', (
       tester,
     ) async {
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.light(),
           home: const Scaffold(
-            body: StreamingResponseBlock(
-              text: '这是一段正在生成的长回答，用来验证流式态和完成态之间不会出现明显视觉断层。',
+            body: FinalResponseBlock(
+              title: '最终回答',
+              text: '这是一段**正在**生成的长回答，用来验证流式态与完成态共享同一 Markdown 通道。',
+              isStreaming: true,
             ),
           ),
         ),
       );
 
-      final text = tester.widget<SelectableText>(find.byType(SelectableText));
+      // Streaming and completed phases share the exact same Markdown subtree
+      // so takeover is a pure text update; no inline cursor decoration is
+      // mounted (active-turn status surfaces the running signal elsewhere).
+      expect(find.byType(MarkdownBody), findsOneWidget);
+      expect(find.byType(SelectableText), findsNothing);
+      expect(find.byType(StreamingCursor), findsNothing);
+    });
 
-      expect(text.style!.fontSize, 13.2);
-      expect(text.style!.height, 1.48);
-      expect(text.style!.fontFamily, 'AnthropicSans');
-      expect(find.byType(AnimatedOpacity), findsOneWidget);
+    testWidgets('completed final response renders Markdown without cursor', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: FinalResponseBlock(
+              title: '最终回答',
+              text: '这是一段**完成态**的回答。',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(MarkdownBody), findsOneWidget);
+      expect(find.byType(StreamingCursor), findsNothing);
     });
 
     testWidgets('markdown content is isolated by repaint boundary', (
