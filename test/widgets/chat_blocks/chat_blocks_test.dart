@@ -454,7 +454,13 @@ $$
         ),
       );
 
-      expect(find.byType(MarkdownBody), findsOneWidget);
+      // The outer document is a MarkdownBody. Each table cell also nests its
+      // own MarkdownBody so inline syntax keeps working, so there will be
+      // more than one MarkdownBody in the tree. The point of this assertion
+      // is that the message stays on the FlutterMarkdownImpl path, which is
+      // proved by the presence of at least one MarkdownBody plus exactly
+      // one outer table widget.
+      expect(find.byType(MarkdownBody), findsWidgets);
       expect(find.byType(Table), findsOneWidget);
     });
 

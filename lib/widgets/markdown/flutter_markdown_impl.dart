@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:markdown/markdown.dart' as md;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'callout_block_syntax.dart';
@@ -9,6 +10,8 @@ import 'markdown_callout_builder.dart';
 import 'markdown_math_builder.dart';
 import 'math_block_syntax.dart';
 import 'math_inline_syntax.dart';
+import 'rich_table_block_syntax.dart';
+import 'rich_table_element_builder.dart';
 
 class FlutterMarkdownImpl extends StatelessWidget {
   final String data;
@@ -28,6 +31,14 @@ class FlutterMarkdownImpl extends StatelessWidget {
         selectable: false,
         fitContent: false,
         onTapLink: (text, href, title) => _launchUrl(text, href),
+        extensionSet: md.ExtensionSet(
+          [
+            const RichTableBlockSyntax(),
+            for (final s in md.ExtensionSet.gitHubFlavored.blockSyntaxes)
+              if (s is! md.TableSyntax) s,
+          ],
+          md.ExtensionSet.gitHubFlavored.inlineSyntaxes,
+        ),
         blockSyntaxes: const [
           MathBlockSyntax(),
           CalloutBlockSyntax(),
@@ -76,6 +87,7 @@ class FlutterMarkdownImpl extends StatelessWidget {
           'callout': MarkdownCalloutBuilder(),
           'code': CodeElementBuilder(),
           'pre': CodeBlockBuilder(),
+          'rich-table': RichTableElementBuilder(),
         },
       ),
     );

@@ -1,5 +1,7 @@
 import 'package:ai_chat/theme/app_theme.dart';
+import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
 import 'package:ai_chat/widgets/markdown/markdown_widget_impl.dart';
+import 'package:ai_chat/widgets/markdown/table_edge_fade_scroll_shell.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -56,5 +58,34 @@ void main() {
       expect(border.right.color.opacity, greaterThan(0));
       expect(border.bottom.color.opacity, greaterThan(0));
     });
+
+    testWidgets(
+      'FlutterMarkdownImpl renders a GFM table through TableEdgeFadeScrollShell',
+      (tester) async {
+        const data = '''
+| name | qty |
+|------|-----|
+| **apple** | `3` |
+| pear      | 2   |
+''';
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.light(),
+            home: const Scaffold(
+              body: SingleChildScrollView(
+                child: FlutterMarkdownImpl(data: data),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.byType(TableEdgeFadeScrollShell), findsOneWidget);
+        expect(find.byType(Table), findsOneWidget);
+        expect(find.textContaining('apple'), findsWidgets);
+        expect(find.textContaining('**apple**'), findsNothing);
+      },
+    );
   });
 }
