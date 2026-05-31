@@ -1,3 +1,4 @@
+import 'package:ai_chat/models/chat/active_turn_status_presentation.dart';
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/chat/tool_phase_visibility.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
@@ -13,6 +14,7 @@ import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/artifact_preview_surface.dart';
 import 'package:ai_chat/widgets/chat_blocks/streaming_response_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/unified_turn_status_bar.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_outcome_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
@@ -362,6 +364,92 @@ void main() {
           findsNothing);
     });
 
+    testWidgets(
+        'chat message list attaches unified status to the active anchor row',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          ChatMessage(
+            id: 1,
+            text: '问题',
+            role: MessageRole.user,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.plainText,
+          ),
+          ChatMessage(
+            id: 4,
+            text: '回答',
+            role: MessageRole.assistant,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+        activeTurnStatus: const ActiveTurnStatusPresentation(
+          phase: ActiveTurnStatusPhase.planning,
+          text: '正在规划下一步',
+          turnId: 'turn-4',
+          sourceMessageId: 4,
+          sourceKind: ActiveTurnStatusSourceKind.toolEvent,
+          allowFloating: true,
+        ),
+      );
+
+      expect(find.byType(UnifiedTurnStatusBar), findsOneWidget);
+      expect(find.text('正在规划下一步'), findsOneWidget);
+    });
+
+    testWidgets(
+        'chat timeline row only renders status for the designated anchor item',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          ChatMessage(
+            id: 1,
+            text: '第一轮问题',
+            role: MessageRole.user,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.plainText,
+          ),
+          ChatMessage(
+            id: 2,
+            text: '第一轮回答',
+            role: MessageRole.assistant,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.plainText,
+          ),
+          ChatMessage(
+            id: 3,
+            text: '第二轮问题',
+            role: MessageRole.user,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.plainText,
+          ),
+          ChatMessage(
+            id: 4,
+            text: '第二轮回答',
+            role: MessageRole.assistant,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+        activeTurnStatus: const ActiveTurnStatusPresentation(
+          phase: ActiveTurnStatusPhase.planning,
+          text: '正在规划下一步',
+          turnId: 'turn-4',
+          sourceMessageId: 4,
+          sourceKind: ActiveTurnStatusSourceKind.toolEvent,
+          allowFloating: true,
+        ),
+      );
+
+      expect(find.byType(UnifiedTurnStatusBar), findsOneWidget);
+      expect(find.text('正在规划下一步'), findsOneWidget);
+      expect(find.text('第一轮回答'), findsOneWidget);
+      expect(find.text('第二轮回答'), findsOneWidget);
+    });
+
     testWidgets('generating assistant text uses lightweight streaming block', (
       tester,
     ) async {
@@ -420,6 +508,26 @@ void main() {
       expect(find.byKey(const ValueKey('latest-message-running-tail')),
           findsOneWidget);
       expect(find.text('正在请求模型'), findsOneWidget);
+    });
+
+    testWidgets('idle phase can render explicit testing status copy',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '帮我总结一下',
+            role: MessageRole.user,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+        sendPhase: ChatSendPhase.idle,
+        sendStatusText: '测试边界状态',
+      );
+
+      expect(find.byKey(const ValueKey('latest-message-running-tail')),
+          findsOneWidget);
+      expect(find.text('测试边界状态'), findsOneWidget);
     });
 
     testWidgets('preparing phase after assistant output shows planning text',
@@ -1438,14 +1546,19 @@ void main() {
         scrollController.dispose();
       });
 
+      final baseTime = DateTime(2026, 5, 31, 12);
       container.read(messagesProvider.notifier).setMessages([
         for (var i = 0; i < 24; i++) ...[
           _buildMessage(
+            id: i * 2 + 1,
+            timestamp: baseTime.add(Duration(minutes: i * 2)),
             text: 'older user $i',
             role: MessageRole.user,
             contentType: MessageContentType.plainText,
           ),
           _buildMessage(
+            id: i * 2 + 2,
+            timestamp: baseTime.add(Duration(minutes: i * 2 + 1)),
             text: 'older assistant $i',
             role: MessageRole.assistant,
             contentType: MessageContentType.plainText,
@@ -1479,6 +1592,278 @@ void main() {
       await tester.pump(const Duration(milliseconds: 350));
 
       expect(scrollController.offset, closeTo(initialOffset + 180, 0.1));
+    });
+
+    testWidgets(
+        'floating visibility turns on when the inline status anchor scrolls out of view',
+        (tester) async {
+      final scrollController = ScrollController();
+      final container = ProviderContainer(
+        overrides: [
+          hasMoreMessagesProvider.overrideWith((ref) => false),
+          scrollControllerProvider.overrideWith((ref) => scrollController),
+          chatSendStateProvider.overrideWith(
+            (ref) => ChatSendStateNotifier()
+              ..update(
+                phase: ChatSendPhase.preparing,
+                isGenerating: false,
+              ),
+          ),
+          activeTurnStatusPresentationProvider.overrideWith(
+            (ref) => const ActiveTurnStatusPresentation(
+              phase: ActiveTurnStatusPhase.planning,
+              text: '正在规划下一步',
+              turnId: 'turn-scroll',
+              sourceMessageId: 48,
+              sourceKind: ActiveTurnStatusSourceKind.toolEvent,
+              allowFloating: true,
+            ),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        container.dispose();
+        scrollController.dispose();
+      });
+
+      final baseTime = DateTime(2026, 5, 31, 12);
+      container.read(messagesProvider.notifier).setMessages([
+        for (var i = 0; i < 24; i++) ...[
+          _buildMessage(
+            id: i * 2 + 1,
+            timestamp: baseTime.add(Duration(minutes: i * 2)),
+            text: 'older user $i',
+            role: MessageRole.user,
+            contentType: MessageContentType.plainText,
+          ),
+          _buildMessage(
+            id: i * 2 + 2,
+            timestamp: baseTime.add(Duration(minutes: i * 2 + 1)),
+            text: 'older assistant $i',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+      ]);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const Scaffold(
+              body: SizedBox(
+                height: 420,
+                child: ChatMessageList(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      scrollController.jumpTo(scrollController.position.maxScrollExtent);
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        container.read(activeTurnStatusFloatingVisibilityProvider),
+        isFalse,
+      );
+
+      scrollController.jumpTo(scrollController.position.minScrollExtent);
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        container.read(activeTurnStatusFloatingVisibilityProvider),
+        isTrue,
+      );
+    });
+
+    testWidgets(
+        'floating visibility turns off when the inline status anchor becomes visible again',
+        (tester) async {
+      final scrollController = ScrollController();
+      final container = ProviderContainer(
+        overrides: [
+          hasMoreMessagesProvider.overrideWith((ref) => false),
+          scrollControllerProvider.overrideWith((ref) => scrollController),
+          chatSendStateProvider.overrideWith(
+            (ref) => ChatSendStateNotifier()
+              ..update(
+                phase: ChatSendPhase.preparing,
+                isGenerating: false,
+              ),
+          ),
+          activeTurnStatusPresentationProvider.overrideWith(
+            (ref) => const ActiveTurnStatusPresentation(
+              phase: ActiveTurnStatusPhase.planning,
+              text: '正在规划下一步',
+              turnId: 'turn-scroll-back',
+              sourceMessageId: 48,
+              sourceKind: ActiveTurnStatusSourceKind.toolEvent,
+              allowFloating: true,
+            ),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        container.dispose();
+        scrollController.dispose();
+      });
+
+      final baseTime = DateTime(2026, 5, 31, 12);
+      container.read(messagesProvider.notifier).setMessages([
+        for (var i = 0; i < 24; i++) ...[
+          _buildMessage(
+            id: i * 2 + 1,
+            timestamp: baseTime.add(Duration(minutes: i * 2)),
+            text: 'older user $i',
+            role: MessageRole.user,
+            contentType: MessageContentType.plainText,
+          ),
+          _buildMessage(
+            id: i * 2 + 2,
+            timestamp: baseTime.add(Duration(minutes: i * 2 + 1)),
+            text: 'older assistant $i',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+      ]);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const Scaffold(
+              body: SizedBox(
+                height: 420,
+                child: ChatMessageList(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      scrollController.jumpTo(scrollController.position.maxScrollExtent);
+      await tester.pump();
+      await tester.pump();
+      expect(
+        container.read(activeTurnStatusFloatingVisibilityProvider),
+        isFalse,
+      );
+
+      scrollController.jumpTo(scrollController.position.minScrollExtent);
+      await tester.pump();
+      await tester.pump();
+      expect(
+        container.read(activeTurnStatusFloatingVisibilityProvider),
+        isTrue,
+      );
+
+      scrollController.jumpTo(scrollController.position.maxScrollExtent);
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        container.read(activeTurnStatusFloatingVisibilityProvider),
+        isFalse,
+      );
+    });
+
+    testWidgets(
+        'floating visibility updates when the active row grows after inline expansion',
+        (tester) async {
+      final scrollController = ScrollController();
+      final container = ProviderContainer(
+        overrides: [
+          hasMoreMessagesProvider.overrideWith((ref) => false),
+          scrollControllerProvider.overrideWith((ref) => scrollController),
+          activeTurnStatusPresentationProvider.overrideWith(
+            (ref) => const ActiveTurnStatusPresentation(
+              phase: ActiveTurnStatusPhase.planning,
+              text: '测试边界状态',
+              turnId: 'turn-expand',
+              sourceMessageId: 2,
+              sourceKind: ActiveTurnStatusSourceKind.toolEvent,
+              allowFloating: true,
+            ),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        container.dispose();
+        scrollController.dispose();
+      });
+
+      container.read(messagesProvider.notifier).setMessages([
+        ChatMessage(
+          id: 1,
+          text: '问题',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+        ),
+        ChatMessage(
+          id: 2,
+          text: '这是回答',
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+          reasoningContent: List.filled(80, '这里是额外展开后的长分析内容，会把状态条顶到屏幕外').join('\n'),
+        ),
+      ]);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const Scaffold(
+              body: SizedBox(
+                height: 180,
+                child: ChatMessageList(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      scrollController.jumpTo(scrollController.position.maxScrollExtent);
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        container.read(activeTurnStatusFloatingVisibilityProvider),
+        isFalse,
+      );
+
+      await tester.ensureVisible(find.text('思考过程'));
+      await tester.pump();
+      await tester.tap(find.text('思考过程'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 150));
+
+      final listRect = tester.getRect(find.byType(ChatMessageList));
+      final statusRect =
+          tester.getRect(find.byKey(const ValueKey('latest-message-running-tail')));
+      expect(statusRect.bottom, greaterThan(listRect.bottom));
+
+      expect(
+        container.read(activeTurnStatusFloatingVisibilityProvider),
+        isTrue,
+      );
     });
 
     testWidgets('assistant text does not expose removed structured output action',
@@ -1527,6 +1912,7 @@ Future<void> _pumpMessageList(
   required List<ChatMessage> messages,
   RuntimeStreamingPreviewState runtimePreviewState =
       const RuntimeStreamingPreviewState(),
+  ActiveTurnStatusPresentation? activeTurnStatus,
   TextEditingController? textController,
   FocusNode? focusNode,
   ToolUiRendererRegistry? registry,
@@ -1595,8 +1981,13 @@ Future<void> _pumpMessageList(
           ),
       ),
       runtimeStreamingPreviewStateProvider.overrideWith(
-        (ref) => RuntimeStreamingPreviewController()..state = runtimePreviewState,
+        (ref) =>
+            RuntimeStreamingPreviewController(ref)..state = runtimePreviewState,
       ),
+      if (activeTurnStatus != null)
+        activeTurnStatusPresentationProvider.overrideWith(
+          (ref) => activeTurnStatus,
+        ),
       if (registry != null)
         toolUiRendererRegistryProvider.overrideWith((ref) => registry),
     ],
@@ -1649,10 +2040,14 @@ ChatMessage _buildMessage({
   MessageStatus status = MessageStatus.completed,
   Map<String, dynamic>? payloadJson,
   String? reasoningContent,
+  int? id,
+  DateTime? timestamp,
 }) {
   return ChatMessage(
+    id: id,
     text: text,
     role: role,
+    timestamp: timestamp,
     status: status,
     reasoningContent: reasoningContent,
     contentType: contentType,

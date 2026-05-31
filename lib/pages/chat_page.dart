@@ -9,6 +9,7 @@ import '../theme/app_theme_spec.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../providers/chat_providers.dart';
+import '../widgets/chat_blocks/unified_turn_status_bar.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/chat_drawer.dart';
@@ -31,6 +32,7 @@ class ChatPage extends ConsumerStatefulWidget {
 }
 
 class _ChatPageState extends ConsumerState<ChatPage> {
+  static const String _debugIdleStatusText = '测试边界状态';
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
@@ -49,6 +51,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final pendingConfirmation = ref.watch(activePendingToolConfirmationProvider);
     final traceSnapshot = ref.watch(streamingTraceSnapshotProvider);
     final traceOverlayState = ref.watch(streamingTraceOverlayControllerProvider);
+    final activeTurnStatus = ref.watch(activeTurnStatusPresentationProvider);
+    final shouldShowFloatingActiveStatus =
+        ref.watch(activeTurnStatusFloatingVisibilityProvider);
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final chatController = ref.read(chatControllerProvider);
@@ -166,6 +171,35 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                         trustTool: true,
                       ),
                     ),
+                  if (activeTurnStatus != null &&
+                      activeTurnStatus.allowFloating &&
+                      shouldShowFloatingActiveStatus)
+                    IgnorePointer(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          spacing.md - 2,
+                          0,
+                          spacing.md - 2,
+                          spacing.xxs + 1,
+                        ),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 320),
+                            child: Transform.translate(
+                              offset: const Offset(0, -2),
+                              child: KeyedSubtree(
+                                key: const ValueKey('floating-turn-status-bar'),
+                                child: UnifiedTurnStatusBar(
+                                  status: activeTurnStatus,
+                                  variant: UnifiedTurnStatusBarVariant.floating,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ChatInput(
                     onContextWindowPressed: () {
                       unawaited(_showContextWindowSheet(context));
@@ -237,6 +271,22 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       backgroundColor: Theme.of(context).extension<AppThemeSpec>()!.chatBackground,
       builder: (sheetContext) => DebugTestCaseSheet(
         cases: library.allCases,
+        onShowIdleStatus: () {
+          ref.read(chatSendStateProvider.notifier).update(
+                phase: ChatSendPhase.idle,
+                isGenerating: false,
+                statusText: _debugIdleStatusText,
+              );
+          Navigator.of(sheetContext).pop();
+        },
+        onClearIdleStatus: () {
+          ref.read(chatSendStateProvider.notifier).update(
+                phase: ChatSendPhase.idle,
+                isGenerating: false,
+                clearStatusText: true,
+              );
+          Navigator.of(sheetContext).pop();
+        },
         onSelected: (item) {
           final textController = ref.read(textControllerProvider);
           final focusNode = ref.read(focusNodeProvider);

@@ -12,6 +12,7 @@ class FinalResponseBlock extends StatelessWidget {
   final String text;
   final String? reasoningText;
   final String? markdownCacheKey;
+  final ValueChanged<bool>? onReasoningExpansionChanged;
 
   const FinalResponseBlock({
     super.key,
@@ -19,6 +20,7 @@ class FinalResponseBlock extends StatelessWidget {
     required this.text,
     this.reasoningText,
     this.markdownCacheKey,
+    this.onReasoningExpansionChanged,
   });
 
   @override
@@ -59,6 +61,7 @@ class FinalResponseBlock extends StatelessWidget {
                   text: reasoningText!,
                   variant: ReasoningSectionVariant.finalAnswerCollapsible,
                   initiallyExpanded: false,
+                  onExpansionChanged: onReasoningExpansionChanged,
                 ),
               StableMarkdownBlock(
                 cacheKey:

@@ -1,5 +1,7 @@
+import 'package:ai_chat/models/chat/active_turn_status_presentation.dart';
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:flutter/widgets.dart';
 
 /// Stable description for a single rendered timeline row.
 enum ChatTimelineItemType {
@@ -27,8 +29,15 @@ class ChatTimelineItem {
   /// Assistant block payload for assistant rows.
   final AssistantTurnBlock? block;
 
-  /// Optional latest-running tail text appended under the last row.
-  final String? runningTailText;
+  /// Optional unified running status appended under the active anchor row.
+  final ActiveTurnStatusPresentation? activeStatus;
+
+  /// Stable anchor key used to measure inline status visibility in the viewport.
+  final Key? statusAnchorKey;
+
+  /// Whether the inline status should stay laid out but visually hidden because
+  /// the floating host is currently active.
+  final bool hideInlineStatus;
 
   const ChatTimelineItem({
     required this.stableKey,
@@ -37,6 +46,8 @@ class ChatTimelineItem {
     this.sourceMessage,
     this.sourceMessages = const [],
     this.block,
-    this.runningTailText,
+    this.activeStatus,
+    this.statusAnchorKey,
+    this.hideInlineStatus = false,
   });
 }

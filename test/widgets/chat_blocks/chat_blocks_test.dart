@@ -1,3 +1,4 @@
+import 'package:ai_chat/models/chat/active_turn_status_presentation.dart';
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/theme/app_theme.dart';
@@ -6,6 +7,7 @@ import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/latest_message_running_status_tail.dart';
 import 'package:ai_chat/widgets/chat_blocks/streaming_response_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/unified_turn_status_bar.dart';
 import 'package:ai_chat/widgets/chat_timeline/stable_markdown_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
@@ -96,6 +98,53 @@ void main() {
           home: const Scaffold(
             body: LatestMessageRunningStatusTail(
               statusText: '正在规划下一步',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('正在规划下一步'), findsOneWidget);
+      expect(find.byType(AnimatedOpacity), findsOneWidget);
+    });
+
+    testWidgets('unified turn status bar renders restrained running copy',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: UnifiedTurnStatusBar(
+              status: ActiveTurnStatusPresentation(
+                phase: ActiveTurnStatusPhase.planning,
+                text: '正在规划下一步',
+                turnId: 'turn-1',
+                sourceKind: ActiveTurnStatusSourceKind.toolEvent,
+                allowFloating: true,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('正在规划下一步'), findsOneWidget);
+      expect(find.byType(AnimatedOpacity), findsOneWidget);
+    });
+
+    testWidgets('floating unified turn status bar keeps floating decoration',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: UnifiedTurnStatusBar(
+              status: ActiveTurnStatusPresentation(
+                phase: ActiveTurnStatusPhase.planning,
+                text: '正在规划下一步',
+                turnId: 'turn-floating',
+                sourceKind: ActiveTurnStatusSourceKind.toolEvent,
+                allowFloating: true,
+              ),
+              variant: UnifiedTurnStatusBarVariant.floating,
             ),
           ),
         ),

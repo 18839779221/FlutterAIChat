@@ -6,11 +6,15 @@ import 'package:flutter/material.dart';
 class DebugTestCaseSheet extends StatelessWidget {
   final List<DebugTestCase> cases;
   final ValueChanged<DebugTestCase> onSelected;
+  final VoidCallback? onShowIdleStatus;
+  final VoidCallback? onClearIdleStatus;
 
   const DebugTestCaseSheet({
     super.key,
     required this.cases,
     required this.onSelected,
+    this.onShowIdleStatus,
+    this.onClearIdleStatus,
   });
 
   @override
@@ -51,6 +55,27 @@ class DebugTestCaseSheet extends StatelessWidget {
                   height: 1.4,
                 ),
               ),
+              if (onShowIdleStatus != null || onClearIdleStatus != null) ...[
+                SizedBox(height: spacing.md),
+                Wrap(
+                  spacing: spacing.xs,
+                  runSpacing: spacing.xs,
+                  children: [
+                    if (onShowIdleStatus != null)
+                      OutlinedButton(
+                        key: const ValueKey('debug-idle-status-button'),
+                        onPressed: onShowIdleStatus,
+                        child: const Text('显示测试状态'),
+                      ),
+                    if (onClearIdleStatus != null)
+                      TextButton(
+                        key: const ValueKey('debug-clear-idle-status-button'),
+                        onPressed: onClearIdleStatus,
+                        child: const Text('清除测试状态'),
+                      ),
+                  ],
+                ),
+              ],
               SizedBox(height: spacing.md),
               Expanded(
                 child: ListView.separated(
