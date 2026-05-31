@@ -1595,7 +1595,7 @@ Future<void> _pumpMessageList(
           ),
       ),
       runtimeStreamingPreviewStateProvider.overrideWith(
-        (ref) => RuntimeStreamingPreviewController()..state = runtimePreviewState,
+        (ref) => RuntimeStreamingPreviewController(ref)..state = runtimePreviewState,
       ),
       if (registry != null)
         toolUiRendererRegistryProvider.overrideWith((ref) => registry),
