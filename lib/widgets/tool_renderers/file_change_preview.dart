@@ -4,6 +4,8 @@ import '../../theme/app_theme_spec.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
+import '../shared/file_highlight_language.dart';
+import '../shared/highlighted_code_content.dart';
 import '../technical_content_surface.dart';
 
 enum _FileChangeLineKind {
@@ -27,11 +29,14 @@ class _FileChangeLine {
 class FileChangePreview extends StatelessWidget {
   const FileChangePreview({
     super.key,
+    required this.filePath,
     required this.oldContent,
     required this.newContent,
     required this.truncated,
     this.forceAdded = false,
   });
+
+  final String filePath;
 
   /// Content before the file mutation. Empty for newly created files.
   final String oldContent;
@@ -50,6 +55,7 @@ class FileChangePreview extends StatelessWidget {
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
+    final language = fileHighlightLanguageForPath(filePath);
     final lines = _buildLines();
     if (lines.isEmpty) {
       return const SizedBox.shrink();
@@ -62,7 +68,12 @@ class FileChangePreview extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ...lines.map((line) => _PreviewLineRow(line: line)),
+            ...lines.map(
+              (line) => _PreviewLineRow(
+                line: line,
+                language: language,
+              ),
+            ),
             if (truncated)
               Padding(
                 padding: EdgeInsets.all(spacing.sm),
@@ -189,9 +200,11 @@ class FileChangePreview extends StatelessWidget {
 class _PreviewLineRow extends StatelessWidget {
   const _PreviewLineRow({
     required this.line,
+    required this.language,
   });
 
   final _FileChangeLine line;
+  final String language;
 
   @override
   Widget build(BuildContext context) {
@@ -199,7 +212,7 @@ class _PreviewLineRow extends StatelessWidget {
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final background = _backgroundColor(colors);
     final textColor = _textColor(colors);
-    final sign = _sign;
+    final sign = this.sign;
 
     return Container(
       color: background,
@@ -211,26 +224,25 @@ class _PreviewLineRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 28,
+            width: 16,
             child: Text(
-              line.lineNumber?.toString() ?? '',
-              textAlign: TextAlign.right,
+              sign,
+              textAlign: TextAlign.center,
               style: AppTypography.codeStyle(
-                color: colors.secondaryText.withValues(alpha: 0.72),
-                fontSize: 11,
+                color: textColor,
+                fontSize: 12,
                 height: 1.5,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
           SizedBox(width: spacing.xs),
           Expanded(
-            child: Text(
-              '$sign ${line.text}',
-              style: AppTypography.codeStyle(
-                color: textColor,
-                fontSize: 12,
-                height: 1.5,
-              ),
+            child: HighlightedCodeContent(
+              code: line.text,
+              language: language,
+              fontSize: 12,
+              lineHeight: 1.5,
             ),
           ),
         ],
@@ -238,7 +250,7 @@ class _PreviewLineRow extends StatelessWidget {
     );
   }
 
-  String get _sign {
+  String get sign {
     switch (line.kind) {
       case _FileChangeLineKind.added:
         return '+';

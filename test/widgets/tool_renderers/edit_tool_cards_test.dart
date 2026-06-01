@@ -1,6 +1,7 @@
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/theme/app_theme.dart';
+import 'package:ai_chat/widgets/shared/highlighted_code_content.dart';
 import 'package:ai_chat/widgets/technical_content_surface.dart';
 import 'package:ai_chat/widgets/tool_renderers/edit_tool_result_card.dart';
 import 'package:ai_chat/widgets/tool_renderers/edit_tool_workflow_card.dart';
@@ -102,8 +103,24 @@ void main() {
         ),
       );
 
-      expect(find.textContaining('- 我的爱好是足球。'), findsOneWidget);
-      expect(find.textContaining('+ 我的爱好是打篮球。'), findsOneWidget);
+      expect(find.text('-'), findsOneWidget);
+      expect(find.text('+'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is HighlightedCodeContent &&
+              widget.code == '我的爱好是足球。',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is HighlightedCodeContent &&
+              widget.code == '我的爱好是打篮球。',
+        ),
+        findsOneWidget,
+      );
       expect(find.text('hobby.txt'), findsOneWidget);
       expect(find.text('步骤 1'), findsNothing);
       expect(find.byType(TechnicalContentSurface), findsOneWidget);
@@ -135,6 +152,7 @@ void main() {
         ),
       );
 
+      expect(find.text('EDIT'), findsOneWidget);
       expect(find.text('lib/main.dart'), findsOneWidget);
       expect(find.text('替换 2 处'), findsOneWidget);
       expect(find.text('300 -> 316 字符'), findsOneWidget);
@@ -174,9 +192,34 @@ void main() {
         ),
       );
 
-      expect(find.textContaining('- final value = old;'), findsOneWidget);
-      expect(find.textContaining('+ final value = new;'), findsOneWidget);
-      expect(find.textContaining('  print(value);'), findsOneWidget);
+      expect(find.text('EDIT'), findsOneWidget);
+      expect(find.byType(HighlightedCodeContent), findsWidgets);
+      expect(find.text('-'), findsOneWidget);
+      expect(find.text('+'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is HighlightedCodeContent &&
+              widget.code == 'final value = old;',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is HighlightedCodeContent &&
+              widget.code == 'final value = new;',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is HighlightedCodeContent &&
+              widget.code == 'print(value);',
+        ),
+        findsWidgets,
+      );
     });
   });
 }

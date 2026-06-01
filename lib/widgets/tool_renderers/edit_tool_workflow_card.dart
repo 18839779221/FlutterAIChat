@@ -225,6 +225,7 @@ class _WorkflowStepDetailRow extends StatelessWidget {
           if (oldContent.isNotEmpty || newContent.isNotEmpty) ...[
             SizedBox(height: spacing.xs),
             FileChangePreview(
+              filePath: filePath,
               oldContent: oldContent,
               newContent: newContent,
               truncated: false,

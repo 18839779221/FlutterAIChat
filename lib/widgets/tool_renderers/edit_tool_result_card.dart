@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../models/tool/tool_result.dart';
 import '../../theme/app_theme_spec.dart';
-import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
+import '../../theme/app_typography.dart';
 import 'file_change_preview.dart';
+import 'file_tool_result_surface.dart';
 
 class EditToolResultCard extends StatefulWidget {
   const EditToolResultCard({
@@ -23,9 +24,7 @@ class _EditToolResultCardState extends State<EditToolResultCard> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
-    final radius = Theme.of(context).extension<AppRadius>()!;
     final data = widget.result.data;
     final filePath = (data['filePath'] ?? '').toString();
     final replacementCount = data['replacementCount'];
@@ -36,62 +35,26 @@ class _EditToolResultCardState extends State<EditToolResultCard> {
     final hasPreview =
         oldContentPreview.isNotEmpty || newContentPreview.isNotEmpty;
 
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(spacing.md),
-      decoration: BoxDecoration(
-        color: colors.toolOutcomeSurface,
-        borderRadius: BorderRadius.circular(radius.md + 2),
-      ),
+    return FileToolResultSurface(
+      toolLabel: 'EDIT',
+      filePath: filePath,
+      primaryMeta: replacementCount is num
+          ? '替换 ${replacementCount.toInt()} 处'
+          : null,
+      secondaryMeta: oldLength is num && newLength is num
+          ? '${oldLength.toInt()} -> ${newLength.toInt()} 字符'
+          : null,
+      summary: widget.result.summary,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            filePath,
-            style: TextStyle(
-              color: colors.primaryText,
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          if (replacementCount is num) ...[
-            SizedBox(height: spacing.xs),
-            Text(
-              '替换 ${replacementCount.toInt()} 处',
-              style: TextStyle(
-                color: colors.primaryText,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-          if (oldLength is num && newLength is num) ...[
-            SizedBox(height: spacing.xxs),
-            Text(
-              '${oldLength.toInt()} -> ${newLength.toInt()} 字符',
-              style: TextStyle(
-                color: colors.secondaryText,
-                fontSize: 12,
-              ),
-            ),
-          ],
-          SizedBox(height: spacing.xs),
-          Text(
-            widget.result.summary,
-            style: TextStyle(
-              color: colors.secondaryText,
-              fontSize: 12.5,
-              height: 1.42,
-            ),
-          ),
-          if (hasPreview) ...[
-            SizedBox(height: spacing.sm),
+          if (hasPreview)
             FileChangePreview(
+              filePath: filePath,
               oldContent: oldContentPreview,
               newContent: newContentPreview,
               truncated: data['contentPreviewTruncated'] == true,
             ),
-          ],
           SizedBox(height: spacing.sm),
           TextButton(
             onPressed: () => setState(() => _expanded = !_expanded),
@@ -127,7 +90,7 @@ class _DetailLine extends StatelessWidget {
       padding: EdgeInsets.only(top: spacing.xxs),
       child: Text(
         label.isEmpty ? value : '$label: $value',
-        style: TextStyle(
+        style: AppTypography.uiStyle(
           color: colors.primaryText,
           fontSize: 11.5,
           height: 1.4,

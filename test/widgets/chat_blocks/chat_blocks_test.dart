@@ -19,6 +19,7 @@ import 'package:ai_chat/widgets/markdown/code_widget.dart';
 import 'package:ai_chat/widgets/markdown/markdown_callout_block.dart';
 import 'package:ai_chat/widgets/markdown/markdown_math_widgets.dart';
 import 'package:ai_chat/widgets/markdown/table_edge_fade_scroll_shell.dart';
+import 'package:ai_chat/widgets/shared/highlighted_code_content.dart';
 import 'package:ai_chat/widgets/technical_content_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -497,6 +498,7 @@ $$
       );
 
       expect(find.byType(TechnicalContentSurface), findsOneWidget);
+      expect(find.byType(HighlightedCodeContent), findsOneWidget);
     });
 
     testWidgets('table edge fades react to horizontal scroll extent', (
