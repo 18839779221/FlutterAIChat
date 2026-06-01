@@ -62,50 +62,81 @@ class RichTableElementBuilder extends MarkdownElementBuilder {
         height: 1.35,
       );
 
-      final rows = <TableRow>[];
-      _appendRows(
-        rows,
-        table,
-        sectionTag: 'rich-thead',
-        rowDecoration: BoxDecoration(color: tableHeaderFill),
-        textStyle: headerStyle,
-        defaultAlign: TextAlign.center,
-      );
-      _appendRows(
-        rows,
-        table,
-        sectionTag: 'rich-tbody',
-        rowDecoration: BoxDecoration(color: tableBodyFill),
-        textStyle: bodyStyle,
-        defaultAlign: TextAlign.left,
-      );
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final availableWidth = constraints.hasBoundedWidth
+              ? constraints.maxWidth
+              : MediaQuery.sizeOf(context).width;
+          final contentWidth = (availableWidth - 4).clamp(0.0, double.infinity);
+          final cellMaxWidth =
+              contentWidth > 0 ? contentWidth * 0.8 : double.infinity;
+          final rows = _buildRows(
+            table,
+            headerStyle: headerStyle,
+            bodyStyle: bodyStyle,
+            tableHeaderFill: tableHeaderFill,
+            tableBodyFill: tableBodyFill,
+            cellMaxWidth: cellMaxWidth,
+          );
 
-      if (rows.isEmpty) return const SizedBox.shrink();
+          if (rows.isEmpty) return const SizedBox.shrink();
 
-      final tableWidget = Table(
-        defaultColumnWidth: const IntrinsicColumnWidth(),
-        border: TableBorder(
-          horizontalInside:
-              BorderSide(color: tableDividerColor, width: 0.7),
-        ),
-        children: rows,
-      );
+          final tableWidget = Table(
+            defaultColumnWidth: const IntrinsicColumnWidth(),
+            border: TableBorder(
+              horizontalInside:
+                  BorderSide(color: tableDividerColor, width: 0.7),
+            ),
+            children: rows,
+          );
 
-      return Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          color: tableShellFill,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: TableEdgeFadeScrollShell(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: tableWidget,
-          ),
-        ),
+          return Container(
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: tableShellFill,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: TableEdgeFadeScrollShell(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: tableWidget,
+              ),
+            ),
+          );
+        },
       );
     };
+  }
+
+  List<TableRow> _buildRows(
+    md.Element table, {
+    required TextStyle headerStyle,
+    required TextStyle bodyStyle,
+    required Color tableHeaderFill,
+    required Color tableBodyFill,
+    required double cellMaxWidth,
+  }) {
+    final rows = <TableRow>[];
+    _appendRows(
+      rows,
+      table,
+      sectionTag: 'rich-thead',
+      rowDecoration: BoxDecoration(color: tableHeaderFill),
+      textStyle: headerStyle,
+      defaultAlign: TextAlign.center,
+      cellMaxWidth: cellMaxWidth,
+    );
+    _appendRows(
+      rows,
+      table,
+      sectionTag: 'rich-tbody',
+      rowDecoration: BoxDecoration(color: tableBodyFill),
+      textStyle: bodyStyle,
+      defaultAlign: TextAlign.left,
+      cellMaxWidth: cellMaxWidth,
+    );
+    return rows;
   }
 
   void _appendRows(
@@ -115,6 +146,7 @@ class RichTableElementBuilder extends MarkdownElementBuilder {
     required BoxDecoration rowDecoration,
     required TextStyle textStyle,
     required TextAlign defaultAlign,
+    required double cellMaxWidth,
   }) {
     final children = table.children;
     if (children == null) return;
@@ -138,6 +170,7 @@ class RichTableElementBuilder extends MarkdownElementBuilder {
               cell,
               textStyle: textStyle,
               defaultAlign: defaultAlign,
+              maxWidth: cellMaxWidth,
             ),
         ],
       ));
@@ -148,6 +181,7 @@ class RichTableElementBuilder extends MarkdownElementBuilder {
     md.Element cell, {
     required TextStyle textStyle,
     required TextAlign defaultAlign,
+    double? maxWidth,
   }) {
     final align = _alignFor(cell, defaultAlign);
     final cellMarkdown = RichTableInlineSerializer.serialize(
@@ -156,30 +190,35 @@ class RichTableElementBuilder extends MarkdownElementBuilder {
     return TableCell(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-        child: DefaultTextStyle(
-          style: textStyle,
-          textAlign: align,
-          child: MarkdownBody(
-            data: cellMarkdown,
-            selectable: false,
-            fitContent: true,
-            extensionSet: md.ExtensionSet.gitHubFlavored,
-            inlineSyntaxes: [MathInlineSyntax()],
-            blockSyntaxes: const [
-              MathBlockSyntax(),
-              CalloutBlockSyntax(),
-            ],
-            builders: {
-              'math-inline': MarkdownInlineMathBuilder(),
-              'math-block': MarkdownBlockMathBuilder(),
-              'callout': MarkdownCalloutBuilder(),
-              'code': CodeElementBuilder(),
-              'pre': CodeBlockBuilder(),
-            },
-            styleSheet: MarkdownStyleSheet(
-              p: textStyle,
-              blockSpacing: 0,
-              textAlign: _wrapAlignFor(align),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: maxWidth ?? double.infinity,
+          ),
+          child: DefaultTextStyle(
+            style: textStyle,
+            textAlign: align,
+            child: MarkdownBody(
+              data: cellMarkdown,
+              selectable: false,
+              fitContent: true,
+              extensionSet: md.ExtensionSet.gitHubFlavored,
+              inlineSyntaxes: [MathInlineSyntax()],
+              blockSyntaxes: const [
+                MathBlockSyntax(),
+                CalloutBlockSyntax(),
+              ],
+              builders: {
+                'math-inline': MarkdownInlineMathBuilder(),
+                'math-block': MarkdownBlockMathBuilder(),
+                'callout': MarkdownCalloutBuilder(),
+                'code': CodeElementBuilder(),
+                'pre': CodeBlockBuilder(),
+              },
+              styleSheet: MarkdownStyleSheet(
+                p: textStyle,
+                blockSpacing: 0,
+                textAlign: _wrapAlignFor(align),
+              ),
             ),
           ),
         ),

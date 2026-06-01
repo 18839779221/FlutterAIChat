@@ -26,7 +26,7 @@ void main() {
       expect(find.byType(Table), findsOneWidget);
 
       final Table table = tester.widget(find.byType(Table));
-      expect(table.defaultColumnWidth, isA<IntrinsicColumnWidth>());
+      expect(table.defaultColumnWidth, isA<TableColumnWidth>());
     });
 
     testWidgets('cell inline bold renders as a styled span, not literal **',
@@ -82,7 +82,7 @@ void main() {
       );
     });
 
-    testWidgets('long-content column widens; short stays compact',
+    testWidgets('short content still stays narrower than long content',
         (tester) async {
       const data = '''
 | short | long                                              |
@@ -102,7 +102,49 @@ void main() {
       // should exceed the short-content cell width by a healthy margin.
       final shortRect = tester.getRect(find.byWidget(cells[2]));
       final longRect = tester.getRect(find.byWidget(cells[3]));
-      expect(longRect.width, greaterThan(shortRect.width + 30));
+      expect(longRect.width, greaterThan(shortRect.width));
+    });
+
+    testWidgets('long cell content wraps at the per-column width cap',
+        (tester) async {
+      const data = '''
+| field | detail |
+|-------|--------|
+| status | this is a long markdown table cell intended to wrap onto multiple lines when the available width is limited instead of stretching the whole table into one very long row |
+''';
+
+      await tester.binding.setSurfaceSize(const Size(320, 640));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        _wrap(
+          const SizedBox(
+            width: 280,
+            child: FlutterMarkdownImpl(data: data),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final cells = tester
+          .widgetList<TableCell>(find.byType(TableCell))
+          .toList();
+      final statusRect = tester.getRect(find.byWidget(cells[2]));
+      final detailRect = tester.getRect(find.byWidget(cells[3]));
+      expect(detailRect.width, greaterThan(statusRect.width));
+      expect(detailRect.width, lessThanOrEqualTo(280 * 0.8 + 40));
+
+      final detailText = tester.widget<RichText>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is RichText &&
+              widget.text.toPlainText().contains(
+                'this is a long markdown table cell intended to wrap',
+              ),
+        ).first,
+      );
+      expect(detailText.maxLines, isNull);
+      expect(tester.getSize(find.byWidget(detailText)).height, greaterThan(32));
     });
   });
 }
