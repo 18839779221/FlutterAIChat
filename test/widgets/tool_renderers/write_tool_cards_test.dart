@@ -1,6 +1,7 @@
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/theme/app_theme.dart';
+import 'package:ai_chat/widgets/shared/highlighted_code_content.dart';
 import 'package:ai_chat/widgets/technical_content_surface.dart';
 import 'package:ai_chat/widgets/tool_renderers/write_tool_result_card.dart';
 import 'package:ai_chat/widgets/tool_renderers/write_tool_workflow_card.dart';
@@ -92,11 +93,18 @@ void main() {
         ),
       );
 
-      expect(find.textContaining('+ 我的爱好是打篮球。'), findsOneWidget);
+      expect(find.text('+'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is HighlightedCodeContent &&
+              widget.code == '我的爱好是打篮球。',
+        ),
+        findsOneWidget,
+      );
       expect(find.text('hobby.txt'), findsOneWidget);
       expect(find.text('步骤 1'), findsNothing);
       expect(find.textContaining('写入内容预览'), findsNothing);
-      expect(find.text('1'), findsOneWidget);
       expect(find.byType(TechnicalContentSurface), findsOneWidget);
     });
 
@@ -130,6 +138,7 @@ void main() {
         ),
       );
 
+      expect(find.text('WRITE'), findsOneWidget);
       expect(find.text('docs/plan.md'), findsOneWidget);
       expect(find.text('新建文件'), findsOneWidget);
       expect(find.text('0 -> 120 字符'), findsOneWidget);
@@ -168,10 +177,15 @@ void main() {
         ),
       );
 
-      expect(find.textContaining('+ # Plan'), findsOneWidget);
-      expect(find.textContaining('+ - Build preview'), findsOneWidget);
-      expect(find.text('1'), findsOneWidget);
-      expect(find.text('2'), findsOneWidget);
+      expect(find.text('WRITE'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is HighlightedCodeContent &&
+              widget.code == '# Plan\n- Build preview',
+        ),
+        findsOneWidget,
+      );
     });
   });
 }

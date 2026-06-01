@@ -2,12 +2,10 @@ import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_typography.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_highlight/flutter_highlight.dart';
-import 'package:flutter_highlight/themes/a11y-dark.dart';
-import 'package:flutter_highlight/themes/a11y-light.dart';
 
 import '../technical_content_surface.dart';
 import 'flutter_markdown_reader_tokens.dart';
+import '../shared/highlighted_code_content.dart';
 
 class CodeBlockWidget extends StatefulWidget {
   final String code;
@@ -39,12 +37,11 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
         ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
-          child: _autoLineBreak
-              ? _highlightWidget(context)
-              : SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: _highlightWidget(context),
-                ),
+          child: HighlightedCodeContent(
+            code: widget.code,
+            language: widget.language,
+            autoLineBreak: _autoLineBreak,
+          ),
         ),
       ),
     );
@@ -94,30 +91,6 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
       ),
       contentPadding: EdgeInsets.zero,
       child: content,
-    );
-  }
-
-  Widget _highlightWidget(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final markdownTokens =
-        Theme.of(context).extension<AppThemeSpec>()!.markdown;
-    final baseTheme = isDark ? a11yDarkTheme : a11yLightTheme;
-    final highlightTheme = Map<String, TextStyle>.from(baseTheme);
-    final rootStyle = highlightTheme['root'] ?? const TextStyle();
-    highlightTheme['root'] = rootStyle.copyWith(
-      backgroundColor: Colors.transparent,
-    );
-
-    return HighlightView(
-      widget.code,
-      language: widget.language,
-      theme: highlightTheme,
-      padding: EdgeInsets.zero,
-      textStyle: AppTypography.codeStyle(
-        color: markdownTokens.codeForeground,
-        fontSize: 12.5,
-        height: 1.45,
-      ),
     );
   }
 }
