@@ -6,7 +6,7 @@
 
 **架构：** 先建立基于 `ThemeData + ColorScheme + ThemeExtension` 的全局设计系统，再把聊天页从“按消息类型分支渲染”迁移到“assistant turn blocks 渲染”。`tool call` 统一落到可折叠 workflow card 中，当前步骤展开、历史步骤折叠；首版 block 先以内存映射为主，避免立刻做重型数据库迁移。
 
-**技术栈：** Flutter、Material 3、flutter_riverpod、现有 chat/tool service、SharedPreferences 设置存储、Android Droidrun 真机自动化
+**技术栈：** Flutter、Material 3、flutter_riverpod、现有 chat/tool service、SharedPreferences 设置存储、Android 真机手动验证
 
 ---
 
@@ -595,7 +595,7 @@ flutter analyze
 flutter test
 ```
 
-- [ ] **步骤 4：运行 Android Droidrun smoke**
+- [ ] **步骤 4：运行 Android 真机发送回归**
 
 确认：
 - 仍能正常发送消息

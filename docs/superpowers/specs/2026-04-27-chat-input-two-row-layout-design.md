@@ -146,7 +146,7 @@ class ContextWindowUsageIndicator extends StatelessWidget {
 - `snapshot != null` 时百分比与圆环可见，点击触发 `onContextWindowPressed` 回调一次；
   - 发送按钮在 `idle` / `streamingResponse` / `preparing` 三态下图标与可点击性正确（至少覆盖 idle + streamingResponse）；
 - **回归**：`fvm flutter analyze` + `fvm flutter test` 全量通过；
-- **端到端**：按 `AGENTS.md` 推荐，在 Android 真机或 Droidrun driver smoke 上手动确认输入框视觉与发送路径。
+- **端到端**：按 `AGENTS.md` 推荐，在 Android 真机安装最新 debug 包后手动确认输入框视觉与发送路径。
 
 ## 8. 风险与回滚
 

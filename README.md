@@ -141,15 +141,13 @@ fvm flutter test
 ## 测试与自动化
 
 - Web 回归推荐固定 origin 运行，避免本地存储因 host / port 变化而失效
-- Android 提供覆盖安装脚本与 Droidrun 真机冒烟脚本
+- Android 提供覆盖安装脚本，真机回归默认使用手动验证
 - LLM 接入改动除了本地测试外，也支持 opt-in 的 live contract tests
 
 常用脚本：
 
 ```bash
 bash scripts/android_install_debug.sh
-bash scripts/android_droidrun_driver_smoke.sh
-bash scripts/android_droidrun_chat_smoke.sh
 bash scripts/run_live_llm_contract_tests.sh minimax-openai
 HEADLESS_LIVE_PROVIDER_RESPONSES=my-responses-provider flutter test --tags live-headless-agent test/integration/chat_send_live/chat_send_live_responses_test.dart
 ```

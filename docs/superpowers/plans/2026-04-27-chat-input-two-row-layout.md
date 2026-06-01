@@ -719,7 +719,7 @@ Expected: 全部通过。若有不相关的既存 flaky 用例，不要在此 PR
 按 `AGENTS.md`：
 
 - 有连接的 Android 真机时：`bash scripts/android_install_debug.sh` 安装并目视验证输入框两行布局、圆环出现、发送可用；
-- 或：`bash scripts/android_droidrun_driver_smoke.sh` 跑一次发送回归。
+- 或：在安装最新 debug 包后手动跑一次发送回归。
 
 - [ ] **Step 4：确认 README/AGENTS 无需更新**
 
