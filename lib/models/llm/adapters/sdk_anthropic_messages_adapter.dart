@@ -2,11 +2,13 @@ import 'dart:convert';
 
 import 'package:anthropic_sdk_dart/anthropic_sdk_dart.dart' as anthropic;
 
+import '../../../services/attachments/chat_attachment_payload_codec.dart';
 import '../../../services/chat_service.dart';
 import '../../agent/model_tool_call.dart';
 import '../../agent/model_turn_decision.dart';
 import '../../agent/planner_tool_choice.dart';
 import '../../agent/planner_tool_option.dart';
+import '../../chat/chat_attachment.dart';
 import '../../chat_message.dart';
 import '../../context/planner_context_carrier.dart';
 import '../llm_cache_request_options.dart';
@@ -36,6 +38,10 @@ class SdkAnthropicMessagesAdapter extends ApiStyleAdapter {
   ProviderCapabilities get capabilities => const ProviderCapabilities(
         supportsPlannerStreaming: true,
         supportsParallelToolCalls: true,
+        supportsImageInput: true,
+        supportsPreUploadedFiles: false,
+        supportsInlineBase64Images: true,
+        supportsRemoteImageUrl: false,
       );
 
   @override
@@ -178,6 +184,34 @@ class SdkAnthropicMessagesAdapter extends ApiStyleAdapter {
       'role': message.role == MessageRole.assistant ? 'assistant' : 'user',
       'content': [
         {'type': 'text', 'text': message.text},
+        ...ChatAttachmentPayloadCodec.imageAttachments(message.attachments)
+            .map((attachment) {
+          final imageReference =
+              ChatAttachmentPayloadCodec.resolveImageReference(attachment);
+          if (imageReference == null) {
+            return null;
+          }
+          final dataUrlMatch = RegExp(
+            r'^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$',
+          ).firstMatch(imageReference);
+          if (dataUrlMatch != null) {
+            return <String, dynamic>{
+              'type': 'image',
+              'source': {
+                'type': 'base64',
+                'media_type': dataUrlMatch.group(1),
+                'data': dataUrlMatch.group(2),
+              },
+            };
+          }
+          return <String, dynamic>{
+            'type': 'image',
+            'source': {
+              'type': 'url',
+              'url': imageReference,
+            },
+          };
+        }).whereType<Map<String, dynamic>>(),
       ],
     };
   }
@@ -444,9 +478,10 @@ class SdkAnthropicMessagesAdapter extends ApiStyleAdapter {
           flushPendingToolResults();
           messages.add({
             'role': 'user',
-            'content': [
-              {'type': 'text', 'text': content},
-            ],
+            'content': _buildUserContentParts(
+              content: content,
+              attachments: carrier.attachments,
+            ),
           });
 
         case SyntheticCarrier(
@@ -487,5 +522,45 @@ class SdkAnthropicMessagesAdapter extends ApiStyleAdapter {
       if (!requestOptions.allowReasoning)
         'thinking': const {'type': 'disabled'},
     };
+  }
+
+  List<Map<String, dynamic>> _buildUserContentParts({
+    required String content,
+    required List<ChatAttachment> attachments,
+  }) {
+    final parts = <Map<String, dynamic>>[];
+    if (content.trim().isNotEmpty) {
+      parts.add({'type': 'text', 'text': content});
+    }
+    parts.addAll(
+      ChatAttachmentPayloadCodec.imageAttachments(attachments).map((attachment) {
+        final imageReference =
+            ChatAttachmentPayloadCodec.resolveImageReference(attachment);
+        if (imageReference == null) {
+          return null;
+        }
+        final dataUrlMatch = RegExp(
+          r'^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$',
+        ).firstMatch(imageReference);
+        if (dataUrlMatch != null) {
+          return <String, dynamic>{
+            'type': 'image',
+            'source': {
+              'type': 'base64',
+              'media_type': dataUrlMatch.group(1),
+              'data': dataUrlMatch.group(2),
+            },
+          };
+        }
+        return <String, dynamic>{
+          'type': 'image',
+          'source': {
+            'type': 'url',
+            'url': imageReference,
+          },
+        };
+      }).whereType<Map<String, dynamic>>(),
+    );
+    return parts;
   }
 }

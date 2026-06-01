@@ -1,4 +1,5 @@
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
+import 'package:ai_chat/models/chat/chat_attachment.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/llm/adapters/anthropic_messages_adapter.dart';
@@ -238,6 +239,49 @@ void main() {
         parallelToolCalls: false,
       );
       expect(payload['system'], 'first\n\nsecond');
+    });
+
+    test('user carrier image attachments serialize into anthropic image blocks',
+        () {
+      final payload = adapter.buildPlannerPayloadFromCarriers(
+        carriers: [
+          SyntheticCarrier.user(
+            'describe this',
+            attachments: [
+              ChatAttachment.image(
+                localId: 'att-1',
+                fileName: 'demo.png',
+                mimeType: 'image/png',
+                localPath: '/managed/demo.png',
+                status: ChatAttachmentStatus.ready,
+                providerFileRefJson: const {
+                  'data_url': 'data:image/png;base64,AAAA',
+                },
+              ),
+            ],
+          ),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'claude-3-5-sonnet',
+        availableTools: const [],
+        parallelToolCalls: false,
+      );
+
+      final messages = payload['messages'] as List;
+      expect(messages, hasLength(1));
+      final content = messages.first['content'] as List;
+      expect(content[0], {
+        'type': 'text',
+        'text': 'describe this',
+      });
+      expect(content[1], {
+        'type': 'image',
+        'source': {
+          'type': 'base64',
+          'media_type': 'image/png',
+          'data': 'AAAA',
+        },
+      });
     });
 
     test('tools 转 input_schema 形状', () {

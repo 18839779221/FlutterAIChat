@@ -22,6 +22,8 @@ typedef OpenAiResponsesStreamRequestExecutor =
 
 /// SDK-backed runtime for the OpenAI Responses protocol.
 class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
+  static const int _streamEventPreviewMaxChars = 4000;
+
   OpenAiResponsesRuntime({
     http.Client? httpClient,
     http.Client Function()? streamClientFactory,
@@ -196,7 +198,7 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
   }) async {
     final response = await (_httpClient ?? http.Client())
         .post(
-          ApiProtocolResolver().buildRequestUri(
+          const ApiProtocolResolver().buildRequestUri(
             runtimeConfig.apiUrl,
             ApiStyle.responses,
           ),
@@ -216,7 +218,7 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
     required http.StreamedResponse streamedResponse,
     void Function(LlmCacheUsage?)? onUsageExtracted,
   }) async* {
-    final parser = oai.SseParser();
+    const parser = oai.SseParser();
     var fallbackOutputIndex = 0;
     final latestToolArgumentsByOutputIndex = <int, String>{};
     final normalizedEvents = <oai.ResponseStreamEvent>[];
@@ -224,6 +226,15 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
 
     await for (final rawEvent in parser.parse(streamedResponse.stream)) {
       responseId ??= _extractResponseId(rawEvent);
+      Logger.temp(
+        'OpenAiResponsesRuntime',
+        'responses.stream.raw_event',
+        reason: 'diagnose_provider_stream_shape_before_sdk_parse',
+        data: {
+          'eventType': rawEvent['type'] ?? 'unknown',
+          'rawEventPreview': _previewJson(rawEvent),
+        },
+      );
       // Extract usage from response.done event
       if (rawEvent['type'] == 'response.done') {
         final response = rawEvent['response'];
@@ -247,11 +258,28 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
           normalizedJson['response'] == null) {
         normalizedJson['response_id'] = responseId;
       }
+      Logger.temp(
+        'OpenAiResponsesRuntime',
+        'responses.stream.normalized_event',
+        reason: 'diagnose_provider_stream_shape_before_sdk_parse',
+        data: {
+          'eventType': normalizedJson['type'] ?? rawEvent['type'] ?? 'unknown',
+          'normalizedEventPreview': _previewJson(normalizedJson),
+        },
+      );
       try {
         final typedEvent = oai.ResponseStreamEvent.fromJson(normalizedJson);
         normalizedEvents.add(typedEvent);
       } catch (error) {
         final type = rawEvent['type'];
+        Logger.e(
+          'OpenAiResponsesRuntime',
+          'responses.stream.typed_event_parse_failed '
+          'type=${type ?? 'unknown'} '
+          'rawEvent=${_previewJson(rawEvent)} '
+          'normalizedEvent=${_previewJson(normalizedJson)}',
+          error,
+        );
         if (_canSkipTypedEventParseFailure(type, normalizedJson)) {
           Logger.w(
             'OpenAiResponsesRuntime',
@@ -284,7 +312,7 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
 
     if (responseId != null) {
       yield StreamingMessageStartEvent(
-        messageId: responseId!,
+        messageId: responseId,
         providerMetadata: {'response_id': responseId},
       );
     }
@@ -373,6 +401,14 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
       return responseId;
     }
     return null;
+  }
+
+  String _previewJson(Map<String, dynamic> value) {
+    final encoded = jsonEncode(value);
+    if (encoded.length <= _streamEventPreviewMaxChars) {
+      return encoded;
+    }
+    return '${encoded.substring(0, _streamEventPreviewMaxChars - 3)}...';
   }
 
 }

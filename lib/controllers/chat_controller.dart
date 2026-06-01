@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:ai_chat/controllers/chat_preferences_controller.dart';
 import 'package:ai_chat/controllers/chat_send_coordinator.dart';
+import 'package:ai_chat/models/chat/send_message_request.dart';
 import 'package:ai_chat/controllers/chat_session_coordinator.dart';
 import 'package:ai_chat/controllers/chat_summary_controller.dart';
 import 'package:ai_chat/models/chat_group.dart';
@@ -10,6 +11,7 @@ import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/providers/chat_send_state_providers.dart';
 import 'package:ai_chat/providers/chat_ui_providers.dart';
+import 'package:ai_chat/utils/logger.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class ChatController {
@@ -58,11 +60,31 @@ class ChatController {
   }
 
   Future<void> sendMessage(String text) async {
-    await _sendCoordinator.sendMessage(
-      text,
-      scheduleAutoSummary: _summaryController.scheduleAutoSummary,
-      cancelActiveStream: cancelStreamSubscription,
+    await sendMessageRequest(
+      SendMessageRequest(text: text),
     );
+  }
+
+  Future<void> sendMessageRequest(SendMessageRequest request) async {
+    Logger.i(
+      'ChatController',
+      'sendMessageRequest called',
+    );
+    try {
+      await _sendCoordinator.sendMessageRequest(
+        request,
+        scheduleAutoSummary: _summaryController.scheduleAutoSummary,
+        cancelActiveStream: cancelStreamSubscription,
+      );
+      Logger.i(
+        'ChatController',
+        'sendMessageRequest completed',
+      );
+    } catch (error, stackTrace) {
+      Logger.e('ChatController', 'sendMessageRequest failed', error);
+      Logger.e('ChatController', 'sendMessageRequest stack trace', stackTrace);
+      rethrow;
+    }
   }
 
   Future<void> cancelToolInvocation(ChatMessage message) async {

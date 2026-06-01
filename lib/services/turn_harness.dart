@@ -4,6 +4,7 @@ import '../models/agent/chat_turn_step.dart';
 import '../models/agent/model_turn_decision.dart';
 import '../models/agent/agent_loop_limits.dart';
 import '../models/chat_event.dart';
+import '../models/chat/chat_attachment.dart';
 import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/interaction/ask_user_question_request.dart';
@@ -97,10 +98,12 @@ class TurnHarness {
         content: explicitSkillReminder.text,
       );
     }
+    final userAttachments = _extractUserAttachments(turn);
     yield await _eventRepository.appendUserMessage(
       turnId: turnId,
       groupId: turn.groupId,
       content: turn.userInput,
+      attachments: userAttachments,
     );
 
     yield* _continueTurnLoop(
@@ -125,6 +128,57 @@ class TurnHarness {
       role: MessageRole.user,
       status: MessageStatus.completed,
     );
+  }
+
+  List<ChatAttachment> _extractUserAttachments(ChatTurn? turn) {
+    final runtimeContext =
+        turn?.providerStateJson?[SessionRuntimeMarkerService.runtimeContextKey];
+    if (runtimeContext is! Map) {
+      return const <ChatAttachment>[];
+    }
+    final rawAttachments = runtimeContext['user_attachments'];
+    if (rawAttachments is! List) {
+      Logger.temp(
+        _tag,
+        'attachments.turn_runtime_context_missing',
+        reason: 'diagnose_image_attachment_context_chain',
+        data: {
+          'turnId': turn?.id,
+          'groupId': turn?.groupId,
+          'runtimeContextKeys': runtimeContext.keys.map((key) => '$key').toList(),
+        },
+      );
+      return const <ChatAttachment>[];
+    }
+    final attachments = rawAttachments
+        .whereType<Map>()
+        .map(
+          (item) => ChatAttachment.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
+        .toList(growable: false);
+    Logger.temp(
+      _tag,
+      'attachments.turn_runtime_context_extracted',
+      reason: 'diagnose_image_attachment_context_chain',
+      data: {
+        'turnId': turn?.id,
+        'groupId': turn?.groupId,
+        'attachmentCount': attachments.length,
+        'localIds': attachments.map((attachment) => attachment.localId).toList(),
+        'hasProviderDataUrl': attachments
+            .map(
+              (attachment) =>
+                  attachment.providerFileRefJson?['data_url'] is String &&
+                  (attachment.providerFileRefJson?['data_url'] as String)
+                      .trim()
+                      .isNotEmpty,
+            )
+            .toList(),
+      },
+    );
+    return attachments;
   }
 
   Stream<ChatEvent> resumeAfterConfirmation({

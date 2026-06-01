@@ -7,7 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/skill/skill_catalog_entry.dart';
 import '../providers/chat_providers.dart';
+import 'chat_input_attachment_strip.dart';
 import 'context_window/context_window_usage_indicator.dart';
+import '../models/chat/send_message_request.dart';
+import '../models/chat/chat_attachment.dart';
+import '../utils/logger.dart';
 
 class ChatInput extends ConsumerStatefulWidget {
   const ChatInput({
@@ -60,6 +64,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final focusNode = ref.watch(focusNodeProvider);
     final chatController = ref.read(chatControllerProvider);
     final voiceInputController = ref.watch(voiceInputControllerProvider);
+    final attachmentPicker = ref.watch(chatAttachmentPickerServiceProvider);
+    final attachmentStorage = ref.watch(chatAttachmentStorageServiceProvider);
+    final composerAttachments = ref.watch(composerAttachmentsProvider);
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
@@ -108,18 +115,99 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       _listenedVoiceController = voiceInputController;
       _listenedVoiceController?.addListener(_handleVoiceStateChanged);
     }
-    void submitCurrentInput() {
-      if (isComposerLocked) {
-        return;
-      }
-
+    Future<void> submitCurrentInput() async {
       final pendingText = textController.text;
-      if (pendingText.trim().isEmpty) {
+      final pendingAttachments = List<ChatAttachment>.from(composerAttachments);
+      Logger.runtime(
+        'ChatInput',
+        'submitCurrentInput invoked',
+        data: {
+          'textLength': pendingText.length,
+          'trimmedTextLength': pendingText.trim().length,
+          'attachmentCount': pendingAttachments.length,
+          'attachmentLocalIds':
+              pendingAttachments.map((attachment) => attachment.localId).join(','),
+          'attachmentStatuses': pendingAttachments
+              .map((attachment) => attachment.status.name)
+              .join(','),
+          'attachmentPaths': pendingAttachments
+              .map((attachment) => attachment.localPath ?? '')
+              .join(','),
+          'attachmentDataUrlLengths': pendingAttachments
+              .map(
+                (attachment) => (attachment.providerFileRefJson?['data_url']
+                            as String?)
+                        ?.length ??
+                    0,
+              )
+              .join(','),
+        },
+      );
+      if (isComposerLocked) {
+        Logger.w(
+          'ChatInput',
+          'submitCurrentInput ignored because composer is locked',
+        );
+        return;
+      }
+      final messenger = ScaffoldMessenger.of(context);
+      if (pendingText.trim().isEmpty && composerAttachments.isEmpty) {
+        Logger.w(
+          'ChatInput',
+          'submitCurrentInput ignored because text and attachments are both empty',
+        );
+        return;
+      }
+      final allowUnsupportedImageInputAttempt =
+          await _confirmUnsupportedImageInputIfNeeded(
+        context: context,
+        attachments: pendingAttachments,
+      );
+      if (!mounted || allowUnsupportedImageInputAttempt == null) {
         return;
       }
 
-      textController.clear();
-      chatController.sendMessage(pendingText);
+      try {
+        if (!mounted) {
+          return;
+        }
+        textController.clear();
+        ref.read(composerAttachmentsProvider.notifier).state =
+            const <ChatAttachment>[];
+        await chatController.sendMessageRequest(
+          SendMessageRequest(
+            text: pendingText,
+            attachments: pendingAttachments,
+            allowUnsupportedImageInputAttempt:
+                allowUnsupportedImageInputAttempt,
+          ),
+        );
+        Logger.runtime(
+          'ChatInput',
+          'sendMessageRequest completed, clearing composer',
+          data: {
+            'textLength': pendingText.length,
+            'attachmentCount': pendingAttachments.length,
+          },
+        );
+        if (!mounted) {
+          return;
+        }
+      } catch (error, stackTrace) {
+        Logger.e('ChatInput', 'send message request failed', error);
+        Logger.e('ChatInput', 'send message request stack trace', stackTrace);
+        if (!mounted) {
+          return;
+        }
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text('发送失败：$error'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+      }
     }
 
     final composerBorderColor = isVoiceListening
@@ -267,7 +355,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                                   spacing.xxs + 2,
                                 ),
                               ),
-                              onSubmitted: (_) => submitCurrentInput(),
+                              onSubmitted: (_) {
+                                submitCurrentInput();
+                              },
                             ),
                           ),
                         ],
@@ -289,6 +379,20 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                       },
                     ),
                   ],
+                  if (composerAttachments.isNotEmpty) ...[
+                    SizedBox(height: spacing.xxs + 2),
+                    ChatInputAttachmentStrip(
+                      attachments: composerAttachments,
+                      onRemove: (attachment) {
+                        final nextAttachments = [...composerAttachments]
+                          ..removeWhere(
+                            (item) => item.localId == attachment.localId,
+                          );
+                        ref.read(composerAttachmentsProvider.notifier).state =
+                            nextAttachments;
+                      },
+                    ),
+                  ],
                   SizedBox(height: spacing.xxs + 2),
                   Semantics(
                     container: true,
@@ -297,6 +401,136 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                       key: const ValueKey('chat-input-bottom-bar'),
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
+                        if (attachmentPicker != null)
+                          Padding(
+                            padding: EdgeInsets.only(right: spacing.xxs + 2),
+                            child: IconButton(
+                              key: const ValueKey('chat-input-add-image'),
+                              onPressed: isComposerLocked
+                                  ? null
+                                  : () async {
+                                      try {
+                                        final pickedAttachments =
+                                            await attachmentPicker.pickImages();
+                                        Logger.i(
+                                          'ChatInput',
+                                          'picked image attachments',
+                                        );
+                                        Logger.runtime(
+                                          'ChatInput',
+                                          'picker returned attachments',
+                                          data: {
+                                            'pickedCount':
+                                                pickedAttachments.length,
+                                            'pickedLocalIds': pickedAttachments
+                                                .map((attachment) => attachment.localId)
+                                                .join(','),
+                                            'pickedPaths': pickedAttachments
+                                                .map((attachment) => attachment.localPath ?? '')
+                                                .join(','),
+                                          },
+                                        );
+                                        if (!context.mounted ||
+                                            pickedAttachments.isEmpty) {
+                                          return;
+                                        }
+                                        final preparedAttachments =
+                                            attachmentStorage == null
+                                                ? pickedAttachments
+                                                : await Future.wait(
+                                                    pickedAttachments.map(
+                                                      (attachment) => attachmentStorage
+                                                          .persistSelectedImage(
+                                                        attachment: attachment,
+                                                      ),
+                                                    ),
+                                                  );
+                                        Logger.runtime(
+                                          'ChatInput',
+                                          'attachments prepared for composer',
+                                          data: {
+                                            'preparedCount':
+                                                preparedAttachments.length,
+                                            'preparedLocalIds':
+                                                preparedAttachments
+                                                    .map((attachment) => attachment.localId)
+                                                    .join(','),
+                                            'preparedPaths':
+                                                preparedAttachments
+                                                    .map((attachment) => attachment.localPath ?? '')
+                                                    .join(','),
+                                            'thumbnailPaths':
+                                                preparedAttachments
+                                                    .map((attachment) => attachment.thumbnailPath ?? '')
+                                                    .join(','),
+                                            'preparedStatuses':
+                                                preparedAttachments
+                                                    .map((attachment) => attachment.status.name)
+                                                    .join(','),
+                                            'preparedDataUrlLengths':
+                                                preparedAttachments
+                                                    .map(
+                                                      (attachment) => (attachment.providerFileRefJson?['data_url']
+                                                                  as String?)
+                                                              ?.length ??
+                                                          0,
+                                                    )
+                                                    .join(','),
+                                          },
+                                        );
+                                        if (!context.mounted ||
+                                            preparedAttachments.isEmpty) {
+                                          return;
+                                        }
+                                        final nextComposerAttachments = [
+                                          ...composerAttachments,
+                                          ...preparedAttachments,
+                                        ];
+                                        ref
+                                            .read(composerAttachmentsProvider.notifier)
+                                            .state = nextComposerAttachments;
+                                        Logger.runtime(
+                                          'ChatInput',
+                                          'composer attachments updated',
+                                          data: {
+                                            'composerAttachmentCount':
+                                                nextComposerAttachments.length,
+                                            'composerAttachmentLocalIds':
+                                                nextComposerAttachments
+                                                    .map((attachment) => attachment.localId)
+                                                    .join(','),
+                                          },
+                                        );
+                                      } catch (error, stackTrace) {
+                                        Logger.e(
+                                          'ChatInput',
+                                          'failed to prepare image attachments',
+                                          error,
+                                        );
+                                        Logger.e(
+                                          'ChatInput',
+                                          'attachment prepare stack trace',
+                                          stackTrace,
+                                        );
+                                        if (!context.mounted) {
+                                          return;
+                                        }
+                                        ScaffoldMessenger.of(context)
+                                          ..hideCurrentSnackBar()
+                                          ..showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                '图片准备失败：$error',
+                                              ),
+                                              behavior:
+                                                  SnackBarBehavior.floating,
+                                            ),
+                                          );
+                                      }
+                                    },
+                              icon: const Icon(Icons.add_photo_alternate_outlined),
+                            ),
+                          ),
                         if (hasVoiceInput)
                           Padding(
                             padding: EdgeInsets.only(right: spacing.xxs + 2),
@@ -376,13 +610,22 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                                 shadowColor: Colors.transparent,
                               ),
                               onPressed: () {
+                                Logger.i(
+                                  'ChatInput',
+                                  'send button pressed',
+                                  );
                                 if (isCancellablePhase) {
+                                  Logger.i('ChatInput', 'send button mapped to cancel active stream');
                                   chatController.cancelStreamSubscription();
                                   return;
                                 }
 
                                 if (isBlockingPhase ||
                                     isAwaitingConfirmation) {
+                                  Logger.w(
+                                    'ChatInput',
+                                    'send button ignored because send is blocked',
+                                  );
                                   return;
                                 }
 
@@ -442,6 +685,66 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       return null;
     }
     return afterSlash;
+  }
+
+  Future<bool?> _confirmUnsupportedImageInputIfNeeded({
+    required BuildContext context,
+    required List<ChatAttachment> attachments,
+  }) async {
+    if (attachments.isEmpty) {
+      return false;
+    }
+
+    final repository = ref.read(appSettingsRepositoryProvider);
+    final config = await repository.getLlmConfig();
+    final providerId =
+        config.additionalConfig['llm.selected_provider_id'] as String?;
+    final modelId = config.additionalConfig['llm.selected_model_id'] as String?;
+    final runtimeSupport = config.additionalConfig[
+        'llm.runtime_selected_model_supports_image_input'] as bool?;
+    final staticSupport = config.additionalConfig[
+        'llm.selected_model_supports_image_input'] as bool?;
+    final resolvedSupport = runtimeSupport ?? staticSupport;
+
+    Logger.runtime(
+      'ChatInput',
+      'image input support evaluated before send',
+      data: {
+        'providerId': providerId ?? '',
+        'modelId': modelId ?? '',
+        'runtimeSupport': runtimeSupport,
+        'staticSupport': staticSupport,
+        'resolvedSupport': resolvedSupport,
+      },
+    );
+
+    if (resolvedSupport != false) {
+      return false;
+    }
+
+    if (!context.mounted) {
+      return null;
+    }
+    final shouldContinue = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('发送图片前确认'),
+          content: const Text('当前模型可能不支持图片输入，仍然尝试发送？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('仍然发送'),
+            ),
+          ],
+        );
+      },
+    );
+    return shouldContinue == true ? true : null;
   }
 }
 

@@ -40,6 +40,8 @@ import 'services/session_context_projector.dart';
 import 'services/session_context_service.dart';
 import 'services/session_summary_service.dart';
 import 'services/session_token_budget_service.dart';
+import 'services/attachments/chat_attachment_storage_service.dart';
+import 'services/attachments/image_picker_chat_attachment_picker_service.dart';
 import 'services/skills/github_skill_fetcher.dart';
 import 'services/skills/github_skill_source_resolver.dart';
 import 'services/skills/skill_index_service.dart';
@@ -232,6 +234,14 @@ void main() async {
         sharedPreferencesProvider.overrideWithValue(preferences),
         appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
         databaseProvider.overrideWithValue(storage),
+        chatAttachmentPickerServiceProvider.overrideWithValue(
+          ImagePickerChatAttachmentPickerService(),
+        ),
+        chatAttachmentStorageServiceProvider.overrideWithValue(
+          ChatAttachmentStorageService(
+            resolveRootDirectory: () async => appSupportDirectory,
+          ),
+        ),
         artifactFileStorageServiceProvider
             .overrideWithValue(artifactFileStorageService),
         skillStorageServiceProvider.overrideWithValue(skillStorageService),

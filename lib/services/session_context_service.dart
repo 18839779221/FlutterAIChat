@@ -1,4 +1,5 @@
 import '../models/chat_event.dart';
+import '../models/chat/chat_attachment.dart';
 import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/context/model_context_item.dart';
@@ -177,6 +178,7 @@ class SessionContextService {
 
     // (4) current turn transcript
     carriers.addAll(_eventsToCarriers(currentTurnTranscript));
+    carriers.addAll(_attachmentReminderCarriers(currentTurnTranscript));
 
     return carriers;
   }
@@ -363,8 +365,14 @@ class SessionContextService {
       switch (event.eventType) {
         case ChatEventType.userMessage:
           final text = (event.content ?? '').trim();
-          if (text.isNotEmpty) {
-            carriers.add(SyntheticCarrier.user(text));
+          final attachments = _attachmentsFromEvent(event);
+          if (text.isNotEmpty || attachments.isNotEmpty) {
+            carriers.add(
+              SyntheticCarrier.user(
+                text,
+                attachments: attachments,
+              ),
+            );
           }
 
         case ChatEventType.assistantTurnSnapshot:
@@ -420,6 +428,41 @@ class SessionContextService {
       }
     }
     return carriers;
+  }
+
+  List<PlannerContextCarrier> _attachmentReminderCarriers(
+    List<ChatEvent> events,
+  ) {
+    final imageAttachments = events
+        .where((event) => event.eventType == ChatEventType.userMessage)
+        .expand(_attachmentsFromEvent)
+        .where((attachment) => attachment.kind == ChatAttachmentKind.image)
+        .toList(growable: false);
+    if (imageAttachments.isEmpty) {
+      return const <PlannerContextCarrier>[];
+    }
+    final count = imageAttachments.length;
+    final noun = count == 1 ? 'attachment' : 'attachments';
+    return <PlannerContextCarrier>[
+      SyntheticCarrier.system(
+        '<system-reminder>\n'
+        'The user sent $count image $noun in this turn. '
+        'Treat those image attachments as part of the current user input even if the text message is empty. '
+        'Do not say that no image was provided.\n'
+        '</system-reminder>',
+      ),
+    ];
+  }
+
+  List<ChatAttachment> _attachmentsFromEvent(ChatEvent event) {
+    final raw = event.payloadJson?['attachments'];
+    if (raw is! List) {
+      return const <ChatAttachment>[];
+    }
+    return raw
+        .whereType<Map>()
+        .map((item) => ChatAttachment.fromJson(Map<String, dynamic>.from(item)))
+        .toList(growable: false);
   }
 
   String _toolResultCarrierContent(ChatEvent event) {

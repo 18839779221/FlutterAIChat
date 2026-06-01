@@ -1,4 +1,5 @@
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat/send_message_request.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
@@ -610,6 +611,13 @@ class _LoadMoreChatController extends ChatController {
 }
 
 class _NoopChatSendCoordinator implements ChatSendCoordinator {
+  @override
+  Future<void> sendMessageRequest(
+    SendMessageRequest request, {
+    required void Function() scheduleAutoSummary,
+    required void Function() cancelActiveStream,
+  }) async {}
+
   @override
   Future<void> cancelToolInvocation(ChatMessage message) async {}
 

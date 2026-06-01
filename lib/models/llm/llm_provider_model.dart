@@ -6,15 +6,21 @@ class LlmProviderModel {
   /// When empty, the UI should fall back to the model id.
   final String name;
 
+  /// Whether this concrete model entry is known to support image input.
+  final bool supportsImageInput;
+
   const LlmProviderModel({
     required this.id,
     required this.name,
+    this.supportsImageInput = false,
   });
 
   factory LlmProviderModel.fromJson(Map<String, dynamic> json) {
     return LlmProviderModel(
       id: (json['id'] as String? ?? '').trim(),
       name: (json['name'] as String? ?? '').trim(),
+      supportsImageInput: json['supportsImageInput'] == true ||
+          json['supports_image_input'] == true,
     );
   }
 
@@ -22,6 +28,7 @@ class LlmProviderModel {
     return {
       'id': id,
       'name': name,
+      'supportsImageInput': supportsImageInput,
     };
   }
 

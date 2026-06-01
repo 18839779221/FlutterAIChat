@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:ai_chat/models/chat/active_turn_status_presentation.dart';
+import 'package:ai_chat/models/chat/chat_attachment.dart';
 import 'package:ai_chat/models/chat/chat_timeline_projection.dart';
 import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
 import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
@@ -49,6 +50,9 @@ final textControllerProvider = Provider<TextEditingController>((ref) {
   ref.onDispose(() => controller.dispose());
   return controller;
 });
+
+final composerAttachmentsProvider =
+    StateProvider<List<ChatAttachment>>((ref) => const <ChatAttachment>[]);
 
 // 焦点提供者
 final focusNodeProvider = Provider<FocusNode>((ref) {

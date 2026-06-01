@@ -1,4 +1,5 @@
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
+import 'package:ai_chat/models/chat/chat_attachment.dart';
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
@@ -122,6 +123,53 @@ void main() {
       );
 
       expect(find.byType(ToolInlineStepRow), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'user bubble row keeps image attachments on the user side',
+    (tester) async {
+      final sourceMessage = ChatMessage(
+        id: 3,
+        text: '看这张图',
+        role: MessageRole.user,
+        attachments: [
+          ChatAttachment.image(
+            localId: 'att-1',
+            fileName: 'demo.png',
+            mimeType: 'image/png',
+            status: ChatAttachmentStatus.ready,
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: Scaffold(
+              body: ChatTimelineRow(
+                item: ChatTimelineItem(
+                  stableKey: 'user-row',
+                  type: ChatTimelineItemType.userBubble,
+                  userMessage: sourceMessage,
+                  sourceMessage: sourceMessage,
+                  sourceMessages: [sourceMessage],
+                ),
+                blockBuilder: ChatBlockBuilder(),
+                currentGroupId: 1,
+                onLongPressMessage: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('看这张图'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('chat-message-image-attachments-align')),
+        findsOneWidget,
+      );
     },
   );
 }

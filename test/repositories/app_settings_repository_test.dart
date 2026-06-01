@@ -43,6 +43,45 @@ void main() {
       expect(config.apiKey, 'local-key');
       expect(config.apiUrl, 'https://api.aigocode.com');
       expect(config.model, 'gpt-5.4');
+      expect(
+        config.additionalConfig['llm.selected_model_supports_image_input'],
+        isFalse,
+      );
+    });
+
+    test('loads model-level image input capability from provider defaults',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final repository = AppSettingsRepository(
+        preferences,
+        localDefaultsLoader: () async => const LlmLocalDefaults(
+          defaultProviderId: 'vision',
+          defaultModelId: 'vision-model',
+          providers: [
+            LlmProviderConfig(
+              id: 'vision',
+              name: 'Vision Provider',
+              apiKey: 'local-key',
+              baseUrl: 'https://vision.example/v1',
+              models: [
+                LlmProviderModel(
+                  id: 'vision-model',
+                  name: 'Vision Model',
+                  supportsImageInput: true,
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final config = await repository.getLlmConfig();
+
+      expect(
+        config.additionalConfig['llm.selected_model_supports_image_input'],
+        isTrue,
+      );
     });
 
     test('saved providers and selection override local defaults after seeding',
@@ -240,6 +279,47 @@ void main() {
       expect(config.apiKey, 'speech-key');
       expect(config.sampleRate, 16000);
       expect(config.languageHints, const ['zh', 'en']);
+    });
+
+    test('runtime image capability override is returned when present', () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final repository = AppSettingsRepository(
+        preferences,
+        localDefaultsLoader: () async => const LlmLocalDefaults(
+          defaultProviderId: 'beehears-responses',
+          defaultModelId: 'gpt-5.4',
+          providers: [
+            LlmProviderConfig(
+              id: 'beehears-responses',
+              name: 'BeeHears Responses',
+              apiKey: 'local-key',
+              baseUrl: 'https://ai.beehears.com/v1',
+              models: [
+                LlmProviderModel(
+                  id: 'gpt-5.4',
+                  name: 'GPT-5.4',
+                  supportsImageInput: false,
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      await repository.saveRuntimeImageInputSupport(
+        providerId: 'beehears-responses',
+        modelId: 'gpt-5.4',
+        supportsImageInput: true,
+      );
+
+      expect(
+        await repository.getRuntimeImageInputSupport(
+          providerId: 'beehears-responses',
+          modelId: 'gpt-5.4',
+        ),
+        isTrue,
+      );
     });
 
     test('returns null when speech input config is absent', () async {

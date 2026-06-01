@@ -23,6 +23,7 @@ import 'package:ai_chat/widgets/chat_blocks/tool_outcome_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/unified_turn_status_bar.dart';
 import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
+import 'package:ai_chat/widgets/chat_message_image_attachments.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_card.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_result_card.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_timeline_card.dart';
@@ -104,12 +105,19 @@ class ChatTimelineRow extends ConsumerWidget {
 
   Widget _buildUserBubble() {
     final message = item.userMessage!;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 2),
-      child: GestureDetector(
-        onLongPress: () => onLongPressMessage(message),
-        child: UserAnchorBubble(text: message.text),
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 2),
+          child: GestureDetector(
+            onLongPress: () => onLongPressMessage(message),
+            child: UserAnchorBubble(text: message.text),
+          ),
+        ),
+        if (message.attachments.isNotEmpty)
+          ChatMessageImageAttachments(attachments: message.attachments),
+      ],
     );
   }
 

@@ -23,6 +23,8 @@ class AppSettingsRepository {
   static const String _duplicateSkillInvocationModeKey =
       'skills.duplicate_invocation_mode';
   static const String _themeIdKey = 'appearance.theme_id';
+  static const String _runtimeImageInputSupportKey =
+      'llm.runtime_image_input_support_json';
   static const String _legacyApiKeyKey = 'llm.api_key';
   static const String _legacyBaseUrlKey = 'llm.base_url';
   static const String _legacyModelKey = 'llm.model';
@@ -164,6 +166,48 @@ class AppSettingsRepository {
     await _writeSelection(normalized);
   }
 
+  Future<bool?> getRuntimeImageInputSupport({
+    required String providerId,
+    required String modelId,
+  }) async {
+    final raw = _preferences.getString(_runtimeImageInputSupportKey);
+    if (raw == null || raw.trim().isEmpty) {
+      return null;
+    }
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map<String, dynamic>) {
+      return null;
+    }
+    final value = decoded[_runtimeImageInputSupportEntryKey(
+      providerId: providerId,
+      modelId: modelId,
+    )];
+    return value is bool ? value : null;
+  }
+
+  Future<void> saveRuntimeImageInputSupport({
+    required String providerId,
+    required String modelId,
+    required bool supportsImageInput,
+  }) async {
+    final raw = _preferences.getString(_runtimeImageInputSupportKey);
+    final nextMap = <String, dynamic>{};
+    if (raw != null && raw.trim().isNotEmpty) {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        nextMap.addAll(decoded);
+      }
+    }
+    nextMap[_runtimeImageInputSupportEntryKey(
+      providerId: providerId,
+      modelId: modelId,
+    )] = supportsImageInput;
+    await _preferences.setString(
+      _runtimeImageInputSupportKey,
+      jsonEncode(nextMap),
+    );
+  }
+
   Future<String?> getThemeId() async {
     return getThemeIdSync();
   }
@@ -178,6 +222,13 @@ class AppSettingsRepository {
 
   Future<void> saveThemeId(String themeId) async {
     await _preferences.setString(_themeIdKey, themeId.trim());
+  }
+
+  String _runtimeImageInputSupportEntryKey({
+    required String providerId,
+    required String modelId,
+  }) {
+    return '${providerId.trim()}::${modelId.trim()}';
   }
 
   Future<void> selectProviderAndModel({
@@ -260,7 +311,18 @@ class AppSettingsRepository {
       apiKey: resolvedProvider.apiKey,
       apiUrl: resolvedProvider.baseUrl,
       model: resolvedModel.id,
-      additionalConfig: additionalConfig,
+      additionalConfig: {
+        ...additionalConfig,
+        'llm.selected_provider_id': resolvedProvider.id,
+        'llm.selected_model_id': resolvedModel.id,
+        'llm.selected_model_supports_image_input':
+            resolvedModel.supportsImageInput,
+        'llm.runtime_selected_model_supports_image_input':
+            await getRuntimeImageInputSupport(
+          providerId: resolvedProvider.id,
+          modelId: resolvedModel.id,
+        ),
+      },
     );
   }
 

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:openai_dart/openai_dart.dart' as oai;
 
+import '../../../services/attachments/chat_attachment_payload_codec.dart';
 import '../../../services/chat_service.dart';
 import '../../agent/model_tool_call.dart';
 import '../../agent/model_turn_decision.dart';
@@ -37,6 +38,10 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
   ProviderCapabilities get capabilities => const ProviderCapabilities(
         supportsPlannerStreaming: true,
         supportsParallelToolCalls: true,
+        supportsImageInput: true,
+        supportsPreUploadedFiles: false,
+        supportsInlineBase64Images: false,
+        supportsRemoteImageUrl: true,
       );
 
   @override
@@ -93,17 +98,51 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
       messages,
       config.systemPrompt,
     );
-    // Simple role mapping for the non-planner chat path. The carrier-based
-    // planner path handles assistant/tool turns separately.
-    final sdkMessages = <oai.ChatMessage>[
-      for (final m in normalizedMessages)
-        if (m.text.trim().isNotEmpty)
+    final sdkMessages = <oai.ChatMessage>[];
+    for (final m in normalizedMessages) {
+      final imageAttachments =
+          ChatAttachmentPayloadCodec.imageAttachments(m.attachments);
+      final imageReference = imageAttachments.isEmpty
+          ? null
+          : ChatAttachmentPayloadCodec.resolveImageReference(
+              imageAttachments.first,
+            );
+      if (m.role == MessageRole.system) {
+        if (m.text.trim().isNotEmpty) {
+          sdkMessages.add(oai.ChatMessage.system(m.text));
+        }
+        continue;
+      }
+      if (imageReference != null && m.role == MessageRole.user) {
+        sdkMessages.add(
+          oai.ChatMessage.fromJson({
+            'role': 'user',
+            'content': [
+              if (m.text.trim().isNotEmpty)
+                {
+                  'type': 'text',
+                  'text': m.text,
+                },
+              {
+                'type': 'image_url',
+                'image_url': {'url': imageReference},
+              },
+            ],
+          }),
+        );
+        continue;
+      }
+      if (m.text.trim().isNotEmpty) {
+        sdkMessages.add(
           switch (m.role) {
-            MessageRole.system => oai.ChatMessage.system(m.text),
             MessageRole.user => oai.ChatMessage.user(m.text),
-            MessageRole.assistant => oai.ChatMessage.assistant(content: m.text),
+            MessageRole.assistant =>
+              oai.ChatMessage.assistant(content: m.text),
+            MessageRole.system => oai.ChatMessage.system(m.text),
           },
-    ];
+        );
+      }
+    }
 
     final payload = <String, dynamic>{
       'model': modelName,

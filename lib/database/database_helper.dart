@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/agent/chat_turn_step.dart';
 import '../models/artifact/artifact_record.dart';
+import '../models/chat/chat_attachment.dart';
 import '../models/chat_event.dart';
 import '../models/chat_message.dart';
 import '../models/response/message_content_type.dart';
@@ -45,7 +46,7 @@ class DatabaseHelper implements ChatStorage {
 
       return await openDatabase(
         path,
-        version: 13,
+        version: 14,
         onCreate: (Database db, int version) async {
           Logger.i(_tag, '创建数据库表...');
           // 创建分组表
@@ -81,6 +82,7 @@ class DatabaseHelper implements ChatStorage {
           await _createArtifactRegistryTable(db);
           await _createSessionContextSnapshotTable(db);
           await _createSessionRuntimeMarkerTable(db);
+          await _createMessageAttachmentsTable(db);
           Logger.i(_tag, '数据库表创建成功');
         },
         onUpgrade: (Database db, int oldVersion, int newVersion) async {
@@ -273,6 +275,9 @@ class DatabaseHelper implements ChatStorage {
             await _createAgentLoopTables(db);
             await _createSessionContextSnapshotTable(db);
           }
+          if (oldVersion < 14) {
+            await _createMessageAttachmentsTable(db);
+          }
         },
       );
     } catch (e, stackTrace) {
@@ -414,6 +419,31 @@ class DatabaseHelper implements ChatStorage {
     await db.execute('''
       CREATE INDEX IF NOT EXISTS idx_session_runtime_markers_group_id_updated_at
       ON session_runtime_markers(group_id, updated_at DESC)
+    ''');
+  }
+
+  Future<void> _createMessageAttachmentsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS message_attachments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message_id INTEGER,
+        local_attachment_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        source TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        byte_size INTEGER,
+        local_path TEXT,
+        thumbnail_path TEXT,
+        sha256 TEXT,
+        status TEXT NOT NULL,
+        error_code TEXT,
+        error_message TEXT,
+        provider_file_ref_json TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (message_id) REFERENCES messages (id) ON DELETE CASCADE
+      )
     ''');
   }
 
@@ -851,6 +881,7 @@ class DatabaseHelper implements ChatStorage {
   }
 
   // 消息相关操作（更新为支持分组）
+  @override
   Future<int> insertMessage(ChatMessage message, int groupId) async {
     try {
       final db = await database;
@@ -869,6 +900,50 @@ class DatabaseHelper implements ChatStorage {
       return id;
     } catch (e) {
       Logger.e(_tag, '插入消息失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> insertMessageAttachments(
+    int messageId,
+    List<ChatAttachment> attachments,
+  ) async {
+    try {
+      final db = await database;
+      await db.delete(
+        'message_attachments',
+        where: 'message_id = ?',
+        whereArgs: [messageId],
+      );
+      for (final attachment in attachments) {
+        await db.insert(
+          'message_attachments',
+          attachment.toDatabaseMap(messageId: messageId),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    } catch (e) {
+      Logger.e(_tag, '插入消息附件失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<List<ChatAttachment>> getMessageAttachments(int messageId) async {
+    try {
+      final db = await database;
+      final maps = await db.query(
+        'message_attachments',
+        where: 'message_id = ?',
+        whereArgs: [messageId],
+        orderBy: 'created_at ASC, id ASC',
+      );
+      return maps
+          .map((map) => ChatAttachment.fromDatabaseMap(map))
+          .toList(growable: false);
+    } catch (e) {
+      Logger.e(_tag, '获取消息附件失败', e);
       rethrow;
     }
   }
@@ -990,6 +1065,7 @@ class DatabaseHelper implements ChatStorage {
     }
   }
 
+  @override
   Future<List<ChatMessage>> getMessagesByGroup(int groupId) async {
     try {
       final db = await database;
@@ -1000,8 +1076,26 @@ class DatabaseHelper implements ChatStorage {
         orderBy: 'timestamp DESC',
         limit: 20,
       );
-      final messages =
-          List.generate(maps.length, (i) => ChatMessage.fromMap(maps[i]));
+      final messages = <ChatMessage>[];
+      for (final map in maps) {
+        final message = ChatMessage.fromMap(map);
+        final messageId = message.id;
+        final attachments = messageId == null
+            ? const <ChatAttachment>[]
+            : await getMessageAttachments(messageId);
+        final nextReferenceJson = <String, dynamic>{
+          ...?message.referenceJson,
+          if (attachments.isNotEmpty)
+            'attachments':
+                attachments.map((attachment) => attachment.toJson()).toList(),
+        };
+        messages.add(
+          message.copyWith(
+            attachments: attachments,
+            referenceJson: nextReferenceJson.isEmpty ? null : nextReferenceJson,
+          ),
+        );
+      }
       return messages.reversed.toList();
     } catch (e) {
       Logger.e(_tag, '获取分组消息失败', e);
@@ -1009,6 +1103,7 @@ class DatabaseHelper implements ChatStorage {
     }
   }
 
+  @override
   Future<List<ChatMessage>> getMessagesByGroupWithPagination({
     required int groupId,
     required int limit,
@@ -1024,8 +1119,26 @@ class DatabaseHelper implements ChatStorage {
         limit: limit,
         offset: offset,
       );
-      final messages =
-          List.generate(maps.length, (i) => ChatMessage.fromMap(maps[i]));
+      final messages = <ChatMessage>[];
+      for (final map in maps) {
+        final message = ChatMessage.fromMap(map);
+        final messageId = message.id;
+        final attachments = messageId == null
+            ? const <ChatAttachment>[]
+            : await getMessageAttachments(messageId);
+        final nextReferenceJson = <String, dynamic>{
+          ...?message.referenceJson,
+          if (attachments.isNotEmpty)
+            'attachments':
+                attachments.map((attachment) => attachment.toJson()).toList(),
+        };
+        messages.add(
+          message.copyWith(
+            attachments: attachments,
+            referenceJson: nextReferenceJson.isEmpty ? null : nextReferenceJson,
+          ),
+        );
+      }
       return messages.reversed.toList();
     } catch (e) {
       Logger.e(_tag, '分页获取分组消息失败', e);
@@ -1033,6 +1146,7 @@ class DatabaseHelper implements ChatStorage {
     }
   }
 
+  @override
   Future<int> getGroupMessageCount(int groupId) async {
     try {
       final db = await database;
@@ -1047,6 +1161,7 @@ class DatabaseHelper implements ChatStorage {
     }
   }
 
+  @override
   Future<void> deleteGroupMessages(int groupId) async {
     try {
       final db = await database;

@@ -1,11 +1,15 @@
 import '../models/chat_event.dart';
+import '../models/chat/chat_attachment.dart';
 import '../models/chat_message.dart';
 import '../models/context/model_context_item.dart';
 import '../models/tool/tool_result.dart';
+import '../utils/logger.dart';
 import 'model_context_item_encoder.dart';
 import 'tool_result_context_projector.dart';
 
 class SessionContextProjector {
+  static const _tag = 'SessionContextProjector';
+
   SessionContextProjector({
     ModelContextItemEncoder? contextItemEncoder,
     ToolResultContextProjector? toolResultContextProjector,
@@ -104,7 +108,30 @@ class SessionContextProjector {
     if (item == null) {
       return null;
     }
-    return _contextItemEncoder.encode(item);
+    final attachments = _attachmentsFromEvent(event);
+    if (event.eventType == ChatEventType.userMessage) {
+      Logger.temp(
+        _tag,
+        'attachments.event_projected_to_context',
+        reason: 'diagnose_image_attachment_context_chain',
+        data: {
+          'eventId': event.id,
+          'turnId': event.turnId,
+          'attachmentCount': attachments.length,
+          'localIds': attachments.map((attachment) => attachment.localId).toList(),
+          'hasProviderDataUrl': attachments
+              .map(
+                (attachment) =>
+                    attachment.providerFileRefJson?['data_url'] is String &&
+                    (attachment.providerFileRefJson?['data_url'] as String)
+                        .trim()
+                        .isNotEmpty,
+              )
+              .toList(),
+        },
+      );
+    }
+    return _contextItemEncoder.encode(item, attachments: attachments);
   }
 
   ModelContextItem? projectEventToContextItem(ChatEvent event) {
@@ -173,5 +200,16 @@ class SessionContextProjector {
         // .buildPlannerCarriers (spec 2026-05-22).
         return null;
     }
+  }
+
+  List<ChatAttachment> _attachmentsFromEvent(ChatEvent event) {
+    final raw = event.payloadJson?['attachments'];
+    if (raw is! List) {
+      return const <ChatAttachment>[];
+    }
+    return raw
+        .whereType<Map>()
+        .map((item) => ChatAttachment.fromJson(Map<String, dynamic>.from(item)))
+        .toList(growable: false);
   }
 }

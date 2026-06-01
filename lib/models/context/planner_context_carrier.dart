@@ -1,4 +1,5 @@
 import '../chat_turn.dart';
+import '../chat/chat_attachment.dart';
 import '../llm/raw_assistant_token_estimator.dart';
 
 /// Role of a synthetic (our-side) carrier.
@@ -26,18 +27,26 @@ class SyntheticCarrier extends PlannerContextCarrier {
   final SyntheticRole role;
   final String content;
   final String? toolCallId;
+  final List<ChatAttachment> attachments;
 
   const SyntheticCarrier._({
     required this.role,
     required this.content,
     this.toolCallId,
+    this.attachments = const <ChatAttachment>[],
   });
 
   const SyntheticCarrier.system(String content)
       : this._(role: SyntheticRole.system, content: content);
 
-  const SyntheticCarrier.user(String content)
-      : this._(role: SyntheticRole.user, content: content);
+  const SyntheticCarrier.user(
+    String content, {
+    List<ChatAttachment> attachments = const <ChatAttachment>[],
+  }) : this._(
+          role: SyntheticRole.user,
+          content: content,
+          attachments: attachments,
+        );
 
   const SyntheticCarrier.toolResult({
     required String toolCallId,

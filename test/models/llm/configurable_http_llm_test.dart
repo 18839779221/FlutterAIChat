@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
+import 'package:ai_chat/models/chat/chat_attachment.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/chat_turn.dart';
@@ -18,8 +19,6 @@ import 'package:ai_chat/models/llm/llm_provider_model.dart';
 import 'package:ai_chat/models/llm/llm_request_options.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
 import 'package:ai_chat/models/agent/planner_tool_choice.dart';
-import 'package:ai_chat/models/llm/adapters/anthropic_messages_adapter.dart';
-import 'package:ai_chat/models/llm/adapters/responses_adapter.dart';
 import 'package:ai_chat/models/llm/adapters/sdk_anthropic_messages_adapter.dart';
 import 'package:ai_chat/models/llm/adapters/sdk_chat_completions_adapter.dart';
 import 'package:ai_chat/models/llm/adapters/sdk_responses_adapter.dart';
@@ -27,7 +26,6 @@ import 'package:ai_chat/models/llm/runtime/protocol_execution_runtime.dart';
 import 'package:ai_chat/models/llm/runtime/protocol_request_spec.dart';
 import 'package:ai_chat/models/llm/runtime/protocol_runtime_registry.dart';
 import 'package:ai_chat/models/llm/streaming_decision_accumulator.dart';
-import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
 import 'package:ai_chat/services/chat_service.dart';
@@ -157,6 +155,10 @@ void main() {
         capabilities: const ProviderCapabilities(
           supportsPlannerStreaming: false,
           supportsParallelToolCalls: true,
+          supportsImageInput: false,
+          supportsPreUploadedFiles: false,
+          supportsInlineBase64Images: false,
+          supportsRemoteImageUrl: false,
         ),
       );
       final llm = await _buildLlm(
@@ -210,6 +212,10 @@ void main() {
         capabilities: const ProviderCapabilities(
           supportsPlannerStreaming: true,
           supportsParallelToolCalls: true,
+          supportsImageInput: false,
+          supportsPreUploadedFiles: false,
+          supportsInlineBase64Images: false,
+          supportsRemoteImageUrl: false,
         ),
       );
       final llm = await _buildLlm(
@@ -768,6 +774,10 @@ void main() {
         capabilities: const ProviderCapabilities(
           supportsPlannerStreaming: false,
           supportsParallelToolCalls: true,
+          supportsImageInput: false,
+          supportsPreUploadedFiles: false,
+          supportsInlineBase64Images: false,
+          supportsRemoteImageUrl: false,
         ),
       );
       final llm = await _buildLlm(
@@ -2047,6 +2057,178 @@ void main() {
 
   });
 
+  group('image input payloads', () {
+    test('responses adapter serializes image attachments as input_image items',
+        () {
+      final payload = const SdkResponsesAdapter().buildChatPayload(
+        messages: [
+          ChatMessage(
+            text: 'describe this image',
+            role: MessageRole.user,
+            attachments: [
+              ChatAttachment.image(
+                localId: 'att-1',
+                fileName: 'demo.png',
+                mimeType: 'image/png',
+                localPath: 'https://example.com/demo.png',
+                status: ChatAttachmentStatus.ready,
+              ),
+            ],
+          ),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'gpt-4.1',
+        stream: false,
+      );
+
+      expect(jsonEncode(payload), contains('input_image'));
+    });
+
+    test('responses adapter prefers data url image references for local images',
+        () {
+      final payload = const SdkResponsesAdapter().buildChatPayload(
+        messages: [
+          ChatMessage(
+            text: 'describe this image',
+            role: MessageRole.user,
+            attachments: [
+              ChatAttachment.image(
+                localId: 'att-1',
+                fileName: 'demo.png',
+                mimeType: 'image/png',
+                localPath: '/managed/demo.png',
+                status: ChatAttachmentStatus.ready,
+                providerFileRefJson: const {
+                  'data_url': 'data:image/png;base64,AAAA',
+                },
+              ),
+            ],
+          ),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'gpt-4.1',
+        stream: false,
+      );
+
+      expect(jsonEncode(payload), contains('data:image/png;base64,AAAA'));
+    });
+
+    test(
+        'chat completions adapter serializes image attachments for multimodal messages',
+        () {
+      final payload = const SdkChatCompletionsAdapter().buildChatPayload(
+        messages: [
+          ChatMessage(
+            text: 'describe this image',
+            role: MessageRole.user,
+            attachments: [
+              ChatAttachment.image(
+                localId: 'att-1',
+                fileName: 'demo.png',
+                mimeType: 'image/png',
+                localPath: 'https://example.com/demo.png',
+                status: ChatAttachmentStatus.ready,
+              ),
+            ],
+          ),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'gpt-4.1-mini',
+        stream: false,
+      );
+
+      expect(jsonEncode(payload), contains('image_url'));
+    });
+
+    test('anthropic adapter serializes image attachments as content blocks', () {
+      final payload = const SdkAnthropicMessagesAdapter().buildChatPayload(
+        messages: [
+          ChatMessage(
+            text: 'describe this image',
+            role: MessageRole.user,
+            attachments: [
+              ChatAttachment.image(
+                localId: 'att-1',
+                fileName: 'demo.png',
+                mimeType: 'image/png',
+                localPath: 'https://example.com/demo.png',
+                status: ChatAttachmentStatus.ready,
+              ),
+            ],
+          ),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'claude-sonnet',
+        stream: false,
+      );
+
+      expect(jsonEncode(payload), contains('"type":"image"'));
+    });
+
+    test('anthropic adapter serializes data url images as base64 sources', () {
+      final payload = const SdkAnthropicMessagesAdapter().buildChatPayload(
+        messages: [
+          ChatMessage(
+            text: 'describe this image',
+            role: MessageRole.user,
+            attachments: [
+              ChatAttachment.image(
+                localId: 'att-1',
+                fileName: 'demo.png',
+                mimeType: 'image/png',
+                localPath: '/managed/demo.png',
+                status: ChatAttachmentStatus.ready,
+                providerFileRefJson: const {
+                  'data_url': 'data:image/png;base64,AAAA',
+                },
+              ),
+            ],
+          ),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'claude-sonnet',
+        stream: false,
+      );
+
+      expect(jsonEncode(payload), contains('"type":"base64"'));
+      expect(jsonEncode(payload), contains('"media_type":"image/png"'));
+      expect(jsonEncode(payload), contains('"data":"AAAA"'));
+    });
+
+    test(
+        'anthropic planner payload from carriers serializes image attachments as content blocks',
+        () {
+      final payload =
+          const SdkAnthropicMessagesAdapter().buildPlannerPayloadFromCarriers(
+        carriers: [
+          SyntheticCarrier.user(
+            'describe this image',
+            attachments: [
+              ChatAttachment.image(
+                localId: 'att-1',
+                fileName: 'demo.png',
+                mimeType: 'image/png',
+                localPath: '/managed/demo.png',
+                status: ChatAttachmentStatus.ready,
+                providerFileRefJson: const {
+                  'data_url': 'data:image/png;base64,AAAA',
+                },
+              ),
+            ],
+          ),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+        modelName: 'claude-sonnet',
+        availableTools: const [],
+        parallelToolCalls: false,
+      );
+
+      expect(jsonEncode(payload), contains('"type":"image"'));
+      expect(jsonEncode(payload), contains('"type":"base64"'));
+      expect(jsonEncode(payload), contains('"data":"AAAA"'));
+    });
+  });
+
   group('ConfigurableHttpLLM.summarizeConversation', () {
     test('replaces session summary instruction prompt instead of stacking it',
         () async {
@@ -2598,6 +2780,10 @@ class _NonStreamingResponsesAdapter extends SdkResponsesAdapter {
   ProviderCapabilities get capabilities => const ProviderCapabilities(
         supportsPlannerStreaming: false,
         supportsParallelToolCalls: true,
+        supportsImageInput: true,
+        supportsPreUploadedFiles: true,
+        supportsInlineBase64Images: true,
+        supportsRemoteImageUrl: true,
       );
 
   @override

@@ -1,15 +1,24 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ai_chat/controllers/voice_input_controller.dart';
+import 'package:ai_chat/models/chat/chat_attachment.dart';
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat/send_message_request.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
+import 'package:ai_chat/models/llm/llm_provider_config.dart';
+import 'package:ai_chat/models/llm/llm_provider_model.dart';
 import 'package:ai_chat/models/skill/skill_catalog_entry.dart';
 import 'package:ai_chat/models/speech/speech_input_config.dart';
 import 'package:ai_chat/models/session/context_window_segment.dart';
 import 'package:ai_chat/models/session/context_window_snapshot.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
+import 'package:ai_chat/repositories/app_settings_repository.dart';
+import 'package:ai_chat/repositories/llm_local_defaults.dart';
+import 'package:ai_chat/services/attachments/chat_attachment_picker_service.dart';
+import 'package:ai_chat/services/attachments/chat_attachment_storage_service.dart';
 import 'package:ai_chat/services/audio/audio_capture_service.dart';
 import 'package:ai_chat/services/speech/speech_to_text_service.dart';
 import 'package:ai_chat/theme/app_theme_spec.dart';
@@ -18,6 +27,7 @@ import 'package:ai_chat/widgets/chat_input.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   testWidgets('chat input shows compact reply tray when idle', (
@@ -440,6 +450,272 @@ void main() {
     );
     expect(textField.controller?.text, '/verify ');
   });
+
+  testWidgets('chat input opens picker and renders selected image', (
+    tester,
+  ) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatAttachmentPickerServiceProvider.overrideWithValue(
+          _FakeAttachmentPickerService(
+            attachments: [
+              ChatAttachment.image(
+                localId: 'att-1',
+                fileName: 'demo.png',
+                mimeType: 'image/png',
+                byteSize: 128,
+                status: ChatAttachmentStatus.selected,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('chat-input-add-image')));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('chat-input-attachment-strip')), findsOneWidget);
+    expect(find.text('demo.png'), findsNothing);
+  });
+
+  testWidgets('chat input persists picked images before rendering composer attachments', (
+    tester,
+  ) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatAttachmentPickerServiceProvider.overrideWithValue(
+          _FakeAttachmentPickerService(
+            attachments: [
+              ChatAttachment.image(
+                localId: 'att-1',
+                fileName: 'demo.png',
+                mimeType: 'image/png',
+                byteSize: 128,
+                localPath: '/tmp/picked-demo.png',
+                status: ChatAttachmentStatus.selected,
+              ),
+            ],
+          ),
+        ),
+        chatAttachmentStorageServiceProvider.overrideWithValue(
+          _RecordingAttachmentStorageService(),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('chat-input-add-image')));
+    await tester.pump();
+
+    final storage = container.read(chatAttachmentStorageServiceProvider)
+        as _RecordingAttachmentStorageService;
+    expect(storage.receivedAttachments, hasLength(1));
+    expect(storage.receivedAttachments.single.localPath, '/tmp/picked-demo.png');
+    expect(
+      find.byKey(const ValueKey('chat-input-attachment-strip')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('chat input sends request with selected image attachments', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final settingsRepository = AppSettingsRepository(
+      preferences,
+      localDefaultsLoader: () async => const LlmLocalDefaults(
+        defaultProviderId: 'vision',
+        defaultModelId: 'vision-model',
+        providers: [
+          LlmProviderConfig(
+            id: 'vision',
+            name: 'Vision Provider',
+            apiKey: 'key',
+            baseUrl: 'https://vision.example/v1',
+            models: [
+              LlmProviderModel(
+                id: 'vision-model',
+                name: 'Vision Model',
+                supportsImageInput: true,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    final sendCoordinator = _CompletingChatSendCoordinator();
+    final container = ProviderContainer(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
+        chatAttachmentPickerServiceProvider.overrideWithValue(
+          _FakeAttachmentPickerService(
+            attachments: [
+              ChatAttachment.image(
+                localId: 'att-1',
+                fileName: 'demo.png',
+                mimeType: 'image/png',
+                byteSize: 128,
+                status: ChatAttachmentStatus.selected,
+              ),
+            ],
+          ),
+        ),
+        chatControllerProvider.overrideWith(
+          (ref) => ChatController(
+            ref,
+            sendCoordinator: sendCoordinator,
+            sessionCoordinator: _NoopChatSessionCoordinator(),
+            summaryController: _NoopChatSummaryController(),
+            preferencesController: _NoopChatPreferencesController(),
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('chat-input-add-image')));
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey('chat-input-field')),
+      '看下这张图',
+    );
+    await tester.tap(find.byType(FilledButton));
+    await tester.pump();
+
+    expect(sendCoordinator.lastRequest?.attachments, hasLength(1));
+    expect(sendCoordinator.lastRequest?.text, '看下这张图');
+    expect(
+      find.byKey(const ValueKey('chat-input-attachment-strip')),
+      findsNothing,
+    );
+
+    sendCoordinator.complete();
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('chat-input-attachment-strip')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('chat input asks for confirmation before sending image on unsupported model', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final settingsRepository = AppSettingsRepository(
+      preferences,
+      localDefaultsLoader: () async => const LlmLocalDefaults(
+        defaultProviderId: 'beehears-responses',
+        defaultModelId: 'gpt-5.4',
+        providers: [
+          LlmProviderConfig(
+            id: 'beehears-responses',
+            name: 'BeeHears Responses',
+            apiKey: 'key',
+            baseUrl: 'https://ai.beehears.com/v1',
+            models: [
+              LlmProviderModel(
+                id: 'gpt-5.4',
+                name: 'gpt-5.4',
+                supportsImageInput: false,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    final sendCoordinator = _CompletingChatSendCoordinator();
+    final container = ProviderContainer(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
+        chatAttachmentPickerServiceProvider.overrideWithValue(
+          _FakeAttachmentPickerService(
+            attachments: [
+              ChatAttachment.image(
+                localId: 'att-1',
+                fileName: 'demo.png',
+                mimeType: 'image/png',
+                byteSize: 128,
+                status: ChatAttachmentStatus.selected,
+              ),
+            ],
+          ),
+        ),
+        chatControllerProvider.overrideWith(
+          (ref) => ChatController(
+            ref,
+            sendCoordinator: sendCoordinator,
+            sessionCoordinator: _NoopChatSessionCoordinator(),
+            summaryController: _NoopChatSummaryController(),
+            preferencesController: _NoopChatPreferencesController(),
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('chat-input-add-image')));
+    await tester.pump();
+    await tester.tap(find.byType(FilledButton));
+    await tester.pumpAndSettle();
+
+    expect(find.text('当前模型可能不支持图片输入，仍然尝试发送？'), findsOneWidget);
+    expect(sendCoordinator.lastRequest, isNull);
+
+    await tester.tap(find.text('仍然发送'));
+    await tester.pump();
+
+    expect(sendCoordinator.lastRequest?.attachments, hasLength(1));
+    expect(
+      sendCoordinator.lastRequest?.allowUnsupportedImageInputAttempt,
+      isTrue,
+    );
+  });
 }
 
 class _SpyChatController extends ChatController {
@@ -464,6 +740,13 @@ class _SpyChatController extends ChatController {
 
 class _NoopChatSendCoordinator implements ChatSendCoordinator {
   @override
+  Future<void> sendMessageRequest(
+    SendMessageRequest request, {
+    required void Function() scheduleAutoSummary,
+    required void Function() cancelActiveStream,
+  }) async {}
+
+  @override
   Future<void> cancelToolInvocation(ChatMessage message) async {}
 
   @override
@@ -484,6 +767,43 @@ class _NoopChatSendCoordinator implements ChatSendCoordinator {
     ChatMessage message, {
     required AskUserQuestionResponse response,
   }) async {}
+}
+
+class _RecordingChatSendCoordinator extends _NoopChatSendCoordinator {
+  SendMessageRequest? lastRequest;
+
+  @override
+  Future<void> sendMessageRequest(
+    SendMessageRequest request, {
+    required void Function() scheduleAutoSummary,
+    required void Function() cancelActiveStream,
+  }) async {
+    lastRequest = request;
+  }
+}
+
+class _CompletingChatSendCoordinator extends _RecordingChatSendCoordinator {
+  final Completer<void> _completer = Completer<void>();
+
+  @override
+  Future<void> sendMessageRequest(
+    SendMessageRequest request, {
+    required void Function() scheduleAutoSummary,
+    required void Function() cancelActiveStream,
+  }) async {
+    await super.sendMessageRequest(
+      request,
+      scheduleAutoSummary: scheduleAutoSummary,
+      cancelActiveStream: cancelActiveStream,
+    );
+    return _completer.future;
+  }
+
+  void complete() {
+    if (!_completer.isCompleted) {
+      _completer.complete();
+    }
+  }
 }
 
 class _NoopChatSessionCoordinator implements ChatSessionCoordinator {
@@ -518,6 +838,39 @@ class _NoopChatSummaryController implements ChatSummaryController {
 
   @override
   Future<String?> summarizeAndUpdateTitle() async => null;
+}
+
+class _FakeAttachmentPickerService implements ChatAttachmentPickerService {
+  _FakeAttachmentPickerService({
+    required this.attachments,
+  });
+
+  final List<ChatAttachment> attachments;
+
+  @override
+  Future<List<ChatAttachment>> pickImages() async => attachments;
+}
+
+class _RecordingAttachmentStorageService extends ChatAttachmentStorageService {
+  _RecordingAttachmentStorageService()
+      : super(
+          resolveRootDirectory: () async => Directory.systemTemp,
+        );
+
+  final List<ChatAttachment> receivedAttachments = [];
+
+  @override
+  Future<ChatAttachment> persistSelectedImage({
+    required ChatAttachment attachment,
+  }) async {
+    receivedAttachments.add(attachment);
+    return attachment.copyWith(
+      fileName: 'persisted-${attachment.fileName}',
+      localPath: '/managed/${attachment.fileName}',
+      thumbnailPath: '/managed/thumbs/${attachment.fileName}',
+      status: ChatAttachmentStatus.ready,
+    );
+  }
 }
 
 class _NoopChatPreferencesController implements ChatPreferencesController {

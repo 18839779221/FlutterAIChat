@@ -1,5 +1,6 @@
 import '../models/agent/chat_turn_step.dart';
 import '../models/artifact/artifact_record.dart';
+import '../models/chat/chat_attachment.dart';
 import '../models/chat_group.dart';
 import '../models/chat_event.dart';
 import '../models/chat_message.dart';
@@ -58,6 +59,11 @@ abstract class ChatStorage {
   Future<void> updateSessionRuntimeMarker(SessionRuntimeMarker marker);
 
   Future<int> insertMessage(ChatMessage message, int groupId);
+  Future<void> insertMessageAttachments(
+    int messageId,
+    List<ChatAttachment> attachments,
+  );
+  Future<List<ChatAttachment>> getMessageAttachments(int messageId);
   Future<List<ChatMessage>> getMessagesByGroup(int groupId);
   Future<List<ChatMessage>> getMessagesByGroupWithPagination({
     required int groupId,

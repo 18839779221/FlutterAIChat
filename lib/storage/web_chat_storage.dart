@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/agent/chat_turn_step.dart';
 import '../models/artifact/artifact_record.dart';
+import '../models/chat/chat_attachment.dart';
 import '../models/chat_group.dart';
 import '../models/chat_event.dart';
 import '../models/chat_message.dart';
@@ -19,6 +20,7 @@ class WebChatStorage implements ChatStorage {
   static const String _eventsKey = 'web.chat_events';
   static const String _groupsKey = 'web.chat_groups';
   static const String _messagesKey = 'web.chat_messages';
+  static const String _messageAttachmentsKey = 'web.message_attachments';
   static const String _sessionContextSnapshotsKey =
       'web.session_context_snapshots';
   static const String _sessionRuntimeMarkersKey = 'web.session_runtime_markers';
@@ -119,6 +121,7 @@ class WebChatStorage implements ChatStorage {
     final events = await _readEvents();
     final groups = await _readGroups();
     final messages = await _readMessages();
+    final attachments = await _readMessageAttachments();
     final snapshots = await _readSessionContextSnapshots();
     final runtimeMarkers = await _readSessionRuntimeMarkers();
     final artifacts = await _readArtifactRegistry();
@@ -130,6 +133,17 @@ class WebChatStorage implements ChatStorage {
         groups.where((group) => group['id'] != groupId).toList());
     await _writeMessages(
         messages.where((message) => message['group_id'] != groupId).toList());
+    final deletedMessageIds = messages
+        .where((message) => message['group_id'] == groupId)
+        .map((message) => message['id'])
+        .toSet();
+    await _writeMessageAttachments(
+      attachments
+          .where(
+            (attachment) => !deletedMessageIds.contains(attachment['message_id']),
+          )
+          .toList(),
+    );
     await _writeSessionContextSnapshots(
       snapshots.where((snapshot) => snapshot['group_id'] != groupId).toList(),
     );
@@ -489,11 +503,55 @@ class WebChatStorage implements ChatStorage {
   }
 
   @override
+  Future<void> insertMessageAttachments(
+    int messageId,
+    List<ChatAttachment> attachments,
+  ) async {
+    final stored = await _readMessageAttachments();
+    stored.removeWhere((attachment) => attachment['message_id'] == messageId);
+    stored.addAll(
+      attachments.map(
+        (attachment) => attachment.toDatabaseMap(messageId: messageId),
+      ),
+    );
+    await _writeMessageAttachments(stored);
+  }
+
+  @override
+  Future<List<ChatAttachment>> getMessageAttachments(int messageId) async {
+    final stored = await _readMessageAttachments();
+    return stored
+        .where((attachment) => attachment['message_id'] == messageId)
+        .map(ChatAttachment.fromDatabaseMap)
+        .toList(growable: false);
+  }
+
+  @override
   Future<List<ChatMessage>> getMessagesByGroup(int groupId) async {
     final messages = await _groupMessages(groupId);
     messages.sort(
         (a, b) => (a['timestamp'] as int).compareTo(b['timestamp'] as int));
-    return messages.map(ChatMessage.fromMap).toList();
+    final decoded = <ChatMessage>[];
+    for (final map in messages) {
+      final message = ChatMessage.fromMap(map);
+      final messageId = message.id;
+      final attachments = messageId == null
+          ? const <ChatAttachment>[]
+          : await getMessageAttachments(messageId);
+      final nextReferenceJson = <String, dynamic>{
+        ...?message.referenceJson,
+        if (attachments.isNotEmpty)
+          'attachments':
+              attachments.map((attachment) => attachment.toJson()).toList(),
+      };
+      decoded.add(
+        message.copyWith(
+          attachments: attachments,
+          referenceJson: nextReferenceJson.isEmpty ? null : nextReferenceJson,
+        ),
+      );
+    }
+    return decoded;
   }
 
   @override
@@ -519,8 +577,18 @@ class WebChatStorage implements ChatStorage {
   @override
   Future<void> deleteGroupMessages(int groupId) async {
     final messages = await _readMessages();
+    final deletedIds = messages
+        .where((message) => message['group_id'] == groupId)
+        .map((message) => message['id'])
+        .toSet();
     await _writeMessages(
         messages.where((message) => message['group_id'] != groupId).toList());
+    final attachments = await _readMessageAttachments();
+    await _writeMessageAttachments(
+      attachments
+          .where((attachment) => !deletedIds.contains(attachment['message_id']))
+          .toList(),
+    );
   }
 
   @override
@@ -632,6 +700,19 @@ class WebChatStorage implements ChatStorage {
 
   Future<void> _writeMessages(List<Map<String, dynamic>> messages) async {
     await _preferences.setString(_messagesKey, jsonEncode(messages));
+  }
+
+  Future<List<Map<String, dynamic>>> _readMessageAttachments() async {
+    return _readList(_messageAttachmentsKey);
+  }
+
+  Future<void> _writeMessageAttachments(
+    List<Map<String, dynamic>> attachments,
+  ) async {
+    await _preferences.setString(
+      _messageAttachmentsKey,
+      jsonEncode(attachments),
+    );
   }
 
   Future<List<Map<String, dynamic>>> _readSessionContextSnapshots() async {

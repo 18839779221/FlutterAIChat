@@ -1,4 +1,5 @@
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/chat/chat_attachment.dart';
 import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -31,6 +32,23 @@ void main() {
     test('estimatedTokens 是 content 字符数 / 4 取整', () {
       const c = SyntheticCarrier.user('hello world');
       expect(c.estimatedTokens, 'hello world'.length ~/ 4);
+    });
+
+    test('user role can carry attachments', () {
+      final c = SyntheticCarrier.user(
+        '',
+        attachments: [
+          ChatAttachment.image(
+            localId: 'att-1',
+            fileName: 'demo.png',
+            mimeType: 'image/png',
+            status: ChatAttachmentStatus.ready,
+          ),
+        ],
+      );
+      expect(c.role, SyntheticRole.user);
+      expect(c.attachments, hasLength(1));
+      expect(c.attachments.single.localId, 'att-1');
     });
   });
 

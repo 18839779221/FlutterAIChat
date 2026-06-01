@@ -2,9 +2,11 @@ import 'dart:convert';
 
 import 'package:openai_dart/openai_dart.dart' as oai;
 
+import '../../../services/attachments/chat_attachment_payload_codec.dart';
 import '../../../services/chat_service.dart';
 import '../../agent/model_tool_call.dart';
 import '../../agent/model_turn_decision.dart';
+import '../../chat/chat_attachment.dart';
 import '../../agent/planner_tool_choice.dart';
 import '../../agent/planner_tool_option.dart';
 import '../../chat_message.dart';
@@ -19,6 +21,7 @@ import 'adapter_utils.dart';
 import 'api_style_adapter.dart';
 import '../api_protocol_resolver.dart';
 import 'provider_capabilities.dart';
+import '../../../utils/logger.dart';
 
 /// SDK-backed implementation of [ApiStyleAdapter] for the OpenAI Responses
 /// protocol, powered by `openai_dart`.
@@ -27,6 +30,8 @@ import 'provider_capabilities.dart';
 /// payloads and parse responses, avoiding manual JSON construction.
 class SdkResponsesAdapter extends ApiStyleAdapter {
   const SdkResponsesAdapter();
+
+  static const _tag = 'SdkResponsesAdapter';
 
   static const Map<String, dynamic> _reasoningConfig = {
     'effort': 'medium',
@@ -40,6 +45,10 @@ class SdkResponsesAdapter extends ApiStyleAdapter {
   ProviderCapabilities get capabilities => const ProviderCapabilities(
         supportsPlannerStreaming: true,
         supportsParallelToolCalls: true,
+        supportsImageInput: true,
+        supportsPreUploadedFiles: true,
+        supportsInlineBase64Images: true,
+        supportsRemoteImageUrl: true,
       );
 
   @override
@@ -134,7 +143,69 @@ class SdkResponsesAdapter extends ApiStyleAdapter {
         };
       }
     }
+    final imageAttachments =
+        ChatAttachmentPayloadCodec.imageAttachments(message.attachments);
+    final resolvedImageReferences = imageAttachments
+        .map(ChatAttachmentPayloadCodec.resolveImageReference)
+        .toList(growable: false);
+    final imageParts = resolvedImageReferences
+        .map((imageReference) {
+          if (imageReference == null) {
+            return null;
+          }
+          return <String, dynamic>{
+            'type': 'input_image',
+            'image_url': imageReference,
+          };
+        })
+        .whereType<Map<String, dynamic>>()
+        .toList(growable: false);
+    if (message.role == MessageRole.user) {
+      Logger.temp(
+        _tag,
+        'attachments.responses_input_item_built',
+        reason: 'diagnose_image_attachment_context_chain',
+        data: {
+          'textLength': message.text.length,
+          'attachmentCount': message.attachments.length,
+          'imageAttachmentCount': imageAttachments.length,
+          'resolvedImageReferenceCount': resolvedImageReferences
+              .whereType<String>()
+              .where((value) => value.trim().isNotEmpty)
+              .length,
+          'inputImagePartCount': imageParts.length,
+          'localIds': message.attachments
+              .map((attachment) => attachment.localId)
+              .toList(),
+          'hasProviderDataUrl': message.attachments
+              .map(
+                (attachment) =>
+                    attachment.providerFileRefJson?['data_url'] is String &&
+                    (attachment.providerFileRefJson?['data_url'] as String)
+                        .trim()
+                        .isNotEmpty,
+              )
+              .toList(),
+          'resolvedReferenceKinds': resolvedImageReferences
+              .map((value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'missing';
+                }
+                if (value.startsWith('data:')) {
+                  return 'data_url';
+                }
+                if (value.startsWith('http://') || value.startsWith('https://')) {
+                  return 'remote_url';
+                }
+                return 'local_path';
+              })
+              .toList(),
+          'modelContextType': modelContextTypeOf(message),
+        },
+      );
+    }
     return {
+      'type': 'message',
       'role': message.role.toString().split('.').last,
       'content': [
         {
@@ -143,6 +214,7 @@ class SdkResponsesAdapter extends ApiStyleAdapter {
               : 'input_text',
           'text': message.text,
         },
+        ...imageParts,
       ],
     };
   }
@@ -421,13 +493,18 @@ class SdkResponsesAdapter extends ApiStyleAdapter {
           instructions =
               instructions == null ? content : '$instructions\n\n$content';
 
-        case SyntheticCarrier(role: SyntheticRole.user, :final content):
+        case SyntheticCarrier(
+              role: SyntheticRole.user,
+              :final content,
+              :final attachments,
+            ):
           input.add({
             'type': 'message',
             'role': 'user',
-            'content': [
-              {'type': 'input_text', 'text': content},
-            ],
+            'content': _buildPlannerUserContentParts(
+              content: content,
+              attachments: attachments,
+            ),
           });
 
         case SyntheticCarrier(
@@ -471,5 +548,29 @@ class SdkResponsesAdapter extends ApiStyleAdapter {
     };
     _applyCacheHints(payload, requestOptions.cache);
     return payload;
+  }
+
+  List<Map<String, dynamic>> _buildPlannerUserContentParts({
+    required String content,
+    required List<ChatAttachment> attachments,
+  }) {
+    final parts = <Map<String, dynamic>>[];
+    if (content.trim().isNotEmpty) {
+      parts.add({'type': 'input_text', 'text': content});
+    }
+    parts.addAll(
+      ChatAttachmentPayloadCodec.imageAttachments(attachments).map((attachment) {
+        final imageReference =
+            ChatAttachmentPayloadCodec.resolveImageReference(attachment);
+        if (imageReference == null || imageReference.trim().isEmpty) {
+          return null;
+        }
+        return <String, dynamic>{
+          'type': 'input_image',
+          'image_url': imageReference,
+        };
+      }).whereType<Map<String, dynamic>>(),
+    );
+    return parts;
   }
 }

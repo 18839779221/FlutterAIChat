@@ -1,12 +1,15 @@
 import '../models/chat_event.dart';
+import '../models/chat/chat_attachment.dart';
 import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/interaction/ask_user_question_request.dart';
 import '../models/interaction/ask_user_question_response.dart';
 import '../models/tool/tool_invocation.dart';
 import '../storage/chat_storage.dart';
+import '../utils/logger.dart';
 
 class ChatEventRepository {
+  static const _tag = 'ChatEventRepository';
   final ChatStorage _storage;
   final Map<int, Future<void>> _turnLocks = {};
 
@@ -29,13 +32,42 @@ class ChatEventRepository {
     required int turnId,
     required int groupId,
     required String content,
+    List<ChatAttachment> attachments = const <ChatAttachment>[],
   }) {
+    if (attachments.isNotEmpty) {
+      Logger.temp(
+        _tag,
+        'attachments.user_event_appended',
+        reason: 'diagnose_image_attachment_context_chain',
+        data: {
+          'turnId': turnId,
+          'groupId': groupId,
+          'attachmentCount': attachments.length,
+          'localIds': attachments.map((attachment) => attachment.localId).toList(),
+          'hasProviderDataUrl': attachments
+              .map(
+                (attachment) =>
+                    attachment.providerFileRefJson?['data_url'] is String &&
+                    (attachment.providerFileRefJson?['data_url'] as String)
+                        .trim()
+                        .isNotEmpty,
+              )
+              .toList(),
+        },
+      );
+    }
     return _appendEvent(
       turnId: turnId,
       groupId: groupId,
       eventType: ChatEventType.userMessage,
       role: MessageRole.user,
       content: content,
+      payloadJson: attachments.isEmpty
+          ? null
+          : {
+              'attachments':
+                  attachments.map((attachment) => attachment.toJson()).toList(),
+            },
     );
   }
 

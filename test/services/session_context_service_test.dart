@@ -2,6 +2,7 @@ import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat/chat_attachment.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/context/planner_context_carrier.dart';
@@ -1054,6 +1055,101 @@ void main() {
       expect(toolResults, hasLength(1));
       expect(toolResults.single.toolCallId, 'call_ask_1');
       expect(toolResults.single.content, contains('平台: Android'));
+
+      await storage.deleteGroup(groupId);
+    });
+
+    test(
+        'buildPlannerCarriers adds hidden attachment reminder for attachment-only user turn',
+        () async {
+      final storage = DatabaseHelper(
+        databaseName: 'session_context_service_attachment_reminder_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(
+          title: 'attachment reminder carrier',
+          lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
+        ),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final eventRepository = ChatEventRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '',
+        ),
+      );
+
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetResolver: (_) => const SessionModelBudget(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw UnimplementedError(),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      );
+
+      final carriers = await service.buildPlannerCarriers(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: [
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '',
+            payloadJson: {
+              'attachments': [
+                ChatAttachment.image(
+                  localId: 'att-1',
+                  fileName: 'demo.png',
+                  mimeType: 'image/png',
+                  status: ChatAttachmentStatus.ready,
+                  providerFileRefJson: const {
+                    'data_url': 'data:image/png;base64,AAAA',
+                  },
+                ).toJson(),
+              ],
+            },
+          ),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+      );
+
+      final systemCarriers = carriers
+          .whereType<SyntheticCarrier>()
+          .where((c) => c.role == SyntheticRole.system)
+          .toList();
+      expect(
+        systemCarriers.any(
+          (carrier) =>
+              carrier.content.contains('<system-reminder>') &&
+              carrier.content.contains('The user sent 1 image attachment') &&
+              carrier.content.contains('Do not say that no image was provided'),
+        ),
+        isTrue,
+      );
+      final attachmentUserCarriers = carriers
+          .whereType<SyntheticCarrier>()
+          .where((c) => c.role == SyntheticRole.user)
+          .where((c) => c.attachments.isNotEmpty)
+          .toList();
+      expect(attachmentUserCarriers, hasLength(1));
+      expect(attachmentUserCarriers.single.attachments.single.localId, 'att-1');
 
       await storage.deleteGroup(groupId);
     });

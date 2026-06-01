@@ -37,6 +37,10 @@ class LegacyChatCompletionsAdapter extends ApiStyleAdapter {
   ProviderCapabilities get capabilities => const ProviderCapabilities(
         supportsPlannerStreaming: true,
         supportsParallelToolCalls: true,
+        supportsImageInput: true,
+        supportsPreUploadedFiles: false,
+        supportsInlineBase64Images: false,
+        supportsRemoteImageUrl: true,
       );
 
   @override

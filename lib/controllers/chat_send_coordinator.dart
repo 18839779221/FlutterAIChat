@@ -3,15 +3,20 @@ import 'dart:convert';
 
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/chat/chat_attachment.dart';
+import 'package:ai_chat/models/chat/send_message_request.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/debug/streaming_trace_snapshot.dart';
 import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
+import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/skill/invoked_skill_context.dart';
 import 'package:ai_chat/models/trace/chat_trace_event.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
+import 'package:ai_chat/models/llm/base_llm.dart';
+import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/providers/chat_send_state_providers.dart';
@@ -34,6 +39,12 @@ import 'agent_event_processor.dart';
 const String traceTurnIdPayloadKey = 'traceTurnId';
 
 abstract class ChatSendCoordinator {
+  Future<void> sendMessageRequest(
+    SendMessageRequest request, {
+    required VoidCallback scheduleAutoSummary,
+    required VoidCallback cancelActiveStream,
+  });
+
   Future<void> sendMessage(
     String text, {
     required VoidCallback scheduleAutoSummary,
@@ -66,10 +77,91 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     required VoidCallback scheduleAutoSummary,
     required VoidCallback cancelActiveStream,
   }) async {
-    if (text.trim().isEmpty) return;
+    await sendMessageRequest(
+      SendMessageRequest(text: text),
+      scheduleAutoSummary: scheduleAutoSummary,
+      cancelActiveStream: cancelActiveStream,
+    );
+  }
 
-    final currentGroup = _ref.read(currentGroupProvider);
-    if (currentGroup == null) return;
+  @override
+  Future<void> sendMessageRequest(
+    SendMessageRequest request, {
+    required VoidCallback scheduleAutoSummary,
+    required VoidCallback cancelActiveStream,
+  }) async {
+    Logger.i(
+      _tag,
+      'sendMessageRequest entered',
+    );
+    final text = request.text;
+    final attachments = request.attachments;
+    final allowUnsupportedImageInputAttempt =
+        request.allowUnsupportedImageInputAttempt;
+    Logger.runtime(
+      _tag,
+      'sendMessageRequest payload received',
+      data: {
+        'textLength': text.length,
+        'attachmentCount': attachments.length,
+        'allowUnsupportedImageInputAttempt':
+            allowUnsupportedImageInputAttempt,
+        'attachmentKinds': attachments.map((attachment) => attachment.kind.name).join(','),
+        'attachmentStatuses':
+            attachments.map((attachment) => attachment.status.name).join(','),
+      },
+    );
+    if (text.trim().isEmpty && attachments.isEmpty) return;
+
+    var currentGroup = _ref.read(currentGroupProvider);
+    if (currentGroup == null) {
+      Logger.w(_tag, 'current group missing before send, creating a draft group');
+      final systemPrompt = _ref.read(systemPromptProvider);
+      ChatTurnProviderStyle lockedProviderStyle;
+      try {
+        final config =
+            await _ref.read(appSettingsRepositoryProvider).getLlmConfig();
+        lockedProviderStyle = const ApiProtocolResolver()
+            .resolveStyle(config.apiUrl)
+            .toChatTurnProviderStyle();
+      } catch (error) {
+        Logger.w(
+          _tag,
+          'failed to resolve provider style before send, fallback to chat completions: $error',
+        );
+        lockedProviderStyle = ChatTurnProviderStyle.openaiChatCompletions;
+      }
+      currentGroup = ChatGroup(
+        title: '新对话',
+        systemPrompt: systemPrompt,
+        lockedProviderStyle: lockedProviderStyle,
+      );
+      _ref.read(currentGroupProvider.notifier).state = currentGroup;
+      _ref.read(messagesProvider.notifier).clearMessages();
+      _ref.read(hasMoreMessagesProvider.notifier).state = false;
+      _ref.read(isInitializingProvider.notifier).state = false;
+    }
+    final imageSupportFailure = await _validateAttachmentSupport(
+      attachments: attachments,
+      currentGroup: currentGroup,
+      llm: _ref.read(chatServiceProvider).llm,
+      allowUnsupportedImageInputAttempt: allowUnsupportedImageInputAttempt,
+    );
+    if (imageSupportFailure != null) {
+      Logger.w(
+        _tag,
+        'image support validation rejected request: $imageSupportFailure',
+      );
+      await _appendVisibleSendFailureMessage(
+        groupId: currentGroup.id,
+        error: Exception(imageSupportFailure),
+      );
+      _ref.read(chatSendStateProvider.notifier).update(
+            isGenerating: false,
+            phase: ChatSendPhase.idle,
+          );
+      return;
+    }
     var cancellationRequested = false;
 
     Future<void> requestPreparingCancellation() async {
@@ -99,6 +191,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       data: {
         'groupId': currentGroup.id,
         'userMessagePreview': text.substring(0, text.length.clamp(0, 80)),
+        'attachmentCount': attachments.length,
       },
     );
 
@@ -107,6 +200,14 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         final dbHelper = _ref.read(databaseProvider);
         final newGroup = currentGroup.copyWith(title: text);
         final groupId = await dbHelper.insertGroup(newGroup);
+        Logger.runtime(
+          _tag,
+          'persisted draft group for send',
+          data: {
+            'groupId': groupId,
+            'groupTitle': newGroup.title,
+          },
+        );
         _ref.read(currentGroupProvider.notifier).state =
             newGroup.copyWith(id: groupId);
         await _loadGroups();
@@ -137,9 +238,24 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       text: sanitizedText,
       role: MessageRole.user,
       status: MessageStatus.completed,
+      attachments: attachments,
+      referenceJson: attachments.isEmpty
+          ? null
+          : {
+              'attachments':
+                  attachments.map((attachment) => attachment.toJson()).toList(),
+            },
     );
 
     _ref.read(messagesProvider.notifier).addMessage(userMessage);
+    Logger.runtime(
+      _tag,
+      'user message added to in-memory timeline',
+      data: {
+        'textLength': sanitizedText.length,
+        'attachmentCount': attachments.length,
+      },
+    );
     await Future.delayed(const Duration(milliseconds: 1));
 
     try {
@@ -151,11 +267,47 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
           await runtimeMarkerService.prepareForUserMessage(
         groupId: currentGroupId,
       );
+      final shouldPersistUserTextMessage =
+          sanitizedText.trim().isNotEmpty || attachments.isEmpty;
 
-      Logger.d(_tag, '保存用户消息到数据库...');
-      final userMessageId =
-          await dbHelper.insertMessage(userMessage, currentGroupId);
-      userMessage.id = userMessageId;
+      if (shouldPersistUserTextMessage) {
+        Logger.d(_tag, '保存用户消息到数据库...');
+        final userMessageId =
+            await dbHelper.insertMessage(userMessage, currentGroupId);
+        userMessage.id = userMessageId;
+        Logger.runtime(
+          _tag,
+          'user message persisted',
+          data: {
+            'messageId': userMessageId,
+            'groupId': currentGroupId,
+            'attachmentCount': attachments.length,
+          },
+        );
+        if (attachments.isNotEmpty) {
+          await dbHelper.insertMessageAttachments(userMessageId, attachments);
+          Logger.runtime(
+            _tag,
+            'user attachments persisted',
+            data: {
+              'messageId': userMessageId,
+              'attachmentCount': attachments.length,
+              'attachmentPaths': attachments
+                  .map((attachment) => attachment.localPath ?? '')
+                  .join(','),
+            },
+          );
+        }
+      } else {
+        Logger.runtime(
+          _tag,
+          'skip persisting empty user text message; attachments remain turn-scoped only',
+          data: {
+            'groupId': currentGroupId,
+            'attachmentCount': attachments.length,
+          },
+        );
+      }
 
       if (cancellationRequested) {
         await _projectCancelledTurnOutcome(
@@ -184,6 +336,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         explicitInvokedSkill: explicitSkill.invokedSkill,
         scheduleAutoSummary: scheduleAutoSummary,
       );
+      await _recordRuntimeImageInputSupportSuccessIfNeeded(attachments);
     } catch (e, stackTrace) {
       final handledFailure = e is _HandledSendFailure ? e : null;
       final rawError = handledFailure?.error ?? e;
@@ -240,6 +393,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         runtimeMarkerService: runtimeMarkerService,
         runtimeMarkerPreparation: runtimeMarkerPreparation,
         explicitInvokedSkill: explicitInvokedSkill,
+        attachments: userMessage.attachments,
       ),
     );
     final turnRecordId = await turnRepository.createTurn(createdTurn);
@@ -362,16 +516,46 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     required SessionRuntimeMarkerService runtimeMarkerService,
     required SessionRuntimeMarkerPreparation runtimeMarkerPreparation,
     required InvokedSkillContext? explicitInvokedSkill,
+    required List<ChatAttachment> attachments,
   }) {
     final context = runtimeMarkerService.buildTurnRuntimeContext(
       runtimeMarkerPreparation,
     );
+    final runtimeContext = Map<String, dynamic>.from(
+      context[SessionRuntimeMarkerService.runtimeContextKey] as Map,
+    );
+    if (attachments.isNotEmpty) {
+      runtimeContext['user_attachments'] =
+          attachments.map((attachment) => attachment.toJson()).toList();
+      Logger.temp(
+        _tag,
+        'attachments.runtime_context_staged',
+        reason: 'diagnose_image_attachment_context_chain',
+        data: {
+          'attachmentCount': attachments.length,
+          'localIds': attachments.map((attachment) => attachment.localId).toList(),
+          'statuses': attachments
+              .map((attachment) => attachment.status.name)
+              .toList(),
+          'hasProviderDataUrl': attachments
+              .map(
+                (attachment) =>
+                    attachment.providerFileRefJson?['data_url'] is String &&
+                    (attachment.providerFileRefJson?['data_url'] as String)
+                        .trim()
+                        .isNotEmpty,
+              )
+              .toList(),
+        },
+      );
+    }
     if (explicitInvokedSkill == null) {
-      return context;
+      return {
+        ...context,
+        SessionRuntimeMarkerService.runtimeContextKey: runtimeContext,
+      };
     }
     final reminder = const InvokedSkillReminderBuilder().build(explicitInvokedSkill);
-    final runtimeContext =
-        Map<String, dynamic>.from(context[SessionRuntimeMarkerService.runtimeContextKey] as Map);
     runtimeContext['explicit_skill_reminder'] = reminder;
     runtimeContext['explicit_skill_context'] = explicitInvokedSkill.toJson();
     return {
@@ -761,6 +945,139 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       return '发送失败，请稍后重试。';
     }
     return '发送失败：$compactMessage';
+  }
+
+  Future<String?> _validateAttachmentSupport({
+    required List<ChatAttachment> attachments,
+    required ChatGroup currentGroup,
+    required BaseLLM llm,
+    required bool allowUnsupportedImageInputAttempt,
+  }) async {
+    if (attachments.isEmpty) {
+      return null;
+    }
+
+    if (allowUnsupportedImageInputAttempt) {
+      Logger.runtime(
+        _tag,
+        'attachment support overridden by user confirmation',
+      );
+      return null;
+    }
+
+    final runtimeSupport = await _resolveRuntimeSelectedModelImageSupport();
+    if (runtimeSupport != null) {
+      Logger.runtime(
+        _tag,
+        'attachment support resolved from runtime model capability',
+        data: {
+          'supportsImageInput': runtimeSupport,
+        },
+      );
+      return runtimeSupport
+          ? null
+          : '当前模型不支持图片输入，请切换到支持多模态图片输入的模型后重试。';
+    }
+
+    final explicitSupport = llm.config['supportsImageInput'];
+    if (explicitSupport is bool) {
+      Logger.runtime(
+        _tag,
+        'attachment support resolved from llm.config',
+        data: {
+          'supportsImageInput': explicitSupport,
+        },
+      );
+      return explicitSupport ? null : '当前模型不支持图片输入，请切换到支持多模态图片输入的模型后重试。';
+    }
+
+    final selectedModelSupport = await _resolveSelectedModelImageSupport();
+    if (selectedModelSupport != null) {
+      Logger.runtime(
+        _tag,
+        'attachment support resolved from selected model capability',
+        data: {
+          'supportsImageInput': selectedModelSupport,
+        },
+      );
+      return selectedModelSupport
+          ? null
+          : '当前模型不支持图片输入，请切换到支持多模态图片输入的模型后重试。';
+    }
+
+    switch (currentGroup.lockedProviderStyle) {
+      case ChatTurnProviderStyle.openaiChatCompletions:
+      case ChatTurnProviderStyle.openaiResponses:
+      case ChatTurnProviderStyle.anthropicMessages:
+        return null;
+    }
+  }
+
+  Future<bool?> _resolveSelectedModelImageSupport() async {
+    try {
+      final repository = _ref.read(appSettingsRepositoryProvider);
+      final config = await repository.getLlmConfig();
+      final raw =
+          config.additionalConfig['llm.selected_model_supports_image_input'];
+      if (raw is bool) {
+        return raw;
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
+  Future<bool?> _resolveRuntimeSelectedModelImageSupport() async {
+    try {
+      final repository = _ref.read(appSettingsRepositoryProvider);
+      final config = await repository.getLlmConfig();
+      final raw =
+          config.additionalConfig['llm.runtime_selected_model_supports_image_input'];
+      if (raw is bool) {
+        return raw;
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
+  Future<void> _recordRuntimeImageInputSupportSuccessIfNeeded(
+    List<ChatAttachment> attachments,
+  ) async {
+    if (attachments.isEmpty) {
+      return;
+    }
+    try {
+      final repository = _ref.read(appSettingsRepositoryProvider);
+      final config = await repository.getLlmConfig();
+      final providerId =
+          config.additionalConfig['llm.selected_provider_id'] as String?;
+      final modelId =
+          config.additionalConfig['llm.selected_model_id'] as String?;
+      if (providerId == null || modelId == null) {
+        return;
+      }
+      await repository.saveRuntimeImageInputSupport(
+        providerId: providerId,
+        modelId: modelId,
+        supportsImageInput: true,
+      );
+      Logger.runtime(
+        _tag,
+        'recorded runtime image support success',
+        data: {
+          'providerId': providerId,
+          'modelId': modelId,
+        },
+      );
+    } catch (error) {
+      Logger.w(
+        _tag,
+        'failed to record runtime image support success: $error',
+      );
+    }
   }
 
   String _formatTurnFailureText(ChatTurn turn) {

@@ -5,6 +5,8 @@ import 'package:ai_chat/models/speech/speech_input_config.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/services/audio/audio_capture_service.dart';
 import 'package:ai_chat/services/audio/record_audio_capture_service.dart';
+import 'package:ai_chat/services/attachments/chat_attachment_picker_service.dart';
+import 'package:ai_chat/services/attachments/chat_attachment_storage_service.dart';
 import 'package:ai_chat/services/artifact/artifact_file_storage_service.dart';
 import 'package:ai_chat/services/artifact/artifact_guideline_contract_builder.dart';
 import 'package:ai_chat/services/artifact/artifact_theme_token_mapper.dart';
@@ -76,6 +78,12 @@ final audioCaptureServiceProvider = Provider<AudioCaptureService?>((ref) {
   ref.onDispose(service.dispose);
   return service;
 });
+
+final chatAttachmentPickerServiceProvider =
+    Provider<ChatAttachmentPickerService?>((ref) => null);
+
+final chatAttachmentStorageServiceProvider =
+    Provider<ChatAttachmentStorageService?>((ref) => null);
 
 final aliyunRealtimeAsrClientProvider = Provider<AliyunRealtimeAsrClient?>(
   (ref) {

@@ -5,12 +5,14 @@ import '../../agent/planner_tool_option.dart';
 import '../../agent/model_tool_call.dart';
 import '../../agent/model_turn_decision.dart';
 import '../../chat_message.dart';
+import '../../chat/chat_attachment.dart';
 import '../../context/planner_context_carrier.dart';
 import '../llm_cache_request_options.dart';
 import '../llm_cache_strategy.dart';
 import '../llm_request_options.dart';
 import '../runtime/protocol_request_spec.dart';
 import '../../../services/chat_service.dart';
+import '../../../services/attachments/chat_attachment_payload_codec.dart';
 import '../api_protocol_resolver.dart';
 import '../llm_config.dart';
 import '../streaming_decision_accumulator.dart';
@@ -39,6 +41,10 @@ class ResponsesAdapter extends ApiStyleAdapter {
   ProviderCapabilities get capabilities => const ProviderCapabilities(
         supportsPlannerStreaming: true,
         supportsParallelToolCalls: true,
+        supportsImageInput: true,
+        supportsPreUploadedFiles: true,
+        supportsInlineBase64Images: true,
+        supportsRemoteImageUrl: true,
       );
 
   @override
@@ -444,13 +450,18 @@ class ResponsesAdapter extends ApiStyleAdapter {
           instructions =
               instructions == null ? content : '$instructions\n\n$content';
 
-        case SyntheticCarrier(role: SyntheticRole.user, :final content):
+        case SyntheticCarrier(
+              role: SyntheticRole.user,
+              :final content,
+              :final attachments,
+            ):
           input.add({
             'type': 'message',
             'role': 'user',
-            'content': [
-              {'type': 'input_text', 'text': content},
-            ],
+            'content': _buildUserContentParts(
+              content: content,
+              attachments: attachments,
+            ),
           });
 
         case SyntheticCarrier(
@@ -494,5 +505,29 @@ class ResponsesAdapter extends ApiStyleAdapter {
     };
     _applyCacheHints(payload, requestOptions.cache);
     return payload;
+  }
+
+  List<Map<String, dynamic>> _buildUserContentParts({
+    required String content,
+    required List<ChatAttachment> attachments,
+  }) {
+    final parts = <Map<String, dynamic>>[];
+    if (content.trim().isNotEmpty) {
+      parts.add({'type': 'input_text', 'text': content});
+    }
+    parts.addAll(
+      ChatAttachmentPayloadCodec.imageAttachments(attachments).map((attachment) {
+        final imageReference =
+            ChatAttachmentPayloadCodec.resolveImageReference(attachment);
+        if (imageReference == null || imageReference.trim().isEmpty) {
+          return null;
+        }
+        return <String, dynamic>{
+          'type': 'input_image',
+          'image_url': imageReference,
+        };
+      }).whereType<Map<String, dynamic>>(),
+    );
+    return parts;
   }
 }

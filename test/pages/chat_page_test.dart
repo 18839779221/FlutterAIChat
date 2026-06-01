@@ -1,5 +1,6 @@
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat/active_turn_status_presentation.dart';
+import 'package:ai_chat/models/chat/send_message_request.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/debug/debug_test_case.dart';
 import 'package:ai_chat/models/debug/streaming_trace_snapshot.dart';
@@ -755,6 +756,13 @@ const _debugCaseAwaitingInteractionAssertions = DebugTestCaseAssertions(
 );
 
 class _StubSendCoordinator implements ChatSendCoordinator {
+  @override
+  Future<void> sendMessageRequest(
+    SendMessageRequest request, {
+    required void Function() scheduleAutoSummary,
+    required void Function() cancelActiveStream,
+  }) async {}
+
   @override
   Future<void> cancelToolInvocation(ChatMessage message) async {}
 

@@ -1,7 +1,10 @@
 import 'dart:async';
 
+import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/artifact/artifact_record.dart';
+import 'package:ai_chat/models/chat/chat_attachment.dart';
+import 'package:ai_chat/models/chat/send_message_request.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -20,8 +23,14 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
+  setUpAll(() {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  });
+
   test('controller initialization does not attach scroll listeners directly',
       () {
     final scrollController = _TrackingScrollController();
@@ -205,6 +214,79 @@ void main() {
       ChatTurnProviderStyle.openaiChatCompletions,
     );
   });
+
+  test('database stores and loads message attachments', () async {
+    final databaseHelper = DatabaseHelper(
+      databaseName:
+          'chat_attachment_test_${DateTime.now().microsecondsSinceEpoch}.db',
+    );
+    final groupId = await databaseHelper.insertGroup(
+      ChatGroup(
+        title: 'group',
+        lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+      ),
+    );
+    final message = ChatMessage(
+      text: 'look at this image',
+      role: MessageRole.user,
+      status: MessageStatus.completed,
+    );
+    final messageId = await databaseHelper.insertMessage(message, groupId);
+    final attachment = ChatAttachment.image(
+      localId: 'att-1',
+      fileName: 'demo.png',
+      mimeType: 'image/png',
+      byteSize: 128,
+      localPath: '/tmp/demo.png',
+      status: ChatAttachmentStatus.ready,
+    );
+
+    await databaseHelper.insertMessageAttachments(messageId, [attachment]);
+
+    final loaded = await databaseHelper.getMessagesByGroup(groupId);
+    expect(loaded.single.attachments, hasLength(1));
+    expect(loaded.single.referenceJson?['attachments'], isNotNull);
+    expect(
+      (loaded.single.referenceJson?['attachments'] as List).single['fileName'],
+      'demo.png',
+    );
+  });
+
+  test('chat controller forwards send request with attachments', () async {
+    final sendCoordinator = _RecordingChatSendCoordinator();
+    final container = ProviderContainer(
+      overrides: [
+        databaseProvider.overrideWithValue(_FakeChatStorage()),
+        chatControllerProvider.overrideWith(
+          (ref) => ChatController(
+            ref,
+            sendCoordinator: sendCoordinator,
+            sessionCoordinator: _NoopChatSessionCoordinator(),
+            summaryController: _NoopChatSummaryController(),
+            preferencesController: _NoopChatPreferencesController(),
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final request = SendMessageRequest(
+      text: '看下这张图',
+      attachments: [
+        ChatAttachment.image(
+          localId: 'att-1',
+          fileName: 'demo.png',
+          mimeType: 'image/png',
+          status: ChatAttachmentStatus.selected,
+        ),
+      ],
+    );
+
+    await container.read(chatControllerProvider).sendMessageRequest(request);
+
+    expect(sendCoordinator.lastRequest?.attachments, hasLength(1));
+    expect(sendCoordinator.lastRequest?.text, '看下这张图');
+  });
 }
 
 class _SpyChatSummaryController implements ChatSummaryController {
@@ -264,6 +346,13 @@ class _TrackingScrollController extends ScrollController {
 
 class _NoopChatSendCoordinator implements ChatSendCoordinator {
   @override
+  Future<void> sendMessageRequest(
+    SendMessageRequest request, {
+    required void Function() scheduleAutoSummary,
+    required void Function() cancelActiveStream,
+  }) async {}
+
+  @override
   Future<void> cancelToolInvocation(ChatMessage message) async {}
 
   @override
@@ -284,6 +373,19 @@ class _NoopChatSendCoordinator implements ChatSendCoordinator {
     ChatMessage message, {
     required AskUserQuestionResponse response,
   }) async {}
+}
+
+class _RecordingChatSendCoordinator extends _NoopChatSendCoordinator {
+  SendMessageRequest? lastRequest;
+
+  @override
+  Future<void> sendMessageRequest(
+    SendMessageRequest request, {
+    required void Function() scheduleAutoSummary,
+    required void Function() cancelActiveStream,
+  }) async {
+    lastRequest = request;
+  }
 }
 
 class _NoopChatSessionCoordinator implements ChatSessionCoordinator {
@@ -417,6 +519,16 @@ class _FakeChatStorage implements ChatStorage {
 
   @override
   Future<int> insertMessage(ChatMessage message, int groupId) async => 1;
+
+  @override
+  Future<void> insertMessageAttachments(
+    int messageId,
+    List<ChatAttachment> attachments,
+  ) async {}
+
+  @override
+  Future<List<ChatAttachment>> getMessageAttachments(int messageId) async =>
+      const [];
 
   @override
   Future<int> insertSessionContextSnapshot(

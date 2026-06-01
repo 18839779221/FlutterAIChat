@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'chat/chat_attachment.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 
 enum MessageRole { user, assistant, system }
@@ -27,6 +28,7 @@ class ChatMessage {
   MessageContentType contentType;
   Map<String, dynamic>? payloadJson;
   Map<String, dynamic>? referenceJson;
+  List<ChatAttachment> attachments;
 
   ChatMessage({
     required this.text,
@@ -38,6 +40,7 @@ class ChatMessage {
     this.contentType = MessageContentType.plainText,
     this.payloadJson,
     this.referenceJson,
+    this.attachments = const <ChatAttachment>[],
   }) : timestamp = timestamp ?? DateTime.now();
 
   Map<String, dynamic> toMap() {
@@ -78,6 +81,7 @@ class ChatMessage {
       contentType: MessageContentTypeParsing.fromString(map['content_type']),
       payloadJson: _coerceJsonField(map['payload_json']),
       referenceJson: _coerceJsonField(map['reference_json']),
+      attachments: const <ChatAttachment>[],
     );
   }
 
@@ -96,6 +100,7 @@ class ChatMessage {
     MessageContentType? contentType,
     Map<String, dynamic>? payloadJson,
     Map<String, dynamic>? referenceJson,
+    List<ChatAttachment>? attachments,
   }) {
     return ChatMessage(
       text: text ?? this.text,
@@ -107,6 +112,7 @@ class ChatMessage {
       contentType: contentType ?? this.contentType,
       payloadJson: payloadJson ?? this.payloadJson,
       referenceJson: referenceJson ?? this.referenceJson,
+      attachments: attachments ?? this.attachments,
     );
   }
 
