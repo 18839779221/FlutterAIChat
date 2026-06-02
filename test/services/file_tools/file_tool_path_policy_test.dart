@@ -27,25 +27,41 @@ void main() {
     });
 
     test('rejects parent directory traversal', () {
-      final result = policy.normalizeSandboxPath('../secrets.txt');
+      final result = policy.normalizeSandboxPath('../secrets.txt', cwd: '/');
 
       expect(result.isValid, isFalse);
       expect(result.errorCode, 'path_outside_sandbox');
     });
 
-    test('accepts sandbox-relative memory path', () {
-      final result = policy.normalizeSandboxPath('memories/user/profile.md');
+    test('accepts agent absolute path', () {
+      final result = policy.normalizeSandboxPath(
+        '/memories/user/profile.md',
+        cwd: '/',
+      );
 
       expect(result.isValid, isTrue);
       expect(result.relativePath, 'memories/user/profile.md');
       expect(result.absolutePath, endsWith('agent/memories/user/profile.md'));
+      expect(result.agentPath, '/memories/user/profile.md');
     });
 
-    test('rejects absolute path input', () {
-      final result = policy.normalizeSandboxPath('/tmp/demo.txt');
+    test('accepts agent-relative path against cwd', () {
+      final result = policy.normalizeSandboxPath(
+        './profile.md',
+        cwd: '/memories/user',
+      );
 
-      expect(result.isValid, isFalse);
-      expect(result.errorCode, 'absolute_path_not_allowed');
+      expect(result.isValid, isTrue);
+      expect(result.relativePath, 'memories/user/profile.md');
+      expect(result.agentPath, '/memories/user/profile.md');
+    });
+
+    test('normalizes root directory path', () {
+      final result = policy.normalizeDirectoryPath('.', cwd: '/');
+
+      expect(result.isValid, isTrue);
+      expect(result.relativePath, '');
+      expect(result.agentPath, '/');
     });
   });
 }

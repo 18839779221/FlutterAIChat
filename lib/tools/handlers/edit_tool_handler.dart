@@ -29,10 +29,10 @@ class EditToolHandler extends ToolHandler {
         argumentSchema: ToolArgumentSchema(
           properties: {
             'file_path': ToolArgumentProperty.string(
-              description: 'Relative sandbox file path to edit.',
+              description: 'Agent absolute or relative file path to edit.',
               localizedDescription: LocalizedToolText(
-                english: 'Relative sandbox file path to edit.',
-                chinese: '要编辑的沙箱相对文件路径。',
+                english: 'Agent absolute or relative file path to edit.',
+                chinese: '要编辑的 agent 绝对路径或相对文件路径。',
               ),
             ),
             'old_string': ToolArgumentProperty.string(
@@ -116,6 +116,7 @@ class EditToolHandler extends ToolHandler {
 
     final resolution = fileTools.pathPolicy.normalizeSandboxPath(
       context.arguments['file_path'] as String,
+      cwd: '/',
     );
     if (!resolution.isValid || resolution.relativePath == null) {
       return ToolResult(
@@ -136,9 +137,9 @@ class EditToolHandler extends ToolHandler {
       return ToolResult(
         toolName: 'Edit',
         status: ToolExecutionStatus.success,
-        summary: '已编辑文件：${resolution.relativePath}',
+        summary: '已编辑文件：${resolution.agentPath}',
         data: {
-          'message': '已编辑文件：${resolution.relativePath}',
+          'message': '已编辑文件：${resolution.agentPath}',
           ...outcome.toJson(),
         },
       );
@@ -148,9 +149,9 @@ class EditToolHandler extends ToolHandler {
         status: ToolExecutionStatus.failure,
         summary: '编辑文件失败：文件未读取或状态已过期',
         data: {
-          'filePath': resolution.relativePath,
+          'filePath': resolution.agentPath,
           'message':
-              '编辑文件失败：文件未读取或状态已过期\n实际文件路径：${resolution.relativePath}',
+              '编辑文件失败：文件未读取或状态已过期\n实际文件路径：${resolution.agentPath}',
         },
         errorMessage: error.code,
       );
@@ -160,8 +161,8 @@ class EditToolHandler extends ToolHandler {
         status: ToolExecutionStatus.failure,
         summary: '编辑文件失败',
         data: {
-          'filePath': resolution.relativePath,
-          'message': '编辑文件失败\n实际文件路径：${resolution.relativePath}',
+          'filePath': resolution.agentPath,
+          'message': '编辑文件失败\n实际文件路径：${resolution.agentPath}',
         },
         errorMessage: error.code,
       );

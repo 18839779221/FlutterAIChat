@@ -66,6 +66,7 @@ void main() {
 
       expect(result.status, ToolExecutionStatus.success);
       expect((result.data['matches'] as List).single['lineNumber'], 1);
+      expect((result.data['matches'] as List).single['filePath'], '/memories/demo.md');
 
       await tempDirectory.delete(recursive: true);
     });

@@ -213,8 +213,8 @@ void main() {
             'data': {
               'skillId': 'verify',
               'name': 'verify',
-              'qualifiedPath': 'projectSettings:verify',
-              'baseDirectory': '/tmp/skills/verify',
+              'qualifiedPath': '/skills/installed/verify',
+              'baseDirectory': '/skills/installed/verify',
               'instructionBody': 'After code changes, verify by:\n1. Run tests',
             },
           },
@@ -225,10 +225,10 @@ void main() {
       expect(message!.role, MessageRole.user);
       expect(message.text, contains('<system-reminder>'));
       expect(message.text, contains('### Skill: verify'));
-      expect(message.text, contains('Path: projectSettings:verify'));
+      expect(message.text, contains('Path: /skills/installed/verify'));
       expect(
         message.text,
-        contains('Base directory for this skill: /tmp/skills/verify'),
+        contains('Base directory for this skill: /skills/installed/verify'),
       );
       expect(message.text, contains('After code changes, verify by:'));
     });

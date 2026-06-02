@@ -416,7 +416,7 @@ void main() {
               id: 'verify',
               name: 'verify',
               description: 'Run project verification after code changes.',
-              qualifiedPath: 'projectSettings:verify',
+              qualifiedPath: '/skills/installed/verify',
               isEnabled: true,
             ),
           ],

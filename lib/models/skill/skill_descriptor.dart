@@ -17,10 +17,10 @@ class SkillDescriptor {
   /// Markdown body content used to guide the planner when the skill is active.
   final String bodyText;
 
-  /// Absolute directory containing this installed skill.
+  /// Agent path directory containing this installed skill.
   final String skillRootPath;
 
-  /// Absolute path to the skill entry markdown file.
+  /// Agent path to the skill entry markdown file.
   final String entryFilePath;
 
   /// Installation source classification used for UI and future sync logic.

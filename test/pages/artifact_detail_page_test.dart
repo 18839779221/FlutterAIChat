@@ -12,7 +12,7 @@ void main() {
       turnId: 'turn-1',
       title: '销售图表',
       type: ArtifactType.html,
-      sourcePath: 'artifacts/group/sales.html',
+      sourcePath: '/artifacts/group/sales.html',
       source: source,
       createdAt: DateTime(2026, 4, 30, 10),
       updatedAt: DateTime(2026, 4, 30, 10, 1),

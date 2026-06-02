@@ -82,8 +82,8 @@ void main() {
       expect(result.data['content'], contains('     3\tgamma'));
       expect(result.data['linesReturned'], 2);
       expect(result.data['fileVersion'], isA<Map<String, dynamic>>());
-      expect(result.summary, '已读取文件：memories/demo.md');
-      expect(guard.hasSeen('memories/demo.md'), isTrue);
+      expect(result.summary, '已读取文件：/memories/demo.md');
+      expect(guard.hasSeen('/memories/demo.md'), isTrue);
     });
 
     test('read missing file returns summary for planner context', () async {
@@ -124,7 +124,7 @@ void main() {
       expect(result.summary, 'Read failed: file not found');
       expect(
         result.data['message'],
-        'Read failed: file not found\n实际文件路径：memories/missing.md',
+        'Read failed: file not found\n实际文件路径：/memories/missing.md',
       );
     });
   });

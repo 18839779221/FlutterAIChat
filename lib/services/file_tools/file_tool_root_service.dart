@@ -17,14 +17,21 @@ class FileToolRootService {
     return rootDirectory.create(recursive: true);
   }
 
+  String resolveHostPath(String relativePathFromRoot) {
+    if (relativePathFromRoot.trim().isEmpty) {
+      return rootPath;
+    }
+    return path.normalize(path.join(rootPath, relativePathFromRoot));
+  }
+
   File resolveFile(String relativePath) {
-    return File(path.join(rootPath, relativePath));
+    return File(resolveHostPath(relativePath));
   }
 
   Directory resolveDirectory(String relativePath) {
     if (relativePath.trim().isEmpty) {
       return rootDirectory;
     }
-    return Directory(path.join(rootPath, relativePath));
+    return Directory(resolveHostPath(relativePath));
   }
 }

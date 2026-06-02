@@ -4,6 +4,7 @@ import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/artifact/artifact_record.dart';
 import 'package:ai_chat/models/chat_event.dart';
+import 'package:ai_chat/models/chat/chat_attachment.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
@@ -101,7 +102,7 @@ void main() {
                 id: 'edge-to-edge',
                 name: 'edge-to-edge',
                 description: 'Improve Android edge-to-edge handling.',
-                qualifiedPath: '/tmp/skills/edge-to-edge',
+                qualifiedPath: '/skills/installed/edge-to-edge',
                 isEnabled: true,
               ),
             ],
@@ -221,6 +222,16 @@ class _NoopBaseLLM extends BaseLLM {
 }
 
 class _NoopChatStorage implements ChatStorage {
+  @override
+  Future<void> insertMessageAttachments(
+    int messageId,
+    List<ChatAttachment> attachments,
+  ) async {}
+
+  @override
+  Future<List<ChatAttachment>> getMessageAttachments(int messageId) async =>
+      const [];
+
   @override
   Future<int> insertOrReplaceArtifactRecord(ArtifactRecord record) async => 1;
 

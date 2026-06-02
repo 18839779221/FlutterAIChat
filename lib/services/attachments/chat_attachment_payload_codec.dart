@@ -22,7 +22,12 @@ class ChatAttachmentPayloadCodec {
     }
     final localPath = attachment.localPath;
     if (localPath != null && localPath.trim().isNotEmpty) {
-      return localPath.trim();
+      final trimmed = localPath.trim();
+      if (trimmed.startsWith('http://') ||
+          trimmed.startsWith('https://') ||
+          trimmed.startsWith('file://')) {
+        return trimmed;
+      }
     }
     return null;
   }

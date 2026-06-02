@@ -185,7 +185,7 @@ void main() {
       );
 
       expect(result.status, ToolExecutionStatus.success);
-      expect(result.data['sourcePath'], 'artifacts/$groupId/portfolio-pie.html');
+      expect(result.data['sourcePath'], '/artifacts/$groupId/portfolio-pie.html');
       expect(result.summary, contains('portfolio-pie'));
       expect(result.data['message'], contains('sourcePath'));
 

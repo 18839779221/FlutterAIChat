@@ -1,62 +1,63 @@
 import 'package:path/path.dart' as path;
 
+import 'agent_path.dart';
+import 'agent_path_resolver.dart';
 import 'file_tool_models.dart';
 import 'file_tool_root_service.dart';
 
 class FileToolPathPolicy {
   FileToolPathPolicy({
     required FileToolRootService rootService,
-  }) : _rootService = rootService;
+  })  : _rootService = rootService,
+        _pathResolver = AgentPathResolver(rootService: rootService);
 
   final FileToolRootService _rootService;
+  final AgentPathResolver _pathResolver;
 
-  FileToolPathResolution normalizeSandboxPath(String rawPath) {
+  FileToolPathResolution normalizeSandboxPath(
+    String rawPath, {
+    required String cwd,
+  }) {
     final sanitized = _sanitize(rawPath);
-    if (sanitized == null) {
+    final sanitizedCwd = _sanitize(cwd);
+    if (sanitized == null || sanitizedCwd == null) {
       return const FileToolPathResolution.invalid(errorCode: 'empty_path');
     }
-
-    if (path.isAbsolute(sanitized)) {
-      return const FileToolPathResolution.invalid(
-        errorCode: 'absolute_path_not_allowed',
+    try {
+      final resolved = _pathResolver.resolvePath(sanitized, cwd: sanitizedCwd);
+      final absolutePath = resolved.hostAbsolutePath;
+      final rootPath = _rootService.rootPath;
+      if (!(path.equals(absolutePath, rootPath) ||
+          path.isWithin(rootPath, absolutePath))) {
+        return const FileToolPathResolution.invalid(
+          errorCode: 'path_outside_sandbox',
+        );
+      }
+      return FileToolPathResolution.valid(
+        agentPath: resolved.agentAbsolutePath,
+        relativePath: resolved.relativePathFromRoot,
+        absolutePath: resolved.hostAbsolutePath,
       );
-    }
-
-    final normalizedRelative = path.normalize(sanitized);
-    if (normalizedRelative == '.' || normalizedRelative == '..') {
-      return const FileToolPathResolution.invalid(errorCode: 'empty_path');
-    }
-    if (_escapesSandbox(normalizedRelative)) {
+    } on AgentPathEscapeException {
       return const FileToolPathResolution.invalid(
         errorCode: 'path_outside_sandbox',
       );
     }
-
-    final absolutePath =
-        path.normalize(path.join(_rootService.rootPath, normalizedRelative));
-    final rootPath = _rootService.rootPath;
-    if (!(path.equals(absolutePath, rootPath) ||
-        path.isWithin(rootPath, absolutePath))) {
-      return const FileToolPathResolution.invalid(
-        errorCode: 'path_outside_sandbox',
-      );
-    }
-
-    return FileToolPathResolution.valid(
-      relativePath: normalizedRelative,
-      absolutePath: absolutePath,
-    );
   }
 
-  FileToolPathResolution normalizeDirectoryPath(String? rawPath) {
+  FileToolPathResolution normalizeDirectoryPath(
+    String? rawPath, {
+    required String cwd,
+  }) {
     final trimmed = rawPath?.trim() ?? '';
     if (trimmed.isEmpty || trimmed == '.') {
       return FileToolPathResolution.valid(
+        agentPath: '/',
         relativePath: '',
         absolutePath: _rootService.rootPath,
       );
     }
-    return normalizeSandboxPath(trimmed);
+    return normalizeSandboxPath(trimmed, cwd: cwd);
   }
 
   String? _sanitize(String rawPath) {
@@ -68,9 +69,5 @@ class FileToolPathPolicy {
       return null;
     }
     return trimmed;
-  }
-
-  bool _escapesSandbox(String relativePath) {
-    return relativePath.startsWith('../') || relativePath.contains('/../');
   }
 }

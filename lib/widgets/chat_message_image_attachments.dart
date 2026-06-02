@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -52,8 +53,26 @@ class ChatMessageImageAttachments extends StatelessWidget {
     BuildContext context,
     ChatAttachment attachment,
   ) {
+    final dataUrl = attachment.providerFileRefJson?['data_url'];
+    if (dataUrl is String && dataUrl.trim().isNotEmpty) {
+      final match = RegExp(
+        r'^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$',
+      ).firstMatch(dataUrl.trim());
+      if (match != null) {
+        final bytes = base64Decode(match.group(2)!);
+        return Image.memory(
+          bytes,
+          width: 168,
+          height: 168,
+          fit: BoxFit.cover,
+        );
+      }
+    }
     final localPath = attachment.localPath;
-    if (!kIsWeb && localPath != null && localPath.trim().isNotEmpty) {
+    if (!kIsWeb &&
+        localPath != null &&
+        localPath.trim().isNotEmpty &&
+        !localPath.startsWith('/attachments/')) {
       return Image.file(
         File(localPath),
         width: 168,

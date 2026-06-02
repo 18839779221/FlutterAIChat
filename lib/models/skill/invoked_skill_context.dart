@@ -6,10 +6,10 @@ class InvokedSkillContext {
   /// Human-readable skill name shown in reminders and debugging surfaces.
   final String name;
 
-  /// Canonical path hint used to identify the invoked skill in context.
+  /// Canonical agent path used to identify the invoked skill in context.
   final String qualifiedPath;
 
-  /// Absolute directory that contains the installed skill files.
+  /// Agent path of the directory that contains the installed skill files.
   final String baseDirectory;
 
   /// Full instruction body loaded from the local `SKILL.md` file.

@@ -34,10 +34,10 @@ class GrepToolHandler extends ToolHandler {
               ),
             ),
             'path': ToolArgumentProperty.string(
-              description: 'Optional relative sandbox start directory.',
+              description: 'Optional agent absolute or relative start directory.',
               localizedDescription: LocalizedToolText(
-                english: 'Optional relative sandbox start directory.',
-                chinese: '可选的沙箱相对起始目录。',
+                english: 'Optional agent absolute or relative start directory.',
+                chinese: '可选的 agent 绝对路径或相对起始目录。',
               ),
             ),
             'glob': ToolArgumentProperty.string(
@@ -147,6 +147,7 @@ class GrepToolHandler extends ToolHandler {
       pattern: context.arguments['pattern'] as String,
       pathValue: context.arguments['path'] as String?,
       glob: context.arguments['glob'] as String?,
+      cwd: '/',
       outputMode:
           context.arguments['output_mode'] as String? ?? 'files_with_matches',
       headLimit: context.arguments['head_limit'] as int? ?? 20,

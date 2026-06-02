@@ -34,10 +34,10 @@ class GlobToolHandler extends ToolHandler {
               ),
             ),
             'path': ToolArgumentProperty.string(
-              description: 'Optional relative sandbox start directory.',
+              description: 'Optional agent absolute or relative start directory.',
               localizedDescription: LocalizedToolText(
-                english: 'Optional relative sandbox start directory.',
-                chinese: '可选的沙箱相对起始目录。',
+                english: 'Optional agent absolute or relative start directory.',
+                chinese: '可选的 agent 绝对路径或相对起始目录。',
               ),
             ),
           },
@@ -81,6 +81,7 @@ class GlobToolHandler extends ToolHandler {
     final matches = await fileTools.discoveryService.glob(
       pattern: context.arguments['pattern'] as String,
       pathValue: context.arguments['path'] as String?,
+      cwd: '/',
     );
     return ToolResult(
       toolName: 'Glob',

@@ -29,11 +29,11 @@ class WriteToolHandler extends ToolHandler {
         argumentSchema: ToolArgumentSchema(
           properties: {
             'file_path': ToolArgumentProperty.string(
-              description: 'Relative sandbox file path to create or overwrite.',
+              description: 'Agent absolute or relative file path to create or overwrite.',
               localizedDescription: LocalizedToolText(
                 english:
-                    'Relative sandbox file path to create or overwrite.',
-                chinese: '要创建或覆盖的沙箱相对文件路径。',
+                    'Agent absolute or relative file path to create or overwrite.',
+                chinese: '要创建或覆盖的 agent 绝对路径或相对文件路径。',
               ),
             ),
             'content': ToolArgumentProperty.string(
@@ -90,6 +90,7 @@ class WriteToolHandler extends ToolHandler {
 
     final resolution = fileTools.pathPolicy.normalizeSandboxPath(
       context.arguments['file_path'] as String,
+      cwd: '/',
     );
     if (!resolution.isValid || resolution.relativePath == null) {
       return ToolResult(
@@ -108,9 +109,9 @@ class WriteToolHandler extends ToolHandler {
       return ToolResult(
         toolName: 'Write',
         status: ToolExecutionStatus.success,
-        summary: '已写入文件：${resolution.relativePath}',
+        summary: '已写入文件：${resolution.agentPath}',
         data: {
-          'message': '已写入文件：${resolution.relativePath}',
+          'message': '已写入文件：${resolution.agentPath}',
           ...outcome.toJson(),
         },
       );
@@ -120,9 +121,9 @@ class WriteToolHandler extends ToolHandler {
         status: ToolExecutionStatus.failure,
         summary: '写入文件失败：文件未读取或状态已过期',
         data: {
-          'filePath': resolution.relativePath,
+          'filePath': resolution.agentPath,
           'message':
-              '写入文件失败：文件未读取或状态已过期\n实际文件路径：${resolution.relativePath}',
+              '写入文件失败：文件未读取或状态已过期\n实际文件路径：${resolution.agentPath}',
         },
         errorMessage: error.code,
       );

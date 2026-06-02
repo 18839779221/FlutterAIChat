@@ -70,8 +70,8 @@ class SkillIndexService {
             name: parsed.name,
             description: parsed.description,
             bodyText: parsed.body,
-            skillRootPath: child.path,
-            entryFilePath: skillFile.path,
+            skillRootPath: _agentSkillRootPath(skillId),
+            entryFilePath: _agentSkillEntryPath(skillId),
             sourceType: SkillSourceType.localInstalled,
             isEnabled: isEnabled,
           ),
@@ -97,5 +97,13 @@ class SkillIndexService {
     final lower = value.trim().toLowerCase();
     final normalized = lower.replaceAll(RegExp(r'[^a-z0-9]+'), '-');
     return normalized.replaceAll(RegExp(r'-+'), '-').replaceAll(RegExp(r'^-|-$'), '');
+  }
+
+  String _agentSkillRootPath(String skillId) {
+    return '/skills/installed/$skillId';
+  }
+
+  String _agentSkillEntryPath(String skillId) {
+    return '/skills/installed/$skillId/SKILL.md';
   }
 }

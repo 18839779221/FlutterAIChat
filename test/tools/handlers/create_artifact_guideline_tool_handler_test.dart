@@ -49,8 +49,9 @@ void main() {
       );
       expect(
         result.data['host_markup_contract'],
-        isNot(contains('<html>')),
+        contains('<html>'),
       );
+      expect(result.data['host_markup_contract'], contains('<body>'));
       expect(result.data['host_markup_contract'], contains(':root'));
       expect(result.data['host_markup_contract'], contains('#artifact-root'));
       expect(result.data['layout_constraints'], isA<List<dynamic>>());

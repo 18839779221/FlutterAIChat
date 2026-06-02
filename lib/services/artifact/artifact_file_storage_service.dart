@@ -25,7 +25,7 @@ class ArtifactFileStorageService {
     required ArtifactType type,
   }) {
     final extension = type == ArtifactType.svg ? 'svg' : 'html';
-    return path.join('artifacts', '$groupId', '$artifactId.$extension');
+    return path.posix.join('/artifacts', '$groupId', '$artifactId.$extension');
   }
 
   Future<ArtifactCreateResult> saveArtifactSource({
@@ -42,7 +42,7 @@ class ArtifactFileStorageService {
       artifactId: artifactId,
       type: type,
     );
-    final file = File(path.join(rootDirectory.path, relativePath));
+    final file = File(path.join(rootDirectory.path, relativePath.substring(1)));
     await file.parent.create(recursive: true);
     await file.writeAsString(source, flush: true);
 
@@ -57,10 +57,16 @@ class ArtifactFileStorageService {
   }
 
   Future<String> readArtifactSource(String relativePath) {
-    return File(path.join(rootDirectory.path, relativePath)).readAsString();
+    final normalized = relativePath.startsWith('/')
+        ? relativePath.substring(1)
+        : relativePath;
+    return File(path.join(rootDirectory.path, normalized)).readAsString();
   }
 
   String readArtifactSourceSync(String relativePath) {
-    return File(path.join(rootDirectory.path, relativePath)).readAsStringSync();
+    final normalized = relativePath.startsWith('/')
+        ? relativePath.substring(1)
+        : relativePath;
+    return File(path.join(rootDirectory.path, normalized)).readAsStringSync();
   }
 }

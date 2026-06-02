@@ -79,7 +79,7 @@ Prefer Android edge-to-edge guidance for this task.
 
       expect(descriptor, isNotNull);
       expect(descriptor!.bodyText, contains('# Workflow'));
-      expect(descriptor.entryFilePath, contains('SKILL.md'));
+      expect(descriptor.entryFilePath, '/skills/installed/edge-to-edge/SKILL.md');
     });
 
     test('lists installed skills even when a skill is disabled', () async {

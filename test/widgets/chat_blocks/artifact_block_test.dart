@@ -17,7 +17,7 @@ void main() {
               turnId: '7_1',
               title: '投资组合饼图',
               type: ArtifactType.html,
-              sourcePath: 'artifacts/7/portfolio-pie.html',
+              sourcePath: '/artifacts/7/portfolio-pie.html',
               source: '<div>artifact</div>',
               createdAt: DateTime(2026, 4, 30, 10),
               updatedAt: DateTime(2026, 4, 30, 10),

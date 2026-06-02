@@ -9,7 +9,7 @@ class SkillCatalogEntry {
   /// Short description displayed in the available skills reminder.
   final String description;
 
-  /// Canonical local path hint for resolving this installed skill.
+  /// Canonical agent path hint for resolving this installed skill.
   final String qualifiedPath;
 
   /// Whether the skill is currently enabled for runtime use.

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -59,8 +60,25 @@ class _PreviewImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dataUrl = attachment.providerFileRefJson?['data_url'];
+    if (dataUrl is String && dataUrl.trim().isNotEmpty) {
+      final match = RegExp(
+        r'^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$',
+      ).firstMatch(dataUrl.trim());
+      if (match != null) {
+        final bytes = base64Decode(match.group(2)!);
+        return Image.memory(
+          bytes,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => const _PreviewFallback(),
+        );
+      }
+    }
     final localPath = attachment.localPath;
-    if (!kIsWeb && localPath != null && localPath.trim().isNotEmpty) {
+    if (!kIsWeb &&
+        localPath != null &&
+        localPath.trim().isNotEmpty &&
+        !localPath.startsWith('/attachments/')) {
       return Image.file(
         File(localPath),
         fit: BoxFit.contain,

@@ -15,7 +15,7 @@ class FileToolWriteException implements Exception {
 }
 
 class FileToolWriteOutcome {
-  /// Relative sandbox path that was created, overwritten, or edited.
+  /// Agent path that was created, overwritten, or edited.
   final String filePath;
 
   /// Whether the target existed before this write transaction.
@@ -91,13 +91,14 @@ class FileToolWriteService {
     required String relativePath,
     required String content,
   }) async {
-    final file = _rootService.resolveFile(relativePath);
+    final agentPath = _normalizeAgentPath(relativePath);
+    final file = _rootService.resolveFile(_relativePathFromAgentPath(agentPath));
     final fileExists = file.existsSync();
     String? oldContent;
     if (fileExists) {
       oldContent = await file.readAsString();
       _sessionGuard.assertWritable(
-        filePath: relativePath,
+        filePath: agentPath,
         currentVersion: _sessionGuard.snapshotForStat(await file.stat()),
         fileExists: true,
       );
@@ -106,16 +107,16 @@ class FileToolWriteService {
     await file.parent.create(recursive: true);
     await file.writeAsString(content);
     final version = _sessionGuard.snapshotForStat(await file.stat());
-    _sessionGuard.markRead(filePath: relativePath, version: version);
+    _sessionGuard.markRead(filePath: agentPath, version: version);
     final postWriteData = await _postWriteHook.afterWrite(
       FileToolPostWriteContext(
-        filePath: relativePath,
+        filePath: agentPath,
         oldContent: oldContent,
         newContent: content,
       ),
     );
     return FileToolWriteOutcome(
-      filePath: relativePath,
+      filePath: agentPath,
       filePreviouslyExisted: fileExists,
       version: version,
       oldLength: oldContent?.length ?? 0,
@@ -135,14 +136,15 @@ class FileToolWriteService {
     required String newString,
     required bool replaceAll,
   }) async {
-    final file = _rootService.resolveFile(relativePath);
+    final agentPath = _normalizeAgentPath(relativePath);
+    final file = _rootService.resolveFile(_relativePathFromAgentPath(agentPath));
     if (!file.existsSync()) {
       throw FileToolWriteException('file_not_found');
     }
 
     final currentVersion = _sessionGuard.snapshotForStat(await file.stat());
     _sessionGuard.assertWritable(
-      filePath: relativePath,
+      filePath: agentPath,
       currentVersion: currentVersion,
       fileExists: true,
     );
@@ -161,16 +163,16 @@ class FileToolWriteService {
         : originalContent.replaceFirst(oldString, newString);
     await file.writeAsString(nextContent);
     final nextVersion = _sessionGuard.snapshotForStat(await file.stat());
-    _sessionGuard.markRead(filePath: relativePath, version: nextVersion);
+    _sessionGuard.markRead(filePath: agentPath, version: nextVersion);
     final postWriteData = await _postWriteHook.afterWrite(
       FileToolPostWriteContext(
-        filePath: relativePath,
+        filePath: agentPath,
         oldContent: originalContent,
         newContent: nextContent,
       ),
     );
     return FileToolWriteOutcome(
-      filePath: relativePath,
+      filePath: agentPath,
       filePreviouslyExisted: true,
       version: nextVersion,
       oldLength: originalContent.length,
@@ -209,5 +211,20 @@ class FileToolWriteService {
       count += 1;
       cursor = nextIndex + pattern.length;
     }
+  }
+
+  String _normalizeAgentPath(String pathValue) {
+    final trimmed = pathValue.trim().replaceAll('\\', '/');
+    if (trimmed.isEmpty) {
+      return '/';
+    }
+    return trimmed.startsWith('/') ? trimmed : '/$trimmed';
+  }
+
+  String _relativePathFromAgentPath(String agentPath) {
+    if (agentPath == '/') {
+      return '';
+    }
+    return agentPath.substring(1);
   }
 }

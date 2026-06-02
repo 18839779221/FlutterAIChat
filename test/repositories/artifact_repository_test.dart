@@ -28,7 +28,7 @@ void main() {
           groupId: groupId,
           title: '投资组合饼图',
           type: ArtifactType.html,
-          sourcePath: 'artifacts/$groupId/portfolio-pie.html',
+          sourcePath: '/artifacts/$groupId/portfolio-pie.html',
           originTurnId: 42,
           createdAt: DateTime(2026, 4, 30, 10),
           lastUpdatedAt: DateTime(2026, 4, 30, 10),
@@ -41,12 +41,12 @@ void main() {
       );
 
       expect(record, isNotNull);
-      expect(record!.sourcePath, 'artifacts/$groupId/portfolio-pie.html');
+      expect(record!.sourcePath, '/artifacts/$groupId/portfolio-pie.html');
       expect(record.originTurnId, 42);
 
       final byPath = await repository.findByGroupAndSourcePath(
         groupId: groupId,
-        sourcePath: 'artifacts/$groupId/portfolio-pie.html',
+        sourcePath: '/artifacts/$groupId/portfolio-pie.html',
       );
       expect(byPath, isNotNull);
       expect(byPath!.artifactId, 'portfolio-pie');

@@ -15,7 +15,7 @@ void main() {
     test('existing file cannot be edited before read', () {
       expect(
         () => guard.assertWritable(
-          filePath: 'memories/a.md',
+          filePath: '/memories/a.md',
           currentVersion: const FileToolVersionSnapshot(
             modifiedAtMillis: 10,
             sizeBytes: 20,
@@ -37,11 +37,11 @@ void main() {
         modifiedAtMillis: 10,
         sizeBytes: 20,
       );
-      guard.markRead(filePath: 'memories/a.md', version: version);
+      guard.markRead(filePath: '/memories/a.md', version: version);
 
       expect(
         () => guard.assertWritable(
-          filePath: 'memories/a.md',
+          filePath: '/memories/a.md',
           currentVersion: version,
           fileExists: true,
         ),
@@ -51,7 +51,7 @@ void main() {
 
     test('stale file version is rejected', () {
       guard.markRead(
-        filePath: 'memories/a.md',
+        filePath: '/memories/a.md',
         version: const FileToolVersionSnapshot(
           modifiedAtMillis: 10,
           sizeBytes: 20,
@@ -60,7 +60,7 @@ void main() {
 
       expect(
         () => guard.assertWritable(
-          filePath: 'memories/a.md',
+          filePath: '/memories/a.md',
           currentVersion: const FileToolVersionSnapshot(
             modifiedAtMillis: 11,
             sizeBytes: 20,

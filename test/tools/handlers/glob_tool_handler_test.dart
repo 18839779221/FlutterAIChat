@@ -64,7 +64,7 @@ void main() {
       );
 
       expect(result.status, ToolExecutionStatus.success);
-      expect(result.data['matches'], ['memories/nested/today.md']);
+      expect(result.data['matches'], ['/memories/nested/today.md']);
 
       await tempDirectory.delete(recursive: true);
     });

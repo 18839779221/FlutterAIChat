@@ -130,7 +130,7 @@ Prefer Android edge-to-edge guidance for this task.
       expect(result.toolName, 'skill');
       expect(result.data['skillId'], 'edge-to-edge');
       expect(result.data['name'], 'edge-to-edge');
-      expect(result.data['baseDirectory'], contains('edge-to-edge'));
+      expect(result.data['baseDirectory'], '/skills/installed/edge-to-edge');
       expect(result.data['instructionBody'], contains('# Workflow'));
     });
 

@@ -23,9 +23,13 @@ class FileToolDiscoveryService {
 
   Future<List<FileToolDirectoryEntry>> list({
     required String pathValue,
+    required String cwd,
     List<String> ignore = const [],
   }) async {
-    final resolution = _pathPolicy.normalizeDirectoryPath(pathValue);
+    final resolution = _pathPolicy.normalizeDirectoryPath(
+      pathValue,
+      cwd: cwd,
+    );
     if (!resolution.isValid || resolution.absolutePath == null) {
       return const [];
     }
@@ -39,8 +43,8 @@ class FileToolDiscoveryService {
     final ignoreMatchers = ignore.map(_compileGlob).toList(growable: false);
     await for (final entity
         in directory.list(recursive: false, followLinks: false)) {
-      final relativePath = _relativeToRoot(entity.path);
-      if (_matchesAnyGlob(relativePath, ignoreMatchers)) {
+      final agentPath = _agentPathFor(entity.path);
+      if (_matchesAnyGlob(agentPath, ignoreMatchers)) {
         continue;
       }
       final name = path.basename(entity.path);
@@ -48,7 +52,7 @@ class FileToolDiscoveryService {
       entries.add(
         FileToolDirectoryEntry(
           name: name,
-          relativePath: relativePath,
+          relativePath: agentPath,
           isDirectory: entity is Directory,
           sizeBytes: entity is File ? stat.size : null,
         ),
@@ -63,8 +67,12 @@ class FileToolDiscoveryService {
   Future<List<String>> glob({
     required String pattern,
     String? pathValue,
+    required String cwd,
   }) async {
-    final resolution = _pathPolicy.normalizeDirectoryPath(pathValue);
+    final resolution = _pathPolicy.normalizeDirectoryPath(
+      pathValue,
+      cwd: cwd,
+    );
     if (!resolution.isValid || resolution.absolutePath == null) {
       return const [];
     }
@@ -87,7 +95,7 @@ class FileToolDiscoveryService {
       if (!matcher.hasMatch(relativeFromBase)) {
         continue;
       }
-      matches.add(_joinRelative(baseRelativePath, relativeFromBase));
+      matches.add(_joinAgentPath(baseRelativePath, relativeFromBase));
     }
 
     matches.sort();
@@ -98,13 +106,17 @@ class FileToolDiscoveryService {
     required String pattern,
     String? pathValue,
     String? glob,
+    required String cwd,
     String outputMode = 'files_with_matches',
     int headLimit = 20,
     bool multiline = false,
     bool caseInsensitive = false,
     bool lineNumbers = false,
   }) async {
-    final resolution = _pathPolicy.normalizeDirectoryPath(pathValue);
+    final resolution = _pathPolicy.normalizeDirectoryPath(
+      pathValue,
+      cwd: cwd,
+    );
     if (!resolution.isValid || resolution.absolutePath == null) {
       return const {
         'mode': 'files_with_matches',
@@ -150,7 +162,7 @@ class FileToolDiscoveryService {
         continue;
       }
 
-      final relativePath = _joinRelative(baseRelativePath, relativeFromBase);
+      final relativePath = _joinAgentPath(baseRelativePath, relativeFromBase);
       final text = await entity.readAsString();
 
       if (outputMode == 'count') {
@@ -219,21 +231,28 @@ class FileToolDiscoveryService {
     };
   }
 
-  String _relativeToRoot(String absolutePath) {
-    return path
+  String _agentPathFor(String absolutePath) {
+    final relative = path
         .relative(absolutePath, from: _rootService.rootPath)
         .replaceAll('\\', '/');
+    if (relative.isEmpty || relative == '.') {
+      return '/';
+    }
+    return '/$relative';
   }
 
   String _relativeToBase(String absolutePath, String basePath) {
     return path.relative(absolutePath, from: basePath).replaceAll('\\', '/');
   }
 
-  String _joinRelative(String basePath, String childPath) {
+  String _joinAgentPath(String basePath, String childPath) {
     if (basePath.trim().isEmpty) {
-      return childPath.replaceAll('\\', '/');
+      final normalized = childPath.replaceAll('\\', '/');
+      return normalized.startsWith('/') ? normalized : '/$normalized';
     }
-    return path.normalize(path.join(basePath, childPath)).replaceAll('\\', '/');
+    final joined =
+        path.normalize(path.join(basePath, childPath)).replaceAll('\\', '/');
+    return joined.startsWith('/') ? joined : '/$joined';
   }
 
   RegExp _compileGlob(String pattern) {

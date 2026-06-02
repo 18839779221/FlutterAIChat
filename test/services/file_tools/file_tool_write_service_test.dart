@@ -38,7 +38,7 @@ void main() {
 
       expect(
         () => service.writeFile(
-          relativePath: 'memories/demo.md',
+          relativePath: '/memories/demo.md',
           content: 'new',
         ),
         throwsA(
@@ -53,7 +53,7 @@ void main() {
 
     test('write creates new file and refreshes seen state', () async {
       final outcome = await service.writeFile(
-        relativePath: 'artifacts/report.md',
+        relativePath: '/artifacts/report.md',
         content: 'hello',
       );
 
@@ -62,7 +62,7 @@ void main() {
       expect(outcome.oldContentPreview, isEmpty);
       expect(outcome.newContentPreview, 'hello');
       expect(outcome.contentPreviewTruncated, isFalse);
-      expect(guard.hasSeen('artifacts/report.md'), isTrue);
+      expect(guard.hasSeen('/artifacts/report.md'), isTrue);
     });
 
     test(
@@ -72,13 +72,13 @@ void main() {
       await file.create(recursive: true);
       await file.writeAsString('return null;\nreturn null;');
       guard.markRead(
-        filePath: 'memories/demo.md',
+        filePath: '/memories/demo.md',
         version: guard.snapshotForStat(await file.stat()),
       );
 
       expect(
         () => service.editFile(
-          relativePath: 'memories/demo.md',
+          relativePath: '/memories/demo.md',
           oldString: 'return null;',
           newString: 'return value;',
           replaceAll: false,
@@ -98,7 +98,7 @@ void main() {
       await file.create(recursive: true);
       await file.writeAsString('alpha\nbeta\ngamma');
       guard.markRead(
-        filePath: 'memories/demo.md',
+        filePath: '/memories/demo.md',
         version: guard.snapshotForStat(await file.stat()),
       );
 
@@ -114,7 +114,7 @@ void main() {
       expect(outcome.newContentPreview, 'alpha\ndelta\ngamma');
       expect(outcome.contentPreviewTruncated, isFalse);
       expect(await file.readAsString(), contains('delta'));
-      expect(guard.hasSeen('memories/demo.md'), isTrue);
+      expect(guard.hasSeen('/memories/demo.md'), isTrue);
     });
   });
 }

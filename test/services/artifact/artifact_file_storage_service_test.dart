@@ -20,7 +20,7 @@ void main() {
         source: '<div>hello</div>',
       );
 
-      expect(saved.sourcePath, 'artifacts/7/portfolio-pie.html');
+      expect(saved.sourcePath, '/artifacts/7/portfolio-pie.html');
       final content = await service.readArtifactSource(saved.sourcePath);
       expect(content, '<div>hello</div>');
 

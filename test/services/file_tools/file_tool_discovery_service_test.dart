@@ -43,11 +43,11 @@ void main() {
     });
 
     test('list returns direct directory entries', () async {
-      final entries = await service.list(pathValue: 'memories');
+      final entries = await service.list(pathValue: 'memories', cwd: '/');
 
       expect(entries.map((item) => item.relativePath).toList(), [
-        'memories/nested',
-        'memories/user.md',
+        '/memories/nested',
+        '/memories/user.md',
       ]);
     });
 
@@ -55,11 +55,12 @@ void main() {
       final result = await service.glob(
         pattern: '**/*.md',
         pathValue: 'memories',
+        cwd: '/',
       );
 
       expect(result, [
-        'memories/nested/today.md',
-        'memories/user.md',
+        '/memories/nested/today.md',
+        '/memories/user.md',
       ]);
     });
 
@@ -67,13 +68,14 @@ void main() {
       final result = await service.grep(
         pattern: 'hello',
         pathValue: 'memories',
+        cwd: '/',
         outputMode: 'content',
         lineNumbers: true,
       );
 
       final matches = result['matches'] as List<dynamic>;
       expect(matches, hasLength(2));
-      expect(matches.first['filePath'], 'memories/nested/today.md');
+      expect(matches.first['filePath'], '/memories/nested/today.md');
       expect(matches.last['lineNumber'], 1);
     });
   });

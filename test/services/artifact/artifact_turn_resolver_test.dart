@@ -43,7 +43,7 @@ void main() {
               'artifactId': 'portfolio-pie',
               'title': '投资组合饼图',
               'type': 'html',
-              'sourcePath': 'artifacts/7/portfolio-pie.html',
+              'sourcePath': '/artifacts/7/portfolio-pie.html',
             },
           },
           timestamp: DateTime(2026, 4, 30, 10, 0, 1),
@@ -56,9 +56,9 @@ void main() {
           payloadJson: const {
             'toolName': 'Edit',
             'status': 'success',
-            'summary': '已编辑文件：artifacts/7/portfolio-pie.html',
+            'summary': '已编辑文件：/artifacts/7/portfolio-pie.html',
             'data': {
-              'filePath': 'artifacts/7/portfolio-pie.html',
+              'filePath': '/artifacts/7/portfolio-pie.html',
             },
           },
           timestamp: DateTime(2026, 4, 30, 10, 0, 2),
@@ -77,9 +77,9 @@ void main() {
           payloadJson: const {
             'toolName': 'Write',
             'status': 'success',
-            'summary': '已写入文件：artifacts/7/portfolio-pie.html',
+            'summary': '已写入文件：/artifacts/7/portfolio-pie.html',
             'data': {
-              'filePath': 'artifacts/7/portfolio-pie.html',
+              'filePath': '/artifacts/7/portfolio-pie.html',
             },
           },
           timestamp: DateTime(2026, 4, 30, 10, 1, 1),

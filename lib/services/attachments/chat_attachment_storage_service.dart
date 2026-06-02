@@ -66,8 +66,8 @@ class ChatAttachmentStorageService {
     );
 
     return attachment.copyWith(
-      localPath: persistedPath,
-      thumbnailPath: p.join(thumbsDir.path, storedFileName),
+      localPath: _agentPathFor('attachments/persisted/$storedFileName'),
+      thumbnailPath: _agentPathFor('attachments/thumbs/$storedFileName'),
       status: ChatAttachmentStatus.ready,
       providerFileRefJson: {
         ...?attachment.providerFileRefJson,
@@ -77,5 +77,10 @@ class ChatAttachmentStorageService {
       },
       updatedAt: DateTime.now(),
     );
+  }
+
+  String _agentPathFor(String relativePath) {
+    final normalized = relativePath.replaceAll('\\', '/');
+    return normalized.startsWith('/') ? normalized : '/$normalized';
   }
 }

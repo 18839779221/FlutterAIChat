@@ -239,6 +239,8 @@ To add or extend provider support:
 - The app is still internal-only. Unless a task explicitly requires it, do not add backward-compatibility layers, migration shims, fallback parsing for retired schemas, or legacy-preservation code.
 - `assets/debug/test_cases.json` is the single source of truth for debug/e2e manual test cases.
 - `config/local_defaults.json` is a runtime-facing local defaults file; schema changes must consider app boot config, settings fallback behavior, and automation scripts that read it directly.
+- Agent-visible file paths use a file-native `/` root and may include `/artifacts`, `/skills`, `/attachments`, `/memories`, and `/tmp`; host filesystem paths must remain internal-only.
+- On each platform, the physical app-private storage root may differ, but it is always mapped behind the same agent path semantics.
 - When generating or modifying code, add concise comments for public interfaces, payload models, schema fields, DTO fields, and externally consumed tool/message payloads.
 - When architecture changes, update `README.md` to reflect the current structure rather than the historical structure.
 - When project requirements, implementation rules, or team conventions change, update `AGENTS.md`.

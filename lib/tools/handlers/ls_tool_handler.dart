@@ -27,10 +27,10 @@ class LsToolHandler extends ToolHandler {
         argumentSchema: ToolArgumentSchema(
           properties: {
             'path': ToolArgumentProperty.string(
-              description: 'Relative sandbox directory path to list.',
+              description: 'Agent absolute or relative directory path to list.',
               localizedDescription: LocalizedToolText(
-                english: 'Relative sandbox directory path to list.',
-                chinese: '要列出的沙箱相对目录路径。',
+                english: 'Agent absolute or relative directory path to list.',
+                chinese: '要列出的 agent 绝对路径或相对目录路径。',
               ),
             ),
           },
@@ -71,16 +71,25 @@ class LsToolHandler extends ToolHandler {
 
     final entries = await fileTools.discoveryService.list(
       pathValue: context.arguments['path'] as String,
+      cwd: '/',
     );
     return ToolResult(
       toolName: 'LS',
       status: ToolExecutionStatus.success,
       summary: '已列出目录：${context.arguments['path']}',
       data: {
-        'path': context.arguments['path'],
+        'path': _normalizeAgentPath(context.arguments['path'] as String),
         'entries': entries.map((item) => item.toJson()).toList(),
       },
     );
+  }
+
+  String _normalizeAgentPath(String pathValue) {
+    final trimmed = pathValue.trim().replaceAll('\\', '/');
+    if (trimmed.isEmpty) {
+      return '/';
+    }
+    return trimmed.startsWith('/') ? trimmed : '/$trimmed';
   }
 
 }

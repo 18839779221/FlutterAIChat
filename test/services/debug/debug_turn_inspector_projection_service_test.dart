@@ -192,8 +192,8 @@ void main() {
         'data': {
           'skillId': 'edge-to-edge',
           'name': 'edge-to-edge',
-          'qualifiedPath': '/tmp/skills/edge-to-edge',
-          'baseDirectory': '/tmp/skills/edge-to-edge',
+          'qualifiedPath': '/skills/installed/edge-to-edge',
+          'baseDirectory': '/skills/installed/edge-to-edge',
           'instructionBody': 'Use Android edge-to-edge guidance.',
           'instructionBodyTruncated': true,
           'originalInstructionLength': 1200,

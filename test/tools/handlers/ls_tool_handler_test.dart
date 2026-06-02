@@ -61,6 +61,7 @@ void main() {
 
       expect(result.status, ToolExecutionStatus.success);
       expect((result.data['entries'] as List).length, 2);
+      expect(result.data['path'], '/memories');
 
       await tempDirectory.delete(recursive: true);
     });

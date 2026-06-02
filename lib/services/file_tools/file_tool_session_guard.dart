@@ -18,13 +18,14 @@ class FileToolSessionGuard {
     required String filePath,
     required FileToolVersionSnapshot version,
   }) {
-    _seenFiles[filePath] = version;
+    _seenFiles[_normalizeAgentPath(filePath)] = version;
   }
 
-  bool hasSeen(String filePath) => _seenFiles.containsKey(filePath);
+  bool hasSeen(String filePath) =>
+      _seenFiles.containsKey(_normalizeAgentPath(filePath));
 
   FileToolVersionSnapshot? getSeenVersion(String filePath) =>
-      _seenFiles[filePath];
+      _seenFiles[_normalizeAgentPath(filePath)];
 
   void assertWritable({
     required String filePath,
@@ -35,7 +36,7 @@ class FileToolSessionGuard {
       return;
     }
 
-    final lastSeenVersion = _seenFiles[filePath];
+    final lastSeenVersion = _seenFiles[_normalizeAgentPath(filePath)];
     if (lastSeenVersion == null) {
       throw FileToolGuardException('unread_file');
     }
@@ -49,5 +50,13 @@ class FileToolSessionGuard {
       modifiedAtMillis: stat.modified.millisecondsSinceEpoch,
       sizeBytes: stat.size,
     );
+  }
+
+  String _normalizeAgentPath(String filePath) {
+    final trimmed = filePath.trim().replaceAll('\\', '/');
+    if (trimmed.isEmpty) {
+      return trimmed;
+    }
+    return trimmed.startsWith('/') ? trimmed : '/$trimmed';
   }
 }

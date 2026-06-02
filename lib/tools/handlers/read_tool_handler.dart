@@ -29,10 +29,10 @@ class ReadToolHandler extends ToolHandler {
         argumentSchema: ToolArgumentSchema(
           properties: {
             'file_path': ToolArgumentProperty.string(
-              description: 'Relative sandbox file path to read.',
+              description: 'Agent absolute or relative file path to read.',
               localizedDescription: LocalizedToolText(
-                english: 'Relative sandbox file path to read.',
-                chinese: '要读取的沙箱相对文件路径。',
+                english: 'Agent absolute or relative file path to read.',
+                chinese: '要读取的 agent 绝对路径或相对文件路径。',
               ),
             ),
             'offset': ToolArgumentProperty.integer(
@@ -95,6 +95,7 @@ class ReadToolHandler extends ToolHandler {
 
     final resolution = fileTools.pathPolicy.normalizeSandboxPath(
       context.arguments['file_path'] as String,
+      cwd: '/',
     );
     if (!resolution.isValid || resolution.relativePath == null) {
       return ToolResult(
@@ -112,9 +113,9 @@ class ReadToolHandler extends ToolHandler {
         status: ToolExecutionStatus.failure,
         summary: 'Read failed: file not found',
         data: {
-          'filePath': resolution.relativePath,
+          'filePath': resolution.agentPath,
           'message':
-              'Read failed: file not found\n实际文件路径：${resolution.relativePath}',
+              'Read failed: file not found\n实际文件路径：${resolution.agentPath}',
         },
         errorMessage: 'file_not_found',
       );
@@ -152,7 +153,7 @@ class ReadToolHandler extends ToolHandler {
     final selectedLines = lines.sublist(startIndex, endIndex);
     final budgetResult = fileTools.budgetService.apply(selectedLines);
     final formatted = fileTools.readFormatter.format(
-      filePath: resolution.relativePath!,
+      filePath: resolution.agentPath!,
       lines: budgetResult.lines,
       startLine: startIndex + 1,
       totalLines: lines.length,
@@ -161,17 +162,17 @@ class ReadToolHandler extends ToolHandler {
 
     final version = fileTools.sessionGuard.snapshotForStat(await file.stat());
     fileTools.sessionGuard.markRead(
-      filePath: resolution.relativePath!,
+      filePath: resolution.agentPath!,
       version: version,
     );
 
     return ToolResult(
       toolName: 'Read',
       status: ToolExecutionStatus.success,
-      summary: '已读取文件：${resolution.relativePath}',
+      summary: '已读取文件：${resolution.agentPath}',
       data: {
-        'filePath': resolution.relativePath,
-        'message': '已读取文件：${resolution.relativePath}',
+        'filePath': resolution.agentPath,
+        'message': '已读取文件：${resolution.agentPath}',
         ...formatted.toJson(),
         'fileVersion': version.toJson(),
       },

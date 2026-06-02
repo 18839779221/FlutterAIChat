@@ -34,13 +34,18 @@ void main() {
       ),
     );
 
+    expect(stored.localPath, '/attachments/persisted/att-1_demo.png');
     expect(
-      stored.localPath,
-      contains('attachments${Platform.pathSeparator}persisted'),
+      await File(
+        p.join(tempRoot.path, 'attachments', 'persisted', 'att-1_demo.png'),
+      ).exists(),
+      isTrue,
     );
-    expect(await File(stored.localPath!).exists(), isTrue);
     expect(stored.status, ChatAttachmentStatus.ready);
-    expect(stored.providerFileRefJson?['data_url'], startsWith('data:image/png;base64,'));
+    expect(
+      stored.providerFileRefJson?['data_url'],
+      startsWith('data:image/png;base64,'),
+    );
   });
 
   test('storage service records send-ready payload metadata', () async {

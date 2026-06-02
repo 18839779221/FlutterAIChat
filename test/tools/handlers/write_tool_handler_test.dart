@@ -30,7 +30,7 @@ void main() {
       final handler = WriteToolHandler();
       final resolution = await handler.normalizeArguments(
         rawArguments: {
-          'file_path': 'artifacts/report.md',
+          'file_path': '/artifacts/report.md',
           'content': 'hello world',
         },
         userMessage: 'write file',
@@ -65,8 +65,8 @@ void main() {
       );
 
       expect(result.status, ToolExecutionStatus.success);
-      expect(result.data['filePath'], 'artifacts/report.md');
-      expect(result.summary, '已写入文件：artifacts/report.md');
+      expect(result.data['filePath'], '/artifacts/report.md');
+      expect(result.summary, '已写入文件：/artifacts/report.md');
       expect(
         File('${rootService.rootPath}/artifacts/report.md').existsSync(),
         isTrue,

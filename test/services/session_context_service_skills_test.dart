@@ -76,7 +76,7 @@ void main() {
               id: 'verify',
               name: 'verify',
               description: 'Run project verification after code changes.',
-              qualifiedPath: 'projectSettings:verify',
+              qualifiedPath: '/skills/installed/verify',
               isEnabled: true,
             ),
           ],
@@ -109,8 +109,8 @@ void main() {
               'data': {
                 'skillId': 'verify',
                 'name': 'verify',
-                'qualifiedPath': 'projectSettings:verify',
-                'baseDirectory': '/tmp/skills/verify',
+                'qualifiedPath': '/skills/installed/verify',
+                'baseDirectory': '/skills/installed/verify',
                 'instructionBody':
                     'After code changes, verify by:\n1. Run tests',
               },
@@ -139,10 +139,10 @@ void main() {
       final combined =
           plannerMessages.map((message) => message.text).join('\n');
       expect(combined, contains('### Skill: verify'));
-      expect(combined, contains('Path: projectSettings:verify'));
+      expect(combined, contains('Path: /skills/installed/verify'));
       expect(
         combined,
-        contains('Base directory for this skill: /tmp/skills/verify'),
+        contains('Base directory for this skill: /skills/installed/verify'),
       );
       expect(combined, contains('After code changes, verify by:'));
 
@@ -197,7 +197,7 @@ void main() {
           id: 'verify',
           name: 'verify',
           description: 'Run project verification after code changes.',
-          qualifiedPath: 'projectSettings:verify',
+          qualifiedPath: '/skills/installed/verify',
           isEnabled: true,
         ),
       ];
@@ -321,8 +321,8 @@ void main() {
       const invoked = InvokedSkillContext(
         skillId: 'verify',
         name: 'verify',
-        qualifiedPath: 'projectSettings:verify',
-        baseDirectory: '/tmp/skills/verify',
+        qualifiedPath: '/skills/installed/verify',
+        baseDirectory: '/skills/installed/verify',
         instructionBody:
             'After code changes, run tests before claiming success.',
       );
@@ -362,7 +362,7 @@ void main() {
             eventType: ChatEventType.userMessage,
             role: MessageRole.user,
             content:
-                '<system-reminder>\nThe following skills were invoked in this session. Continue to follow these guidelines:\n\n### Skill: verify\nPath: projectSettings:verify\n\nBase directory for this skill: /tmp/skills/verify\n\nAfter code changes, run tests before claiming success.\n</system-reminder>',
+                '<system-reminder>\nThe following skills were invoked in this session. Continue to follow these guidelines:\n\n### Skill: verify\nPath: /skills/installed/verify\n\nBase directory for this skill: /skills/installed/verify\n\nAfter code changes, run tests before claiming success.\n</system-reminder>',
             payloadJson: invoked.toJson(),
           ),
           ChatEvent(
@@ -454,8 +454,8 @@ void main() {
               'data': {
                 'skillId': 'verify',
                 'name': 'verify',
-                'qualifiedPath': 'projectSettings:verify',
-                'baseDirectory': '/tmp/skills/verify',
+                'qualifiedPath': '/skills/installed/verify',
+                'baseDirectory': '/skills/installed/verify',
                 'instructionBody': longBody,
               },
             },
@@ -467,9 +467,9 @@ void main() {
       final combined =
           plannerMessages.map((message) => message.text).join('\n');
       expect(combined, contains('### Skill: verify'));
-      expect(combined, contains('Path: projectSettings:verify'));
+      expect(combined, contains('Path: /skills/installed/verify'));
       expect(combined,
-          contains('Base directory for this skill: /tmp/skills/verify'));
+          contains('Base directory for this skill: /skills/installed/verify'));
       expect(combined, contains('[truncated]'));
       expect(combined, isNot(contains('tail-sentinel')));
 

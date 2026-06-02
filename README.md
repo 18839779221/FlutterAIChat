@@ -74,6 +74,14 @@ flowchart TD
 [docs/architecture/project-architecture-overview.md](./docs/architecture/project-architecture-overview.md)
 开始。
 
+## 文件沙盒
+
+- Agent 看到的是以 `/` 为根的 file-native 沙盒路径
+- 常用根目录包括 `/artifacts`、`/skills`、`/attachments`、`/memories`、`/tmp`
+- 宿主真实路径只在内部使用，不会暴露给 Agent
+- 多端物理存储位置不同，但 Agent 路径语义保持一致
+- 详细约束见 [docs/architecture/file-sandbox-architecture.md](./docs/architecture/file-sandbox-architecture.md)
+
 ## Supported Tools
 
 | Tool | Category | Purpose |

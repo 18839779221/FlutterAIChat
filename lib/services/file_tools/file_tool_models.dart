@@ -1,21 +1,25 @@
 class FileToolPathResolution {
   final bool isValid;
+  final String? agentPath;
   final String? relativePath;
   final String? absolutePath;
   final String? errorCode;
 
   const FileToolPathResolution._({
     required this.isValid,
+    this.agentPath,
     this.relativePath,
     this.absolutePath,
     this.errorCode,
   });
 
   const FileToolPathResolution.valid({
+    required String agentPath,
     required String relativePath,
     required String absolutePath,
   }) : this._(
           isValid: true,
+          agentPath: agentPath,
           relativePath: relativePath,
           absolutePath: absolutePath,
         );
