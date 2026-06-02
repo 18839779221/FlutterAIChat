@@ -13,6 +13,9 @@ class AssistantDocBlock extends StatelessWidget {
   final String? label;
   final String? reasoningText;
   final String? markdownCacheKey;
+  final ReasoningSectionVariant reasoningVariant;
+  final bool reasoningInitiallyExpanded;
+  final ValueChanged<bool>? onReasoningExpansionChanged;
 
   const AssistantDocBlock({
     super.key,
@@ -20,6 +23,9 @@ class AssistantDocBlock extends StatelessWidget {
     this.label,
     this.reasoningText,
     this.markdownCacheKey,
+    this.reasoningVariant = ReasoningSectionVariant.toolUseInline,
+    this.reasoningInitiallyExpanded = true,
+    this.onReasoningExpansionChanged,
   });
 
   @override
@@ -66,7 +72,9 @@ class AssistantDocBlock extends StatelessWidget {
               if ((reasoningText ?? '').trim().isNotEmpty)
                 ReasoningSection(
                   text: reasoningText!,
-                  variant: ReasoningSectionVariant.toolUseInline,
+                  variant: reasoningVariant,
+                  initiallyExpanded: reasoningInitiallyExpanded,
+                  onExpansionChanged: onReasoningExpansionChanged,
                 ),
               StableMarkdownBlock(
                 cacheKey: markdownCacheKey ??

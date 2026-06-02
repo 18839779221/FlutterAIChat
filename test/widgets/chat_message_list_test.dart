@@ -314,7 +314,8 @@ void main() {
       expect(find.text('先确认上下文，再给出答案。'), findsOneWidget);
     });
 
-    testWidgets('tool-use reasoning stays directly visible', (tester) async {
+    testWidgets('tool-use reasoning uses final reasoning style and stays expanded',
+        (tester) async {
       await _pumpMessageList(
         tester,
         messages: [
@@ -330,6 +331,7 @@ void main() {
 
       expect(find.text('思考过程'), findsOneWidget);
       expect(find.text('需要先读取文件。'), findsOneWidget);
+      expect(find.text('Analysis'), findsNothing);
     });
 
     testWidgets('streaming assistant reasoning content is visible', (

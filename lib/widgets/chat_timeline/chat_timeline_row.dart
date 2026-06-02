@@ -16,6 +16,7 @@ import 'package:ai_chat/widgets/animations/message_growth_animation.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/artifact_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
+import 'package:ai_chat/widgets/chat_blocks/reasoning_section.dart';
 import 'package:ai_chat/widgets/chat_blocks/structured_output_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_exception_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
@@ -132,14 +133,22 @@ class ChatTimelineRow extends ConsumerWidget {
     late final Widget blockWidget;
     switch (block.type) {
       case AssistantTurnBlockType.analysis:
+        final hasReasoning = (block.reasoningText ?? '').trim().isNotEmpty;
         blockWidget = GestureDetector(
           onLongPress: sourceMessage == null
               ? null
               : () => onLongPressMessage(sourceMessage),
           child: AssistantDocBlock(
-            label: 'Analysis',
+            label: hasReasoning ? null : 'Analysis',
             text: block.text ?? '',
             reasoningText: block.reasoningText,
+            reasoningVariant: hasReasoning
+                ? ReasoningSectionVariant.finalAnswerCollapsible
+                : ReasoningSectionVariant.toolUseInline,
+            reasoningInitiallyExpanded: hasReasoning,
+            onReasoningExpansionChanged: hasReasoning
+                ? (_) => onActiveStatusLayoutChanged?.call()
+                : null,
             markdownCacheKey: item.stableKey,
           ),
         );
