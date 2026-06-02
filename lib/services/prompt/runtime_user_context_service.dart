@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../models/skill/skill_catalog_entry.dart';
 import '../../models/prompt/runtime_user_context_snapshot.dart';
+import '../workspace/workspace_binding_service.dart';
 import '../skills/skill_context_formatter.dart';
 
 typedef RuntimeNowProvider = DateTime Function();
@@ -10,6 +11,7 @@ typedef AgentsMdProvider = Future<String> Function();
 typedef RuntimePlatformContextProvider = List<String> Function();
 typedef RuntimeSkillCatalogProvider = Future<List<SkillCatalogEntry>>
     Function();
+typedef RuntimeWorkspaceIdResolver = Future<String?> Function(int? groupId);
 
 class RuntimeUserContextService {
   RuntimeUserContextService({
@@ -17,6 +19,8 @@ class RuntimeUserContextService {
     AgentsMdProvider? agentsMdProvider,
     RuntimePlatformContextProvider? platformContextProvider,
     RuntimeSkillCatalogProvider? skillCatalogProvider,
+    RuntimeWorkspaceIdResolver? workspaceIdResolver,
+    WorkspaceBindingService? workspaceBindingService,
     SkillContextFormatter skillContextFormatter = const SkillContextFormatter(),
   })  : _nowProvider = nowProvider ?? DateTime.now,
         _agentsMdProvider = agentsMdProvider ?? _defaultAgentsMdProvider,
@@ -24,24 +28,37 @@ class RuntimeUserContextService {
             platformContextProvider ?? _defaultPlatformContextProvider,
         _skillCatalogProvider =
             skillCatalogProvider ?? _defaultSkillCatalogProvider,
+        _workspaceIdResolver =
+            workspaceIdResolver ?? _defaultWorkspaceIdResolver,
+        _workspaceBindingService =
+            workspaceBindingService ?? WorkspaceBindingService(),
         _skillContextFormatter = skillContextFormatter;
 
   final RuntimeNowProvider _nowProvider;
   final AgentsMdProvider _agentsMdProvider;
   final RuntimePlatformContextProvider _platformContextProvider;
   final RuntimeSkillCatalogProvider _skillCatalogProvider;
+  final RuntimeWorkspaceIdResolver _workspaceIdResolver;
+  final WorkspaceBindingService _workspaceBindingService;
   final SkillContextFormatter _skillContextFormatter;
 
-  Future<RuntimeUserContextSnapshot> buildSnapshot() async {
+  Future<RuntimeUserContextSnapshot> buildSnapshot({int? groupId}) async {
     final now = _nowProvider();
     final platformSections = _platformContextProvider();
     final skillCatalog = await _skillCatalogProvider();
+    final workspaceId = await _workspaceIdResolver(groupId);
+    final resolvedWorkspace =
+        _workspaceBindingService.resolveWorkspaceId(workspaceId);
     return RuntimeUserContextSnapshot(
       currentDateText: "Today's date is ${_formatIsoDate(now)}.",
       agentsMdText: (await _agentsMdProvider()).trim(),
       skillsSectionText:
           _skillContextFormatter.formatCatalogReminder(skillCatalog),
       additionalSections: [
+        '# currentWorkspace\n'
+            'Current workspace: ${resolvedWorkspace.workspaceId}'
+            '${resolvedWorkspace.isDefault ? ' (default workspace)' : ''}.\n'
+            'File root: ${resolvedWorkspace.fileRoot}',
         if (platformSections.isNotEmpty)
           '# runtimePlatform\n${platformSections.join('\n')}',
       ],
@@ -59,6 +76,10 @@ class RuntimeUserContextService {
 
   static Future<List<SkillCatalogEntry>> _defaultSkillCatalogProvider() async {
     return const [];
+  }
+
+  static Future<String?> _defaultWorkspaceIdResolver(int? groupId) async {
+    return null;
   }
 
   static List<String> _defaultPlatformContextProvider() {

@@ -107,6 +107,11 @@ class _FakeSessionRuntimeMarkerRepository
 
 class _ThrowingChatStorage extends Fake implements ChatStorage {
   @override
+  Future<void> updateGroupWorkspaceId(int groupId, String? workspaceId) async {
+    throw UnimplementedError('Storage should not be used in this fake');
+  }
+
+  @override
   dynamic noSuchMethod(Invocation invocation) {
     throw UnimplementedError('Storage should not be used in this fake');
   }

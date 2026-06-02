@@ -81,7 +81,7 @@ class GlobToolHandler extends ToolHandler {
     final matches = await fileTools.discoveryService.glob(
       pattern: context.arguments['pattern'] as String,
       pathValue: context.arguments['path'] as String?,
-      cwd: '/',
+      cwd: context.cwd,
     );
     return ToolResult(
       toolName: 'Glob',

@@ -4,14 +4,24 @@ import 'package:path/path.dart' as path;
 
 import '../../models/artifact/artifact_create_result.dart';
 import '../../models/artifact/artifact_type.dart';
+import '../workspace/workspace_binding_service.dart';
+
+typedef ArtifactWorkspaceIdResolver = Future<String?> Function(int groupId);
 
 /// Stores inline artifact files under a stable per-group path.
 class ArtifactFileStorageService {
   ArtifactFileStorageService({
     required Directory rootDirectory,
-  }) : _rootDirectory = rootDirectory;
+    ArtifactWorkspaceIdResolver? workspaceIdResolver,
+    WorkspaceBindingService? workspaceBindingService,
+  })  : _rootDirectory = rootDirectory,
+        _workspaceIdResolver = workspaceIdResolver ?? _defaultWorkspaceIdResolver,
+        _workspaceBindingService =
+            workspaceBindingService ?? WorkspaceBindingService();
 
   final Directory _rootDirectory;
+  final ArtifactWorkspaceIdResolver _workspaceIdResolver;
+  final WorkspaceBindingService _workspaceBindingService;
 
   Directory get rootDirectory => _rootDirectory;
 
@@ -20,12 +30,17 @@ class ArtifactFileStorageService {
   }
 
   String relativePathFor({
-    required int groupId,
+    required String workspaceId,
     required String artifactId,
     required ArtifactType type,
   }) {
     final extension = type == ArtifactType.svg ? 'svg' : 'html';
-    return path.posix.join('/artifacts', '$groupId', '$artifactId.$extension');
+    return path.posix.join(
+      '/workspaces',
+      workspaceId,
+      'artifacts',
+      '$artifactId.$extension',
+    );
   }
 
   Future<ArtifactCreateResult> saveArtifactSource({
@@ -37,8 +52,11 @@ class ArtifactFileStorageService {
     List<String> warnings = const <String>[],
   }) async {
     await ensureReady();
+    final workspaceId = _workspaceBindingService
+        .resolveWorkspaceId(await _workspaceIdResolver(groupId))
+        .workspaceId;
     final relativePath = relativePathFor(
-      groupId: groupId,
+      workspaceId: workspaceId,
       artifactId: artifactId,
       type: type,
     );
@@ -68,5 +86,9 @@ class ArtifactFileStorageService {
         ? relativePath.substring(1)
         : relativePath;
     return File(path.join(rootDirectory.path, normalized)).readAsStringSync();
+  }
+
+  static Future<String?> _defaultWorkspaceIdResolver(int groupId) async {
+    return null;
   }
 }

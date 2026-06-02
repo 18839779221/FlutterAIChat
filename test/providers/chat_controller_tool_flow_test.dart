@@ -2179,6 +2179,7 @@ class _FakeChatSessionCoordinator implements ChatSessionCoordinator {
   int loadMoreMessagesCalls = 0;
   final List<ChatGroup> selectedGroups = [];
   final List<int> deletedGroupIds = [];
+  final List<String?> updatedWorkspaceIds = [];
 
   @override
   Future<void> createNewGroup() async {
@@ -2213,6 +2214,11 @@ class _FakeChatSessionCoordinator implements ChatSessionCoordinator {
   @override
   Future<void> deleteGroup(int id) async {
     deletedGroupIds.add(id);
+  }
+
+  @override
+  Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {
+    updatedWorkspaceIds.add(workspaceId);
   }
 }
 

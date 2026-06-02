@@ -79,6 +79,8 @@ class WriteToolHandler extends ToolHandler {
   Future<ToolResult> execute(ToolExecutionContext context) async {
     final fileTools = context.hostAdapters.fileTools;
     final writeService = fileTools?.writeService;
+    var effectiveAgentPath =
+        (context.arguments['file_path'] as String).trim().replaceAll('\\', '/');
     if (fileTools == null || writeService == null) {
       return const ToolResult(
         toolName: 'Write',
@@ -90,7 +92,7 @@ class WriteToolHandler extends ToolHandler {
 
     final resolution = fileTools.pathPolicy.normalizeSandboxPath(
       context.arguments['file_path'] as String,
-      cwd: '/',
+      cwd: context.cwd,
     );
     if (!resolution.isValid || resolution.relativePath == null) {
       return ToolResult(
@@ -102,16 +104,41 @@ class WriteToolHandler extends ToolHandler {
     }
 
     try {
+      var effectiveResolution = resolution;
+      var workspaceReminder = '';
+      var workspaceId = context.workspace?.workspaceId;
+      if (context.workspace?.isDefault == true) {
+        final existingFile = fileTools.rootService
+            .resolveFile(effectiveResolution.relativePath!)
+            .existsSync();
+        if (!existingFile) {
+          final transition = await context
+              .hostAdapters.workspace
+              ?.ensureWorkspaceForLongLivedOutput(context.groupId);
+          if (transition != null) {
+            workspaceReminder = transition.reminderMessage ?? '';
+            workspaceId = transition.workspace.workspaceId;
+            effectiveResolution = fileTools.pathPolicy.normalizeSandboxPath(
+              context.arguments['file_path'] as String,
+              cwd: transition.workspace.fileRoot,
+            );
+          }
+        }
+      }
       final outcome = await writeService.writeFile(
-        relativePath: resolution.relativePath!,
+        relativePath: effectiveResolution.relativePath!,
         content: context.arguments['content'] as String,
       );
+      effectiveAgentPath = effectiveResolution.agentPath ?? effectiveAgentPath;
       return ToolResult(
         toolName: 'Write',
         status: ToolExecutionStatus.success,
-        summary: '已写入文件：${resolution.agentPath}',
+        summary: '已写入文件：$effectiveAgentPath',
         data: {
-          'message': '已写入文件：${resolution.agentPath}',
+          'message': '已写入文件：$effectiveAgentPath',
+          if (workspaceId != null) 'workspaceId': workspaceId,
+          if (workspaceReminder.isNotEmpty)
+            'workspaceChangeReminder': workspaceReminder,
           ...outcome.toJson(),
         },
       );
@@ -121,9 +148,9 @@ class WriteToolHandler extends ToolHandler {
         status: ToolExecutionStatus.failure,
         summary: '写入文件失败：文件未读取或状态已过期',
         data: {
-          'filePath': resolution.agentPath,
+          'filePath': effectiveAgentPath,
           'message':
-              '写入文件失败：文件未读取或状态已过期\n实际文件路径：${resolution.agentPath}',
+              '写入文件失败：文件未读取或状态已过期\n实际文件路径：$effectiveAgentPath',
         },
         errorMessage: error.code,
       );

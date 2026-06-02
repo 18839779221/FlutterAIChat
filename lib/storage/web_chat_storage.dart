@@ -84,6 +84,21 @@ class WebChatStorage implements ChatStorage {
   }
 
   @override
+  Future<void> updateGroupWorkspaceId(int groupId, String? workspaceId) async {
+    final groups = await _readGroups();
+    final updated = groups.map((group) {
+      if (group['id'] != groupId) {
+        return group;
+      }
+      return {
+        ...group,
+        'workspace_id': workspaceId,
+      };
+    }).toList();
+    await _writeGroups(updated);
+  }
+
+  @override
   Future<void> updateGroupSystemPrompt(
       int groupId, String? systemPrompt) async {
     final groups = await _readGroups();

@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
-  test('storage service persists selected image into managed directory',
+  test('storage service persists selected image into default workspace directory',
       () async {
     final tempRoot = await Directory.systemTemp.createTemp(
       'chat_attachment_storage_test',
@@ -34,10 +34,20 @@ void main() {
       ),
     );
 
-    expect(stored.localPath, '/attachments/persisted/att-1_demo.png');
+    expect(
+      stored.localPath,
+      '/workspaces/.default/attachments/persisted/att-1_demo.png',
+    );
     expect(
       await File(
-        p.join(tempRoot.path, 'attachments', 'persisted', 'att-1_demo.png'),
+        p.join(
+          tempRoot.path,
+          'workspaces',
+          '.default',
+          'attachments',
+          'persisted',
+          'att-1_demo.png',
+        ),
       ).exists(),
       isTrue,
     );
@@ -78,5 +88,53 @@ void main() {
     expect(stored.providerFileRefJson?['data_url'], isA<String>());
     expect(stored.providerFileRefJson?['data_url_length'], greaterThan(0));
     expect(stored.providerFileRefJson?['send_mime_type'], isNotEmpty);
+  });
+
+  test('storage service persists selected image into explicit workspace directory',
+      () async {
+    final tempRoot = await Directory.systemTemp.createTemp(
+      'chat_attachment_storage_test_workspace',
+    );
+    addTearDown(() async {
+      if (await tempRoot.exists()) {
+        await tempRoot.delete(recursive: true);
+      }
+    });
+
+    final sourceFile = File(p.join(tempRoot.path, 'source.png'));
+    await sourceFile.writeAsBytes(const <int>[1, 2, 3, 4]);
+
+    final service = ChatAttachmentStorageService(
+      resolveRootDirectory: () async => tempRoot,
+      resolveWorkspaceId: () async => 'ws_20260602_a3k9qx',
+    );
+    final stored = await service.persistSelectedImage(
+      attachment: ChatAttachment.image(
+        localId: 'att-3',
+        fileName: 'demo.png',
+        mimeType: 'image/png',
+        byteSize: 4,
+        localPath: sourceFile.path,
+        status: ChatAttachmentStatus.selected,
+      ),
+    );
+
+    expect(
+      stored.localPath,
+      '/workspaces/ws_20260602_a3k9qx/attachments/persisted/att-3_demo.png',
+    );
+    expect(
+      await File(
+        p.join(
+          tempRoot.path,
+          'workspaces',
+          'ws_20260602_a3k9qx',
+          'attachments',
+          'persisted',
+          'att-3_demo.png',
+        ),
+      ).exists(),
+      isTrue,
+    );
   });
 }

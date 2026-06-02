@@ -54,6 +54,11 @@ final textControllerProvider = Provider<TextEditingController>((ref) {
 final composerAttachmentsProvider =
     StateProvider<List<ChatAttachment>>((ref) => const <ChatAttachment>[]);
 
+/// Measured height of the bottom overlay host that sits above the timeline.
+/// The message list consumes this to keep the latest content clear of the
+/// floating composer and any stacked bottom affordances.
+final chatBottomOverlayHeightProvider = StateProvider<double>((ref) => 0);
+
 // 焦点提供者
 final focusNodeProvider = Provider<FocusNode>((ref) {
   final focusNode = FocusNode();

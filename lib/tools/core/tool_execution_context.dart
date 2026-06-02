@@ -1,5 +1,6 @@
 import '../../models/chat_event.dart';
 import '../../models/chat_message.dart';
+import '../../models/workspace/resolved_workspace.dart';
 import '../adapters/tool_host_adapters.dart';
 
 /// Provides normalized runtime input required by a tool handler execution.
@@ -28,6 +29,12 @@ class ToolExecutionContext {
   /// Host adapter bundle used to call platform or infrastructure capabilities.
   final ToolHostAdapters hostAdapters;
 
+  /// Effective current working directory for relative file paths in this tool execution.
+  final String cwd;
+
+  /// Resolved workspace for the active group when available.
+  final ResolvedWorkspace? workspace;
+
   ToolExecutionContext({
     required this.groupId,
     required this.toolName,
@@ -36,6 +43,8 @@ class ToolExecutionContext {
     List<ChatEvent> currentTurnEvents = const <ChatEvent>[],
     required this.now,
     this.hostAdapters = const ToolHostAdapters(),
+    this.cwd = '/',
+    this.workspace,
   })  : arguments = Map<String, dynamic>.unmodifiable(arguments),
         history = List<ChatMessage>.unmodifiable(history),
         currentTurnEvents = List<ChatEvent>.unmodifiable(currentTurnEvents);

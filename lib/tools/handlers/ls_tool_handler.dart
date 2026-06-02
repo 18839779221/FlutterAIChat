@@ -71,7 +71,7 @@ class LsToolHandler extends ToolHandler {
 
     final entries = await fileTools.discoveryService.list(
       pathValue: context.arguments['path'] as String,
-      cwd: '/',
+      cwd: context.cwd,
     );
     return ToolResult(
       toolName: 'LS',

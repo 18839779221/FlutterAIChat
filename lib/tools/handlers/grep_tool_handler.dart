@@ -147,7 +147,7 @@ class GrepToolHandler extends ToolHandler {
       pattern: context.arguments['pattern'] as String,
       pathValue: context.arguments['path'] as String?,
       glob: context.arguments['glob'] as String?,
-      cwd: '/',
+      cwd: context.cwd,
       outputMode:
           context.arguments['output_mode'] as String? ?? 'files_with_matches',
       headLimit: context.arguments['head_limit'] as int? ?? 20,

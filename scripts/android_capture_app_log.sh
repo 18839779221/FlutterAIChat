@@ -5,7 +5,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEFAULT_PACKAGE="com.example.ai_chat"
 APP_PACKAGE="${APP_PACKAGE:-$DEFAULT_PACKAGE}"
-LOG_FILE_PATH="/data/user/0/$APP_PACKAGE/files/logs/app.log"
+APP_DATA_DIR_TEMPLATE="/data/user/0/__APP_PACKAGE__"
+LOG_RELATIVE_PATH="files/logs/app.log"
 OUTPUT_DIR="$ROOT_DIR/build/artifact-debug"
 
 usage() {
@@ -68,30 +69,38 @@ resolve_device_id() {
 
 run_in_app() {
   local device_id="$1"
+  local command="$2"
+  adb -s "$device_id" shell run-as "$APP_PACKAGE" sh -c "$command"
+}
+
+run_in_app_args() {
+  local device_id="$1"
   shift
   adb -s "$device_id" shell run-as "$APP_PACKAGE" "$@"
 }
 
-require_log_file() {
-  local device_id="$1"
-  run_in_app "$device_id" test -f "$LOG_FILE_PATH" >/dev/null 2>&1 || {
-    echo "Log file not found: $LOG_FILE_PATH" >&2
-    echo "Package: $APP_PACKAGE Device: $device_id" >&2
-    exit 1
-  }
+absolute_log_path() {
+  local base_dir="${APP_DATA_DIR_TEMPLATE/__APP_PACKAGE__/$APP_PACKAGE}"
+  echo "$base_dir/$LOG_RELATIVE_PATH"
 }
 
 clear_log() {
   local device_id="$1"
-  run_in_app "$device_id" mkdir -p "/data/user/0/$APP_PACKAGE/files/logs"
-  run_in_app "$device_id" sh -c ": > '$LOG_FILE_PATH'"
-  echo "Cleared $LOG_FILE_PATH for package $APP_PACKAGE on device $device_id"
+  local log_path
+  log_path="$(absolute_log_path)"
+  local log_dir
+  log_dir="${log_path%/*}"
+  run_in_app_args "$device_id" mkdir -p "$log_dir"
+  run_in_app_args "$device_id" rm -f "$log_path"
+  run_in_app_args "$device_id" touch "$log_path"
+  echo "Cleared $LOG_RELATIVE_PATH for package $APP_PACKAGE on device $device_id"
 }
 
 show_log() {
   local device_id="$1"
-  require_log_file "$device_id"
-  run_in_app "$device_id" cat "$LOG_FILE_PATH"
+  local log_path
+  log_path="$(absolute_log_path)"
+  run_in_app_args "$device_id" cat "$log_path"
 }
 
 export_log() {
@@ -99,8 +108,10 @@ export_log() {
   local device_id="$2"
   mkdir -p "$OUTPUT_DIR"
   local output_path="$OUTPUT_DIR/$name.log"
-  require_log_file "$device_id"
-  run_in_app "$device_id" cat "$LOG_FILE_PATH" > "$output_path"
+  local log_path
+  log_path="$(absolute_log_path)"
+  run_in_app_args "$device_id" cat "$log_path" \
+    > "$output_path"
   echo "Exported app log to $output_path"
 }
 

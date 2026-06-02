@@ -97,6 +97,79 @@ void main() {
       await storage.deleteGroup(groupId);
     });
 
+    test('prepends workspace change reminder before current turn transcript',
+        () async {
+      final storage = DatabaseHelper(
+        databaseName: 'session_context_service_workspace_reminder_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(
+          title: 'Session Context Workspace Reminder',
+          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          workspaceId: 'ws_20260602_a3k9qx',
+        ),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final eventRepository = ChatEventRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '帮我继续处理这些文件',
+          providerStateJson: const {
+            'runtime_context': {
+              'workspace_change_reminder':
+                  '<system-reminder>\nThe current chat is now using workspace ws_20260602_a3k9qx.\nNew files for this chat should be created under /workspaces/ws_20260602_a3k9qx.\n</system-reminder>',
+            },
+          },
+        ),
+      );
+
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetResolver: (_) => const SessionModelBudget(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw UnimplementedError(),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      );
+
+      final plannerMessages = await service.buildPlannerMessages(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: [
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '帮我继续处理这些文件',
+          ),
+        ],
+        config: ChatConfig(systemPrompt: '你是一个助手'),
+      );
+
+      expect(plannerMessages.first.text, contains('# currentWorkspace'));
+      expect(
+        plannerMessages[1].text,
+        contains('The current chat is now using workspace ws_20260602_a3k9qx.'),
+      );
+      expect(plannerMessages[2].text, '帮我继续处理这些文件');
+
+      await storage.deleteGroup(groupId);
+    });
+
     test('does not eagerly create snapshot when budget pressure is low',
         () async {
       final storage = DatabaseHelper(

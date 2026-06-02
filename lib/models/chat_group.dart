@@ -1,5 +1,7 @@
 import 'chat_turn.dart';
 
+const Object _unsetWorkspaceId = Object();
+
 class ChatGroup {
   int? id;
   String title;
@@ -7,6 +9,7 @@ class ChatGroup {
   final DateTime lastMessageAt;
   final String? systemPrompt;
   final bool isSummarized;
+  final String? workspaceId;
 
   /// Provider style locked at group creation. A session may never switch
   /// providers — see spec 2026-05-22 (Policy A).
@@ -19,6 +22,7 @@ class ChatGroup {
     DateTime? lastMessageAt,
     this.systemPrompt,
     this.isSummarized = false,
+    this.workspaceId,
     required this.lockedProviderStyle,
   }) : createdAt = createdAt ?? DateTime.now(),
        lastMessageAt = lastMessageAt ?? DateTime.now();
@@ -31,6 +35,7 @@ class ChatGroup {
       'last_message_at': lastMessageAt.millisecondsSinceEpoch,
       'system_prompt': systemPrompt,
       'is_summarized': isSummarized ? 1 : 0,
+      'workspace_id': workspaceId,
       'locked_provider_style': lockedProviderStyle.name,
     };
   }
@@ -43,6 +48,7 @@ class ChatGroup {
       lastMessageAt: DateTime.fromMillisecondsSinceEpoch(map['last_message_at']),
       systemPrompt: map['system_prompt'],
       isSummarized: map['is_summarized'] == 1,
+      workspaceId: map['workspace_id'] as String?,
       lockedProviderStyle: ChatTurnProviderStyle.values.firstWhere(
         (e) => e.name == map['locked_provider_style'],
       ),
@@ -56,6 +62,7 @@ class ChatGroup {
     DateTime? lastMessageAt,
     String? systemPrompt,
     bool? isSummarized,
+    Object? workspaceId = _unsetWorkspaceId,
     ChatTurnProviderStyle? lockedProviderStyle,
   }) {
     return ChatGroup(
@@ -65,6 +72,9 @@ class ChatGroup {
       lastMessageAt: lastMessageAt ?? this.lastMessageAt,
       systemPrompt: systemPrompt ?? this.systemPrompt,
       isSummarized: isSummarized ?? this.isSummarized,
+      workspaceId: identical(workspaceId, _unsetWorkspaceId)
+          ? this.workspaceId
+          : workspaceId as String?,
       lockedProviderStyle: lockedProviderStyle ?? this.lockedProviderStyle,
     );
   }

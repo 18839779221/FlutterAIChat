@@ -16,11 +16,11 @@ void main() {
   });
 
   test(
-      'DatabaseHelper schema includes turn, step, event, snapshot and runtime marker tables in v11',
+      'DatabaseHelper schema includes turn, step, event, snapshot and runtime marker tables in current version',
       () {
     final source = File('lib/database/database_helper.dart').readAsStringSync();
 
-    expect(source, contains('version: 11'));
+    expect(source, contains('version: 15'));
     expect(
       source,
       contains(RegExp(r'CREATE TABLE chat_turns \(')),
@@ -60,6 +60,7 @@ void main() {
     );
     expect(source, contains('if (oldVersion < 10)'));
     expect(source, contains('if (oldVersion < 11)'));
+    expect(source, contains('if (oldVersion < 15)'));
   });
 
   test(

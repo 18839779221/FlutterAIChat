@@ -352,6 +352,9 @@ class _NoopChatStorage implements ChatStorage {
   Future<void> updateGroupLastMessageTime(int groupId) async {}
 
   @override
+  Future<void> updateGroupWorkspaceId(int groupId, String? workspaceId) async {}
+
+  @override
   Future<void> updateGroupSystemPrompt(
       int groupId, String? systemPrompt) async {}
 

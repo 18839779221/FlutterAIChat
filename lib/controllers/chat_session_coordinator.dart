@@ -21,6 +21,8 @@ abstract class ChatSessionCoordinator {
   Future<void> loadMoreMessages();
 
   Future<void> selectGroup(ChatGroup group);
+
+  Future<void> updateCurrentGroupWorkspace(String? workspaceId);
 }
 
 class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
@@ -202,5 +204,37 @@ class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
     _ref.read(currentGroupProvider.notifier).state = group;
     _ref.read(systemPromptProvider.notifier).state = group.systemPrompt;
     await loadMessages();
+  }
+
+  @override
+  Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {
+    final currentGroup = _ref.read(currentGroupProvider);
+    if (currentGroup == null) {
+      return;
+    }
+
+    final normalizedWorkspaceId = workspaceId?.trim().isEmpty ?? true
+        ? null
+        : workspaceId!.trim();
+    if (currentGroup.workspaceId == normalizedWorkspaceId) {
+      return;
+    }
+
+    final updatedGroup = currentGroup.copyWith(workspaceId: normalizedWorkspaceId);
+    _ref.read(currentGroupProvider.notifier).state = updatedGroup;
+
+    final groups = _ref.read(groupsProvider);
+    final nextGroups = groups
+        .map(
+          (group) => group.id == currentGroup.id ? updatedGroup : group,
+        )
+        .toList(growable: false);
+    _ref.read(groupsProvider.notifier).setGroups(nextGroups);
+
+    if (currentGroup.id != null) {
+      await _ref
+          .read(databaseProvider)
+          .updateGroupWorkspaceId(currentGroup.id!, normalizedWorkspaceId);
+    }
   }
 }

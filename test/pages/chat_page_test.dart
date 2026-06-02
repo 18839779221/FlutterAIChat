@@ -1,4 +1,5 @@
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/chat/active_turn_status_presentation.dart';
 import 'package:ai_chat/models/chat/send_message_request.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -11,6 +12,7 @@ import 'package:ai_chat/pages/chat_page.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/providers/streaming_trace_providers.dart';
 import 'package:ai_chat/services/debug_test_case_loader.dart';
+import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_message_list.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_card.dart';
@@ -100,6 +102,44 @@ void main() {
     expect(find.text('关闭深度模式'), findsNothing);
   });
 
+  testWidgets('chat page shows current workspace badge', (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+      ],
+    );
+    container.read(currentGroupProvider.notifier).state = ChatGroup(
+      id: 1,
+      title: 'Workspace chat',
+      workspaceId: 'ws_20260602_a3k9qx',
+      lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Workspace ws_20260602_a3k9qx'), findsOneWidget);
+  });
+
   testWidgets('chat page anchors viewport near the latest turn end',
       (tester) async {
     final container = ProviderContainer(
@@ -161,6 +201,209 @@ void main() {
     final latestAssistantBottom =
         tester.getBottomLeft(find.text('Latest assistant message')).dy;
     expect(latestAssistantBottom, lessThanOrEqualTo(listBounds.bottom));
+  });
+
+  testWidgets('chat page overlays input on top of the message list viewport',
+      (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final listBounds = tester.getRect(find.byType(ChatMessageList));
+    final inputBounds =
+        tester.getRect(find.byKey(const ValueKey('chat-input-dock')));
+    expect(inputBounds.top, lessThan(listBounds.bottom));
+  });
+
+  testWidgets(
+      'chat page keeps only a shallow overlap inset beneath the overlay composer',
+      (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.read(messagesProvider.notifier).setMessages([
+      ChatMessage(
+        id: 1,
+        text: 'Latest user message',
+        role: MessageRole.user,
+        status: MessageStatus.completed,
+      ),
+      ChatMessage(
+        id: 2,
+        text: 'Latest assistant message',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final spacing = Theme.of(
+      tester.element(find.byType(ChatPage)),
+    ).extension<AppSpacing>()!;
+    final overlayHeight = container.read(chatBottomOverlayHeightProvider);
+    final sliverPadding =
+        tester.widget<SliverPadding>(find.byType(SliverPadding));
+    final padding = sliverPadding.padding as EdgeInsets;
+
+    expect(overlayHeight, greaterThan(0));
+    expect(
+      padding.bottom,
+      greaterThanOrEqualTo(spacing.sm),
+    );
+    expect(
+      padding.bottom,
+      lessThan(overlayHeight),
+    );
+  });
+
+  testWidgets(
+      'chat page lets the message list viewport extend beneath the bottom overlay band',
+      (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final pageBounds = tester.getRect(find.byType(ChatPage));
+    final listBounds = tester.getRect(find.byType(ChatMessageList));
+    final overlayHeight = container.read(chatBottomOverlayHeightProvider);
+
+    expect(overlayHeight, greaterThan(0));
+    expect(
+      listBounds.bottom,
+      closeTo(pageBounds.bottom, 0.01),
+    );
+  });
+
+  testWidgets('chat page renders a semi-transparent bottom overlay veil',
+      (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final veil = tester.widget<DecoratedBox>(
+      find.byKey(const ValueKey('chat-bottom-overlay-veil')),
+    );
+    final decoration = veil.decoration as BoxDecoration;
+    final gradient = decoration.gradient as LinearGradient?;
+    final veilBounds = tester.getRect(
+      find.byKey(const ValueKey('chat-bottom-overlay-veil')),
+    );
+    final dockBounds = tester.getRect(
+      find.byKey(const ValueKey('chat-input-dock')),
+    );
+
+    expect(gradient, isNotNull);
+    expect((gradient!.colors.first.a * 255.0).round(), equals(0));
+    expect(
+      (gradient.colors[2].a * 100).round(),
+      equals(50),
+    );
+    expect(
+      (gradient.colors.last.a * 255.0).round(),
+      equals((0.5 * 255.0).round()),
+    );
+    expect(
+      dockBounds.top - veilBounds.top,
+      greaterThan(32),
+    );
   });
 
   testWidgets('chat page renders active ask-user-question in timeline',
@@ -531,7 +774,8 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byKey(const ValueKey('debug-turn-inspector-button')), findsOneWidget);
+    expect(find.byKey(const ValueKey('debug-turn-inspector-button')),
+        findsOneWidget);
   });
 
   testWidgets(
@@ -556,11 +800,11 @@ void main() {
     addTearDown(container.dispose);
 
     container.read(streamingTraceRecorderProvider.notifier).recordStage(
-      traceId: 'trace_1',
-      turnId: 'turn_1',
-      stage: StreamingTraceStage.finalTakeover,
-      timestamp: DateTime(2026, 5, 31, 12, 0, 0),
-    );
+          traceId: 'trace_1',
+          turnId: 'turn_1',
+          stage: StreamingTraceStage.finalTakeover,
+          timestamp: DateTime(2026, 5, 31, 12, 0, 0),
+        );
     container.read(streamingTraceRecorderProvider.notifier).markCompleted(
           traceId: 'trace_1',
           takeoverAt: DateTime(2026, 5, 31, 12, 0, 0, 0, 50),
@@ -577,7 +821,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final debugButton = find.byKey(const ValueKey('debug-turn-inspector-button'));
+    final debugButton =
+        find.byKey(const ValueKey('debug-turn-inspector-button'));
     expect(debugButton, findsOneWidget);
 
     await tester.longPress(debugButton);
@@ -632,7 +877,8 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byKey(const ValueKey('floating-turn-status-bar')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('floating-turn-status-bar')), findsOneWidget);
     expect(find.text('正在规划下一步'), findsOneWidget);
     final floatingRect = tester.getRect(
       find.byKey(const ValueKey('floating-turn-status-bar')),
@@ -682,10 +928,12 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byKey(const ValueKey('floating-turn-status-bar')), findsNothing);
+    expect(
+        find.byKey(const ValueKey('floating-turn-status-bar')), findsNothing);
   });
 
-  testWidgets('chat page omits floating status when no active turn status exists',
+  testWidgets(
+      'chat page omits floating status when no active turn status exists',
       (tester) async {
     final container = ProviderContainer(
       overrides: [
@@ -715,7 +963,8 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byKey(const ValueKey('floating-turn-status-bar')), findsNothing);
+    expect(
+        find.byKey(const ValueKey('floating-turn-status-bar')), findsNothing);
   });
 }
 
@@ -807,6 +1056,9 @@ class _StubSessionCoordinator implements ChatSessionCoordinator {
 
   @override
   Future<void> selectGroup(ChatGroup group) async {}
+
+  @override
+  Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {}
 }
 
 class _StubSummaryController implements ChatSummaryController {

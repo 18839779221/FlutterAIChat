@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
@@ -101,12 +103,15 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         if (slashQuery == null) {
           return const <SkillCatalogEntry>[];
         }
-        return skills.where((skill) {
-          final query = slashQuery.toLowerCase();
-          return skill.id.toLowerCase().contains(query) ||
-              skill.name.toLowerCase().contains(query) ||
-              skill.description.toLowerCase().contains(query);
-        }).take(5).toList(growable: false);
+        return skills
+            .where((skill) {
+              final query = slashQuery.toLowerCase();
+              return skill.id.toLowerCase().contains(query) ||
+                  skill.name.toLowerCase().contains(query) ||
+                  skill.description.toLowerCase().contains(query);
+            })
+            .take(5)
+            .toList(growable: false);
       },
       orElse: () => const <SkillCatalogEntry>[],
     );
@@ -125,8 +130,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
           'textLength': pendingText.length,
           'trimmedTextLength': pendingText.trim().length,
           'attachmentCount': pendingAttachments.length,
-          'attachmentLocalIds':
-              pendingAttachments.map((attachment) => attachment.localId).join(','),
+          'attachmentLocalIds': pendingAttachments
+              .map((attachment) => attachment.localId)
+              .join(','),
           'attachmentStatuses': pendingAttachments
               .map((attachment) => attachment.status.name)
               .join(','),
@@ -135,8 +141,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
               .join(','),
           'attachmentDataUrlLengths': pendingAttachments
               .map(
-                (attachment) => (attachment.providerFileRefJson?['data_url']
-                            as String?)
+                (attachment) =>
+                    (attachment.providerFileRefJson?['data_url'] as String?)
                         ?.length ??
                     0,
               )
@@ -227,445 +233,505 @@ class _ChatInputState extends ConsumerState<ChatInput> {
           spacing.md - 2,
           keyboardHeight > 0 ? spacing.xxs : spacing.xs + bottomSafeArea,
         ),
-        child: DecoratedBox(
-          key: const ValueKey('chat-input-dock'),
-          decoration: BoxDecoration(
-            color: colors.assistantSurface.withValues(alpha: 0.96),
-            borderRadius: BorderRadius.circular(radius.lg + 8),
-            boxShadow: [
-              BoxShadow(
-                color: colors.primaryText.withValues(alpha: 0.085),
-                blurRadius: 26,
-                offset: const Offset(0, 12),
-              ),
-              BoxShadow(
-                // 顶部内白光高亮：在 dock 表面之上轻轻提亮一道边缘，
-                // 走主题 inverse text token 保证未来引入深色主题时自动反相。
-                color: colors.semantic.text.inverse.withValues(alpha: 0.42),
-                blurRadius: 1,
-                offset: const Offset(0, -1),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              spacing.sm,
-              spacing.xxs + 3,
-              spacing.xs,
-              spacing.xxs + 3,
-            ),
-            child: Semantics(
-              container: true,
-              label: '聊天输入主面板',
-              child: Column(
-                key: const ValueKey('chat-input-panel'),
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Semantics(
-                    container: true,
-                    textField: true,
-                    enabled: !isComposerLocked,
-                    focused: focusNode.hasFocus,
-                    label: '聊天输入框',
-                    hint: '输入消息',
-                    value: composerValue,
-                    child: Container(
-                      key: const ValueKey('chat-input-composer-shell'),
-                      decoration: BoxDecoration(
-                        color: composerBackgroundColor,
-                        borderRadius: BorderRadius.circular(radius.md),
-                        border: Border.all(color: composerBorderColor),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (isVoiceListening)
-                            Padding(
-                              padding: EdgeInsets.fromLTRB(
-                                spacing.xs,
-                                spacing.xxs + 2,
-                                spacing.xs,
-                                0,
-                              ),
-                              child: Row(
-                                key: const ValueKey('chat-input-voice-status'),
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    key: const ValueKey(
-                                      'chat-input-voice-status-dot',
-                                    ),
-                                    width: 8,
-                                    height: 8,
-                                    decoration: BoxDecoration(
-                                      color: colors.workflowRunning,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  SizedBox(width: spacing.xxs + 2),
-                                  Text(
-                                    '正在聆听',
-                                    style: AppTypography.uiStyle(
-                                      color: colors.workflowRunning,
-                                      fontSize: 11.8,
-                                      height: 1.2,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(minHeight: 36),
-                            child: TextField(
-                              key: const ValueKey('chat-input-field'),
-                              focusNode: focusNode,
-                              controller: textController,
-                              enabled: !isComposerLocked,
-                              minLines: 1,
-                              maxLines: 4,
-                              textInputAction: TextInputAction.newline,
-                              keyboardType: TextInputType.multiline,
-                              style: AppTypography.uiStyle(
-                                color: colors.primaryText,
-                                fontSize: 13.7,
-                                height: 1.34,
-                              ),
-                              decoration: InputDecoration(
-                                hintText: '继续追问，或补充你的要求',
-                                hintStyle: AppTypography.uiStyle(
-                                  color: colors.secondaryText.withValues(
-                                    alpha: 0.66,
-                                  ),
-                                  fontSize: 13.3,
-                                  height: 1.28,
-                                ),
-                                isDense: true,
-                                filled: false,
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                disabledBorder: InputBorder.none,
-                                errorBorder: InputBorder.none,
-                                focusedErrorBorder: InputBorder.none,
-                                contentPadding: EdgeInsets.fromLTRB(
-                                  spacing.xs,
-                                  spacing.xxs + 2,
-                                  spacing.xs,
-                                  spacing.xxs + 2,
-                                ),
-                              ),
-                              onSubmitted: (_) {
-                                submitCurrentInput();
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(radius.lg + 8),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 38, sigmaY: 38),
+            child: DecoratedBox(
+              key: const ValueKey('chat-input-dock'),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    colors.assistantSurface.withValues(alpha: 0.28),
+                    colors.assistantSurface.withValues(alpha: 0.52),
+                    colors.assistantSurface.withValues(alpha: 0.7),
+                  ],
+                  stops: const [0, 0.42, 1],
+                ),
+                borderRadius: BorderRadius.circular(radius.lg + 8),
+                border: Border.all(
+                  color: colors.semantic.text.inverse.withValues(alpha: 0.24),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: colors.primaryText.withValues(alpha: 0.085),
+                    blurRadius: 26,
+                    offset: const Offset(0, 12),
                   ),
-                  if (slashSuggestions.isNotEmpty) ...[
-                    SizedBox(height: spacing.xxs + 2),
-                    _SlashSkillSuggestions(
-                      suggestions: slashSuggestions,
-                      onSelected: (skill) {
-                        final selection = '/${skill.id} ';
-                        textController.value = TextEditingValue(
-                          text: selection,
-                          selection: TextSelection.collapsed(
-                            offset: selection.length,
+                  BoxShadow(
+                    // 顶部内白光高亮：在 dock 表面之上轻轻提亮一道边缘，
+                    // 走主题 inverse text token 保证未来引入深色主题时自动反相。
+                    color: colors.semantic.text.inverse.withValues(alpha: 0.22),
+                    blurRadius: 8,
+                    offset: const Offset(0, -3),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  spacing.sm,
+                  spacing.xxs + 3,
+                  spacing.xs,
+                  spacing.xxs + 3,
+                ),
+                child: Semantics(
+                  container: true,
+                  label: '聊天输入主面板',
+                  child: Column(
+                    key: const ValueKey('chat-input-panel'),
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Semantics(
+                        container: true,
+                        textField: true,
+                        enabled: !isComposerLocked,
+                        focused: focusNode.hasFocus,
+                        label: '聊天输入框',
+                        hint: '输入消息',
+                        value: composerValue,
+                        child: Container(
+                          key: const ValueKey('chat-input-composer-shell'),
+                          decoration: BoxDecoration(
+                            color: composerBackgroundColor,
+                            borderRadius: BorderRadius.circular(radius.md),
+                            border: Border.all(color: composerBorderColor),
                           ),
-                        );
-                      },
-                    ),
-                  ],
-                  if (composerAttachments.isNotEmpty) ...[
-                    SizedBox(height: spacing.xxs + 2),
-                    ChatInputAttachmentStrip(
-                      attachments: composerAttachments,
-                      onRemove: (attachment) {
-                        final nextAttachments = [...composerAttachments]
-                          ..removeWhere(
-                            (item) => item.localId == attachment.localId,
-                          );
-                        ref.read(composerAttachmentsProvider.notifier).state =
-                            nextAttachments;
-                      },
-                    ),
-                  ],
-                  SizedBox(height: spacing.xxs + 2),
-                  Semantics(
-                    container: true,
-                    label: '输入辅助操作栏',
-                    child: Row(
-                      key: const ValueKey('chat-input-bottom-bar'),
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        if (attachmentPicker != null)
-                          Padding(
-                            padding: EdgeInsets.only(right: spacing.xxs + 2),
-                            child: IconButton(
-                              key: const ValueKey('chat-input-add-image'),
-                              onPressed: isComposerLocked
-                                  ? null
-                                  : () async {
-                                      try {
-                                        final pickedAttachments =
-                                            await attachmentPicker.pickImages();
-                                        Logger.i(
-                                          'ChatInput',
-                                          'picked image attachments',
-                                        );
-                                        Logger.runtime(
-                                          'ChatInput',
-                                          'picker returned attachments',
-                                          data: {
-                                            'pickedCount':
-                                                pickedAttachments.length,
-                                            'pickedLocalIds': pickedAttachments
-                                                .map((attachment) => attachment.localId)
-                                                .join(','),
-                                            'pickedPaths': pickedAttachments
-                                                .map((attachment) => attachment.localPath ?? '')
-                                                .join(','),
-                                          },
-                                        );
-                                        if (!context.mounted ||
-                                            pickedAttachments.isEmpty) {
-                                          return;
-                                        }
-                                        final preparedAttachments =
-                                            attachmentStorage == null
-                                                ? pickedAttachments
-                                                : await Future.wait(
-                                                    pickedAttachments.map(
-                                                      (attachment) => attachmentStorage
-                                                          .persistSelectedImage(
-                                                        attachment: attachment,
-                                                      ),
-                                                    ),
-                                                  );
-                                        Logger.runtime(
-                                          'ChatInput',
-                                          'attachments prepared for composer',
-                                          data: {
-                                            'preparedCount':
-                                                preparedAttachments.length,
-                                            'preparedLocalIds':
-                                                preparedAttachments
-                                                    .map((attachment) => attachment.localId)
-                                                    .join(','),
-                                            'preparedPaths':
-                                                preparedAttachments
-                                                    .map((attachment) => attachment.localPath ?? '')
-                                                    .join(','),
-                                            'thumbnailPaths':
-                                                preparedAttachments
-                                                    .map((attachment) => attachment.thumbnailPath ?? '')
-                                                    .join(','),
-                                            'preparedStatuses':
-                                                preparedAttachments
-                                                    .map((attachment) => attachment.status.name)
-                                                    .join(','),
-                                            'preparedDataUrlLengths':
-                                                preparedAttachments
-                                                    .map(
-                                                      (attachment) => (attachment.providerFileRefJson?['data_url']
-                                                                  as String?)
-                                                              ?.length ??
-                                                          0,
-                                                    )
-                                                    .join(','),
-                                          },
-                                        );
-                                        if (!context.mounted ||
-                                            preparedAttachments.isEmpty) {
-                                          return;
-                                        }
-                                        final nextComposerAttachments = [
-                                          ...composerAttachments,
-                                          ...preparedAttachments,
-                                        ];
-                                        ref
-                                            .read(composerAttachmentsProvider.notifier)
-                                            .state = nextComposerAttachments;
-                                        Logger.runtime(
-                                          'ChatInput',
-                                          'composer attachments updated',
-                                          data: {
-                                            'composerAttachmentCount':
-                                                nextComposerAttachments.length,
-                                            'composerAttachmentLocalIds':
-                                                nextComposerAttachments
-                                                    .map((attachment) => attachment.localId)
-                                                    .join(','),
-                                          },
-                                        );
-                                      } catch (error, stackTrace) {
-                                        Logger.e(
-                                          'ChatInput',
-                                          'failed to prepare image attachments',
-                                          error,
-                                        );
-                                        Logger.e(
-                                          'ChatInput',
-                                          'attachment prepare stack trace',
-                                          stackTrace,
-                                        );
-                                        if (!context.mounted) {
-                                          return;
-                                        }
-                                        ScaffoldMessenger.of(context)
-                                          ..hideCurrentSnackBar()
-                                          ..showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                '图片准备失败：$error',
-                                              ),
-                                              behavior:
-                                                  SnackBarBehavior.floating,
-                                            ),
-                                          );
-                                      }
-                                    },
-                              icon: const Icon(Icons.add_photo_alternate_outlined),
-                            ),
-                          ),
-                        if (hasVoiceInput)
-                          Padding(
-                            padding: EdgeInsets.only(right: spacing.xxs + 2),
-                            child: GestureDetector(
-                              key: const ValueKey('chat-input-voice-button'),
-                              onLongPressStart: (_) {
-                                if (isComposerLocked) {
-                                  return;
-                                }
-                                voiceInputController.pressStart();
-                              },
-                              onLongPressEnd: (_) {
-                                if (isComposerLocked) {
-                                  return;
-                                }
-                                voiceInputController.releaseStop();
-                              },
-                              child: Container(
-                                key: const ValueKey('chat-input-voice-button-shell'),
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: isVoiceListening
-                                      ? colors.workflowRunning.withValues(alpha: 0.16)
-                                      : colors.settingsPanelBackground,
-                                  border: Border.all(
-                                    color: isVoiceListening
-                                        ? colors.workflowRunning.withValues(alpha: 0.48)
-                                        : colors.divider,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (isVoiceListening)
+                                Padding(
+                                  padding: EdgeInsets.fromLTRB(
+                                    spacing.xs,
+                                    spacing.xxs + 2,
+                                    spacing.xs,
+                                    0,
+                                  ),
+                                  child: Row(
+                                    key: const ValueKey(
+                                        'chat-input-voice-status'),
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        key: const ValueKey(
+                                          'chat-input-voice-status-dot',
+                                        ),
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          color: colors.workflowRunning,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      SizedBox(width: spacing.xxs + 2),
+                                      Text(
+                                        '正在聆听',
+                                        style: AppTypography.uiStyle(
+                                          color: colors.workflowRunning,
+                                          fontSize: 11.8,
+                                          height: 1.2,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                child: Icon(
-                                  Icons.mic_none_rounded,
-                                  size: 18,
-                                  color: isVoiceListening
-                                      ? colors.workflowRunning
-                                      : colors.secondaryText,
+                              ConstrainedBox(
+                                constraints:
+                                    const BoxConstraints(minHeight: 36),
+                                child: TextField(
+                                  key: const ValueKey('chat-input-field'),
+                                  focusNode: focusNode,
+                                  controller: textController,
+                                  enabled: !isComposerLocked,
+                                  minLines: 1,
+                                  maxLines: 4,
+                                  textInputAction: TextInputAction.newline,
+                                  keyboardType: TextInputType.multiline,
+                                  style: AppTypography.uiStyle(
+                                    color: colors.primaryText,
+                                    fontSize: 13.7,
+                                    height: 1.34,
+                                  ),
+                                  decoration: InputDecoration(
+                                    hintText: '继续追问，或补充你的要求',
+                                    hintStyle: AppTypography.uiStyle(
+                                      color: colors.secondaryText.withValues(
+                                        alpha: 0.66,
+                                      ),
+                                      fontSize: 13.3,
+                                      height: 1.28,
+                                    ),
+                                    isDense: true,
+                                    filled: false,
+                                    border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    disabledBorder: InputBorder.none,
+                                    errorBorder: InputBorder.none,
+                                    focusedErrorBorder: InputBorder.none,
+                                    contentPadding: EdgeInsets.fromLTRB(
+                                      spacing.xs,
+                                      spacing.xxs + 2,
+                                      spacing.xs,
+                                      spacing.xxs + 2,
+                                    ),
+                                  ),
+                                  onSubmitted: (_) {
+                                    submitCurrentInput();
+                                  },
                                 ),
                               ),
-                            ),
+                            ],
                           ),
-                        const Spacer(),
-                        contextWindowSnapshot.maybeWhen(
-                          data: (snapshot) {
-                            if (snapshot == null) {
-                              return const SizedBox.shrink();
-                            }
-                            return Padding(
-                              padding: EdgeInsets.only(right: spacing.xxs + 2),
-                              child: ContextWindowUsageIndicator(
-                                snapshot: snapshot,
-                                onTap: widget.onContextWindowPressed ?? () {},
+                        ),
+                      ),
+                      if (slashSuggestions.isNotEmpty) ...[
+                        SizedBox(height: spacing.xxs + 2),
+                        _SlashSkillSuggestions(
+                          suggestions: slashSuggestions,
+                          onSelected: (skill) {
+                            final selection = '/${skill.id} ';
+                            textController.value = TextEditingValue(
+                              text: selection,
+                              selection: TextSelection.collapsed(
+                                offset: selection.length,
                               ),
                             );
                           },
-                          orElse: () => const SizedBox.shrink(),
-                        ),
-                        Semantics(
-                          container: true,
-                          button: true,
-                          enabled: isSendButtonEnabled,
-                          label: sendButtonLabel,
-                          child: SizedBox(
-                            width: 40,
-                            height: 40,
-                            child: FilledButton(
-                              style: FilledButton.styleFrom(
-                                padding: EdgeInsets.zero,
-                                shape: const CircleBorder(),
-                                backgroundColor: isAwaitingConfirmation
-                                    ? colors.secondaryText.withValues(alpha: 0.82)
-                                    : colors.workflowRunning
-                                        .withValues(alpha: 0.88),
-                                foregroundColor: colors.semantic.text.inverse,
-                                elevation: 0,
-                                shadowColor: Colors.transparent,
-                              ),
-                              onPressed: () {
-                                Logger.i(
-                                  'ChatInput',
-                                  'send button pressed',
-                                  );
-                                if (isCancellablePhase) {
-                                  Logger.i('ChatInput', 'send button mapped to cancel active stream');
-                                  chatController.cancelStreamSubscription();
-                                  return;
-                                }
-
-                                if (isBlockingPhase ||
-                                    isAwaitingConfirmation) {
-                                  Logger.w(
-                                    'ChatInput',
-                                    'send button ignored because send is blocked',
-                                  );
-                                  return;
-                                }
-
-                                submitCurrentInput();
-                              },
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 200),
-                                child: isCancellablePhase
-                                    ? const Icon(
-                                        Icons.stop_rounded,
-                                        key: ValueKey('chat-input-stop-icon'),
-                                        size: 18,
-                                      )
-                                    : isBlockingPhase
-                                    ? SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor:
-                                              AlwaysStoppedAnimation<Color>(
-                                            colors.semantic.text.inverse,
-                                          ),
-                                        ),
-                                      )
-                                    : Icon(
-                                        isStreamingResponse
-                                            ? Icons.stop_rounded
-                                            : Icons.arrow_upward_rounded,
-                                        key: ValueKey(sendButtonLabel),
-                                        size: 18,
-                                      ),
-                              ),
-                            ),
-                          ),
                         ),
                       ],
-                    ),
+                      if (composerAttachments.isNotEmpty) ...[
+                        SizedBox(height: spacing.xxs + 2),
+                        ChatInputAttachmentStrip(
+                          attachments: composerAttachments,
+                          onRemove: (attachment) {
+                            final nextAttachments = [...composerAttachments]
+                              ..removeWhere(
+                                (item) => item.localId == attachment.localId,
+                              );
+                            ref
+                                .read(composerAttachmentsProvider.notifier)
+                                .state = nextAttachments;
+                          },
+                        ),
+                      ],
+                      SizedBox(height: spacing.xxs + 2),
+                      Semantics(
+                        container: true,
+                        label: '输入辅助操作栏',
+                        child: Row(
+                          key: const ValueKey('chat-input-bottom-bar'),
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            if (attachmentPicker != null)
+                              Padding(
+                                padding:
+                                    EdgeInsets.only(right: spacing.xxs + 2),
+                                child: IconButton(
+                                  key: const ValueKey('chat-input-add-image'),
+                                  onPressed: isComposerLocked
+                                      ? null
+                                      : () async {
+                                          try {
+                                            final pickedAttachments =
+                                                await attachmentPicker
+                                                    .pickImages();
+                                            Logger.i(
+                                              'ChatInput',
+                                              'picked image attachments',
+                                            );
+                                            Logger.runtime(
+                                              'ChatInput',
+                                              'picker returned attachments',
+                                              data: {
+                                                'pickedCount':
+                                                    pickedAttachments.length,
+                                                'pickedLocalIds':
+                                                    pickedAttachments
+                                                        .map((attachment) =>
+                                                            attachment.localId)
+                                                        .join(','),
+                                                'pickedPaths': pickedAttachments
+                                                    .map((attachment) =>
+                                                        attachment.localPath ??
+                                                        '')
+                                                    .join(','),
+                                              },
+                                            );
+                                            if (!context.mounted ||
+                                                pickedAttachments.isEmpty) {
+                                              return;
+                                            }
+                                            final preparedAttachments =
+                                                attachmentStorage == null
+                                                    ? pickedAttachments
+                                                    : await Future.wait(
+                                                        pickedAttachments.map(
+                                                          (attachment) =>
+                                                              attachmentStorage
+                                                                  .persistSelectedImage(
+                                                            attachment:
+                                                                attachment,
+                                                          ),
+                                                        ),
+                                                      );
+                                            Logger.runtime(
+                                              'ChatInput',
+                                              'attachments prepared for composer',
+                                              data: {
+                                                'preparedCount':
+                                                    preparedAttachments.length,
+                                                'preparedLocalIds':
+                                                    preparedAttachments
+                                                        .map((attachment) =>
+                                                            attachment.localId)
+                                                        .join(','),
+                                                'preparedPaths':
+                                                    preparedAttachments
+                                                        .map((attachment) =>
+                                                            attachment
+                                                                .localPath ??
+                                                            '')
+                                                        .join(','),
+                                                'thumbnailPaths':
+                                                    preparedAttachments
+                                                        .map((attachment) =>
+                                                            attachment
+                                                                .thumbnailPath ??
+                                                            '')
+                                                        .join(','),
+                                                'preparedStatuses':
+                                                    preparedAttachments
+                                                        .map((attachment) =>
+                                                            attachment
+                                                                .status.name)
+                                                        .join(','),
+                                                'preparedDataUrlLengths':
+                                                    preparedAttachments
+                                                        .map(
+                                                          (attachment) =>
+                                                              (attachment.providerFileRefJson?[
+                                                                          'data_url']
+                                                                      as String?)
+                                                                  ?.length ??
+                                                              0,
+                                                        )
+                                                        .join(','),
+                                              },
+                                            );
+                                            if (!context.mounted ||
+                                                preparedAttachments.isEmpty) {
+                                              return;
+                                            }
+                                            final nextComposerAttachments = [
+                                              ...composerAttachments,
+                                              ...preparedAttachments,
+                                            ];
+                                            ref
+                                                .read(
+                                                    composerAttachmentsProvider
+                                                        .notifier)
+                                                .state = nextComposerAttachments;
+                                            Logger.runtime(
+                                              'ChatInput',
+                                              'composer attachments updated',
+                                              data: {
+                                                'composerAttachmentCount':
+                                                    nextComposerAttachments
+                                                        .length,
+                                                'composerAttachmentLocalIds':
+                                                    nextComposerAttachments
+                                                        .map((attachment) =>
+                                                            attachment.localId)
+                                                        .join(','),
+                                              },
+                                            );
+                                          } catch (error, stackTrace) {
+                                            Logger.e(
+                                              'ChatInput',
+                                              'failed to prepare image attachments',
+                                              error,
+                                            );
+                                            Logger.e(
+                                              'ChatInput',
+                                              'attachment prepare stack trace',
+                                              stackTrace,
+                                            );
+                                            if (!context.mounted) {
+                                              return;
+                                            }
+                                            ScaffoldMessenger.of(context)
+                                              ..hideCurrentSnackBar()
+                                              ..showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    '图片准备失败：$error',
+                                                  ),
+                                                  behavior:
+                                                      SnackBarBehavior.floating,
+                                                ),
+                                              );
+                                          }
+                                        },
+                                  icon: const Icon(
+                                      Icons.add_photo_alternate_outlined),
+                                ),
+                              ),
+                            if (hasVoiceInput)
+                              Padding(
+                                padding:
+                                    EdgeInsets.only(right: spacing.xxs + 2),
+                                child: GestureDetector(
+                                  key:
+                                      const ValueKey('chat-input-voice-button'),
+                                  onLongPressStart: (_) {
+                                    if (isComposerLocked) {
+                                      return;
+                                    }
+                                    voiceInputController.pressStart();
+                                  },
+                                  onLongPressEnd: (_) {
+                                    if (isComposerLocked) {
+                                      return;
+                                    }
+                                    voiceInputController.releaseStop();
+                                  },
+                                  child: Container(
+                                    key: const ValueKey(
+                                        'chat-input-voice-button-shell'),
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: isVoiceListening
+                                          ? colors.workflowRunning
+                                              .withValues(alpha: 0.16)
+                                          : colors.settingsPanelBackground,
+                                      border: Border.all(
+                                        color: isVoiceListening
+                                            ? colors.workflowRunning
+                                                .withValues(alpha: 0.48)
+                                            : colors.divider,
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      Icons.mic_none_rounded,
+                                      size: 18,
+                                      color: isVoiceListening
+                                          ? colors.workflowRunning
+                                          : colors.secondaryText,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            const Spacer(),
+                            contextWindowSnapshot.maybeWhen(
+                              data: (snapshot) {
+                                if (snapshot == null) {
+                                  return const SizedBox.shrink();
+                                }
+                                return Padding(
+                                  padding:
+                                      EdgeInsets.only(right: spacing.xxs + 2),
+                                  child: ContextWindowUsageIndicator(
+                                    snapshot: snapshot,
+                                    onTap:
+                                        widget.onContextWindowPressed ?? () {},
+                                  ),
+                                );
+                              },
+                              orElse: () => const SizedBox.shrink(),
+                            ),
+                            Semantics(
+                              container: true,
+                              button: true,
+                              enabled: isSendButtonEnabled,
+                              label: sendButtonLabel,
+                              child: SizedBox(
+                                width: 40,
+                                height: 40,
+                                child: FilledButton(
+                                  style: FilledButton.styleFrom(
+                                    padding: EdgeInsets.zero,
+                                    shape: const CircleBorder(),
+                                    backgroundColor: isAwaitingConfirmation
+                                        ? colors.secondaryText
+                                            .withValues(alpha: 0.82)
+                                        : colors.workflowRunning
+                                            .withValues(alpha: 0.88),
+                                    foregroundColor:
+                                        colors.semantic.text.inverse,
+                                    elevation: 0,
+                                    shadowColor: Colors.transparent,
+                                  ),
+                                  onPressed: () {
+                                    Logger.i(
+                                      'ChatInput',
+                                      'send button pressed',
+                                    );
+                                    if (isCancellablePhase) {
+                                      Logger.i('ChatInput',
+                                          'send button mapped to cancel active stream');
+                                      chatController.cancelStreamSubscription();
+                                      return;
+                                    }
+
+                                    if (isBlockingPhase ||
+                                        isAwaitingConfirmation) {
+                                      Logger.w(
+                                        'ChatInput',
+                                        'send button ignored because send is blocked',
+                                      );
+                                      return;
+                                    }
+
+                                    submitCurrentInput();
+                                  },
+                                  child: AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 200),
+                                    child: isCancellablePhase
+                                        ? const Icon(
+                                            Icons.stop_rounded,
+                                            key: ValueKey(
+                                                'chat-input-stop-icon'),
+                                            size: 18,
+                                          )
+                                        : isBlockingPhase
+                                            ? SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  valueColor:
+                                                      AlwaysStoppedAnimation<
+                                                          Color>(
+                                                    colors
+                                                        .semantic.text.inverse,
+                                                  ),
+                                                ),
+                                              )
+                                            : Icon(
+                                                isStreamingResponse
+                                                    ? Icons.stop_rounded
+                                                    : Icons
+                                                        .arrow_upward_rounded,
+                                                key: ValueKey(sendButtonLabel),
+                                                size: 18,
+                                              ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -700,10 +766,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final providerId =
         config.additionalConfig['llm.selected_provider_id'] as String?;
     final modelId = config.additionalConfig['llm.selected_model_id'] as String?;
-    final runtimeSupport = config.additionalConfig[
-        'llm.runtime_selected_model_supports_image_input'] as bool?;
-    final staticSupport = config.additionalConfig[
-        'llm.selected_model_supports_image_input'] as bool?;
+    final runtimeSupport = config
+            .additionalConfig['llm.runtime_selected_model_supports_image_input']
+        as bool?;
+    final staticSupport = config
+        .additionalConfig['llm.selected_model_supports_image_input'] as bool?;
     final resolvedSupport = runtimeSupport ?? staticSupport;
 
     Logger.runtime(

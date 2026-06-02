@@ -230,11 +230,12 @@ class SessionContextService {
       groupedEvents: groupedHistoryEvents,
     );
     final userContextMessages = _userContextMessageBuilder.buildMessages(
-      snapshot: await _runtimeUserContextService.buildSnapshot(),
+      snapshot: await _runtimeUserContextService.buildSnapshot(groupId: groupId),
     );
     final currentItems = <ModelContextItem>[
-      if (_extractDateReminderMessage(currentTurn) case final reminder?)
-        ..._contextProjector.projectMessagesToContextItems([reminder]),
+      ..._contextProjector.projectMessagesToContextItems(
+        _extractRuntimeReminderMessages(currentTurn),
+      ),
       ..._contextProjector.projectEventsToContextItems(currentTurnTranscript),
     ];
     final normalizedCurrentMessages =
@@ -623,22 +624,36 @@ class SessionContextService {
     return parts.join('\n');
   }
 
-  ChatMessage? _extractDateReminderMessage(ChatTurn? turn) {
+  List<ChatMessage> _extractRuntimeReminderMessages(ChatTurn? turn) {
     final runtimeContext =
         turn?.providerStateJson?[SessionRuntimeMarkerService.runtimeContextKey];
     if (runtimeContext is! Map) {
-      return null;
+      return const <ChatMessage>[];
     }
-    final reminder =
+    final reminders = <ChatMessage>[];
+    final dateReminder =
         runtimeContext[SessionRuntimeMarkerService.dateChangeReminderKey];
-    if (reminder is! String || reminder.trim().isEmpty) {
-      return null;
+    if (dateReminder is String && dateReminder.trim().isNotEmpty) {
+      reminders.add(
+        ChatMessage(
+          text: dateReminder,
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+        ),
+      );
     }
-    return ChatMessage(
-      text: reminder,
-      role: MessageRole.user,
-      status: MessageStatus.completed,
-    );
+    final workspaceReminder =
+        runtimeContext[SessionRuntimeMarkerService.workspaceChangeReminderKey];
+    if (workspaceReminder is String && workspaceReminder.trim().isNotEmpty) {
+      reminders.add(
+        ChatMessage(
+          text: workspaceReminder,
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+        ),
+      );
+    }
+    return reminders;
   }
 }
 

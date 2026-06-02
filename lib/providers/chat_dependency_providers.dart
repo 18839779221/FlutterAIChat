@@ -37,6 +37,7 @@ import 'package:ai_chat/services/speech/speech_to_text_service.dart';
 import 'package:ai_chat/services/tool_presentation_block_projector.dart';
 import 'package:ai_chat/services/tool_ui_renderer_registry.dart';
 import 'package:ai_chat/services/turn_harness.dart';
+import 'package:ai_chat/services/workspace/workspace_binding_service.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:ai_chat/widgets/tool_renderers/compact_tool_row_renderer.dart';
 import 'package:ai_chat/widgets/tool_renderers/create_artifact_guideline_tool_renderer.dart';
@@ -218,11 +219,23 @@ final sessionRuntimeMarkerRepositoryProvider =
 final sessionContextProjectorProvider =
     Provider<SessionContextProjector>((ref) => SessionContextProjector());
 
+final workspaceBindingServiceProvider = Provider<WorkspaceBindingService>(
+  (ref) => WorkspaceBindingService(),
+);
+
 final runtimeUserContextServiceProvider = Provider<RuntimeUserContextService>(
   (ref) => RuntimeUserContextService(
     skillCatalogProvider: () async {
       return ref.read(skillRuntimeServiceProvider).listSkillCatalogEntries();
     },
+    workspaceIdResolver: (groupId) async {
+      if (groupId == null) {
+        return null;
+      }
+      return (await ref.read(databaseProvider).getGroupById(groupId))
+          ?.workspaceId;
+    },
+    workspaceBindingService: ref.watch(workspaceBindingServiceProvider),
   ),
 );
 

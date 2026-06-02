@@ -4,6 +4,7 @@ import 'package:ai_chat/models/agent/agent_loop_limits.dart';
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/agent/model_tool_call.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
+import 'package:ai_chat/models/chat/chat_attachment.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
@@ -925,6 +926,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
     required int turnId,
     required int groupId,
     required String content,
+    List<ChatAttachment> attachments = const <ChatAttachment>[],
   }) async {
     return _append(turnId, groupId, ChatEventType.userMessage, content);
   }
@@ -1131,6 +1133,9 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
 }
 
 class _NoopChatStorage implements ChatStorage {
+  @override
+  Future<void> updateGroupWorkspaceId(int groupId, String? workspaceId) async {}
+
   @override
   noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

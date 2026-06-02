@@ -149,9 +149,13 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       },
     );
     final hasMoreMessages = ref.watch(hasMoreMessagesProvider);
+    final bottomOverlayHeight = ref.watch(chatBottomOverlayHeightProvider);
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final textController = ref.read(textControllerProvider);
     final focusNode = ref.read(focusNodeProvider);
+    final bottomTimelineInset = bottomOverlayHeight > 0
+        ? spacing.sm
+        : spacing.xl * 4.2;
 
     final timelineItems = _buildTimelineItems(
       messages,
@@ -199,7 +203,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
               spacing.sm,
               spacing.xl * 2 + spacing.xxs,
               spacing.sm,
-              spacing.xl * 4.2,
+              bottomTimelineInset,
             ),
             sliver: SliverList.builder(
               itemCount: itemCount,

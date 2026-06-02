@@ -218,6 +218,7 @@ fvm flutter build ios
   - `runtime sections`
   - `user context messages`
   - `session context messages`
+- Workspace V1 follows the same rule: current workspace belongs in runtime user context and per-turn runtime reminders, not in persisted summaries or snapshots
 
 ### LLM Integration
 
@@ -239,7 +240,10 @@ To add or extend provider support:
 - The app is still internal-only. Unless a task explicitly requires it, do not add backward-compatibility layers, migration shims, fallback parsing for retired schemas, or legacy-preservation code.
 - `assets/debug/test_cases.json` is the single source of truth for debug/e2e manual test cases.
 - `config/local_defaults.json` is a runtime-facing local defaults file; schema changes must consider app boot config, settings fallback behavior, and automation scripts that read it directly.
-- Agent-visible file paths use a file-native `/` root and may include `/artifacts`, `/skills`, `/attachments`, `/memories`, and `/tmp`; host filesystem paths must remain internal-only.
+- `ChatGroup.workspaceId` may be `NULL` in storage, but runtime must always resolve `NULL` to `.default`.
+- Workspace-scoped files live under `/workspaces/<workspaceId>/...`; file tools should default to the resolved workspace root.
+- Workspace is a file container only; do not make it a new session context, transcript, or summary ownership boundary.
+- Agent-visible file paths use a file-native `/` root and may include `/workspaces`, `/skills`, `/memories`; host filesystem paths must remain internal-only.
 - On each platform, the physical app-private storage root may differ, but it is always mapped behind the same agent path semantics.
 - When generating or modifying code, add concise comments for public interfaces, payload models, schema fields, DTO fields, and externally consumed tool/message payloads.
 - When architecture changes, update `README.md` to reflect the current structure rather than the historical structure.

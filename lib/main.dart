@@ -50,6 +50,8 @@ import 'services/skills/skill_installer_service.dart';
 import 'services/skills/skill_runtime_service.dart';
 import 'services/skills/skill_storage_service.dart';
 import 'services/artifact/artifact_file_storage_service.dart';
+import 'services/workspace/workspace_tool_host_adapters.dart';
+import 'services/workspace/workspace_runtime_service.dart';
 import 'tools/adapters/tool_host_adapters.dart';
 import 'tools/default_tool_runtime_registry.dart';
 import 'tools/handlers/create_artifact_guideline_tool_handler.dart';
@@ -87,6 +89,9 @@ void main() async {
     );
     final artifactFileStorageService = ArtifactFileStorageService(
       rootDirectory: agentRootDirectory,
+      workspaceIdResolver: (groupId) async {
+        return (await storage.getGroupById(groupId))?.workspaceId;
+      },
     );
     final skillStorageService = SkillStorageService(
       rootDirectoryProvider: () async => agentRootDirectory,
@@ -120,6 +125,17 @@ void main() async {
       fileStorageService: artifactFileStorageService,
     );
     late final ProviderContainer container;
+    final runtimeAwareWorkspaceService = WorkspaceRuntimeService(
+      storage: storage,
+      currentGroupReader: () => container.read(currentGroupProvider),
+      currentGroupWriter: (group) {
+        container.read(currentGroupProvider.notifier).state = group;
+      },
+      groupsReader: () => container.read(groupsProvider),
+      groupsWriter: (groups) {
+        container.read(groupsProvider.notifier).setGroups(groups);
+      },
+    );
     final tavilyWebSearcher = buildTavilyWebSearcher();
     final toolExecutor = ToolExecutor(
       chatStorage: storage,
@@ -174,7 +190,15 @@ void main() async {
       traceRecorder: traceRecorder,
       toolExecutor: toolExecutor,
       toolPolicyService: toolPolicyService,
-      hostAdapters: ToolHostAdapters(fileTools: fileToolAdapters),
+      hostAdapters: ToolHostAdapters(
+        fileTools: fileToolAdapters,
+        workspace: WorkspaceToolHostAdapters(
+          resolveWorkspaceForGroup:
+              runtimeAwareWorkspaceService.resolveWorkspaceForGroup,
+          ensureWorkspaceForLongLivedOutput:
+              runtimeAwareWorkspaceService.ensureWorkspaceForLongLivedOutput,
+        ),
+      ),
     );
     chatService = ChatService(
       llm: llm,
@@ -242,6 +266,9 @@ void main() async {
         chatAttachmentStorageServiceProvider.overrideWithValue(
           ChatAttachmentStorageService(
             resolveRootDirectory: () async => agentRootDirectory,
+            resolveWorkspaceId: () async {
+              return container.read(currentGroupProvider)?.workspaceId;
+            },
           ),
         ),
         artifactFileStorageServiceProvider
@@ -258,7 +285,6 @@ void main() async {
         turnHarnessProvider.overrideWithValue(turnHarness),
       ],
     );
-
     runApp(UncontrolledProviderScope(
       container: container,
       child: const MyApp(),

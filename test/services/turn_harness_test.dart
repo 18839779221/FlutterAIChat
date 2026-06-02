@@ -12,6 +12,7 @@ import 'package:ai_chat/models/tool/tool_argument_schema.dart';
 import 'package:ai_chat/models/agent/stop_verification_result.dart';
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/artifact/artifact_record.dart';
+import 'package:ai_chat/models/chat/chat_attachment.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -4090,6 +4091,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
     required int turnId,
     required int groupId,
     required String content,
+    List<ChatAttachment> attachments = const <ChatAttachment>[],
   }) async {
     return _append(
       turnId: turnId,
@@ -4590,6 +4592,16 @@ class _NoopChatStorage implements ChatStorage {
       throw UnimplementedError();
 
   @override
+  Future<void> insertMessageAttachments(
+    int messageId,
+    List<ChatAttachment> attachments,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<List<ChatAttachment>> getMessageAttachments(int messageId) =>
+      throw UnimplementedError();
+
+  @override
   Future<int> insertSessionContextSnapshot(SessionContextSnapshot snapshot) =>
       throw UnimplementedError();
 
@@ -4614,6 +4626,10 @@ class _NoopChatStorage implements ChatStorage {
 
   @override
   Future<void> updateGroupLastMessageTime(int groupId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> updateGroupWorkspaceId(int groupId, String? workspaceId) =>
       throw UnimplementedError();
 
   @override

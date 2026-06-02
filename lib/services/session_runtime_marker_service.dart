@@ -18,6 +18,7 @@ class SessionRuntimeMarkerService {
   static const String runtimeContextKey = 'runtime_context';
   static const String currentDateKey = 'current_date';
   static const String dateChangeReminderKey = 'date_change_reminder';
+  static const String workspaceChangeReminderKey = 'workspace_change_reminder';
 
   SessionRuntimeMarkerService({
     required SessionRuntimeMarkerRepository repository,
@@ -59,13 +60,17 @@ class SessionRuntimeMarkerService {
   }
 
   Map<String, dynamic> buildTurnRuntimeContext(
-    SessionRuntimeMarkerPreparation preparation,
-  ) {
+    SessionRuntimeMarkerPreparation preparation, {
+    String? workspaceChangeReminder,
+  }) {
     return {
       runtimeContextKey: {
         currentDateKey: preparation.currentDate,
         if (preparation.reminderMessage != null)
           dateChangeReminderKey: preparation.reminderMessage!.text,
+        if (workspaceChangeReminder != null &&
+            workspaceChangeReminder.trim().isNotEmpty)
+          workspaceChangeReminderKey: workspaceChangeReminder.trim(),
       },
     };
   }

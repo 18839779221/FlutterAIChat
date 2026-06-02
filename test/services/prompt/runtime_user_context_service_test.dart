@@ -25,6 +25,42 @@ void main() {
       );
     });
 
+    test('injects default workspace section when group workspace is null',
+        () async {
+      final service = RuntimeUserContextService(
+        workspaceIdResolver: (_) async => null,
+        platformContextProvider: () => const [],
+      );
+
+      final snapshot = await service.buildSnapshot(groupId: 1);
+      final combined = snapshot.additionalSections.join('\n');
+
+      expect(
+        combined,
+        contains(
+          '# currentWorkspace\nCurrent workspace: .default (default workspace).\nFile root: /workspaces/.default',
+        ),
+      );
+    });
+
+    test('injects explicit workspace section when group workspace is set',
+        () async {
+      final service = RuntimeUserContextService(
+        workspaceIdResolver: (_) async => 'ws_20260602_a3k9qx',
+        platformContextProvider: () => const [],
+      );
+
+      final snapshot = await service.buildSnapshot(groupId: 9);
+      final combined = snapshot.additionalSections.join('\n');
+
+      expect(
+        combined,
+        contains(
+          '# currentWorkspace\nCurrent workspace: ws_20260602_a3k9qx.\nFile root: /workspaces/ws_20260602_a3k9qx',
+        ),
+      );
+    });
+
     test('buildCurrentMonthYearLabel returns stable English month-year text', () {
       final service = RuntimeUserContextService(
         nowProvider: () => DateTime(2026, 4, 24, 9, 30),

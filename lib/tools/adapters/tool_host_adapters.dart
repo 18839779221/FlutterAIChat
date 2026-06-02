@@ -1,4 +1,5 @@
 import '../../services/file_tools/file_tool_host_adapters.dart';
+import '../../services/workspace/workspace_tool_host_adapters.dart';
 
 /// Groups host/platform adapter dependencies required by tool handlers.
 ///
@@ -8,7 +9,9 @@ import '../../services/file_tools/file_tool_host_adapters.dart';
 class ToolHostAdapters {
   const ToolHostAdapters({
     this.fileTools,
+    this.workspace,
   });
 
   final FileToolHostAdapters? fileTools;
+  final WorkspaceToolHostAdapters? workspace;
 }

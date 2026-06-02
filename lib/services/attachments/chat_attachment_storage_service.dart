@@ -5,16 +5,25 @@ import 'package:path/path.dart' as p;
 
 import '../../models/chat/chat_attachment.dart';
 import '../../utils/logger.dart';
+import '../workspace/workspace_binding_service.dart';
 
 typedef AttachmentRootDirectoryResolver = Future<Directory> Function();
+typedef AttachmentWorkspaceIdResolver = Future<String?> Function();
 
 /// Persists selected images into app-managed storage.
 class ChatAttachmentStorageService {
   ChatAttachmentStorageService({
     required AttachmentRootDirectoryResolver resolveRootDirectory,
-  }) : _resolveRootDirectory = resolveRootDirectory;
+    AttachmentWorkspaceIdResolver? resolveWorkspaceId,
+    WorkspaceBindingService? workspaceBindingService,
+  })  : _resolveRootDirectory = resolveRootDirectory,
+        _resolveWorkspaceId = resolveWorkspaceId ?? _defaultWorkspaceIdResolver,
+        _workspaceBindingService =
+            workspaceBindingService ?? WorkspaceBindingService();
 
   final AttachmentRootDirectoryResolver _resolveRootDirectory;
+  final AttachmentWorkspaceIdResolver _resolveWorkspaceId;
+  final WorkspaceBindingService _workspaceBindingService;
 
   Future<ChatAttachment> persistSelectedImage({
     required ChatAttachment attachment,
@@ -43,8 +52,27 @@ class ChatAttachmentStorageService {
     }
 
     final root = await _resolveRootDirectory();
-    final persistedDir = Directory(p.join(root.path, 'attachments', 'persisted'));
-    final thumbsDir = Directory(p.join(root.path, 'attachments', 'thumbs'));
+    final resolvedWorkspace = _workspaceBindingService.resolveWorkspaceId(
+      await _resolveWorkspaceId(),
+    );
+    final persistedDir = Directory(
+      p.join(
+        root.path,
+        'workspaces',
+        resolvedWorkspace.workspaceId,
+        'attachments',
+        'persisted',
+      ),
+    );
+    final thumbsDir = Directory(
+      p.join(
+        root.path,
+        'workspaces',
+        resolvedWorkspace.workspaceId,
+        'attachments',
+        'thumbs',
+      ),
+    );
     await persistedDir.create(recursive: true);
     await thumbsDir.create(recursive: true);
 
@@ -66,8 +94,12 @@ class ChatAttachmentStorageService {
     );
 
     return attachment.copyWith(
-      localPath: _agentPathFor('attachments/persisted/$storedFileName'),
-      thumbnailPath: _agentPathFor('attachments/thumbs/$storedFileName'),
+      localPath: _agentPathFor(
+        'workspaces/${resolvedWorkspace.workspaceId}/attachments/persisted/$storedFileName',
+      ),
+      thumbnailPath: _agentPathFor(
+        'workspaces/${resolvedWorkspace.workspaceId}/attachments/thumbs/$storedFileName',
+      ),
       status: ChatAttachmentStatus.ready,
       providerFileRefJson: {
         ...?attachment.providerFileRefJson,
@@ -82,5 +114,9 @@ class ChatAttachmentStorageService {
   String _agentPathFor(String relativePath) {
     final normalized = relativePath.replaceAll('\\', '/');
     return normalized.startsWith('/') ? normalized : '/$normalized';
+  }
+
+  static Future<String?> _defaultWorkspaceIdResolver() async {
+    return null;
   }
 }

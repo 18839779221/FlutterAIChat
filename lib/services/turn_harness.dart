@@ -835,6 +835,12 @@ class TurnHarness {
       _tag,
       'tool execution succeeded for ${invocation.toolName}: ${toolResult.summary}',
     );
+    await _applyToolRuntimeContextUpdates(
+      turnId: turnId,
+      workspaceChangeReminder:
+          toolResult.data['workspaceChangeReminder'] as String?,
+      workspaceId: toolResult.data['workspaceId'] as String?,
+    );
     Logger.trace(
       _tag,
       'tool.done',
@@ -871,6 +877,40 @@ class TurnHarness {
         consecutiveFailures: 0,
       );
     }
+  }
+
+  Future<void> _applyToolRuntimeContextUpdates({
+    required int turnId,
+    String? workspaceChangeReminder,
+    String? workspaceId,
+  }) async {
+    if ((workspaceChangeReminder == null || workspaceChangeReminder.trim().isEmpty) &&
+        (workspaceId == null || workspaceId.trim().isEmpty)) {
+      return;
+    }
+    final turn = await _turnRepository.getTurn(turnId);
+    if (turn == null) {
+      return;
+    }
+    final providerState = Map<String, dynamic>.from(turn.providerStateJson ?? const {});
+    final runtimeContext = Map<String, dynamic>.from(
+      providerState[SessionRuntimeMarkerService.runtimeContextKey] as Map? ??
+          const <String, dynamic>{},
+    );
+    if (workspaceChangeReminder != null && workspaceChangeReminder.trim().isNotEmpty) {
+      runtimeContext[SessionRuntimeMarkerService.workspaceChangeReminderKey] =
+          workspaceChangeReminder.trim();
+    }
+    if (workspaceId != null && workspaceId.trim().isNotEmpty) {
+      runtimeContext['workspace_id'] = workspaceId.trim();
+    }
+    providerState[SessionRuntimeMarkerService.runtimeContextKey] = runtimeContext;
+    await _turnRepository.updateRuntimeState(
+      turnId,
+      providerStyle: turn.providerStyle,
+      modelName: turn.modelName,
+      providerStateJson: providerState,
+    );
   }
 
   Future<ChatTurn> _requireTurn(int turnId) async {

@@ -46,7 +46,7 @@ class DatabaseHelper implements ChatStorage {
 
       return await openDatabase(
         path,
-        version: 14,
+        version: 15,
         onCreate: (Database db, int version) async {
           Logger.i(_tag, '创建数据库表...');
           // 创建分组表
@@ -58,6 +58,7 @@ class DatabaseHelper implements ChatStorage {
               last_message_at INTEGER NOT NULL,
               system_prompt TEXT,
               is_summarized INTEGER NOT NULL DEFAULT 0,
+              workspace_id TEXT,
               locked_provider_style TEXT NOT NULL
             )
           ''');
@@ -254,6 +255,7 @@ class DatabaseHelper implements ChatStorage {
                 last_message_at INTEGER NOT NULL,
                 system_prompt TEXT,
                 is_summarized INTEGER NOT NULL DEFAULT 0,
+                workspace_id TEXT,
                 locked_provider_style TEXT NOT NULL
               )
             ''');
@@ -277,6 +279,19 @@ class DatabaseHelper implements ChatStorage {
           }
           if (oldVersion < 14) {
             await _createMessageAttachmentsTable(db);
+          }
+          if (oldVersion < 15) {
+            final hasWorkspaceId = await _tableHasColumn(
+              db,
+              tableName: 'chat_groups',
+              columnName: 'workspace_id',
+            );
+            if (!hasWorkspaceId) {
+              await db.execute('''
+                ALTER TABLE chat_groups
+                ADD COLUMN workspace_id TEXT
+              ''');
+            }
           }
         },
       );
@@ -525,6 +540,22 @@ class DatabaseHelper implements ChatStorage {
       );
     } catch (e) {
       Logger.e(_tag, '更新分组最后消息时间失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> updateGroupWorkspaceId(int groupId, String? workspaceId) async {
+    try {
+      final db = await database;
+      await db.update(
+        'chat_groups',
+        {'workspace_id': workspaceId},
+        where: 'id = ?',
+        whereArgs: [groupId],
+      );
+    } catch (e) {
+      Logger.e(_tag, '更新分组 workspace_id 失败', e);
       rethrow;
     }
   }

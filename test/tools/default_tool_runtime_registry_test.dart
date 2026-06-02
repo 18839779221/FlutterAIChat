@@ -5,6 +5,7 @@ import 'package:ai_chat/models/artifact/artifact_record.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/chat/chat_attachment.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
@@ -179,6 +180,16 @@ class _FakeChatStorage implements ChatStorage {
   Future<int> insertMessage(ChatMessage message, int groupId) async => 1;
 
   @override
+  Future<void> insertMessageAttachments(
+    int messageId,
+    List<ChatAttachment> attachments,
+  ) async {}
+
+  @override
+  Future<List<ChatAttachment>> getMessageAttachments(int messageId) async =>
+      const [];
+
+  @override
   Future<int> insertSessionContextSnapshot(
           SessionContextSnapshot snapshot) async =>
       1;
@@ -203,6 +214,9 @@ class _FakeChatStorage implements ChatStorage {
 
   @override
   Future<void> updateGroupLastMessageTime(int groupId) async {}
+
+  @override
+  Future<void> updateGroupWorkspaceId(int groupId, String? workspaceId) async {}
 
   @override
   Future<void> updateGroupSystemPrompt(

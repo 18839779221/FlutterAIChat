@@ -367,6 +367,81 @@ void main() {
     expect(find.text('当前会话已锁定 provider，新建会话方可切换'), findsNothing);
   });
 
+  testWidgets('workspace picker updates current chat workspace', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    SharedPreferences.setMockInitialValues({});
+    final repository = AppSettingsRepository(
+      await SharedPreferences.getInstance(),
+      localDefaultsLoader: () async => const LlmLocalDefaults(
+        defaultProviderId: 'aigocode',
+        defaultModelId: 'gpt-5.4',
+        providers: [
+          LlmProviderConfig(
+            id: 'aigocode',
+            name: 'AIGoCode',
+            apiKey: 'test-key',
+            baseUrl: 'https://example.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-5.4', name: ''),
+            ],
+          ),
+        ],
+      ),
+    );
+    final sessionCoordinator = _RecordingSessionCoordinator();
+    final container = ProviderContainer(
+      overrides: [
+        appSettingsRepositoryProvider.overrideWithValue(repository),
+        skillRuntimeServiceProvider
+            .overrideWithValue(_EmptySkillRuntimeService()),
+        chatSessionCoordinatorProvider
+            .overrideWithValue(sessionCoordinator),
+      ],
+    );
+    container.read(groupsProvider.notifier).setGroups([
+      ChatGroup(
+        id: 1,
+        title: 'Default',
+        lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
+      ),
+      ChatGroup(
+        id: 2,
+        title: 'Shared',
+        workspaceId: 'ws_20260602_a3k9qx',
+        lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
+      ),
+    ]);
+    container.read(currentGroupProvider.notifier).state = ChatGroup(
+      id: 1,
+      title: 'Default',
+      lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const SettingsPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('workspace-switcher')), findsOneWidget);
+    expect(find.text('.default (default workspace)'), findsWidgets);
+
+    await tester.tap(find.byKey(const Key('workspace-switcher')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ws_20260602_a3k9qx').last);
+    await tester.pumpAndSettle();
+
+    expect(sessionCoordinator.updatedWorkspaceIds, ['ws_20260602_a3k9qx']);
+  });
+
   testWidgets(
       'switching provider updates draft group locked provider style before first send',
       (tester) async {
@@ -718,6 +793,36 @@ class _EmptySkillRuntimeService extends SkillRuntimeService {
 
   @override
   Future<List<SkillDescriptor>> listInstalledSkills() async => const [];
+}
+
+class _RecordingSessionCoordinator implements ChatSessionCoordinator {
+  final List<String?> updatedWorkspaceIds = [];
+
+  @override
+  Future<void> createNewGroup() async {}
+
+  @override
+  Future<void> deleteGroup(int id) async {}
+
+  @override
+  Future<void> loadCurrentGroup() async {}
+
+  @override
+  Future<void> loadGroups() async {}
+
+  @override
+  Future<void> loadMessages() async {}
+
+  @override
+  Future<void> loadMoreMessages() async {}
+
+  @override
+  Future<void> selectGroup(ChatGroup group) async {}
+
+  @override
+  Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {
+    updatedWorkspaceIds.add(workspaceId);
+  }
 }
 
 class _StaticSkillRuntimeService extends SkillRuntimeService {

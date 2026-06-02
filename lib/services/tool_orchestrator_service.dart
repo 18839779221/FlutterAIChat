@@ -165,6 +165,8 @@ class ToolOrchestratorService {
       summary: '正在执行工具：${toolDefinition.title}',
       requiresConfirmation: false,
     );
+    final resolvedWorkspace =
+        await _hostAdapters.workspace?.resolveWorkspaceForGroup(groupId);
     final executionContext = ToolExecutionContext(
       groupId: groupId,
       toolName: invocation.toolName,
@@ -173,6 +175,8 @@ class ToolOrchestratorService {
       currentTurnEvents: currentTurnEvents,
       now: DateTime.now(),
       hostAdapters: _hostAdapters,
+      cwd: resolvedWorkspace?.fileRoot ?? '/',
+      workspace: resolvedWorkspace,
     );
     Logger.i(
       _tag,

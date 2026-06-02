@@ -4,6 +4,7 @@ import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/chat/chat_attachment.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
 import 'package:ai_chat/models/session/session_runtime_marker.dart';
@@ -148,6 +149,10 @@ class _FakeChatStorage implements ChatStorage {
       throw UnimplementedError();
 
   @override
+  Future<void> updateGroupWorkspaceId(int groupId, String? workspaceId) =>
+      throw UnimplementedError();
+
+  @override
   Future<void> updateGroupSystemPrompt(int groupId, String? systemPrompt) =>
       throw UnimplementedError();
 
@@ -201,6 +206,16 @@ class _FakeChatStorage implements ChatStorage {
 
   @override
   Future<int> insertMessage(ChatMessage message, int groupId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> insertMessageAttachments(
+    int messageId,
+    List<ChatAttachment> attachments,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<List<ChatAttachment>> getMessageAttachments(int messageId) =>
       throw UnimplementedError();
 
   @override

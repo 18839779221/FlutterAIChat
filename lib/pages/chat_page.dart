@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/chat_group.dart';
 import '../theme/app_theme_spec.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
@@ -20,7 +21,10 @@ import '../widgets/debug/debug_turn_inspector_sheet.dart';
 import '../widgets/context_window/context_window_bottom_sheet.dart';
 import '../widgets/tool_confirmation/tool_confirmation_bottom_bar.dart';
 import '../services/debug/debug_turn_inspector_projection_service.dart';
+import '../services/workspace/workspace_binding_service.dart';
 import '../providers/streaming_trace_providers.dart';
+
+const double _bottomOverlayVeilHeadroom = 30;
 
 class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({super.key, required this.title});
@@ -34,6 +38,8 @@ class ChatPage extends ConsumerStatefulWidget {
 class _ChatPageState extends ConsumerState<ChatPage> {
   static const String _debugIdleStatusText = '测试边界状态';
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final WorkspaceBindingService _workspaceBindingService =
+      WorkspaceBindingService();
 
   @override
   void initState() {
@@ -44,13 +50,16 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
+    final currentGroup = ref.watch(currentGroupProvider);
     final sendPhase = ref.watch(sendPhaseProvider);
     final isSendInFlight = sendPhase != ChatSendPhase.idle;
     final systemPrompt = ref.watch(systemPromptProvider);
     final isLoadingMore = ref.watch(isLoadingMoreProvider);
-    final pendingConfirmation = ref.watch(activePendingToolConfirmationProvider);
+    final pendingConfirmation =
+        ref.watch(activePendingToolConfirmationProvider);
     final traceSnapshot = ref.watch(streamingTraceSnapshotProvider);
-    final traceOverlayState = ref.watch(streamingTraceOverlayControllerProvider);
+    final traceOverlayState =
+        ref.watch(streamingTraceOverlayControllerProvider);
     final activeTurnStatus = ref.watch(activeTurnStatusPresentationProvider);
     final shouldShowFloatingActiveStatus =
         ref.watch(activeTurnStatusFloatingVisibilityProvider);
@@ -65,6 +74,30 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             .closeIfAnchorDisappeared();
       }
     });
+    ref.listen<ChatGroup?>(currentGroupProvider, (previous, next) {
+      if (!mounted || previous == null || next == null) {
+        return;
+      }
+      if (previous.id == null || previous.id != next.id) {
+        return;
+      }
+      final previousWorkspace =
+          _workspaceBindingService.resolveWorkspaceId(previous.workspaceId);
+      final nextWorkspace =
+          _workspaceBindingService.resolveWorkspaceId(next.workspaceId);
+      if (!previousWorkspace.isDefault || nextWorkspace.isDefault) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('当前对话已切换到 workspace ${nextWorkspace.workspaceId}'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    });
+    final resolvedWorkspace = currentGroup == null
+        ? null
+        : _workspaceBindingService.resolveWorkspaceId(currentGroup.workspaceId);
 
     return Scaffold(
       key: _scaffoldKey,
@@ -118,9 +151,18 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             ),
             SafeArea(
               bottom: false,
-              child: Column(
+              child: Stack(
                 children: [
-                  Expanded(
+                  if (resolvedWorkspace != null)
+                    Positioned(
+                      top: 32,
+                      left: spacing.lg,
+                      child: _WorkspaceBadge(
+                        workspaceId: resolvedWorkspace.workspaceId,
+                        isDefault: resolvedWorkspace.isDefault,
+                      ),
+                    ),
+                  Positioned.fill(
                     child: Stack(
                       children: [
                         const ChatMessageList(),
@@ -140,7 +182,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                               ),
                             ),
                           ),
-                        if (traceSnapshot != null && traceOverlayState.isVisible)
+                        if (traceSnapshot != null &&
+                            traceOverlayState.isVisible)
                           Positioned.fill(
                             child: GestureDetector(
                               behavior: HitTestBehavior.translucent,
@@ -155,55 +198,93 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       ],
                     ),
                   ),
-                  if (pendingConfirmation != null)
-                    ToolConfirmationBottomBar(
-                      message: pendingConfirmation.message,
-                      invocation: pendingConfirmation.invocation,
-                      onContinue: () => chatController.confirmToolInvocation(
-                        pendingConfirmation.message,
-                      ),
-                      onCancel: () => chatController.cancelToolInvocation(
-                        pendingConfirmation.message,
-                      ),
-                      onContinueAndTrust: () =>
-                          chatController.confirmToolInvocation(
-                        pendingConfirmation.message,
-                        trustTool: true,
-                      ),
-                    ),
-                  if (activeTurnStatus != null &&
-                      activeTurnStatus.allowFloating &&
-                      shouldShowFloatingActiveStatus)
-                    IgnorePointer(
-                      child: Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          spacing.md - 2,
-                          0,
-                          spacing.md - 2,
-                          spacing.xxs + 1,
-                        ),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 320),
-                            child: Transform.translate(
-                              offset: const Offset(0, -2),
-                              child: KeyedSubtree(
-                                key: const ValueKey('floating-turn-status-bar'),
-                                child: UnifiedTurnStatusBar(
-                                  status: activeTurnStatus,
-                                  variant: UnifiedTurnStatusBarVariant.floating,
-                                ),
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: _MeasuredBottomOverlayHost(
+                        child: Stack(
+                          children: [
+                            const Positioned.fill(
+                              child: IgnorePointer(
+                                child: _BottomOverlayVeil(),
                               ),
                             ),
-                          ),
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                top: _bottomOverlayVeilHeadroom,
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (pendingConfirmation != null)
+                                    ToolConfirmationBottomBar(
+                                      message: pendingConfirmation.message,
+                                      invocation:
+                                          pendingConfirmation.invocation,
+                                      onContinue: () =>
+                                          chatController.confirmToolInvocation(
+                                        pendingConfirmation.message,
+                                      ),
+                                      onCancel: () =>
+                                          chatController.cancelToolInvocation(
+                                        pendingConfirmation.message,
+                                      ),
+                                      onContinueAndTrust: () =>
+                                          chatController.confirmToolInvocation(
+                                        pendingConfirmation.message,
+                                        trustTool: true,
+                                      ),
+                                    ),
+                                  if (activeTurnStatus != null &&
+                                      activeTurnStatus.allowFloating &&
+                                      shouldShowFloatingActiveStatus)
+                                    IgnorePointer(
+                                      child: Padding(
+                                        padding: EdgeInsets.fromLTRB(
+                                          spacing.md - 2,
+                                          0,
+                                          spacing.md - 2,
+                                          spacing.xxs + 1,
+                                        ),
+                                        child: Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: ConstrainedBox(
+                                            constraints: const BoxConstraints(
+                                              maxWidth: 320,
+                                            ),
+                                            child: Transform.translate(
+                                              offset: const Offset(0, -2),
+                                              child: KeyedSubtree(
+                                                key: const ValueKey(
+                                                  'floating-turn-status-bar',
+                                                ),
+                                                child: UnifiedTurnStatusBar(
+                                                  status: activeTurnStatus,
+                                                  variant:
+                                                      UnifiedTurnStatusBarVariant
+                                                          .floating,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ChatInput(
+                                    onContextWindowPressed: () {
+                                      unawaited(
+                                        _showContextWindowSheet(context),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  ChatInput(
-                    onContextWindowPressed: () {
-                      unawaited(_showContextWindowSheet(context));
-                    },
                   ),
                 ],
               ),
@@ -221,11 +302,13 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       ref.read(chatControllerProvider).createNewGroup,
                   onDebugCasesPressed:
                       kDebugMode ? () => _showDebugTestCases(context) : null,
-                  onDebugInspectorPressed:
-                      kDebugMode ? () => _showDebugTurnInspector(context) : null,
+                  onDebugInspectorPressed: kDebugMode
+                      ? () => _showDebugTurnInspector(context)
+                      : null,
                   onDebugInspectorLongPressed: kDebugMode
                       ? () => ref
-                          .read(streamingTraceOverlayControllerProvider.notifier)
+                          .read(
+                              streamingTraceOverlayControllerProvider.notifier)
                           .show(
                             anchorId: 'debug-turn-inspector-button',
                             hasActiveTrace: traceSnapshot != null,
@@ -268,7 +351,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).extension<AppThemeSpec>()!.chatBackground,
+      backgroundColor:
+          Theme.of(context).extension<AppThemeSpec>()!.chatBackground,
       builder: (sheetContext) => DebugTestCaseSheet(
         cases: library.allCases,
         onShowIdleStatus: () {
@@ -310,7 +394,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).extension<AppThemeSpec>()!.chatBackground,
+      backgroundColor:
+          Theme.of(context).extension<AppThemeSpec>()!.chatBackground,
       builder: (_) => ContextWindowBottomSheet(snapshot: snapshot),
     );
   }
@@ -413,6 +498,90 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 }
 
+class _WorkspaceBadge extends StatelessWidget {
+  const _WorkspaceBadge({
+    required this.workspaceId,
+    required this.isDefault,
+  });
+
+  final String workspaceId;
+  final bool isDefault;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final radius = Theme.of(context).extension<AppRadius>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.assistantSurface.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(radius.pill),
+        border: Border.all(color: colors.divider),
+        boxShadow: [
+          BoxShadow(
+            color: colors.primaryText.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: spacing.sm,
+          vertical: spacing.xs,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.folder_open_outlined,
+              size: 14,
+              color: colors.secondaryText,
+            ),
+            SizedBox(width: spacing.xs),
+            Text(
+              isDefault ? 'Workspace .default' : 'Workspace $workspaceId',
+              style: TextStyle(
+                color: colors.primaryText,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BottomOverlayVeil extends StatelessWidget {
+  const _BottomOverlayVeil();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+
+    return DecoratedBox(
+      key: const ValueKey('chat-bottom-overlay-veil'),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            colors.chatBackground.withValues(alpha: 0),
+            colors.assistantSurface.withValues(alpha: 0.32),
+            colors.assistantSurface.withValues(alpha: 0.5),
+            colors.assistantSurface.withValues(alpha: 0.5),
+          ],
+          stops: const [0, 0.08, 0.18, 1],
+        ),
+      ),
+      child: const SizedBox.expand(),
+    );
+  }
+}
+
 class _GhostHeader extends StatelessWidget {
   final bool isSendInFlight;
   final VoidCallback onMenuPressed;
@@ -483,6 +652,73 @@ class _GhostHeader extends StatelessWidget {
               onPressed: onMorePressed,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MeasuredBottomOverlayHost extends ConsumerStatefulWidget {
+  const _MeasuredBottomOverlayHost({required this.child});
+
+  final Widget child;
+
+  @override
+  ConsumerState<_MeasuredBottomOverlayHost> createState() =>
+      _MeasuredBottomOverlayHostState();
+}
+
+class _MeasuredBottomOverlayHostState
+    extends ConsumerState<_MeasuredBottomOverlayHost> {
+  static const double _timelineOverlapAllowance = 8;
+  final GlobalKey _measurementKey = GlobalKey(
+    debugLabel: 'chat-bottom-overlay-host',
+  );
+  double _lastReportedHeight = -1;
+  bool _pendingMeasurement = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleMeasurement();
+  }
+
+  void _scheduleMeasurement() {
+    if (_pendingMeasurement) {
+      return;
+    }
+    _pendingMeasurement = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pendingMeasurement = false;
+      if (!mounted) {
+        return;
+      }
+      final renderObject =
+          _measurementKey.currentContext?.findRenderObject() as RenderBox?;
+      final rawHeight = renderObject?.size.height ?? 0.0;
+      final nextHeight = rawHeight <= _timelineOverlapAllowance
+          ? 0.0
+          : (rawHeight - _timelineOverlapAllowance).toDouble();
+      if ((nextHeight - _lastReportedHeight).abs() < 0.5) {
+        return;
+      }
+      _lastReportedHeight = nextHeight;
+      ref.read(chatBottomOverlayHeightProvider.notifier).state = nextHeight;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _scheduleMeasurement();
+    return NotificationListener<SizeChangedLayoutNotification>(
+      onNotification: (_) {
+        _scheduleMeasurement();
+        return false;
+      },
+      child: SizeChangedLayoutNotifier(
+        child: KeyedSubtree(
+          key: _measurementKey,
+          child: widget.child,
         ),
       ),
     );

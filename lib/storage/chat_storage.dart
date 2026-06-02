@@ -15,6 +15,7 @@ abstract class ChatStorage {
   Future<ChatGroup?> getGroupById(int id);
   Future<ChatGroup?> getLatestGroup();
   Future<void> updateGroupLastMessageTime(int groupId);
+  Future<void> updateGroupWorkspaceId(int groupId, String? workspaceId);
   Future<void> updateGroupSystemPrompt(int groupId, String? systemPrompt);
   Future<void> updateGroupTitle(int groupId, String title,
       {bool isSummarized = true});

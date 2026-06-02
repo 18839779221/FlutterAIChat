@@ -142,6 +142,11 @@ class CreateArtifactToolHandler extends ToolHandler {
       );
     }
 
+    final transition = context.workspace?.isDefault == true
+        ? await context.hostAdapters.workspace?.ensureWorkspaceForLongLivedOutput(
+            context.groupId,
+          )
+        : null;
     final created = await _fileStorageService.saveArtifactSource(
       groupId: context.groupId,
       artifactId: artifactId,
@@ -170,6 +175,9 @@ class CreateArtifactToolHandler extends ToolHandler {
       summary: '已创建 artifact：$artifactId',
       data: {
         ...created.toJson(),
+        if (transition != null) 'workspaceId': transition.workspace.workspaceId,
+        if ((transition?.reminderMessage ?? '').isNotEmpty)
+          'workspaceChangeReminder': transition!.reminderMessage,
         'message': '已创建 artifact：$artifactId\nsourcePath：${created.sourcePath}',
       },
     );

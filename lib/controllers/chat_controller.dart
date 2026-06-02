@@ -148,6 +148,10 @@ class ChatController {
     await _sessionCoordinator.selectGroup(group);
   }
 
+  Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {
+    await _sessionCoordinator.updateCurrentGroupWorkspace(workspaceId);
+  }
+
   Future<String?> summarizeAndUpdateTitle() async {
     return _summaryController.summarizeAndUpdateTitle();
   }

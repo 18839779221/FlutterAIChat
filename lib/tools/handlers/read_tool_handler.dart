@@ -95,7 +95,7 @@ class ReadToolHandler extends ToolHandler {
 
     final resolution = fileTools.pathPolicy.normalizeSandboxPath(
       context.arguments['file_path'] as String,
-      cwd: '/',
+      cwd: context.cwd,
     );
     if (!resolution.isValid || resolution.relativePath == null) {
       return ToolResult(

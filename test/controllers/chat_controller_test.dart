@@ -409,6 +409,9 @@ class _NoopChatSessionCoordinator implements ChatSessionCoordinator {
 
   @override
   Future<void> selectGroup(ChatGroup group) async {}
+
+  @override
+  Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {}
 }
 
 class _NoopChatSummaryController implements ChatSummaryController {
@@ -556,6 +559,9 @@ class _FakeChatStorage implements ChatStorage {
 
   @override
   Future<void> updateGroupLastMessageTime(int groupId) async {}
+
+  @override
+  Future<void> updateGroupWorkspaceId(int groupId, String? workspaceId) async {}
 
   @override
   Future<void> updateGroupSystemPrompt(

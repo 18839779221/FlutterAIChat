@@ -60,9 +60,28 @@ void main() {
     expect(textField.minLines, 1);
     expect(textField.maxLines, 4);
     expect(find.byKey(const ValueKey('chat-input-voice-button')), findsNothing);
+
+    final dock = tester.widget<DecoratedBox>(
+      find.byKey(const ValueKey('chat-input-dock')),
+    );
+    final decoration = dock.decoration as BoxDecoration;
+    final gradient = decoration.gradient as LinearGradient?;
+    expect(gradient, isNotNull);
+    expect(gradient!.colors, hasLength(3));
+    expect(
+      (gradient.colors.first.a * 255.0).round(),
+      lessThan((gradient.colors.last.a * 255.0).round()),
+    );
+    expect(
+      (gradient.colors.last.a * 255.0).round(),
+      lessThan(255),
+    );
+    expect(find.byType(BackdropFilter), findsOneWidget);
   });
 
-  testWidgets('chat input shows voice button when voice input controller is available', (
+  testWidgets(
+      'chat input shows voice button when voice input controller is available',
+      (
     tester,
   ) async {
     final harness = _VoiceControllerHarness.create();
@@ -92,7 +111,8 @@ void main() {
       ),
     );
 
-    expect(find.byKey(const ValueKey('chat-input-voice-button')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('chat-input-voice-button')), findsOneWidget);
   });
 
   testWidgets('chat input updates the shared text field while listening', (
@@ -211,7 +231,8 @@ void main() {
     );
   });
 
-  testWidgets('chat input does not show pending label while awaiting confirmation', (
+  testWidgets(
+      'chat input does not show pending label while awaiting confirmation', (
     tester,
   ) async {
     final container = ProviderContainer(
@@ -240,7 +261,8 @@ void main() {
     expect(find.text('等待工具确认'), findsNothing);
   });
 
-  testWidgets('chat input does not show planner hint while preparing', (tester) async {
+  testWidgets('chat input does not show planner hint while preparing',
+      (tester) async {
     final container = ProviderContainer(
       overrides: [
         chatSendStateProvider.overrideWith(
@@ -304,7 +326,8 @@ void main() {
     expect(cancelCount, 1);
   });
 
-  testWidgets('chat input does not show tool running helper text', (tester) async {
+  testWidgets('chat input does not show tool running helper text',
+      (tester) async {
     final container = ProviderContainer(
       overrides: [
         chatSendStateProvider.overrideWith(
@@ -405,7 +428,9 @@ void main() {
     expect(cancelCount, 1);
   });
 
-  testWidgets('chat input shows slash skill suggestions and inserts selected skill token', (
+  testWidgets(
+      'chat input shows slash skill suggestions and inserts selected skill token',
+      (
     tester,
   ) async {
     final container = ProviderContainer(
@@ -436,10 +461,12 @@ void main() {
     );
     await tester.pump();
 
-    await tester.enterText(find.byKey(const ValueKey('chat-input-field')), '/ver');
+    await tester.enterText(
+        find.byKey(const ValueKey('chat-input-field')), '/ver');
     await tester.pump();
 
-    expect(find.byKey(const ValueKey('chat-input-skill-suggestions')), findsOneWidget);
+    expect(find.byKey(const ValueKey('chat-input-skill-suggestions')),
+        findsOneWidget);
     expect(find.text('verify'), findsOneWidget);
 
     await tester.tap(find.text('verify'));
@@ -486,11 +513,14 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('chat-input-add-image')));
     await tester.pump();
 
-    expect(find.byKey(const ValueKey('chat-input-attachment-strip')), findsOneWidget);
+    expect(find.byKey(const ValueKey('chat-input-attachment-strip')),
+        findsOneWidget);
     expect(find.text('demo.png'), findsNothing);
   });
 
-  testWidgets('chat input persists picked images before rendering composer attachments', (
+  testWidgets(
+      'chat input persists picked images before rendering composer attachments',
+      (
     tester,
   ) async {
     final container = ProviderContainer(
@@ -532,7 +562,8 @@ void main() {
     final storage = container.read(chatAttachmentStorageServiceProvider)
         as _RecordingAttachmentStorageService;
     expect(storage.receivedAttachments, hasLength(1));
-    expect(storage.receivedAttachments.single.localPath, '/tmp/picked-demo.png');
+    expect(
+        storage.receivedAttachments.single.localPath, '/tmp/picked-demo.png');
     expect(
       find.byKey(const ValueKey('chat-input-attachment-strip')),
       findsOneWidget,
@@ -631,7 +662,9 @@ void main() {
     );
   });
 
-  testWidgets('chat input asks for confirmation before sending image on unsupported model', (
+  testWidgets(
+      'chat input asks for confirmation before sending image on unsupported model',
+      (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -722,8 +755,7 @@ class _SpyChatController extends ChatController {
   _SpyChatController(
     super.ref, {
     required this.onCancel,
-  })
-      : super(
+  }) : super(
           sendCoordinator: _NoopChatSendCoordinator(),
           sessionCoordinator: _NoopChatSessionCoordinator(),
           summaryController: _NoopChatSummaryController(),
@@ -827,6 +859,9 @@ class _NoopChatSessionCoordinator implements ChatSessionCoordinator {
 
   @override
   Future<void> selectGroup(ChatGroup group) async {}
+
+  @override
+  Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {}
 }
 
 class _NoopChatSummaryController implements ChatSummaryController {

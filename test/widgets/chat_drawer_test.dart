@@ -190,6 +190,9 @@ class _StubSessionCoordinator implements ChatSessionCoordinator {
 
   @override
   Future<void> selectGroup(ChatGroup group) async {}
+
+  @override
+  Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {}
 }
 
 class _StubSummaryController implements ChatSummaryController {
