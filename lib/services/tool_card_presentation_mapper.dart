@@ -27,14 +27,8 @@ class ToolCardPresentationMapper {
 
   /// Maps a tool result into its semantic presentation model.
   static ToolCardPresentationModel mapResult(ToolResult result) {
-    final variant = result.shouldShowExceptionCard
-        ? ToolCardPresentationVariant.exceptionCard
-        : result.isOutcomeTool
-            ? ToolCardPresentationVariant.outcomeCard
-            : ToolCardPresentationVariant.inlineStep;
-
     return ToolCardPresentationModel(
-      variant: variant,
+      variant: ToolCardPresentationVariant.inlineStep,
       title: resolveToolDisplayName(result.toolName),
       summary: result.summary,
       primaryFields: _stringFields(result.data),

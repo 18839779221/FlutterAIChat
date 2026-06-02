@@ -298,17 +298,7 @@ class ChatTimelineRow extends ConsumerWidget {
       return customResultWidget;
     }
     final presentation = ToolCardPresentationMapper.mapResult(result);
-    return switch (presentation.variant) {
-      ToolCardPresentationVariant.outcomeCard =>
-        ToolOutcomeCard(model: presentation),
-      ToolCardPresentationVariant.exceptionCard =>
-        ToolExceptionCard(model: presentation),
-      ToolCardPresentationVariant.inlineStep ||
-      ToolCardPresentationVariant.focusedActiveStep ||
-      ToolCardPresentationVariant.confirmationStep ||
-      ToolCardPresentationVariant.interactionCard =>
-        ToolInlineStepRow(model: presentation),
-    };
+    return ToolInlineStepRow(model: presentation);
   }
 
   Widget _buildToolWorkflowBlockWidget({

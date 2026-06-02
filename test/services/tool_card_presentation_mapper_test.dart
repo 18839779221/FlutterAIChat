@@ -23,7 +23,7 @@ void main() {
       expect(model.summary, '已执行联网搜索');
     });
 
-    test('maps create_reminder success to outcomeCard', () {
+    test('maps create_reminder success to inlineStep', () {
       const result = ToolResult(
         toolName: 'create_reminder',
         status: ToolExecutionStatus.success,
@@ -36,7 +36,7 @@ void main() {
 
       final model = ToolCardPresentationMapper.mapResult(result);
 
-      expect(model.variant.name, 'outcomeCard');
+      expect(model.variant.name, 'inlineStep');
       expect(model.title, '创建提醒');
       expect(model.primaryFields['title'], '设计评审');
       expect(model.primaryFields['dueAt'], '2026-04-18T09:00:00Z');
@@ -87,7 +87,7 @@ void main() {
       expect(model.statusLabel, '执行中');
     });
 
-    test('maps Write success to outcomeCard', () {
+    test('maps Write success to inlineStep', () {
       const result = ToolResult(
         toolName: 'Write',
         status: ToolExecutionStatus.success,
@@ -99,12 +99,12 @@ void main() {
 
       final model = ToolCardPresentationMapper.mapResult(result);
 
-      expect(model.variant.name, 'outcomeCard');
+      expect(model.variant.name, 'inlineStep');
       expect(model.title, '写入文件');
       expect(model.primaryFields['filePath'], 'notes/architecture.md');
     });
 
-    test('maps missing_api_key web search failure to exceptionCard', () {
+    test('maps missing_api_key web search failure to inlineStep', () {
       const result = ToolResult(
         toolName: 'web_search',
         status: ToolExecutionStatus.failure,
@@ -118,7 +118,7 @@ void main() {
 
       final model = ToolCardPresentationMapper.mapResult(result);
 
-      expect(model.variant.name, 'exceptionCard');
+      expect(model.variant.name, 'inlineStep');
       expect(model.statusLabel, '失败');
     });
   });

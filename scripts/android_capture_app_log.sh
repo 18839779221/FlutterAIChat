@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEFAULT_PACKAGE="com.example.ai_chat"
 APP_PACKAGE="${APP_PACKAGE:-$DEFAULT_PACKAGE}"
-LOG_RELATIVE_PATH="files/logs/app.log"
+LOG_FILE_PATH="/data/user/0/$APP_PACKAGE/files/logs/app.log"
 OUTPUT_DIR="$ROOT_DIR/build/artifact-debug"
 
 usage() {
@@ -68,19 +68,30 @@ resolve_device_id() {
 
 run_in_app() {
   local device_id="$1"
-  local command="$2"
-  adb -s "$device_id" shell run-as "$APP_PACKAGE" sh -c "$command"
+  shift
+  adb -s "$device_id" shell run-as "$APP_PACKAGE" "$@"
+}
+
+require_log_file() {
+  local device_id="$1"
+  run_in_app "$device_id" test -f "$LOG_FILE_PATH" >/dev/null 2>&1 || {
+    echo "Log file not found: $LOG_FILE_PATH" >&2
+    echo "Package: $APP_PACKAGE Device: $device_id" >&2
+    exit 1
+  }
 }
 
 clear_log() {
   local device_id="$1"
-  run_in_app "$device_id" "mkdir -p files/logs && : > '$LOG_RELATIVE_PATH'"
-  echo "Cleared $LOG_RELATIVE_PATH for package $APP_PACKAGE on device $device_id"
+  run_in_app "$device_id" mkdir -p "/data/user/0/$APP_PACKAGE/files/logs"
+  run_in_app "$device_id" sh -c ": > '$LOG_FILE_PATH'"
+  echo "Cleared $LOG_FILE_PATH for package $APP_PACKAGE on device $device_id"
 }
 
 show_log() {
   local device_id="$1"
-  run_in_app "$device_id" "test -f $LOG_RELATIVE_PATH && cat $LOG_RELATIVE_PATH"
+  require_log_file "$device_id"
+  run_in_app "$device_id" cat "$LOG_FILE_PATH"
 }
 
 export_log() {
@@ -88,8 +99,8 @@ export_log() {
   local device_id="$2"
   mkdir -p "$OUTPUT_DIR"
   local output_path="$OUTPUT_DIR/$name.log"
-  run_in_app "$device_id" "test -f $LOG_RELATIVE_PATH && cat $LOG_RELATIVE_PATH" \
-    > "$output_path"
+  require_log_file "$device_id"
+  run_in_app "$device_id" cat "$LOG_FILE_PATH" > "$output_path"
   echo "Exported app log to $output_path"
 }
 

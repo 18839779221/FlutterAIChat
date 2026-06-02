@@ -270,6 +270,81 @@ void main() {
       expect(blocks, hasLength(1));
       expect(blocks.single.type, AssistantTurnBlockType.toolResultSummary);
     });
+
+    test('write and edit result-only renderers hide all workflow phases', () {
+      const projector = ToolPresentationBlockProjector(
+        registry: ToolUiRendererRegistry(
+          renderers: [
+            _ResultOnlyWriteRenderer(),
+            _ResultOnlyEditRenderer(),
+          ],
+        ),
+      );
+
+      final blocks = projector.project(
+        events: [
+          ToolPresentationEvent(
+            toolName: 'Write',
+            phase: ToolPresentationEventPhase.running,
+            turnId: 'turn-write',
+            stepId: 'turn-write-step-1',
+            sourceContentType: MessageContentType.toolInvocation,
+            timestamp: DateTime(2026, 6, 2, 10, 0, 1),
+            data: const {
+              'summary': '正在写入 docs/plan.md',
+              'arguments': {'file_path': 'docs/plan.md'},
+            },
+          ),
+          ToolPresentationEvent(
+            toolName: 'Write',
+            phase: ToolPresentationEventPhase.result,
+            turnId: 'turn-write',
+            stepId: 'turn-write-step-1',
+            sourceContentType: MessageContentType.toolResult,
+            timestamp: DateTime(2026, 6, 2, 10, 0, 2),
+            data: const {
+              'status': 'success',
+              'summary': '已写入 docs/plan.md',
+              'data': {'filePath': 'docs/plan.md'},
+            },
+          ),
+          ToolPresentationEvent(
+            toolName: 'Edit',
+            phase: ToolPresentationEventPhase.awaitingConfirmation,
+            turnId: 'turn-edit',
+            stepId: 'turn-edit-step-1',
+            sourceContentType: MessageContentType.toolInvocation,
+            timestamp: DateTime(2026, 6, 2, 10, 0, 3),
+            data: const {
+              'summary': '准备编辑 lib/main.dart',
+              'arguments': {'file_path': 'lib/main.dart'},
+            },
+          ),
+          ToolPresentationEvent(
+            toolName: 'Edit',
+            phase: ToolPresentationEventPhase.result,
+            turnId: 'turn-edit',
+            stepId: 'turn-edit-step-1',
+            sourceContentType: MessageContentType.toolResult,
+            timestamp: DateTime(2026, 6, 2, 10, 0, 4),
+            data: const {
+              'status': 'success',
+              'summary': '已修改 lib/main.dart',
+              'data': {'filePath': 'lib/main.dart'},
+            },
+          ),
+        ],
+      );
+
+      expect(blocks, hasLength(2));
+      expect(
+        blocks.every(
+          (block) => block.type == AssistantTurnBlockType.toolResultSummary,
+        ),
+        isTrue,
+      );
+    });
+
   });
 }
 
@@ -308,6 +383,62 @@ class _HideProposedRenderer implements ToolUiRenderer {
     ToolPresentationEventPhase phase,
   ) {
     if (toolName == 'Write' && phase == ToolPresentationEventPhase.proposed) {
+      return ToolPhaseVisibility.hidden;
+    }
+    return ToolPhaseVisibility.visible;
+  }
+}
+
+class _ResultOnlyWriteRenderer extends _HideProposedRenderer {
+  const _ResultOnlyWriteRenderer();
+
+  @override
+  ToolPhaseVisibility visibilityForPhase(
+    String toolName,
+    ToolPresentationEventPhase phase,
+  ) {
+    if (toolName == 'Write' && phase != ToolPresentationEventPhase.result) {
+      return ToolPhaseVisibility.hidden;
+    }
+    return ToolPhaseVisibility.visible;
+  }
+}
+
+class _ResultOnlyEditRenderer implements ToolUiRenderer {
+  const _ResultOnlyEditRenderer();
+
+  @override
+  Widget? buildResult(
+    BuildContext context, {
+    required ToolResult result,
+    required ChatMessage? sourceMessage,
+  }) {
+    return null;
+  }
+
+  @override
+  Widget? buildWorkflowStep(
+    BuildContext context, {
+    required List<ToolWorkflowStep> steps,
+    required ChatMessage? sourceMessage,
+    required bool isExpanded,
+    required VoidCallback? onTap,
+  }) {
+    return null;
+  }
+
+  @override
+  bool supportsResult(String toolName) => toolName == 'Edit';
+
+  @override
+  bool supportsWorkflowStep(String toolName) => toolName == 'Edit';
+
+  @override
+  ToolPhaseVisibility visibilityForPhase(
+    String toolName,
+    ToolPresentationEventPhase phase,
+  ) {
+    if (toolName == 'Edit' && phase != ToolPresentationEventPhase.result) {
       return ToolPhaseVisibility.hidden;
     }
     return ToolPhaseVisibility.visible;

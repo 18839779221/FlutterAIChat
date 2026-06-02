@@ -4,6 +4,7 @@ import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
+import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
@@ -13,6 +14,8 @@ import 'package:ai_chat/services/chat_block_builder.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ai_chat/services/tool_ui_renderer_registry.dart';
+import 'package:ai_chat/widgets/tool_renderers/edit_tool_renderer.dart';
 
 void main() {
   testWidgets(
@@ -70,6 +73,72 @@ void main() {
       );
 
       expect(find.byType(ToolWorkflowCard), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'edit workflow row does not fall back to default workflow card when renderer hides it',
+    (tester) async {
+      final sourceMessage = ChatMessage(
+        id: 11,
+        text: '准备编辑文件',
+        role: MessageRole.assistant,
+        contentType: MessageContentType.toolInvocation,
+      );
+      final block = AssistantTurnBlock(
+        id: 'turn-edit-workflow-1',
+        turnId: 'turn-edit',
+        type: AssistantTurnBlockType.toolWorkflow,
+        sequence: 1,
+        createdAt: DateTime(2026, 6, 2, 10, 0, 0),
+        updatedAt: DateTime(2026, 6, 2, 10, 0, 0),
+        status: ToolWorkflowStepStatus.running.name,
+        title: '准备编辑文件',
+        text: '准备编辑文件',
+        workflowSteps: const [
+          ToolWorkflowStep(
+            stepId: 'edit-step-1',
+            turnId: 'turn-edit',
+            toolName: 'Edit',
+            title: '准备编辑文件',
+            summary: '准备编辑文件',
+            status: ToolWorkflowStepStatus.running,
+            requiresConfirmation: false,
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            toolUiRendererRegistryProvider.overrideWithValue(
+              const ToolUiRendererRegistry(
+                renderers: [EditToolUiRenderer()],
+              ),
+            ),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: Scaffold(
+              body: ChatTimelineRow(
+                item: ChatTimelineItem(
+                  stableKey: 'edit-workflow-row',
+                  type: ChatTimelineItemType.assistantBlock,
+                  sourceMessage: sourceMessage,
+                  sourceMessages: [sourceMessage],
+                  block: block,
+                ),
+                blockBuilder: ChatBlockBuilder(),
+                currentGroupId: 1,
+                onLongPressMessage: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(ToolWorkflowCard), findsNothing);
+      expect(find.byType(SizedBox), findsWidgets);
     },
   );
 

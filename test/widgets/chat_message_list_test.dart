@@ -1037,7 +1037,7 @@ void main() {
       expect(find.text('正在联网搜索'), findsNothing);
     });
 
-    testWidgets('external action tool result renders as outcome card',
+    testWidgets('external action tool result renders as inline step row',
         (tester) async {
       await _pumpMessageList(
         tester,
@@ -1059,7 +1059,7 @@ void main() {
         ],
       );
 
-      expect(find.byType(ToolOutcomeCard), findsOneWidget);
+      expect(find.byType(ToolInlineStepRow), findsOneWidget);
       expect(find.text('已发起提醒创建：设计评审'), findsOneWidget);
     });
 

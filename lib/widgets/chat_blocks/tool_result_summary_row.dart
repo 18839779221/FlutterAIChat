@@ -19,11 +19,6 @@ class ToolResultSummaryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final model = ToolCardPresentationMapper.mapResult(result);
-    return switch (model.variant) {
-      ToolCardPresentationVariant.outcomeCard => ToolOutcomeCard(model: model),
-      ToolCardPresentationVariant.exceptionCard =>
-        ToolExceptionCard(model: model),
-      _ => ToolInlineStepRow(model: model),
-    };
+    return ToolInlineStepRow(model: model);
   }
 }
