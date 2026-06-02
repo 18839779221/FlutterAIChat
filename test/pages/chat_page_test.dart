@@ -58,6 +58,23 @@ void main() {
     expect(find.byIcon(Icons.menu), findsOneWidget);
     expect(find.byIcon(Icons.add), findsOneWidget);
     expect(find.text('AI Chat'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('header-menu-button-shell')),
+      findsOneWidget,
+    );
+
+    final menuShell = tester.widget<DecoratedBox>(
+      find.byKey(const ValueKey('header-menu-button-shell')),
+    );
+    final menuDecoration = menuShell.decoration as BoxDecoration;
+    final menuGradient = menuDecoration.gradient as LinearGradient?;
+
+    expect(menuGradient, isNotNull);
+    expect(menuGradient!.colors, hasLength(3));
+    expect(
+      (menuGradient.colors.last.a * 255.0).round(),
+      lessThan(255),
+    );
 
     final headerSize =
         tester.getSize(find.byKey(const ValueKey('ghost-header')));

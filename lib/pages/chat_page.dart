@@ -15,7 +15,6 @@ import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/chat_drawer.dart';
 import '../widgets/debug/debug_test_case_sheet.dart';
-import '../widgets/debug/debug_turn_inspector_button.dart';
 import '../widgets/debug/streaming_trace_overlay_card.dart';
 import '../widgets/debug/debug_turn_inspector_sheet.dart';
 import '../widgets/context_window/context_window_bottom_sheet.dart';
@@ -618,6 +617,8 @@ class _GhostHeader extends StatelessWidget {
         child: Row(
           children: [
             _HeaderButton(
+              shellKey: const ValueKey('header-menu-button-shell'),
+              buttonKey: const ValueKey('header-menu-button'),
               icon: Icons.menu,
               tooltip: '会话列表',
               onPressed: onMenuPressed,
@@ -625,6 +626,7 @@ class _GhostHeader extends StatelessWidget {
             ),
             const Spacer(),
             _HeaderButton(
+              shellKey: const ValueKey('header-new-chat-button-shell'),
               icon: Icons.add,
               tooltip: '新建对话',
               onPressed: isSendInFlight ? null : onNewChatPressed,
@@ -632,6 +634,7 @@ class _GhostHeader extends StatelessWidget {
             if (onDebugCasesPressed != null) ...[
               SizedBox(width: spacing.xs),
               _HeaderButton(
+                shellKey: const ValueKey('header-debug-cases-button-shell'),
                 buttonKey: const ValueKey('debug-test-cases-button'),
                 icon: Icons.science_outlined,
                 tooltip: '测试案例',
@@ -640,13 +643,20 @@ class _GhostHeader extends StatelessWidget {
             ],
             if (onDebugInspectorPressed != null) ...[
               SizedBox(width: spacing.xs),
-              DebugTurnInspectorButton(
-                onPressed: onDebugInspectorPressed!,
+              _HeaderButton(
+                shellKey: const ValueKey(
+                  'header-debug-inspector-button-shell',
+                ),
+                buttonKey: const ValueKey('debug-turn-inspector-button'),
+                icon: Icons.bug_report_outlined,
+                tooltip: '调试检查器',
+                onPressed: onDebugInspectorPressed,
                 onLongPress: onDebugInspectorLongPressed,
               ),
             ],
             SizedBox(width: spacing.xs),
             _HeaderButton(
+              shellKey: const ValueKey('header-more-button-shell'),
               icon: Icons.more_horiz,
               tooltip: '更多操作',
               onPressed: onMorePressed,
@@ -726,17 +736,21 @@ class _MeasuredBottomOverlayHostState
 }
 
 class _HeaderButton extends StatelessWidget {
+  final Key? shellKey;
   final Key? buttonKey;
   final IconData icon;
   final String tooltip;
   final VoidCallback? onPressed;
+  final VoidCallback? onLongPress;
   final bool filled;
 
   const _HeaderButton({
+    this.shellKey,
     this.buttonKey,
     required this.icon,
     required this.tooltip,
     required this.onPressed,
+    this.onLongPress,
     this.filled = false,
   });
 
@@ -744,48 +758,63 @@ class _HeaderButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
-    final backgroundColor = colors.assistantSurface.withValues(
-      alpha: filled ? 0.93 : 0.89,
-    );
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius.pill),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Material(
-          color: backgroundColor,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(radius.pill),
-          ),
-          elevation: 0,
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(radius.pill),
-              boxShadow: [
-                BoxShadow(
-                  color: colors.primaryText.withValues(alpha: 0.09),
-                  blurRadius: 14,
-                  offset: const Offset(0, 5),
-                ),
-                BoxShadow(
-                  color: Colors.white.withValues(alpha: 0.14),
-                  blurRadius: 1.2,
-                  offset: const Offset(0, -0.5),
-                ),
+        filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+        child: DecoratedBox(
+          key: shellKey,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                colors.assistantSurface.withValues(alpha: filled ? 0.34 : 0.28),
+                colors.assistantSurface.withValues(alpha: filled ? 0.58 : 0.52),
+                colors.assistantSurface.withValues(alpha: filled ? 0.76 : 0.7),
               ],
+              stops: const [0, 0.42, 1],
             ),
-            child: IconButton(
-              key: buttonKey,
-              constraints: const BoxConstraints.tightFor(width: 30, height: 30),
-              padding: EdgeInsets.zero,
-              tooltip: tooltip,
-              onPressed: onPressed,
-              icon: Icon(
-                icon,
-                size: 15.5,
-                color: onPressed == null
-                    ? colors.secondaryText.withValues(alpha: 0.45)
-                    : colors.primaryText.withValues(alpha: 0.9),
+            borderRadius: BorderRadius.circular(radius.pill),
+            border: Border.all(
+              color: colors.semantic.text.inverse.withValues(alpha: 0.24),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: colors.primaryText.withValues(alpha: 0.09),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+              BoxShadow(
+                color: colors.semantic.text.inverse.withValues(alpha: 0.2),
+                blurRadius: 6,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: Tooltip(
+              message: tooltip,
+              child: InkWell(
+                key: buttonKey,
+                borderRadius: BorderRadius.circular(radius.pill),
+                onTap: onPressed,
+                onLongPress: onPressed == null ? null : onLongPress,
+                child: SizedBox(
+                  width: 30,
+                  height: 30,
+                  child: Center(
+                    child: Icon(
+                      icon,
+                      size: 15.5,
+                      color: onPressed == null
+                          ? colors.secondaryText.withValues(alpha: 0.45)
+                          : colors.primaryText.withValues(alpha: 0.9),
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
