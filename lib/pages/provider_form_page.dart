@@ -209,9 +209,7 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
     final hasModels = _models.isNotEmpty;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_isEdit ? '编辑 Provider' : '新增 Provider'),
-      ),
+      appBar: _buildTintedHeader(context, _isEdit ? '编辑 Provider' : '新增 Provider'),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -297,9 +295,7 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
             SizedBox(height: spacing.lg),
             _SectionCard(
               title: '模型列表',
-              subtitle: hasModels
-                  ? '优先使用探测结果；只有遇到上游接口未返回模型时，再手动补充。'
-                  : '优先使用模型探测自动获取可用模型；如有需要，也可手动新增。',
+              subtitle: hasModels ? '可直接设为默认，或按需手动补充。' : '可先探测模型，再按需手动新增。',
               trailing: hasModels
                   ? TextButton(
                       onPressed: _addModelRow,
@@ -411,10 +407,6 @@ class _ProviderHeroCard extends StatelessWidget {
                   icon: Icons.layers_outlined,
                   label: modelCount == 0 ? '待探测模型' : '$modelCount 个模型',
                 ),
-                const _InfoChip(
-                  icon: Icons.alt_route_rounded,
-                  label: '支持手动增删模型',
-                ),
               ],
             ),
           ],
@@ -422,6 +414,24 @@ class _ProviderHeroCard extends StatelessWidget {
       ),
     );
   }
+}
+
+PreferredSizeWidget _buildTintedHeader(BuildContext context, String title) {
+  final colors = Theme.of(context).extension<AppThemeSpec>()!;
+
+  return AppBar(
+    backgroundColor: colors.workflowRunning.withValues(alpha: 0.12),
+    surfaceTintColor: Colors.transparent,
+    elevation: 0,
+    titleSpacing: 12,
+    title: Text(
+      title,
+      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: colors.primaryText,
+          ),
+    ),
+  );
 }
 
 class _SectionCard extends StatelessWidget {

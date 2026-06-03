@@ -169,7 +169,7 @@ class _ModelManagementPageState extends State<ModelManagementPage> {
     final defaultModel = _defaultModel;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('模型配置')),
+      appBar: _buildTintedHeader(context, '模型配置'),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -311,10 +311,6 @@ class _ManagementOverviewCard extends StatelessWidget {
                 _SummaryPill(
                   icon: Icons.hub_outlined,
                   label: '$providerCount 个 Provider',
-                ),
-                _SummaryPill(
-                  icon: Icons.travel_explore_outlined,
-                  label: '优先使用模型探测',
                 ),
               ],
             ),
@@ -583,10 +579,6 @@ class _ProviderListTile extends StatelessWidget {
                   icon: Icons.key_outlined,
                   label: provider.apiKey.trim().isEmpty ? '未填写 API Key' : '已填写 API Key',
                 ),
-                _MetaTag(
-                  icon: Icons.layers_outlined,
-                  label: provider.models.isEmpty ? '待探测模型' : '支持模型管理',
-                ),
               ],
             ),
             SizedBox(height: spacing.md),
@@ -612,6 +604,24 @@ class _ProviderListTile extends StatelessWidget {
       ),
     );
   }
+}
+
+PreferredSizeWidget _buildTintedHeader(BuildContext context, String title) {
+  final colors = Theme.of(context).extension<AppThemeSpec>()!;
+
+  return AppBar(
+    backgroundColor: colors.workflowRunning.withValues(alpha: 0.12),
+    surfaceTintColor: Colors.transparent,
+    elevation: 0,
+    titleSpacing: 12,
+    title: Text(
+      title,
+      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: colors.primaryText,
+          ),
+    ),
+  );
 }
 
 class _MetaTag extends StatelessWidget {

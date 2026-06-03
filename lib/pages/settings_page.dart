@@ -348,9 +348,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ? '当前仅有 .default，可在首次长期文件落盘时自动升级。'
             : '选择当前对话要复用的文件容器。';
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('设置'),
-      ),
+      appBar: _buildTintedHeader(context, '设置'),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -662,6 +660,24 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
     );
   }
+}
+
+PreferredSizeWidget _buildTintedHeader(BuildContext context, String title) {
+  final colors = Theme.of(context).extension<AppThemeSpec>()!;
+
+  return AppBar(
+    backgroundColor: colors.workflowRunning.withValues(alpha: 0.12),
+    surfaceTintColor: Colors.transparent,
+    elevation: 0,
+    titleSpacing: 12,
+    title: Text(
+      title,
+      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: colors.primaryText,
+          ),
+    ),
+  );
 }
 
 class _ThemeCard extends StatelessWidget {

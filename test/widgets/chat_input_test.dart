@@ -313,6 +313,199 @@ void main() {
   });
 
   testWidgets(
+      'chat input model menu closes on outside tap without opening provider submenu',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final settingsRepository = AppSettingsRepository(
+      preferences,
+      localDefaultsLoader: () async => const LlmLocalDefaults(
+        defaultProviderId: 'aigocode',
+        defaultModelId: 'gpt-4o-mini',
+        providers: [
+          LlmProviderConfig(
+            id: 'aigocode',
+            name: 'AIGoCode',
+            apiKey: 'key',
+            baseUrl: 'https://api.aigocode.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-4o-mini', name: ''),
+              LlmProviderModel(id: 'gpt-5.4', name: ''),
+            ],
+          ),
+          LlmProviderConfig(
+            id: 'openai',
+            name: 'OpenAI',
+            apiKey: 'key',
+            baseUrl: 'https://api.openai.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-4.1', name: ''),
+            ],
+          ),
+        ],
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('chat-input-model-chip')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('chat-input-model-menu')), findsOneWidget);
+    expect(find.text('AIGoCode'), findsOneWidget);
+
+    await tester.tapAt(const Offset(8, 8));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('chat-input-model-menu')), findsNothing);
+    expect(find.text('AIGoCode'), findsNothing);
+  });
+
+  testWidgets('chat input model chip updates immediately after selecting model',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final settingsRepository = AppSettingsRepository(
+      preferences,
+      localDefaultsLoader: () async => const LlmLocalDefaults(
+        defaultProviderId: 'aigocode',
+        defaultModelId: 'gpt-4o-mini',
+        providers: [
+          LlmProviderConfig(
+            id: 'aigocode',
+            name: 'AIGoCode',
+            apiKey: 'key',
+            baseUrl: 'https://api.aigocode.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-4o-mini', name: ''),
+              LlmProviderModel(id: 'gpt-5.4', name: ''),
+            ],
+          ),
+          LlmProviderConfig(
+            id: 'openai',
+            name: 'OpenAI',
+            apiKey: 'key',
+            baseUrl: 'https://api.openai.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-4.1', name: ''),
+            ],
+          ),
+        ],
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('gpt-4o-mini'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('chat-input-model-chip')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('gpt-5.4').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('gpt-5.4'), findsOneWidget);
+    expect(find.text('gpt-4o-mini'), findsNothing);
+  });
+
+  testWidgets(
+      'chat input model chip updates immediately after switching provider and selecting model',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final settingsRepository = AppSettingsRepository(
+      preferences,
+      localDefaultsLoader: () async => const LlmLocalDefaults(
+        defaultProviderId: 'aigocode',
+        defaultModelId: 'gpt-4o-mini',
+        providers: [
+          LlmProviderConfig(
+            id: 'aigocode',
+            name: 'AIGoCode',
+            apiKey: 'key',
+            baseUrl: 'https://api.aigocode.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-4o-mini', name: ''),
+            ],
+          ),
+          LlmProviderConfig(
+            id: 'openai',
+            name: 'OpenAI',
+            apiKey: 'key',
+            baseUrl: 'https://api.openai.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-4.1', name: ''),
+            ],
+          ),
+        ],
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('gpt-4o-mini'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('chat-input-model-chip')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('AIGoCode').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OpenAI'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('gpt-4.1').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('gpt-4.1'), findsOneWidget);
+    expect(find.text('gpt-4o-mini'), findsNothing);
+  });
+
+  testWidgets(
       'chat input does not show pending label while awaiting confirmation', (
     tester,
   ) async {

@@ -19,25 +19,6 @@ import '../repositories/app_settings_repository.dart';
 import '../utils/logger.dart';
 import '../pages/model_management_page.dart';
 
-final _chatInputModelSelectionProvider = FutureProvider.family
-    .autoDispose<LlmProviderModel?, AppSettingsRepository>((ref, repository) async {
-  final providers = await repository.getProviders();
-  final selection = await repository.getSelectionState();
-  for (final provider in providers) {
-    if (provider.id != selection.selectedProviderId &&
-        provider.id != selection.defaultProviderId) {
-      continue;
-    }
-    for (final model in provider.models) {
-      if (model.id == selection.selectedModelId ||
-          model.id == selection.defaultModelId) {
-        return model;
-      }
-    }
-  }
-  return null;
-});
-
 class ChatInput extends ConsumerStatefulWidget {
   const ChatInput({
     super.key,
@@ -51,8 +32,10 @@ class ChatInput extends ConsumerStatefulWidget {
 }
 
 class _ChatInputState extends ConsumerState<ChatInput> {
+  final GlobalKey _modelChipKey = GlobalKey();
   TextEditingController? _listenedController;
   ChangeNotifier? _listenedVoiceController;
+  String? _selectedModelChipLabel;
 
   @override
   void initState() {
@@ -82,6 +65,52 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     }
   }
 
+  Future<void> _refreshModelChipLabel(AppSettingsRepository repository) async {
+    final providers = await repository.getProviders();
+    final selection = await repository.getSelectionState();
+    String? nextLabel;
+    LlmProviderConfig? resolvedProvider;
+    for (final provider in providers) {
+      if (provider.id == selection.selectedProviderId) {
+        resolvedProvider = provider;
+        break;
+      }
+    }
+    resolvedProvider ??= providers
+        .cast<LlmProviderConfig?>()
+        .firstWhere(
+          (provider) => provider?.id == selection.defaultProviderId,
+          orElse: () => providers.isEmpty ? null : providers.first,
+        );
+    if (resolvedProvider != null) {
+      for (final model in resolvedProvider.models) {
+        if (model.id == selection.selectedModelId) {
+          nextLabel = model.displayName;
+          break;
+        }
+      }
+      nextLabel ??= resolvedProvider.models
+          .cast<LlmProviderModel?>()
+          .firstWhere(
+            (model) => model?.id == selection.defaultModelId,
+            orElse: () => resolvedProvider!.models.isEmpty
+                ? null
+                : resolvedProvider.models.first,
+          )
+          ?.displayName;
+    }
+    if (!mounted) {
+      return;
+    }
+    final resolvedLabel = nextLabel ?? '未配置模型';
+    if (_selectedModelChipLabel == resolvedLabel) {
+      return;
+    }
+    setState(() {
+      _selectedModelChipLabel = resolvedLabel;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final sendPhase = ref.watch(sendPhaseProvider);
@@ -102,6 +131,14 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       settingsRepository = ref.read(appSettingsRepositoryProvider);
     } on UnimplementedError {
       settingsRepository = null;
+    }
+    if (settingsRepository != null) {
+      final repository = settingsRepository;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _refreshModelChipLabel(repository);
+        }
+      });
     }
     final voiceState = voiceInputController?.state;
     final hasVoiceInput = voiceInputController != null;
@@ -279,108 +316,55 @@ class _ChatInputState extends ConsumerState<ChatInput> {
           break;
         }
       }
+      final renderObject =
+          _modelChipKey.currentContext?.findRenderObject() as RenderBox?;
+      final overlay =
+          Overlay.of(context).context.findRenderObject() as RenderBox?;
+      if (renderObject == null || overlay == null) {
+        return;
+      }
+      final offset = renderObject.localToGlobal(Offset.zero, ancestor: overlay);
+      final anchorRect = offset & renderObject.size;
 
-      Future<LlmProviderConfig?> openProviderPicker({
-        required LlmProviderConfig activeProvider,
-      }) {
-        return showModalBottomSheet<LlmProviderConfig>(
-          context: context,
-          backgroundColor: Colors.transparent,
-          isScrollControlled: true,
-          builder: (context) => _ModelProviderPickerSheet(
-            title: '切换 Provider',
-            subtitle: '模型选择保持在主流程里，只有需要时再切换 Provider。',
-            child: Column(
-              children: providers
-                  .map(
-                    (item) => _PickerActionTile(
-                      title: item.name,
-                      subtitle: item.baseUrl,
-                      selected: item.id == activeProvider.id,
-                      trailing: '${item.models.length} 个模型',
-                      onTap: () => Navigator.of(context).pop(item),
-                    ),
-                  )
-                  .toList(growable: false),
+      final result = await showGeneralDialog<_ModelSelectionResult>(
+        context: context,
+        barrierDismissible: true,
+        barrierLabel: 'dismiss-model-menu',
+        barrierColor: Colors.transparent,
+        transitionDuration: const Duration(milliseconds: 120),
+        pageBuilder: (context, _, __) => _AnchoredModelMenuDialog(
+          anchorRect: anchorRect,
+          providers: providers,
+          initialProviderId: provider.id,
+          selectedModelId:
+              selection.selectedModelId ?? selection.defaultModelId,
+          defaultModelId: selection.defaultModelId,
+        ),
+        transitionBuilder: (context, animation, _, child) {
+          return FadeTransition(
+            opacity: CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
             ),
-          ),
-        );
+            child: child,
+          );
+        },
+      );
+
+      if (!mounted || result == null) {
+        return;
       }
 
-      while (mounted) {
-        final models = provider.models;
-        if (models.isEmpty) {
-          await Navigator.of(context).push(
-            MaterialPageRoute(
-                  builder: (_) =>
-                  ModelManagementPage(repository: repository),
-            ),
-          );
-          return;
-        }
-
-        final selectedModel = await showModalBottomSheet<LlmProviderModel>(
-          context: context,
-          backgroundColor: Colors.transparent,
-          isScrollControlled: true,
-          builder: (context) => _ModelProviderPickerSheet(
-            title: '选择 Model',
-            subtitle:
-                '${provider.name} · 优先选择模型；如果当前 Provider 不合适，再切换 Provider。',
-            child: Column(
-              children: [
-                ...models.map(
-                  (model) => _PickerActionTile(
-                    title: model.displayName,
-                    selected: model.id == selection.selectedModelId,
-                    trailing: model.id == selection.defaultModelId
-                        ? '默认'
-                        : null,
-                    onTap: () => Navigator.of(context).pop(model),
-                  ),
-                ),
-                _PickerActionTile(
-                  title: '切换 Provider',
-                  subtitle: '当前：${provider.name}',
-                  trailingIcon: Icons.chevron_right,
-                  onTap: () => Navigator.of(context).pop(),
-                ),
-              ],
-            ),
-          ),
-        );
-
-        if (!mounted) {
-          return;
-        }
-
-        if (selectedModel != null) {
-          await repository.selectProviderAndModel(
-            providerId: provider.id,
-            modelId: selectedModel.id,
-          );
-          if (mounted) {
-            setState(() {});
-          }
-          return;
-        }
-
-        final nextProvider = await openProviderPicker(activeProvider: provider);
-        if (nextProvider == null) {
-          return;
-        }
-        provider = nextProvider;
-      }
+      await repository.selectProviderAndModel(
+        providerId: result.providerId,
+        modelId: result.modelId,
+      );
+      await _refreshModelChipLabel(repository);
     }
 
     final modelChipLabel = settingsRepository == null
         ? '未配置模型'
-        : ref
-            .watch(_chatInputModelSelectionProvider(settingsRepository))
-            .maybeWhen(
-              data: (value) => value?.displayName ?? '未配置模型',
-              orElse: () => '未配置模型',
-            );
+        : (_selectedModelChipLabel ?? '未配置模型');
 
     return Semantics(
       container: true,
@@ -788,44 +772,46 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                               ),
                             Padding(
                               padding: EdgeInsets.only(right: spacing.xxs + 2),
-                              child: OutlinedButton(
-                                key: const ValueKey('chat-input-model-chip'),
-                                onPressed: settingsRepository == null
-                                    ? null
-                                    : openModelPicker,
-                                style: OutlinedButton.styleFrom(
-                                  minimumSize: const Size(0, 36),
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: spacing.sm + 2,
-                                    vertical: spacing.xxs + 2,
-                                  ),
-                                  backgroundColor:
-                                      colors.chatBackground.withValues(alpha: 0.46),
-                                  side: BorderSide(
-                                    color: colors.semantic.text.inverse
-                                        .withValues(alpha: 0.2),
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius:
-                                        BorderRadius.circular(radius.pill),
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.auto_awesome_outlined,
-                                      size: 15,
-                                      color: colors.secondaryText,
+                              child: KeyedSubtree(
+                                key: _modelChipKey,
+                                child: OutlinedButton(
+                                  key: const ValueKey('chat-input-model-chip'),
+                                  onPressed: settingsRepository == null
+                                      ? null
+                                      : openModelPicker,
+                                  style: OutlinedButton.styleFrom(
+                                    minimumSize: const Size(0, 36),
+                                    foregroundColor: colors.primaryText,
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: spacing.sm + 2,
+                                      vertical: spacing.xxs + 2,
                                     ),
-                                    SizedBox(width: spacing.xxs + 2),
-                                    Flexible(
-                                      child: Text(
-                                        modelChipLabel,
-                                        overflow: TextOverflow.ellipsis,
+                                    backgroundColor:
+                                        colors.chatBackground.withValues(alpha: 0.46),
+                                    side: BorderSide(
+                                      color: colors.semantic.text.inverse
+                                          .withValues(alpha: 0.2),
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.circular(radius.pill),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          modelChipLabel,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: colors.primaryText,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -1017,78 +1003,223 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   }
 }
 
-class _ModelProviderPickerSheet extends StatelessWidget {
-  const _ModelProviderPickerSheet({
-    required this.title,
-    required this.subtitle,
-    required this.child,
+class _ModelSelectionResult {
+  const _ModelSelectionResult({
+    required this.providerId,
+    required this.modelId,
   });
 
-  final String title;
-  final String subtitle;
-  final Widget child;
+  final String providerId;
+  final String modelId;
+}
+
+class _AnchoredModelMenuDialog extends StatefulWidget {
+  const _AnchoredModelMenuDialog({
+    required this.anchorRect,
+    required this.providers,
+    required this.initialProviderId,
+    required this.selectedModelId,
+    required this.defaultModelId,
+  });
+
+  final Rect anchorRect;
+  final List<LlmProviderConfig> providers;
+  final String initialProviderId;
+  final String? selectedModelId;
+  final String? defaultModelId;
+
+  @override
+  State<_AnchoredModelMenuDialog> createState() =>
+      _AnchoredModelMenuDialogState();
+}
+
+class _AnchoredModelMenuDialogState extends State<_AnchoredModelMenuDialog> {
+  late String _activeProviderId;
+  bool _showProviderPanel = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _activeProviderId = widget.initialProviderId;
+  }
+
+  LlmProviderConfig get _activeProvider {
+    return widget.providers.firstWhere(
+      (provider) => provider.id == _activeProviderId,
+      orElse: () => widget.providers.first,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
-    final maxHeight = MediaQuery.of(context).size.height * 0.78;
+    final screenSize = MediaQuery.of(context).size;
+    final panelWidth = screenSize.width < 700
+        ? widget.anchorRect.width.clamp(176.0, 220.0)
+        : widget.anchorRect.width.clamp(188.0, 236.0);
+    final itemCount =
+        _showProviderPanel ? widget.providers.length : _activeProvider.models.length;
+    final estimatedMenuHeight = (_showProviderPanel ? 52.0 : 48.0) +
+        (itemCount * 42.0) +
+        spacing.xs +
+        16.0;
+    final availableBelow = screenSize.height - widget.anchorRect.bottom - 8;
+    final availableAbove = widget.anchorRect.top - 8;
+    final shouldOpenAbove =
+        availableBelow < estimatedMenuHeight && availableAbove > availableBelow;
+    final left = widget.anchorRect.left.clamp(
+      12.0,
+      screenSize.width - panelWidth - 12,
+    );
+    final belowTop = widget.anchorRect.bottom + 2;
+    final aboveTop = widget.anchorRect.top - estimatedMenuHeight - 2;
+    final top = (shouldOpenAbove ? aboveTop : belowTop).clamp(
+      8.0,
+      screenSize.height - estimatedMenuHeight - 8,
+    );
 
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          spacing.md,
-          spacing.md,
-          spacing.md,
-          spacing.md + MediaQuery.of(context).padding.bottom,
-        ),
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: maxHeight, maxWidth: 640),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: colors.settingsPanelBackground,
-                borderRadius: BorderRadius.circular(radius.lg),
-                border: Border.all(color: colors.divider),
-                boxShadow: [
-                  BoxShadow(
-                    color: colors.primaryText.withValues(alpha: 0.08),
-                    blurRadius: 28,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
-              ),
-              child: Padding(
-                padding: EdgeInsets.all(spacing.lg),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        title,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+    return Material(
+      color: Colors.transparent,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () => Navigator.of(context).pop(),
+            ),
+          ),
+          Positioned(
+            left: left,
+            top: top,
+            child: _AnchoredMenuPanel(
+              key: const ValueKey('chat-input-model-menu'),
+              width: panelWidth,
+              child: AnimatedSize(
+                duration: const Duration(milliseconds: 140),
+                curve: Curves.easeOutCubic,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Material(
+                      color: colors.assistantSurface.withValues(alpha: 0.82),
+                      borderRadius: BorderRadius.circular(radius.md),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(radius.md),
+                        onTap: () {
+                          setState(() {
+                            _showProviderPanel = !_showProviderPanel;
+                          });
+                        },
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: spacing.md,
+                            vertical: spacing.sm,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.hub_outlined,
+                                size: 15,
+                                color: colors.secondaryText,
+                              ),
+                              SizedBox(width: spacing.xs),
+                              Expanded(
+                                child: Text(
+                                  _activeProvider.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelLarge
+                                      ?.copyWith(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                              Icon(
+                                _showProviderPanel
+                                    ? Icons.keyboard_arrow_up_rounded
+                                    : Icons.keyboard_arrow_down_rounded,
+                                size: 18,
+                                color: colors.secondaryText,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                      SizedBox(height: spacing.xxs),
-                      Text(
-                        subtitle,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: colors.secondaryText,
-                              height: 1.45,
+                    ),
+                    SizedBox(height: spacing.xs),
+                    if (_showProviderPanel)
+                      ...widget.providers.map(
+                        (provider) => _PickerActionTile(
+                          title: provider.name,
+                          selected: provider.id == _activeProvider.id,
+                          onTap: () {
+                            setState(() {
+                              _activeProviderId = provider.id;
+                              _showProviderPanel = false;
+                            });
+                          },
+                        ),
+                      )
+                    else
+                      ..._activeProvider.models.map(
+                        (model) => _PickerActionTile(
+                          title: model.displayName,
+                          selected: model.id == widget.selectedModelId,
+                          onTap: () => Navigator.of(context).pop(
+                            _ModelSelectionResult(
+                              providerId: _activeProvider.id,
+                              modelId: model.id,
                             ),
+                          ),
+                        ),
                       ),
-                      SizedBox(height: spacing.md),
-                      child,
-                    ],
-                  ),
+                  ],
                 ),
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnchoredMenuPanel extends StatelessWidget {
+  const _AnchoredMenuPanel({
+    super.key,
+    required this.child,
+    required this.width,
+  });
+
+  final Widget child;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final radius = Theme.of(context).extension<AppRadius>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: width),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colors.chatBackground.withValues(alpha: 0.98),
+          borderRadius: BorderRadius.circular(radius.lg + 2),
+          border: Border.all(color: colors.divider),
+          boxShadow: [
+            BoxShadow(
+              color: colors.primaryText.withValues(alpha: 0.055),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(spacing.xs),
+          child: child,
         ),
       ),
     );
@@ -1099,16 +1230,12 @@ class _PickerActionTile extends StatelessWidget {
   const _PickerActionTile({
     required this.title,
     required this.onTap,
-    this.subtitle,
     this.selected = false,
-    this.trailing,
     this.trailingIcon,
   });
 
   final String title;
-  final String? subtitle;
   final bool selected;
-  final String? trailing;
   final IconData? trailingIcon;
   final VoidCallback onTap;
 
@@ -1129,55 +1256,29 @@ class _PickerActionTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(radius.lg),
           onTap: onTap,
           child: Padding(
-            padding: EdgeInsets.all(spacing.md),
+            padding: EdgeInsets.symmetric(
+              horizontal: spacing.md,
+              vertical: spacing.sm + 1,
+            ),
             child: Row(
               children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ),
                 if (selected)
                   Padding(
-                    padding: EdgeInsets.only(right: spacing.sm),
+                    padding: EdgeInsets.only(left: spacing.sm),
                     child: Icon(
                       Icons.check_circle_rounded,
                       size: 18,
                       color: colors.workflowRunning,
-                    ),
-                  )
-                else
-                  SizedBox(width: spacing.lg + 2),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                      ),
-                      if (subtitle != null) ...[
-                        SizedBox(height: spacing.xxs),
-                        Text(
-                          subtitle!,
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: colors.secondaryText,
-                                    height: 1.4,
-                                  ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (trailing != null)
-                  Padding(
-                    padding: EdgeInsets.only(left: spacing.sm),
-                    child: Text(
-                      trailing!,
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                            color: selected
-                                ? colors.workflowRunning
-                                : colors.secondaryText,
-                            fontWeight: FontWeight.w700,
-                          ),
                     ),
                   ),
                 if (trailingIcon != null)
