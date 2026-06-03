@@ -59,13 +59,20 @@ void main() {
         .widget<TextField>(find.byKey(const ValueKey('chat-input-field')));
     expect(textField.minLines, 1);
     expect(textField.maxLines, 4);
+    expect(textField.textAlignVertical, TextAlignVertical.center);
     expect(find.byKey(const ValueKey('chat-input-voice-button')), findsNothing);
+
+    final composerShell = tester.widget<Container>(
+      find.byKey(const ValueKey('chat-input-composer-shell')),
+    );
+    expect(composerShell.decoration, isNull);
 
     final dock = tester.widget<DecoratedBox>(
       find.byKey(const ValueKey('chat-input-dock')),
     );
     final decoration = dock.decoration as BoxDecoration;
     final gradient = decoration.gradient as LinearGradient?;
+    final boxShadow = decoration.boxShadow;
     expect(gradient, isNotNull);
     expect(gradient!.colors, hasLength(3));
     expect(
@@ -76,7 +83,38 @@ void main() {
       (gradient.colors.last.a * 255.0).round(),
       lessThan(255),
     );
+    expect(boxShadow, isNotNull);
+    expect(boxShadow, hasLength(3));
+    expect(boxShadow!.first.blurRadius, greaterThanOrEqualTo(30));
+    expect(boxShadow.first.spreadRadius, greaterThan(0));
+    expect(boxShadow[1].color.a, greaterThan(boxShadow.first.color.a));
     expect(find.byType(BackdropFilter), findsOneWidget);
+  });
+
+  testWidgets('chat input dock exposes a unified focus surface',
+      (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final focusNode = container.read(focusNodeProvider);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+
+    expect(focusNode.hasFocus, isFalse);
+    final focusSurface = find.byKey(const ValueKey('chat-input-focus-surface'));
+    expect(focusSurface, findsOneWidget);
+
+    await tester.tapAt(tester.getRect(focusSurface).center);
+    await tester.pump();
+
+    expect(focusNode.hasFocus, isTrue);
   });
 
   testWidgets(
