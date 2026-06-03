@@ -6,6 +6,7 @@ import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/debug/debug_cache_panel_projection.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
@@ -29,6 +30,7 @@ import 'package:ai_chat/services/agent_planner_service.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/default_tool_adapters.dart';
+import 'package:ai_chat/services/debug/llm_cache_stats_service.dart';
 import 'package:ai_chat/services/model_budget_registry.dart';
 import 'package:ai_chat/services/session_context_projector.dart';
 import 'package:ai_chat/services/session_context_service.dart';
@@ -42,6 +44,7 @@ import 'package:ai_chat/services/turn_harness.dart';
 import 'package:ai_chat/services/turn_verifier.dart';
 import 'package:ai_chat/tools/adapters/tool_host_adapters.dart';
 import 'package:ai_chat/tools/default_tool_runtime_registry.dart';
+import 'package:ai_chat/utils/logger.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
@@ -59,6 +62,7 @@ class ChatSendLiveTestHarness {
   final ProviderContainer container;
   final DatabaseHelper databaseHelper;
   final AppSettingsRepository settingsRepository;
+  final ChatService chatService;
   final String databasePath;
   final ChatSendLiveFixtureBuilder fixtureBuilder;
   final Directory workspaceRoot;
@@ -70,6 +74,7 @@ class ChatSendLiveTestHarness {
     required this.container,
     required this.databaseHelper,
     required this.settingsRepository,
+    required this.chatService,
     required this.databasePath,
     required this.fixtureBuilder,
     required this.workspaceRoot,
@@ -290,6 +295,7 @@ class ChatSendLiveTestHarness {
       container: container,
       databaseHelper: databaseHelper,
       settingsRepository: settingsRepository,
+      chatService: chatService,
       databasePath: databaseName,
       fixtureBuilder: fixtureBuilder,
       workspaceRoot: workspaceRoot,
@@ -476,6 +482,40 @@ class ChatSendLiveTestHarness {
 
   Future<String> readWorkspaceFile(String relativePath) {
     return File(path.join(workspaceRoot.path, relativePath)).readAsString();
+  }
+
+  Future<String> summarizeMessages(List<ChatMessage> messages) {
+    return chatService.llm.summarizeConversation(messages);
+  }
+
+  Future<void> clearLogFile() async {
+    final logFilePath = Logger.logFilePath;
+    if (logFilePath == null || logFilePath.trim().isEmpty) {
+      return;
+    }
+    final file = File(logFilePath);
+    if (!file.existsSync()) {
+      return;
+    }
+    await file.writeAsString('');
+  }
+
+  Future<DebugCachePanelProjection> readRecentCacheStats({
+    int sampleSize = 100,
+  }) {
+    return LlmCacheStatsService().readRecentStats(sampleSize: sampleSize);
+  }
+
+  Future<String> readLogFileText() async {
+    final logFilePath = Logger.logFilePath;
+    if (logFilePath == null || logFilePath.trim().isEmpty) {
+      return '';
+    }
+    final file = File(logFilePath);
+    if (!file.existsSync()) {
+      return '';
+    }
+    return file.readAsString();
   }
 
   Future<void> dispose() async {

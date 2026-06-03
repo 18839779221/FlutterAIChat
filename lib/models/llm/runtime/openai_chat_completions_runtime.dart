@@ -203,11 +203,26 @@ class OpenAiChatCompletionsRuntime extends ProtocolExecutionRuntime {
     return oai.OpenAIClient(
       config: oai.OpenAIConfig(
         authProvider: oai.ApiKeyProvider(runtimeConfig.apiKey),
-        baseUrl: runtimeConfig.apiUrl,
+        baseUrl: _normalizeBaseUrl(runtimeConfig.apiUrl),
         timeout: timeout,
       ),
       httpClient: _httpClient,
       streamClientFactory: _streamClientFactory,
     );
+  }
+
+  String _normalizeBaseUrl(String apiUrl) {
+    final uri = Uri.parse(apiUrl.trim());
+    if (uri.path.endsWith('/chat/completions')) {
+      final basePath = uri.path.substring(
+        0,
+        uri.path.length - '/chat/completions'.length,
+      );
+      return uri
+          .replace(path: basePath, query: null, fragment: null)
+          .toString()
+          .replaceFirst(RegExp(r'/$'), '');
+    }
+    return apiUrl.trim().replaceFirst(RegExp(r'/$'), '');
   }
 }

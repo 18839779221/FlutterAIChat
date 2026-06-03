@@ -60,7 +60,15 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
           rawResponseJson: responseJson,
           cacheUsage: extractedUsage,
         );
-      } catch (_) {
+      } catch (error, stackTrace) {
+        Logger.w(
+          'OpenAiResponsesRuntime',
+          'responses sdk execution failed, falling back to raw http: $error',
+        );
+        Logger.trace(
+          'OpenAiResponsesRuntime',
+          'responses sdk failure stack: $stackTrace',
+        );
         final fallback = await _executeFallbackJson(
           payload: spec.request.toJson(),
           runtimeConfig: runtimeConfig,
@@ -183,12 +191,27 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
     return oai.OpenAIClient(
       config: oai.OpenAIConfig(
         authProvider: oai.ApiKeyProvider(runtimeConfig.apiKey),
-        baseUrl: runtimeConfig.apiUrl,
+        baseUrl: _normalizeBaseUrl(runtimeConfig.apiUrl),
         timeout: timeout,
       ),
       httpClient: _httpClient,
       streamClientFactory: _streamClientFactory,
     );
+  }
+
+  String _normalizeBaseUrl(String apiUrl) {
+    final uri = Uri.parse(apiUrl.trim());
+    if (uri.path.endsWith('/responses')) {
+      final basePath = uri.path.substring(
+        0,
+        uri.path.length - '/responses'.length,
+      );
+      return uri
+          .replace(path: basePath, query: null, fragment: null)
+          .toString()
+          .replaceFirst(RegExp(r'/$'), '');
+    }
+    return apiUrl.trim().replaceFirst(RegExp(r'/$'), '');
   }
 
   Future<Map<String, dynamic>> _executeFallbackJson({

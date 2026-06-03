@@ -2341,6 +2341,76 @@ void main() {
       );
     });
 
+    test(
+        'chat completions summary request posts to configured endpoint without duplicating path',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'role': 'assistant',
+                  'content': 'stable summary',
+                },
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/chat/completions',
+        httpClient: client,
+      );
+
+      final summary = await llm.summarizeConversation([
+        ChatMessage(text: '历史消息', role: MessageRole.user),
+      ]);
+
+      expect(summary, 'stable summary');
+      expect(client.lastRequest?.url.path, '/v1/chat/completions');
+    });
+
+    test(
+        'responses summary request posts to configured endpoint without duplicating path',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'id': 'resp_summary',
+            'output': [
+              {
+                'type': 'message',
+                'content': [
+                  {
+                    'type': 'output_text',
+                    'text': 'stable summary',
+                  },
+                ],
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://planner.example/v1/responses',
+        httpClient: client,
+      );
+
+      final summary = await llm.summarizeConversation([
+        ChatMessage(text: '历史消息', role: MessageRole.user),
+      ]);
+
+      expect(summary, 'stable summary');
+      expect(client.lastRequest?.url.path, '/v1/responses');
+    });
+
     test('retries summary request on socket exception before succeeding',
         () async {
       var attempts = 0;
