@@ -155,6 +155,36 @@ void main() {
       expect(config.model, 'gpt-5-mini');
     });
 
+    test('allows saving provider before models are discovered', () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final repository = AppSettingsRepository(
+        preferences,
+        localDefaultsLoader: () async => null,
+      );
+
+      await repository.saveProvider(
+        const LlmProviderConfig(
+          id: 'openai',
+          name: 'OpenAI',
+          apiKey: 'key',
+          baseUrl: 'https://api.openai.com/v1',
+          models: [],
+        ),
+      );
+
+      final providers = await repository.getProviders();
+      final selection = await repository.getSelectionState();
+
+      expect(providers, hasLength(1));
+      expect(providers.single.id, 'openai');
+      expect(providers.single.models, isEmpty);
+      expect(selection.selectedProviderId, 'openai');
+      expect(selection.selectedModelId, isNull);
+      expect(selection.defaultProviderId, 'openai');
+      expect(selection.defaultModelId, isNull);
+    });
+
     test('falls back to first provider model when selected model disappears',
         () async {
       SharedPreferences.setMockInitialValues({});

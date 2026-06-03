@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/chat_group.dart';
 import '../models/llm/llm_provider_config.dart';
 import '../models/llm/llm_provider_model.dart';
-import '../models/llm/api_protocol_resolver.dart';
 import '../models/skill/duplicate_skill_invocation_mode.dart';
 import '../models/skill/skill_descriptor.dart';
 import '../models/tool/tool_policy.dart';
@@ -29,7 +28,6 @@ class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
-  bool _autoShowKeyboard = true;
   bool _isLoading = true;
   bool _isTestingModel = false;
   bool _isLoadingSkills = true;
@@ -40,7 +38,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   List<String> _trustedToolNames = const [];
   List<SkillDescriptor> _skills = const [];
   String? _latestSkillInstallUrl;
-  List<LlmProviderConfig> _providers = const [];
   LlmProviderConfig? _currentProvider;
   LlmProviderModel? _currentModel;
   final WorkspaceBindingService _workspaceBindingService =
@@ -92,7 +89,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
 
     setState(() {
-      _providers = providers;
       _currentProvider = currentProvider;
       _currentModel = currentModel;
       _toolExecutionMode = _parseToolExecutionMode(toolExecutionModeName);
@@ -241,49 +237,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
   }
 
-  Future<void> _selectProvider(LlmProviderConfig provider) async {
-    final nextModel = provider.models.isEmpty ? null : provider.models.first;
-    if (nextModel == null) {
-      return;
-    }
-    await ref.read(appSettingsRepositoryProvider).selectProviderAndModel(
-          providerId: provider.id,
-          modelId: nextModel.id,
-        );
-    _syncDraftGroupProviderStyle(provider);
-    await _loadSettings();
-  }
-
-  Future<void> _selectModel(LlmProviderModel model) async {
-    final provider = _currentProvider;
-    if (provider == null) {
-      return;
-    }
-    await ref.read(appSettingsRepositoryProvider).selectProviderAndModel(
-          providerId: provider.id,
-          modelId: model.id,
-        );
-    await _loadSettings();
-  }
-
-  void _syncDraftGroupProviderStyle(LlmProviderConfig provider) {
-    final currentGroup = ref.read(currentGroupProvider);
-    if (currentGroup == null || currentGroup.id != null) {
-      return;
-    }
-
-    final nextStyle = const ApiProtocolResolver()
-        .resolveStyle(provider.baseUrl)
-        .toChatTurnProviderStyle();
-    if (currentGroup.lockedProviderStyle == nextStyle) {
-      return;
-    }
-
-    ref.read(currentGroupProvider.notifier).state = currentGroup.copyWith(
-          lockedProviderStyle: nextStyle,
-        );
-  }
-
   Future<void> _testCurrentModel() async {
     final provider = _currentProvider;
     final model = _currentModel;
@@ -323,47 +276,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         });
       }
     }
-  }
-
-  Future<void> _openProviderPicker() async {
-    if (_providers.isEmpty) {
-      return;
-    }
-    final selected = await showModalBottomSheet<LlmProviderConfig>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => _SelectionSheet<LlmProviderConfig>(
-        title: '选择提供方',
-        items: _providers,
-        isSelected: (item) => item.id == _currentProvider?.id,
-        labelBuilder: (item) => item.name,
-      ),
-    );
-    if (selected == null) {
-      return;
-    }
-    await _selectProvider(selected);
-  }
-
-  Future<void> _openModelPicker() async {
-    final provider = _currentProvider;
-    if (provider == null || provider.models.isEmpty) {
-      return;
-    }
-    final selected = await showModalBottomSheet<LlmProviderModel>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => _SelectionSheet<LlmProviderModel>(
-        title: '选择模型',
-        items: provider.models,
-        isSelected: (item) => item.id == _currentModel?.id,
-        labelBuilder: (item) => item.displayName,
-      ),
-    );
-    if (selected == null) {
-      return;
-    }
-    await _selectModel(selected);
   }
 
   List<String> _workspaceChoices(ChatGroup? currentGroup, List<ChatGroup> groups) {
@@ -429,7 +341,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final activeTheme = ref.watch(appThemeControllerProvider);
     final currentGroup = ref.watch(currentGroupProvider);
     final groups = ref.watch(groupsProvider);
-    final isProviderLocked = currentGroup?.id != null;
     final workspaceChoices = _workspaceChoices(currentGroup, groups);
     final workspaceSubtitle = currentGroup == null
         ? '先进入一个对话，再设置 workspace。'
@@ -445,86 +356,25 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           : ListView(
               padding: EdgeInsets.all(spacing.lg),
               children: [
-                Container(
-                  padding: EdgeInsets.all(spacing.lg),
-                  decoration: BoxDecoration(
-                    color: colors.assistantSurface,
-                    borderRadius: BorderRadius.circular(radius.lg),
-                    border: Border.all(color: colors.divider),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Precision Settings',
-                        style:
-                            Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  color: colors.primaryText,
-                                ),
-                      ),
-                      SizedBox(height: spacing.xs),
-                      Text(
-                        '高对比、低噪声的控制台配置页。模型接入、工具自动化与界面偏好都在这里统一收口。',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: colors.secondaryText,
-                              height: 1.45,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(height: spacing.lg),
                 SettingsGroupSection(
-                  title: '模型接入',
+                  title: '模型与连接',
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '当前运行时配置来自所选提供方与模型，管理入口会统一维护 provider 与 model 目录。',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: colors.secondaryText,
-                              height: 1.4,
-                            ),
-                      ),
-                      SizedBox(height: spacing.md),
                       SettingsRow(
-                        title: '当前提供方',
-                        subtitle: isProviderLocked
-                            ? '当前会话已锁定 provider，新建会话方可切换'
-                            : provider?.name ?? '暂无提供方',
-                        trailing: Tooltip(
-                          message:
-                              isProviderLocked ? '当前会话已锁定 provider' : '选择提供方',
-                          child: OutlinedButton.icon(
-                            key: const Key('provider-switcher'),
-                            onPressed: isProviderLocked || _providers.isEmpty
-                                ? null
-                                : _openProviderPicker,
-                            icon: const Icon(Icons.unfold_more),
-                            label: const Text('选择'),
-                          ),
-                        ),
+                        title: '当前默认模型',
+                        subtitle: model?.displayName ?? '尚未完成模型接入',
+                        trailing: const SizedBox.shrink(),
                       ),
                       Divider(color: colors.divider, height: spacing.md * 2),
                       SettingsRow(
-                        title: '当前模型',
-                        subtitle: model?.displayName ?? '暂无模型',
-                        trailing: Tooltip(
-                          message: '选择模型',
-                          child: OutlinedButton.icon(
-                            onPressed:
-                                provider == null || provider.models.isEmpty
-                                    ? null
-                                    : _openModelPicker,
-                            icon: const Icon(Icons.unfold_more),
-                            label: const Text('选择'),
-                          ),
-                        ),
+                        title: '当前 Provider',
+                        subtitle: provider?.name ?? '尚未配置 Provider',
+                        trailing: const SizedBox.shrink(),
                       ),
                       Divider(color: colors.divider, height: spacing.md * 2),
                       SettingsRow(
-                        title: 'Base URL',
+                        title: '连接地址',
                         subtitle: provider?.baseUrl ?? '未配置',
                         trailing: const SizedBox.shrink(),
                       ),
@@ -532,14 +382,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       Row(
                         children: [
                           Expanded(
-                            child: OutlinedButton(
+                            child: FilledButton(
                               onPressed: _openModelManagement,
-                              child: const Text('管理模型'),
+                              child: const Text('进入模型配置'),
                             ),
                           ),
                           SizedBox(width: spacing.md),
                           Expanded(
-                            child: FilledButton(
+                            child: OutlinedButton(
                               onPressed:
                                   _isTestingModel ? null : _testCurrentModel,
                               child: _isTestingModel
@@ -791,14 +641,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         ),
                       ),
                       SizedBox(height: spacing.md),
-                      Text(
-                        '主题作为一等公民管理。当前提供 Claude 与 Olive Paper 两套主题，后续可以继续扩展。',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: colors.secondaryText,
-                              height: 1.4,
-                            ),
-                      ),
-                      SizedBox(height: spacing.md),
                       Wrap(
                         spacing: spacing.sm,
                         runSpacing: spacing.sm,
@@ -812,32 +654,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                   .setTheme(theme.id),
                             ),
                         ],
-                      ),
-                      Divider(color: colors.divider, height: spacing.md * 2),
-                      SettingsRow(
-                        title: '自动显示键盘',
-                        subtitle: '打开聊天页时自动聚焦输入区域。',
-                        trailing: Switch(
-                          value: _autoShowKeyboard,
-                          onChanged: (bool value) {
-                            setState(() {
-                              _autoShowKeyboard = value;
-                            });
-                          },
-                        ),
-                      ),
-                      Divider(color: colors.divider, height: spacing.md * 2),
-                      SettingsRow(
-                        title: '清除缓存',
-                        subtitle: '清除本地缓存与临时状态。',
-                        trailing: OutlinedButton(
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('清除缓存功能待补充')),
-                            );
-                          },
-                          child: const Text('执行'),
-                        ),
                       ),
                     ],
                   ),

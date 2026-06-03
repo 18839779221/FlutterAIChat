@@ -71,8 +71,8 @@ lib/
 
 #### 2. 消息列表缺少出现动画
 **现状**：
-- 新消息直接显示，无过渡
-- 滚动体验使用 `ClampingScrollPhysics`，缺少弹性
+- 新消息已有限制范围的出现动画
+- 滚动体验仍以稳定阅读优先，不把边界弹性作为默认目标
 
 **影响**：
 - 新消息出现突兀
@@ -81,20 +81,13 @@ lib/
 
 **改进方案**：
 ```dart
-// 1. 改用弹性滚动
-physics: const BouncingScrollPhysics()
-
-// 2. 添加消息渐入动画
-AnimatedTimelineRow(
-  duration: 400ms,
-  curve: easeOutCubic,
-  effects: [fade, slideUp],
+ChatTimelineRow(
+  shouldAnimate: isNewItem,
 )
 ```
 
 **预期效果**：
 - 消息优雅地从下方滑入
-- 滚动到边界有弹性反馈
 - 整体体验更流畅
 
 ---
@@ -135,26 +128,26 @@ AnimatedScale(
 #### 4. AI流式回复缺少视觉连续性
 **现状**：
 - 流式文本直接显示
-- 无打字光标指示
-- 用户不确定是否还在生成
+- 正文尾部不再追加装饰性光标
+- 运行信号主要依赖正文外层状态反馈
 
 **影响**：
-- 缺少"AI正在思考"的感知
-- 流式体验不够连贯
+- 如果外层状态表达不稳定，用户仍可能误判是否在继续生成
+- 流式体验容易因为状态信号分散而断裂
 
 **改进方案**：
 ```dart
-// 添加闪烁光标
-StreamingCursor(
-  visible: isStreaming,
-  blinkDuration: 800ms,
+// 保持同一 Markdown 渲染路径
+FinalResponseBlock(
+  text: streamedText,
+  isStreaming: true,
 )
 ```
 
 **预期效果**：
-- 光标闪烁提示正在生成
-- 视觉上更像真实打字
-- 增强AI"思考"的感知
+- 流式态和完成态切换更稳定
+- 运行反馈集中在更低噪音的外层状态面板
+- 避免劣质“伪打字感”动效
 
 ---
 
@@ -290,11 +283,10 @@ AnimatedGradient(
 #### 任务清单
 - [x] 创建动画设计规范文档
 - [x] 实现 `AppMotion` 主题扩展
-- [ ] 创建可复用动画组件库
-  - [ ] `FadeSlideIn` - 渐入滑动组件
-  - [ ] `AnimatedElevation` - 高度动画组件
-  - [ ] `StaggeredList` - 错位列表组件
-  - [ ] `StreamingCursor` - 打字光标组件
+- [ ] 收口现有高频动效入口
+  - [ ] `MessageGrowthAnimation`
+  - [ ] `RunningStatusDot`
+  - [ ] `RunningSweepSurface`
 - [x] 更新 `AppTheme` 集成 `AppMotion`
 
 #### 交付物
@@ -306,11 +298,8 @@ lib/
 │   ├── app_theme_controller.dart # 运行时主题切换与持久化
 │   └── app_theme.dart           # 已更新：集成 AppMotion
 └── widgets/
-    └── animations/              # 新增：动画组件库
-        ├── fade_slide_in.dart
-        ├── animated_elevation.dart
-        ├── staggered_list.dart
-        └── streaming_cursor.dart
+    └── animations/
+        └── message_growth_animation.dart
 ```
 
 #### 验收标准
@@ -326,8 +315,7 @@ lib/
 
 #### 任务清单
 - [ ] **消息列表动画**
-  - [ ] 实现 `AnimatedTimelineRow`
-  - [ ] 改用 `BouncingScrollPhysics`
+  - [ ] 继续校准新增项出现动画
   - [ ] 优化滚动到底部逻辑
   
 - [ ] **输入框交互增强**
@@ -336,8 +324,8 @@ lib/
   - [ ] 状态切换过渡动画
   
 - [ ] **流式回复优化**
-  - [ ] 实现 `StreamingCursor` 组件
-  - [ ] 集成到 `StreamingResponseBlock`
+  - [ ] 保持流式态与完成态共享同一 Markdown 通道
+  - [ ] 将运行信号收敛到正文外层状态反馈
   - [ ] 优化流式文本渲染性能
   
 - [ ] **Reasoning折叠优化**
@@ -347,14 +335,10 @@ lib/
 #### 交付物
 ```
 lib/widgets/
-├── chat_timeline/
-│   └── animated_timeline_row.dart    # 新增
 ├── chat_input.dart                   # 更新
 ├── chat_blocks/
-│   ├── streaming_response_block.dart # 更新
+│   ├── final_response_block.dart     # 更新
 │   └── reasoning_section.dart        # 更新
-└── animations/
-    └── streaming_cursor.dart         # 新增
 ```
 
 #### 验收标准
@@ -416,7 +400,7 @@ lib/
 #### 任务清单
 - [ ] **性能优化**
   - [ ] 使用 Flutter DevTools 性能分析
-  - [ ] 优化大列表动画（使用 `AnimatedList`）
+  - [ ] 优化大列表动画触发范围
   - [ ] 添加 `RepaintBoundary` 隔离动画区域
   - [ ] 限制同时运行的动画数量
   

@@ -6,7 +6,6 @@ import 'package:ai_chat/tools/core/tool_display_names.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/latest_message_running_status_tail.dart';
-import 'package:ai_chat/widgets/animations/streaming_cursor.dart';
 import 'package:ai_chat/widgets/chat_blocks/unified_turn_status_bar.dart';
 import 'package:ai_chat/widgets/chat_timeline/stable_markdown_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
@@ -392,7 +391,6 @@ $$
       // mounted (active-turn status surfaces the running signal elsewhere).
       expect(find.byType(MarkdownBody), findsOneWidget);
       expect(find.byType(SelectableText), findsNothing);
-      expect(find.byType(StreamingCursor), findsNothing);
     });
 
     testWidgets('completed final response renders Markdown without cursor', (
@@ -411,7 +409,6 @@ $$
       );
 
       expect(find.byType(MarkdownBody), findsOneWidget);
-      expect(find.byType(StreamingCursor), findsNothing);
     });
 
     testWidgets('markdown content is isolated by repaint boundary', (

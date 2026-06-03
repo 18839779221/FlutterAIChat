@@ -234,65 +234,29 @@ class MessageGrowthAnimation extends StatelessWidget {
 **注意事项**：
 - 不要在滚动列表中对所有可见项同时应用
 - 只对新增的项应用动画
-- 使用 `AnimatedList` 管理列表动画
+- 当前主路径通过 `ChatTimelineRow.shouldAnimate` 精确控制新增项动画，不额外引入列表级动画容器
 
 ---
 
-### 2. 工具完成动画 (Tool Completion) ⭐⭐⭐⭐⭐
+### 2. 工具完成反馈 (Tool Completion Feedback) ⭐⭐⭐⭐⭐
 
 **设计意图**：工具从 running → success 的瞬间，需要明确的"完成感"和"仪式感"。
 
-**Claude 的实现**：
-- 状态图标切换（脉冲点 → 对勾）
-- 使用弹性曲线（elasticOut）
-- 有"弹跳"的完成感
+**Claude 的体验特征**：
+- 运行态与完成态有明确区分
+- 完成反馈清晰，但不过度抢占注意力
 
 **规范**：
-- 时长：`emphasized` (400ms) - 强调完成时刻
-- 曲线：`spring` (elasticOut) - 弹性效果
-- 图标：`Icons.check_circle_outline`
+- 终态切换优先使用克制的 `AnimatedSwitcher`
+- 运行态信号优先由 `RunningStatusDot` 和 `ToolStatusBadge` 承担
+- 不为了制造“完成感”强制引入高弹性图标动画
 
 ```dart
-class ToolCompletionAnimation extends StatefulWidget {
-  final ToolWorkflowStepStatus status;
-  final Color successColor;
-  
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 400),
-      switchInCurve: Curves.elasticOut,  // 弹性进入
-      switchOutCurve: Curves.easeIn,     // 快速退出
-      transitionBuilder: (child, animation) {
-        return ScaleTransition(
-          scale: animation,
-          child: FadeTransition(
-            opacity: animation,
-            child: child,
-          ),
-        );
-      },
-      child: _buildStatusIcon(status),
-    );
-  }
-  
-  Widget _buildStatusIcon(ToolWorkflowStepStatus status) {
-    return switch (status) {
-      ToolWorkflowStepStatus.running => RunningStatusDot(
-        key: const ValueKey('running'),
-        color: runningColor,
-        isRunning: true,
-      ),
-      ToolWorkflowStepStatus.completed => Icon(
-        Icons.check_circle_outline,
-        key: const ValueKey('completed'),
-        size: 16,
-        color: successColor,
-      ),
-      _ => const SizedBox.shrink(),
-    };
-  }
-}
+ToolStatusBadge(
+  label: '完成',
+  statusColor: colors.workflowSuccess,
+  icon: Icons.check_rounded,
+)
 ```
 
 **应用场景**：
@@ -301,7 +265,7 @@ class ToolCompletionAnimation extends StatefulWidget {
 - 操作确认反馈
 
 **注意事项**：
-- 弹性曲线不要过度（elasticOut 而非 bounceOut）
+- 完成反馈要清晰，但不要为了“庆祝感”放大动效存在感
 - 完成图标应该保持可见，不要立即消失
 - 配合颜色变化增强反馈
 
@@ -454,69 +418,31 @@ class _PressableButtonState extends State<PressableButton> {
 
 ---
 
-### 5. 流式打字光标 (Streaming Cursor) ⭐⭐⭐⭐⭐
+### 5. 流式态连续性 (Streaming Continuity) ⭐⭐⭐⭐⭐
 
-**设计意图**：流式回复时，光标闪烁提示"AI 正在思考"，增强视觉连续性。
+**设计意图**：流式回复应该保持阅读连续性，让用户清楚系统仍在生成，但不要为了“像打字”强行叠加噪声动效。
 
-**Claude 的实现**：
-- 光标闪烁（不是匀速，而是呼吸节奏）
-- 位置精准跟随文本
-- 透明度变化（0.3 → 1.0）
+**当前结论**：
+- 不再使用内联打字光标
+- 流式态与完成态共享同一 Markdown 渲染通道
+- “仍在生成”的信号由更克制的运行状态条、工具运行态、文本持续增长来承担
 
 **规范**：
-- 时长：`pulse` (800ms) - 呼吸周期
-- 曲线：`breathing` (easeInOutSine) - 平滑无顿挫
-- 透明度：0.3 → 1.0
-- 尺寸：2x18px
+- 不为正文尾部额外追加闪烁光标
+- 不为了制造“打字感”引入高频局部闪烁
+- 优先保证流式态与完成态之间无重挂载、无视觉断层
+- 运行中反馈应放在正文外层的低噪音状态面板，而不是正文末尾装饰
 
+**实现要求**：
 ```dart
-class StreamingCursor extends StatefulWidget {
-  final bool isVisible;
-  final Color color;
-  
-  @override
-  State<StreamingCursor> createState() => _StreamingCursorState();
-}
+FinalResponseBlock(
+  text: streamedText,
+  isStreaming: true,
+)
 
-class _StreamingCursorState extends State<StreamingCursor>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _opacityAnimation;
-  
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    )..repeat(reverse: true);
-    
-    _opacityAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeInOutSine,  // 呼吸曲线
-      ),
-    );
-  }
-  
-  @override
-  Widget build(BuildContext context) {
-    if (!widget.isVisible) return const SizedBox.shrink();
-    
-    return FadeTransition(
-      opacity: _opacityAnimation,
-      child: Container(
-        width: 2,
-        height: 18,
-        margin: const EdgeInsets.only(left: 1),
-        decoration: BoxDecoration(
-          color: widget.color,
-          borderRadius: BorderRadius.circular(1),
-        ),
-      ),
-    );
-  }
-}
+UnifiedTurnStatusBar(
+  status: activeTurnStatus,
+)
 ```
 
 **应用场景**：
@@ -867,39 +793,14 @@ AnimatedRotation(
 
 ---
 
-### 4. `chat_timeline_row.dart` 优化
+### 4. `chat_timeline_row.dart` 现状
 
-**当前问题**：消息直接渲染，无出现动画
+**当前实现**：消息出现动画已落在 `MessageGrowthAnimation`，并由 `shouldAnimate` 只对新增行启用。
 
-**建议添加**：
 ```dart
-// 包装 ChatTimelineRow
-class AnimatedTimelineEntry extends StatefulWidget {
-  final Widget child;
-  
-  @override
-  Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      duration: const Duration(milliseconds: 300),
-      tween: Tween(begin: 0.0, end: 1.0),
-      curve: Curves.easeOutCubic,
-      builder: (context, value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, 20 * (1 - value)),
-            child: Transform.scale(
-              scale: 0.96 + (0.04 * value),
-              alignment: Alignment.topCenter,
-              child: child,
-            ),
-          ),
-        );
-      },
-      child: child,
-    );
-  }
-}
+final displayRow = shouldAnimate
+    ? MessageGrowthAnimation(child: row)
+    : row;
 ```
 
 ---
@@ -938,25 +839,16 @@ AnimatedScale(
 
 ---
 
-### 6. `streaming_response_block.dart` 优化
+### 6. 流式正文块优化
 
-**当前问题**：缺少打字光标
+**当前要求**：保持流式正文和完成正文走同一渲染路径，不再追加打字光标。
 
-**建议添加**：
+**建议方向**：
 ```dart
-Row(
-  crossAxisAlignment: CrossAxisAlignment.start,
-  children: [
-    Expanded(
-      child: MarkdownBody(data: text),
-    ),
-    StreamingCursor(
-      isVisible: true,
-      color: colors.workflowRunning,
-    ),
-  ],
-)
+MarkdownBody(data: text)
 ```
+
+配合独立的运行状态展示，而不是在正文尾部附着装饰性光标。
 
 ---
 

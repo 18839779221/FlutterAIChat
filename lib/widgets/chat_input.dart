@@ -13,7 +13,30 @@ import 'chat_input_attachment_strip.dart';
 import 'context_window/context_window_usage_indicator.dart';
 import '../models/chat/send_message_request.dart';
 import '../models/chat/chat_attachment.dart';
+import '../models/llm/llm_provider_config.dart';
+import '../models/llm/llm_provider_model.dart';
+import '../repositories/app_settings_repository.dart';
 import '../utils/logger.dart';
+import '../pages/model_management_page.dart';
+
+final _chatInputModelSelectionProvider = FutureProvider.family
+    .autoDispose<LlmProviderModel?, AppSettingsRepository>((ref, repository) async {
+  final providers = await repository.getProviders();
+  final selection = await repository.getSelectionState();
+  for (final provider in providers) {
+    if (provider.id != selection.selectedProviderId &&
+        provider.id != selection.defaultProviderId) {
+      continue;
+    }
+    for (final model in provider.models) {
+      if (model.id == selection.selectedModelId ||
+          model.id == selection.defaultModelId) {
+        return model;
+      }
+    }
+  }
+  return null;
+});
 
 class ChatInput extends ConsumerStatefulWidget {
   const ChatInput({
@@ -74,6 +97,12 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final contextWindowSnapshot = ref.watch(contextWindowSnapshotProvider);
     final skillCatalog = ref.watch(enabledSkillCatalogProvider);
+    AppSettingsRepository? settingsRepository;
+    try {
+      settingsRepository = ref.read(appSettingsRepositoryProvider);
+    } on UnimplementedError {
+      settingsRepository = null;
+    }
     final voiceState = voiceInputController?.state;
     final hasVoiceInput = voiceInputController != null;
     final isVoiceListening = voiceState?.isListening ?? false;
@@ -222,6 +251,136 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final composerBackgroundColor = isVoiceListening
         ? colors.workflowRunning.withValues(alpha: 0.08)
         : Colors.transparent;
+
+    Future<void> openModelPicker() async {
+      final repository = settingsRepository;
+      if (repository == null) {
+        return;
+      }
+      final providers = await repository.getProviders();
+      final selection = await repository.getSelectionState();
+      if (!mounted) {
+        return;
+      }
+      if (providers.isEmpty) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ModelManagementPage(repository: repository),
+          ),
+        );
+        return;
+      }
+
+      LlmProviderConfig provider = providers.first;
+      for (final item in providers) {
+        if (item.id == selection.selectedProviderId ||
+            item.id == selection.defaultProviderId) {
+          provider = item;
+          break;
+        }
+      }
+
+      Future<LlmProviderConfig?> openProviderPicker({
+        required LlmProviderConfig activeProvider,
+      }) {
+        return showModalBottomSheet<LlmProviderConfig>(
+          context: context,
+          backgroundColor: Colors.transparent,
+          isScrollControlled: true,
+          builder: (context) => _ModelProviderPickerSheet(
+            title: '切换 Provider',
+            subtitle: '模型选择保持在主流程里，只有需要时再切换 Provider。',
+            child: Column(
+              children: providers
+                  .map(
+                    (item) => _PickerActionTile(
+                      title: item.name,
+                      subtitle: item.baseUrl,
+                      selected: item.id == activeProvider.id,
+                      trailing: '${item.models.length} 个模型',
+                      onTap: () => Navigator.of(context).pop(item),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          ),
+        );
+      }
+
+      while (mounted) {
+        final models = provider.models;
+        if (models.isEmpty) {
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+                  builder: (_) =>
+                  ModelManagementPage(repository: repository),
+            ),
+          );
+          return;
+        }
+
+        final selectedModel = await showModalBottomSheet<LlmProviderModel>(
+          context: context,
+          backgroundColor: Colors.transparent,
+          isScrollControlled: true,
+          builder: (context) => _ModelProviderPickerSheet(
+            title: '选择 Model',
+            subtitle:
+                '${provider.name} · 优先选择模型；如果当前 Provider 不合适，再切换 Provider。',
+            child: Column(
+              children: [
+                ...models.map(
+                  (model) => _PickerActionTile(
+                    title: model.displayName,
+                    selected: model.id == selection.selectedModelId,
+                    trailing: model.id == selection.defaultModelId
+                        ? '默认'
+                        : null,
+                    onTap: () => Navigator.of(context).pop(model),
+                  ),
+                ),
+                _PickerActionTile(
+                  title: '切换 Provider',
+                  subtitle: '当前：${provider.name}',
+                  trailingIcon: Icons.chevron_right,
+                  onTap: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+          ),
+        );
+
+        if (!mounted) {
+          return;
+        }
+
+        if (selectedModel != null) {
+          await repository.selectProviderAndModel(
+            providerId: provider.id,
+            modelId: selectedModel.id,
+          );
+          if (mounted) {
+            setState(() {});
+          }
+          return;
+        }
+
+        final nextProvider = await openProviderPicker(activeProvider: provider);
+        if (nextProvider == null) {
+          return;
+        }
+        provider = nextProvider;
+      }
+    }
+
+    final modelChipLabel = settingsRepository == null
+        ? '未配置模型'
+        : ref
+            .watch(_chatInputModelSelectionProvider(settingsRepository))
+            .maybeWhen(
+              data: (value) => value?.displayName ?? '未配置模型',
+              orElse: () => '未配置模型',
+            );
 
     return Semantics(
       container: true,
@@ -627,6 +786,49 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                                   ),
                                 ),
                               ),
+                            Padding(
+                              padding: EdgeInsets.only(right: spacing.xxs + 2),
+                              child: OutlinedButton(
+                                key: const ValueKey('chat-input-model-chip'),
+                                onPressed: settingsRepository == null
+                                    ? null
+                                    : openModelPicker,
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size(0, 36),
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: spacing.sm + 2,
+                                    vertical: spacing.xxs + 2,
+                                  ),
+                                  backgroundColor:
+                                      colors.chatBackground.withValues(alpha: 0.46),
+                                  side: BorderSide(
+                                    color: colors.semantic.text.inverse
+                                        .withValues(alpha: 0.2),
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius:
+                                        BorderRadius.circular(radius.pill),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.auto_awesome_outlined,
+                                      size: 15,
+                                      color: colors.secondaryText,
+                                    ),
+                                    SizedBox(width: spacing.xxs + 2),
+                                    Flexible(
+                                      child: Text(
+                                        modelChipLabel,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                             const Spacer(),
                             contextWindowSnapshot.maybeWhen(
                               data: (snapshot) {
@@ -812,6 +1014,187 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       },
     );
     return shouldContinue == true ? true : null;
+  }
+}
+
+class _ModelProviderPickerSheet extends StatelessWidget {
+  const _ModelProviderPickerSheet({
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
+
+  final String title;
+  final String subtitle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final radius = Theme.of(context).extension<AppRadius>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+    final maxHeight = MediaQuery.of(context).size.height * 0.78;
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          spacing.md,
+          spacing.md,
+          spacing.md,
+          spacing.md + MediaQuery.of(context).padding.bottom,
+        ),
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight, maxWidth: 640),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: colors.settingsPanelBackground,
+                borderRadius: BorderRadius.circular(radius.lg),
+                border: Border.all(color: colors.divider),
+                boxShadow: [
+                  BoxShadow(
+                    color: colors.primaryText.withValues(alpha: 0.08),
+                    blurRadius: 28,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: EdgeInsets.all(spacing.lg),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                      SizedBox(height: spacing.xxs),
+                      Text(
+                        subtitle,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: colors.secondaryText,
+                              height: 1.45,
+                            ),
+                      ),
+                      SizedBox(height: spacing.md),
+                      child,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PickerActionTile extends StatelessWidget {
+  const _PickerActionTile({
+    required this.title,
+    required this.onTap,
+    this.subtitle,
+    this.selected = false,
+    this.trailing,
+    this.trailingIcon,
+  });
+
+  final String title;
+  final String? subtitle;
+  final bool selected;
+  final String? trailing;
+  final IconData? trailingIcon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final radius = Theme.of(context).extension<AppRadius>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: spacing.sm),
+      child: Material(
+        color: selected
+            ? colors.assistantSurface.withValues(alpha: 0.98)
+            : colors.chatBackground.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(radius.lg),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(radius.lg),
+          onTap: onTap,
+          child: Padding(
+            padding: EdgeInsets.all(spacing.md),
+            child: Row(
+              children: [
+                if (selected)
+                  Padding(
+                    padding: EdgeInsets.only(right: spacing.sm),
+                    child: Icon(
+                      Icons.check_circle_rounded,
+                      size: 18,
+                      color: colors.workflowRunning,
+                    ),
+                  )
+                else
+                  SizedBox(width: spacing.lg + 2),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                      if (subtitle != null) ...[
+                        SizedBox(height: spacing.xxs),
+                        Text(
+                          subtitle!,
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: colors.secondaryText,
+                                    height: 1.4,
+                                  ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (trailing != null)
+                  Padding(
+                    padding: EdgeInsets.only(left: spacing.sm),
+                    child: Text(
+                      trailing!,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                            color: selected
+                                ? colors.workflowRunning
+                                : colors.secondaryText,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ),
+                if (trailingIcon != null)
+                  Padding(
+                    padding: EdgeInsets.only(left: spacing.sm),
+                    child: Icon(
+                      trailingIcon,
+                      size: 18,
+                      color: colors.secondaryText,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

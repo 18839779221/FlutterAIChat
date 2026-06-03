@@ -4,10 +4,14 @@ import 'package:ai_chat/models/chat/active_turn_status_presentation.dart';
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/llm/llm_provider_config.dart';
+import 'package:ai_chat/models/llm/llm_selection_state.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
+import 'package:ai_chat/pages/model_management_page.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
+import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/services/chat_block_builder.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/utils/logger.dart';
@@ -171,20 +175,59 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     _previousItemCount = timelineItems.length;
 
     if (messages.isEmpty) {
+      AppSettingsRepository? repository;
+      try {
+        repository = ref.read(appSettingsRepositoryProvider);
+      } on UnimplementedError {
+        repository = null;
+      }
       _scheduleActiveStatusVisibilitySync(
         activeStatus: null,
         hasAnchor: false,
       );
-      return ChatEmptyState(
-        suggestions: buildChatEmptySuggestionsFromCases(
-          ref.watch(featuredDebugTestCasesProvider),
+      if (repository == null) {
+        return ChatEmptyState(
+          suggestions: buildChatEmptySuggestionsFromCases(
+            ref.watch(featuredDebugTestCasesProvider),
+          ),
+          onSuggestionSelected: (prompt) {
+            textController.value = TextEditingValue(
+              text: prompt,
+              selection: TextSelection.collapsed(offset: prompt.length),
+            );
+            focusNode.requestFocus();
+          },
+        );
+      }
+      final providerFuture = repository.getProviders();
+      final selectionFuture = repository.getSelectionState();
+      return FutureBuilder<_EmptyStateModelSetupState>(
+        future: _buildEmptyStateModelSetupState(
+          providersFuture: providerFuture,
+          selectionFuture: selectionFuture,
         ),
-        onSuggestionSelected: (prompt) {
-          textController.value = TextEditingValue(
-            text: prompt,
-            selection: TextSelection.collapsed(offset: prompt.length),
+        builder: (context, snapshot) {
+          final showModelSetupCallout = snapshot.data?.requiresSetup ?? false;
+          return ChatEmptyState(
+            showModelSetupCallout: showModelSetupCallout,
+            onConfigureModel: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ModelManagementPage(repository: repository!),
+                ),
+              );
+            },
+            suggestions: buildChatEmptySuggestionsFromCases(
+              ref.watch(featuredDebugTestCasesProvider),
+            ),
+            onSuggestionSelected: (prompt) {
+              textController.value = TextEditingValue(
+                text: prompt,
+                selection: TextSelection.collapsed(offset: prompt.length),
+              );
+              focusNode.requestFocus();
+            },
           );
-          focusNode.requestFocus();
         },
       );
     }
@@ -248,6 +291,52 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
         ],
       ),
     );
+  }
+
+  Future<_EmptyStateModelSetupState> _buildEmptyStateModelSetupState({
+    required Future<List<LlmProviderConfig>> providersFuture,
+    required Future<LlmSelectionState> selectionFuture,
+  }) async {
+    final providers = await providersFuture;
+    final selection = await selectionFuture;
+    if (providers.isEmpty) {
+      return const _EmptyStateModelSetupState(requiresSetup: true);
+    }
+    final selectedProviderId = selection.selectedProviderId as String?;
+    final defaultProviderId = selection.defaultProviderId as String?;
+    final selectedModelId = selection.selectedModelId as String?;
+    final defaultModelId = selection.defaultModelId as String?;
+
+    LlmProviderConfig? provider;
+    for (final candidateId in [selectedProviderId, defaultProviderId]) {
+      if (candidateId == null) {
+        continue;
+      }
+      for (final item in providers) {
+        if (item.id == candidateId) {
+          provider = item;
+          break;
+        }
+      }
+      if (provider != null) {
+        break;
+      }
+    }
+    provider ??= providers.first;
+    if (provider.models.isEmpty) {
+      return const _EmptyStateModelSetupState(requiresSetup: true);
+    }
+    for (final candidateId in [selectedModelId, defaultModelId]) {
+      if (candidateId == null) {
+        continue;
+      }
+      for (final model in provider.models) {
+        if (model.id == candidateId) {
+          return const _EmptyStateModelSetupState(requiresSetup: false);
+        }
+      }
+    }
+    return const _EmptyStateModelSetupState(requiresSetup: true);
   }
 
   List<ChatTimelineItem> _buildTimelineItems(
@@ -717,4 +806,10 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     }
     notifier.state = nextState;
   }
+}
+
+class _EmptyStateModelSetupState {
+  const _EmptyStateModelSetupState({required this.requiresSetup});
+
+  final bool requiresSetup;
 }

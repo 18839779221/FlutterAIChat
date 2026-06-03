@@ -231,6 +231,87 @@ void main() {
     );
   });
 
+  testWidgets('chat input shows current model chip before token usage', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final settingsRepository = AppSettingsRepository(
+      preferences,
+      localDefaultsLoader: () async => const LlmLocalDefaults(
+        defaultProviderId: 'aigocode',
+        defaultModelId: 'gpt-4o-mini',
+        providers: [
+          LlmProviderConfig(
+            id: 'aigocode',
+            name: 'AIGoCode',
+            apiKey: 'key',
+            baseUrl: 'https://api.aigocode.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-4o-mini', name: ''),
+            ],
+          ),
+        ],
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
+        contextWindowSnapshotProvider.overrideWith(
+          (ref) async => _contextSnapshot(0.54),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('chat-input-model-chip')), findsOneWidget);
+    expect(find.text('gpt-4o-mini'), findsOneWidget);
+    expect(find.text('54%'), findsOneWidget);
+  });
+
+  testWidgets('chat input shows unconfigured model chip when no model selected',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final settingsRepository = AppSettingsRepository(
+      preferences,
+      localDefaultsLoader: () async => null,
+    );
+    final container = ProviderContainer(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('chat-input-model-chip')), findsOneWidget);
+    expect(find.text('未配置模型'), findsOneWidget);
+  });
+
   testWidgets(
       'chat input does not show pending label while awaiting confirmation', (
     tester,

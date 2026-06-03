@@ -58,12 +58,15 @@ class AppSettingsRepository {
     }
 
     await _writeProviders(defaults.providers);
+    final defaultProvider = defaults.providers.first;
+    final seededDefaultModelId = defaults.defaultModelId ??
+        (defaultProvider.models.isEmpty ? null : defaultProvider.models.first.id);
     await _writeSelection(
       LlmSelectionState(
-        selectedProviderId: defaults.defaultProviderId ?? defaults.providers.first.id,
-        selectedModelId: defaults.defaultModelId ?? defaults.providers.first.models.first.id,
-        defaultProviderId: defaults.defaultProviderId ?? defaults.providers.first.id,
-        defaultModelId: defaults.defaultModelId ?? defaults.providers.first.models.first.id,
+        selectedProviderId: defaults.defaultProviderId ?? defaultProvider.id,
+        selectedModelId: seededDefaultModelId,
+        defaultProviderId: defaults.defaultProviderId ?? defaultProvider.id,
+        defaultModelId: seededDefaultModelId,
       ),
     );
     await _preferences.setBool(_providersSeededKey, true);
@@ -92,8 +95,7 @@ class AppSettingsRepository {
           (item) =>
               item.id.isNotEmpty &&
               item.name.isNotEmpty &&
-              item.baseUrl.isNotEmpty &&
-              item.models.isNotEmpty,
+              item.baseUrl.isNotEmpty,
         )
         .toList(growable: false);
   }
@@ -544,10 +546,9 @@ class AppSettingsRepository {
         ) ??
         availableProviders.first;
     final defaultModel = _resolveModel(
-          defaultProvider,
-          selection.defaultModelId,
-        ) ??
-        defaultProvider.models.first;
+      defaultProvider,
+      selection.defaultModelId,
+    );
 
     final selectedProvider = _resolveProvider(
           availableProviders,
@@ -556,18 +557,17 @@ class AppSettingsRepository {
         ) ??
         defaultProvider;
     final selectedModel = _resolveModel(
-          selectedProvider,
-          selection.selectedModelId,
-          fallbackModelId:
-              selectedProvider.id == defaultProvider.id ? defaultModel.id : null,
-        ) ??
-        selectedProvider.models.first;
+      selectedProvider,
+      selection.selectedModelId,
+      fallbackModelId:
+              selectedProvider.id == defaultProvider.id ? defaultModel?.id : null,
+    );
 
     return LlmSelectionState(
       selectedProviderId: selectedProvider.id,
-      selectedModelId: selectedModel.id,
+      selectedModelId: selectedModel?.id,
       defaultProviderId: defaultProvider.id,
-      defaultModelId: defaultModel.id,
+      defaultModelId: defaultModel?.id,
     );
   }
 

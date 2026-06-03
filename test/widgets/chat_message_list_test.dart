@@ -5,11 +5,15 @@ import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/debug/debug_test_case.dart';
+import 'package:ai_chat/models/llm/llm_provider_config.dart';
+import 'package:ai_chat/models/llm/llm_provider_model.dart';
 import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
+import 'package:ai_chat/repositories/app_settings_repository.dart';
+import 'package:ai_chat/repositories/llm_local_defaults.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/artifact_preview_surface.dart';
@@ -28,6 +32,7 @@ import 'package:ai_chat/widgets/tool_renderers/web_search_tool_result_card.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Helpers that distinguish the two visual phases of `FinalResponseBlock`
 // after the streaming/completed widgets were unified into one Markdown path.
@@ -48,6 +53,60 @@ void main() {
       expect(find.text('从一个问题开始，或让助手帮你推进下一步。'), findsOneWidget);
       expect(find.text('纯文本直答'), findsOneWidget);
       expect(find.text('单工具自动执行'), findsOneWidget);
+    });
+
+    testWidgets('empty conversation shows model setup callout before suggestions',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final repository = AppSettingsRepository(
+        preferences,
+        localDefaultsLoader: () async => null,
+      );
+
+      await _pumpMessageList(
+        tester,
+        messages: const [],
+        repository: repository,
+      );
+      await tester.pump();
+
+      expect(find.text('去配置模型'), findsOneWidget);
+      expect(find.text('开始一段新的对话'), findsNothing);
+    });
+
+    testWidgets('configured conversation still shows default empty suggestions',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final repository = AppSettingsRepository(
+        preferences,
+        localDefaultsLoader: () async => const LlmLocalDefaults(
+          defaultProviderId: 'aigocode',
+          defaultModelId: 'gpt-5.4',
+          providers: [
+            LlmProviderConfig(
+              id: 'aigocode',
+              name: 'AIGoCode',
+              apiKey: 'key',
+              baseUrl: 'https://api.aigocode.com/v1',
+              models: [
+                LlmProviderModel(id: 'gpt-5.4', name: 'GPT-5.4'),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      await _pumpMessageList(
+        tester,
+        messages: const [],
+        repository: repository,
+      );
+      await tester.pump();
+
+      expect(find.text('开始一段新的对话'), findsOneWidget);
+      expect(find.text('去配置模型'), findsNothing);
     });
 
     testWidgets(
@@ -1930,6 +1989,7 @@ Future<void> _pumpMessageList(
   TextEditingController? textController,
   FocusNode? focusNode,
   ToolUiRendererRegistry? registry,
+  AppSettingsRepository? repository,
   ChatSendPhase sendPhase = ChatSendPhase.idle,
   String? sendStatusText,
 }) async {
@@ -1986,6 +2046,8 @@ Future<void> _pumpMessageList(
       if (textController != null)
         textControllerProvider.overrideWith((ref) => textController),
       if (focusNode != null) focusNodeProvider.overrideWith((ref) => focusNode),
+      if (repository != null)
+        appSettingsRepositoryProvider.overrideWithValue(repository),
       chatSendStateProvider.overrideWith(
         (ref) => ChatSendStateNotifier()
           ..update(

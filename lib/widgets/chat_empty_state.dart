@@ -34,11 +34,15 @@ List<ChatEmptySuggestion> buildChatEmptySuggestionsFromCases(
 class ChatEmptyState extends StatelessWidget {
   final ValueChanged<String>? onSuggestionSelected;
   final List<ChatEmptySuggestion> suggestions;
+  final bool showModelSetupCallout;
+  final VoidCallback? onConfigureModel;
 
   const ChatEmptyState({
     super.key,
     this.onSuggestionSelected,
     this.suggestions = const <ChatEmptySuggestion>[],
+    this.showModelSetupCallout = false,
+    this.onConfigureModel,
   });
 
   @override
@@ -67,76 +71,227 @@ class ChatEmptyState extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '开始一段新的对话',
-                    style: TextStyle(
-                      color: colors.primaryText,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
-                      height: 1.12,
-                    ),
-                  ),
-                  SizedBox(height: spacing.sm),
-                  Text(
-                    '从一个问题开始，或让助手帮你推进下一步。',
-                    style: TextStyle(
-                      color: colors.secondaryText,
-                      fontSize: 14,
-                      height: 1.5,
-                    ),
-                  ),
-                  SizedBox(height: spacing.lg + spacing.sm),
-                  Wrap(
-                    spacing: spacing.xxs + 2,
-                    runSpacing: spacing.xxs + 2,
-                    children: suggestions
-                        .map(
-                          (suggestion) => Container(
-                            decoration: BoxDecoration(
-                              color: colors.assistantSurface
-                                  .withValues(alpha: 0.78),
-                              borderRadius: BorderRadius.circular(radius.pill),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: colors.primaryText
-                                      .withValues(alpha: 0.04),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 3),
+                  if (showModelSetupCallout)
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            colors.assistantSurface.withValues(alpha: 0.96),
+                            colors.settingsPanelBackground.withValues(alpha: 0.98),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(radius.lg),
+                        border: Border.all(color: colors.divider),
+                        boxShadow: [
+                          BoxShadow(
+                            color: colors.primaryText.withValues(alpha: 0.05),
+                            blurRadius: 24,
+                            offset: const Offset(0, 12),
+                          ),
+                        ],
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.all(spacing.xl),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: spacing.sm,
+                                vertical: spacing.xxs + 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: colors.workflowRunning
+                                    .withValues(alpha: 0.12),
+                                borderRadius:
+                                    BorderRadius.circular(radius.pill),
+                              ),
+                              child: Text(
+                                '开始前需要完成接入',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelMedium
+                                    ?.copyWith(
+                                      color: colors.workflowRunning,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                              ),
+                            ),
+                            SizedBox(height: spacing.md),
+                            Text(
+                              '先配置 API Key 与模型',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineSmall
+                                  ?.copyWith(
+                                    color: colors.primaryText,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.12,
+                                  ),
+                            ),
+                            SizedBox(height: spacing.sm),
+                            Text(
+                              '当前首页推荐案例已被配置提醒替代。完成 Provider 和默认模型配置后，才能开始新的对话。',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
+                                    color: colors.secondaryText,
+                                    height: 1.55,
+                                  ),
+                            ),
+                            SizedBox(height: spacing.lg),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: FilledButton(
+                                    onPressed: onConfigureModel,
+                                    child: const Text('去配置模型'),
+                                  ),
                                 ),
                               ],
                             ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(radius.pill),
-                                onTap: () =>
-                                    onSuggestionSelected?.call(suggestion.prompt),
-                                child: Padding(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: spacing.sm + spacing.xs,
-                                    vertical: spacing.xxs + 3,
-                                  ),
-                                  child: Text(
-                                    suggestion.label,
-                                    style: TextStyle(
-                                      color: colors.primaryText,
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
+                            SizedBox(height: spacing.sm),
+                            Wrap(
+                              spacing: spacing.sm,
+                              runSpacing: spacing.sm,
+                              children: [
+                                _SetupHintChip(
+                                  label: '统一在模型配置页完成设置',
                                 ),
-                              ),
+                                _SetupHintChip(
+                                  label: '优先使用模型探测',
+                                ),
+                              ],
                             ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else ...[
+                    Text(
+                      '开始一段新的对话',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            color: colors.primaryText,
+                            fontWeight: FontWeight.w700,
+                            height: 1.12,
                           ),
-                        )
-                        .toList(),
-                  ),
+                    ),
+                    SizedBox(height: spacing.sm),
+                    Text(
+                      '从一个问题开始，或让助手帮你推进下一步。',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: colors.secondaryText,
+                            height: 1.5,
+                          ),
+                    ),
+                    SizedBox(height: spacing.lg + spacing.sm),
+                    Wrap(
+                      spacing: spacing.sm,
+                      runSpacing: spacing.sm,
+                      children: suggestions
+                          .map(
+                            (suggestion) => _SuggestionChip(
+                              suggestion: suggestion,
+                              onTap: () =>
+                                  onSuggestionSelected?.call(suggestion.prompt),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ],
                 ],
               ),
             ),
           ),
         );
       },
+    );
+  }
+}
+
+class _SetupHintChip extends StatelessWidget {
+  const _SetupHintChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+    final radius = Theme.of(context).extension<AppRadius>()!;
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.chatBackground.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(radius.pill),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: spacing.sm,
+          vertical: spacing.xxs + 2,
+        ),
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: colors.primaryText,
+                fontWeight: FontWeight.w600,
+              ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SuggestionChip extends StatelessWidget {
+  const _SuggestionChip({
+    required this.suggestion,
+    required this.onTap,
+  });
+
+  final ChatEmptySuggestion suggestion;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+    final radius = Theme.of(context).extension<AppRadius>()!;
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.assistantSurface.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(radius.lg),
+        boxShadow: [
+          BoxShadow(
+            color: colors.primaryText.withValues(alpha: 0.035),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(radius.lg),
+          onTap: onTap,
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: spacing.md,
+              vertical: spacing.sm,
+            ),
+            child: Text(
+              suggestion.label,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: colors.primaryText,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

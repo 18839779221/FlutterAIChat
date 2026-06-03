@@ -3,13 +3,16 @@ import 'package:ai_chat/models/llm/llm_provider_model.dart';
 import 'package:ai_chat/models/llm/llm_selection_state.dart';
 import 'package:ai_chat/pages/model_management_page.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
+import 'package:ai_chat/services/llm_model_discovery_service.dart';
+import 'package:ai_chat/services/llm_model_test_service.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('renders providers and can switch current model', (tester) async {
+  testWidgets('model management renders provider-first list with summary actions',
+      (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -23,7 +26,7 @@ void main() {
         id: 'aigocode',
         name: 'AIGoCode',
         apiKey: 'key',
-        baseUrl: 'https://api.aigocode.com',
+        baseUrl: 'https://api.aigocode.com/v1',
         models: [
           LlmProviderModel(id: 'gpt-5.4', name: ''),
           LlmProviderModel(id: 'gpt-5-mini', name: ''),
@@ -47,19 +50,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('AIGoCode'), findsOneWidget);
-    expect(find.text('gpt-5.4'), findsWidgets);
-    expect(find.text('gpt-5-mini'), findsWidgets);
-    expect(find.text('当前使用'), findsOneWidget);
-
-    await tester.tap(find.widgetWithText(FilledButton, '使用此模型').last);
-    await tester.pumpAndSettle();
-
-    final selection = await repository.getSelectionState();
-    expect(selection.selectedModelId, 'gpt-5-mini');
+    expect(find.text('当前默认模型'), findsOneWidget);
+    expect(find.text('gpt-5.4'), findsOneWidget);
+    expect(find.text('新增 Provider'), findsOneWidget);
+    expect(find.text('AIGoCode'), findsWidgets);
+    expect(find.text('2 个模型'), findsOneWidget);
+    expect(find.text('编辑'), findsWidgets);
+    expect(find.text('删除'), findsWidgets);
+    expect(find.text('使用此模型'), findsNothing);
   });
 
-  testWidgets('can open add provider form from management page', (tester) async {
+  testWidgets('provider detail promotes discover models and fallback manual add',
+      (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -67,6 +69,15 @@ void main() {
     final repository = AppSettingsRepository(
       await SharedPreferences.getInstance(),
       localDefaultsLoader: () async => null,
+    );
+    await repository.saveProvider(
+      const LlmProviderConfig(
+        id: 'openai',
+        name: 'OpenAI',
+        apiKey: 'key',
+        baseUrl: 'https://api.openai.com/v1',
+        models: [],
+      ),
     );
 
     await tester.pumpWidget(
@@ -77,11 +88,91 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('新增提供方'));
+    await tester.tap(find.text('编辑').first);
     await tester.pumpAndSettle();
 
-    expect(find.text('新增提供方'), findsOneWidget);
-    expect(find.text('提供方名称'), findsOneWidget);
+    expect(find.text('探测模型'), findsOneWidget);
+    expect(find.text('手动新增模型'), findsOneWidget);
+    expect(find.text('Provider 名称'), findsOneWidget);
     expect(find.text('模型列表'), findsOneWidget);
+    expect(find.text('使用此模型'), findsNothing);
   });
+
+  testWidgets('discovered models are persisted and can become default',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    SharedPreferences.setMockInitialValues({});
+    final repository = AppSettingsRepository(
+      await SharedPreferences.getInstance(),
+      localDefaultsLoader: () async => null,
+    );
+    await repository.saveProvider(
+      const LlmProviderConfig(
+        id: 'openai',
+        name: 'OpenAI',
+        apiKey: 'key',
+        baseUrl: 'https://api.openai.com/v1',
+        models: [],
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ModelManagementPage(
+          repository: repository,
+          discoveryService: _FakeDiscoveryService(
+            models: const [
+              LlmProviderModel(id: 'gpt-4o-mini', name: ''),
+              LlmProviderModel(id: 'gpt-4.1', name: ''),
+            ],
+          ),
+          testService: _FakeModelTestService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('编辑').first);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('探测模型'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('gpt-4o-mini'), findsWidgets);
+    expect(find.text('gpt-4.1'), findsWidgets);
+
+    await tester.tap(find.text('设为默认').first);
+    await tester.pumpAndSettle();
+
+    final providers = await repository.getProviders();
+    final selection = await repository.getSelectionState();
+    expect(providers.single.models, hasLength(2));
+    expect(selection.defaultModelId, 'gpt-4o-mini');
+  });
+}
+
+class _FakeDiscoveryService extends LlmModelDiscoveryService {
+  _FakeDiscoveryService({required this.models});
+
+  final List<LlmProviderModel> models;
+
+  @override
+  Future<List<LlmProviderModel>> discoverModels({
+    required LlmProviderConfig provider,
+  }) async {
+    return models;
+  }
+}
+
+class _FakeModelTestService extends LlmModelTestService {
+  @override
+  Future<String> testModel({
+    required LlmProviderConfig provider,
+    required LlmProviderModel model,
+  }) async {
+    return 'pong';
+  }
 }
