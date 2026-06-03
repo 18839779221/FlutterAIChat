@@ -2,14 +2,19 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../models/llm/api_protocol_resolver.dart';
 import '../models/llm/llm_provider_config.dart';
 import '../models/llm/llm_provider_model.dart';
 
 class LlmModelDiscoveryService {
-  LlmModelDiscoveryService({http.Client? httpClient})
-      : _httpClient = httpClient ?? http.Client();
+  LlmModelDiscoveryService({
+    http.Client? httpClient,
+    ApiProtocolResolver? protocolResolver,
+  })  : _httpClient = httpClient ?? http.Client(),
+        _protocolResolver = protocolResolver ?? const ApiProtocolResolver();
 
   final http.Client _httpClient;
+  final ApiProtocolResolver _protocolResolver;
 
   Future<List<LlmProviderModel>> discoverModels({
     required LlmProviderConfig provider,
@@ -47,14 +52,7 @@ class LlmModelDiscoveryService {
   }
 
   Uri _buildModelsUri(String baseUrl) {
-    final normalized = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
-    if (normalized.endsWith('/models')) {
-      return Uri.parse(normalized);
-    }
-    if (normalized.endsWith('/v1')) {
-      return Uri.parse('$normalized/models');
-    }
-    return Uri.parse('$normalized/models');
+    return _protocolResolver.buildModelsUri(baseUrl);
   }
 
   Map<String, String> _buildHeaders(LlmProviderConfig provider) {

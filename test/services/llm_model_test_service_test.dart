@@ -8,14 +8,110 @@ import 'package:http/http.dart' as http;
 
 void main() {
   group('LlmModelTestService', () {
+    test('probeModel returns structured pong result with latency', () async {
+      final service = LlmModelTestService(
+        httpClient: _FakeHttpClient(
+          handler: (request) async {
+            return http.Response(
+              jsonEncode({
+                'output': [
+                  {
+                    'type': 'message',
+                    'content': [
+                      {
+                        'type': 'output_text',
+                        'text': 'pong',
+                      },
+                    ],
+                  },
+                ],
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          },
+        ),
+      );
+
+      final result = await service.probeModel(
+        provider: const LlmProviderConfig(
+          id: 'provider',
+          name: 'Provider',
+          apiKey: 'test-key',
+          baseUrl: 'https://api.example.com',
+          models: [
+            LlmProviderModel(id: 'gpt-5.4', name: 'GPT-5.4'),
+          ],
+        ),
+        model: const LlmProviderModel(id: 'gpt-5.4', name: 'GPT-5.4'),
+        probeType: LlmModelProbeType.pong,
+      );
+
+      expect(result.probeType, LlmModelProbeType.pong);
+      expect(result.modelId, 'gpt-5.4');
+      expect(result.responseText, 'pong');
+      expect(result.latency, isNotNull);
+      expect(result.latency >= Duration.zero, isTrue);
+    });
+
+    test('speedTestModel runs ping and pong probes', () async {
+      final requests = <Map<String, dynamic>>[];
+      final service = LlmModelTestService(
+        httpClient: _FakeHttpClient(
+          handler: (request) async {
+            final payload = jsonDecode((request as http.Request).body)
+                as Map<String, dynamic>;
+            requests.add(payload);
+            final input = payload['input'] as String?;
+            final text =
+                input != null && input.contains('ping') ? 'ping' : 'pong';
+            return http.Response(
+              jsonEncode({
+                'output': [
+                  {
+                    'type': 'message',
+                    'content': [
+                      {
+                        'type': 'output_text',
+                        'text': text,
+                      },
+                    ],
+                  },
+                ],
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          },
+        ),
+      );
+
+      final result = await service.speedTestModel(
+        provider: const LlmProviderConfig(
+          id: 'provider',
+          name: 'Provider',
+          apiKey: 'test-key',
+          baseUrl: 'https://api.example.com',
+          models: [
+            LlmProviderModel(id: 'gpt-5.4', name: 'GPT-5.4'),
+          ],
+        ),
+        model: const LlmProviderModel(id: 'gpt-5.4', name: 'GPT-5.4'),
+      );
+
+      expect(requests, hasLength(2));
+      expect(result.ping.responseText, 'ping');
+      expect(result.pong.responseText, 'pong');
+    });
+
     test('returns assistant text for a successful responses request', () async {
       final service = LlmModelTestService(
         httpClient: _FakeHttpClient(
           handler: (request) async {
             expect(request.url.toString(), 'https://api.example.com/responses');
             expect(request.headers['Authorization'], 'Bearer test-key');
-            final payload =
-                jsonDecode((request as http.Request).body) as Map<String, dynamic>;
+            final payload = jsonDecode((request as http.Request).body)
+                as Map<String, dynamic>;
             expect(payload['model'], 'gpt-5.4');
             return http.Response(
               jsonEncode({
@@ -113,6 +209,53 @@ void main() {
             (error) => error.toString(),
             'message',
             contains('Base URL'),
+          ),
+        ),
+      );
+    });
+
+    test('throws when probe response does not match expected word', () async {
+      final service = LlmModelTestService(
+        httpClient: _FakeHttpClient(
+          handler: (request) async => http.Response(
+            jsonEncode({
+              'output': [
+                {
+                  'type': 'message',
+                  'content': [
+                    {
+                      'type': 'output_text',
+                      'text': 'hello',
+                    },
+                  ],
+                },
+              ],
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          ),
+        ),
+      );
+
+      expect(
+        () => service.probeModel(
+          provider: const LlmProviderConfig(
+            id: 'provider',
+            name: 'Provider',
+            apiKey: 'test-key',
+            baseUrl: 'https://api.example.com',
+            models: [
+              LlmProviderModel(id: 'gpt-5.4', name: 'GPT-5.4'),
+            ],
+          ),
+          model: const LlmProviderModel(id: 'gpt-5.4', name: 'GPT-5.4'),
+          probeType: LlmModelProbeType.ping,
+        ),
+        throwsA(
+          isA<Exception>().having(
+            (error) => error.toString(),
+            'message',
+            contains('期望返回'),
           ),
         ),
       );

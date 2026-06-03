@@ -13,6 +13,9 @@ class AppComponentTheme {
     return InputDecorationTheme(
       filled: true,
       fillColor: colors.surfaces.readingSurface,
+      hintStyle: TextStyle(
+        color: colors.text.tertiary,
+      ),
       contentPadding: EdgeInsets.symmetric(
         horizontal: spacing.md,
         vertical: spacing.sm,

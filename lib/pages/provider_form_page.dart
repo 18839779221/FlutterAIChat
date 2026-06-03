@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../models/llm/api_protocol_resolver.dart';
 import '../models/llm/llm_provider_config.dart';
 import '../models/llm/llm_provider_model.dart';
 import '../repositories/app_settings_repository.dart';
 import '../services/llm_model_discovery_service.dart';
+import '../services/llm_model_test_service.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_theme_spec.dart';
@@ -12,13 +14,15 @@ class ProviderFormPage extends StatefulWidget {
   final LlmProviderConfig? initialProvider;
   final AppSettingsRepository repository;
   final LlmModelDiscoveryService discoveryService;
+  final LlmModelTestService testService;
 
-  const ProviderFormPage({
+  ProviderFormPage({
     super.key,
     this.initialProvider,
     required this.repository,
     required this.discoveryService,
-  });
+    LlmModelTestService? testService,
+  }) : testService = testService ?? LlmModelTestService();
 
   @override
   State<ProviderFormPage> createState() => _ProviderFormPageState();
@@ -26,13 +30,18 @@ class ProviderFormPage extends StatefulWidget {
 
 class _ProviderFormPageState extends State<ProviderFormPage> {
   final _formKey = GlobalKey<FormState>();
+  final ApiProtocolResolver _protocolResolver = const ApiProtocolResolver();
   late final TextEditingController _nameController;
   late final TextEditingController _baseUrlController;
   late final TextEditingController _apiKeyController;
+  late final FocusNode _apiKeyFocusNode;
   late List<_EditableModelRow> _models;
+  late ApiStyle _selectedApiStyle;
+  late String _apiKeyValue;
 
   bool _isDiscovering = false;
   bool _isSaving = false;
+  bool _isSpeedTesting = false;
 
   bool get _isEdit => widget.initialProvider != null;
 
@@ -42,12 +51,20 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
     final provider = widget.initialProvider;
     _nameController = TextEditingController(text: provider?.name ?? '');
     _baseUrlController = TextEditingController(text: provider?.baseUrl ?? '');
-    _apiKeyController = TextEditingController(text: provider?.apiKey ?? '');
+    _apiKeyValue = provider?.apiKey ?? '';
+    _apiKeyController =
+        TextEditingController(text: _maskedApiKey(_apiKeyValue));
+    _apiKeyFocusNode = FocusNode()..addListener(_handleApiKeyFocusChange);
+    _selectedApiStyle = _resolvedApiStyleForInput(provider?.baseUrl ?? '');
+    _baseUrlController.addListener(_syncApiStyleFromBaseUrlInput);
     _models = provider?.models
             .map(
-              (item) => _EditableModelRow(
+              (item) => _EditableModelRow.synced(
                 idController: TextEditingController(text: item.id),
-                nameController: TextEditingController(text: item.name),
+                nameController: TextEditingController(
+                  text: item.name.isEmpty ? item.id : item.name,
+                ),
+                syncNameWithId: item.name.isEmpty || item.name == item.id,
               ),
             )
             .toList(growable: true) ??
@@ -59,10 +76,126 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
     _nameController.dispose();
     _baseUrlController.dispose();
     _apiKeyController.dispose();
+    _apiKeyFocusNode.dispose();
     for (final row in _models) {
       row.dispose();
     }
     super.dispose();
+  }
+
+  String _maskedApiKey(String rawValue) {
+    final value = rawValue.trim();
+    if (value.length <= 8) {
+      return value;
+    }
+    return '${value.substring(0, 4)}*****${value.substring(value.length - 4)}';
+  }
+
+  void _handleApiKeyFocusChange() {
+    if (_apiKeyFocusNode.hasFocus) {
+      final rawValue = _apiKeyValue.trim();
+      _apiKeyController.value = _apiKeyController.value.copyWith(
+        text: rawValue,
+        selection: TextSelection.collapsed(offset: rawValue.length),
+        composing: TextRange.empty,
+      );
+      return;
+    }
+    _apiKeyValue = _apiKeyController.text.trim();
+    final maskedValue = _maskedApiKey(_apiKeyValue);
+    _apiKeyController.value = _apiKeyController.value.copyWith(
+      text: maskedValue,
+      selection: TextSelection.collapsed(offset: maskedValue.length),
+      composing: TextRange.empty,
+    );
+  }
+
+  String _currentApiKeyValue() {
+    return _apiKeyFocusNode.hasFocus
+        ? _apiKeyController.text.trim()
+        : _apiKeyValue.trim();
+  }
+
+  ApiStyle _resolvedApiStyleForInput(String rawUrl) {
+    final trimmed = rawUrl.trim();
+    if (trimmed.isEmpty) {
+      return ApiStyle.responses;
+    }
+    final explicit = _tryDetectExplicitStyle(trimmed);
+    if (explicit != null) {
+      return explicit;
+    }
+    return _protocolResolver.resolveStyle(trimmed);
+  }
+
+  ApiStyle? _tryDetectExplicitStyle(String rawUrl) {
+    final trimmed = rawUrl.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
+      return null;
+    }
+    return _protocolResolver.detectExplicitStyle(trimmed);
+  }
+
+  void _syncApiStyleFromBaseUrlInput() {
+    final detectedStyle = _tryDetectExplicitStyle(_baseUrlController.text);
+    if (detectedStyle == null ||
+        detectedStyle == _selectedApiStyle ||
+        !mounted) {
+      return;
+    }
+    setState(() {
+      _selectedApiStyle = detectedStyle;
+    });
+  }
+
+  String _normalizedBaseUrlForSelectedStyle() {
+    final input = _baseUrlController.text.trim();
+    final uri = Uri.tryParse(input);
+    if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
+      return input;
+    }
+    return _protocolResolver
+        .buildRequestUri(input, _selectedApiStyle)
+        .toString();
+  }
+
+  Future<void> _selectApiStyle() async {
+    final selected = await showModalBottomSheet<ApiStyle>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor:
+          Theme.of(context).extension<AppThemeSpec>()!.chatBackground,
+      builder: (context) => _ApiStyleSelectionSheet(
+        selectedStyle: _selectedApiStyle,
+      ),
+    );
+    if (selected == null || selected == _selectedApiStyle) {
+      return;
+    }
+    final normalizedUrl = _normalizedBaseUrlFor(selected);
+    setState(() {
+      _selectedApiStyle = selected;
+      if (normalizedUrl != null) {
+        _baseUrlController.value = _baseUrlController.value.copyWith(
+          text: normalizedUrl,
+          selection: TextSelection.collapsed(offset: normalizedUrl.length),
+          composing: TextRange.empty,
+        );
+      }
+    });
+  }
+
+  String? _normalizedBaseUrlFor(ApiStyle style) {
+    final input = _baseUrlController.text.trim();
+    final uri = Uri.tryParse(input);
+    if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
+      return null;
+    }
+    return _protocolResolver.buildRequestUri(input, style).toString();
   }
 
   String? _validateBaseUrl(String? value) {
@@ -92,10 +225,40 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
       id: widget.initialProvider?.id ??
           DateTime.now().millisecondsSinceEpoch.toString(),
       name: _nameController.text.trim(),
-      apiKey: _apiKeyController.text.trim(),
-      baseUrl: _baseUrlController.text.trim(),
+      apiKey: _currentApiKeyValue(),
+      baseUrl: _normalizedBaseUrlForSelectedStyle(),
       models: models,
     );
+  }
+
+  void _replaceModelRows(List<LlmProviderModel> models) {
+    for (final row in _models) {
+      row.dispose();
+    }
+    _models = models
+        .map(
+          (item) => _EditableModelRow.synced(
+            idController: TextEditingController(text: item.id),
+            nameController: TextEditingController(
+              text: item.name.isEmpty ? item.id : item.name,
+            ),
+            syncNameWithId: item.name.isEmpty || item.name == item.id,
+          ),
+        )
+        .toList(growable: true);
+  }
+
+  String _formatActionError(String prefix, Object error) {
+    final message = error.toString();
+    if (message.startsWith('Exception: ')) {
+      return '$prefix: ${message.substring('Exception: '.length)}';
+    }
+    return '$prefix: $message';
+  }
+
+  LlmProviderModel? _firstModel() {
+    final provider = _buildProvider();
+    return provider.models.isEmpty ? null : provider.models.first;
   }
 
   Future<void> _save() async {
@@ -103,17 +266,54 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
       return;
     }
 
+    final normalizedBaseUrl = _normalizedBaseUrlForSelectedStyle();
+    if (normalizedBaseUrl != _baseUrlController.text.trim()) {
+      _baseUrlController.value = _baseUrlController.value.copyWith(
+        text: normalizedBaseUrl,
+        selection: TextSelection.collapsed(offset: normalizedBaseUrl.length),
+        composing: TextRange.empty,
+      );
+    }
+
     setState(() {
       _isSaving = true;
     });
 
     try {
-      final provider = _buildProvider();
+      var provider = _buildProvider();
+      final shouldAutoDiscover = provider.models.isEmpty;
+      if (shouldAutoDiscover) {
+        final models = await widget.discoveryService.discoverModels(
+          provider: provider,
+        );
+        if (models.isNotEmpty) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _replaceModelRows(models);
+          });
+          provider = _buildProvider();
+        }
+      }
       await widget.repository.saveProvider(provider);
+      if (shouldAutoDiscover && provider.models.isNotEmpty) {
+        await widget.testService.speedTestModel(
+          provider: provider,
+          model: provider.models.first,
+        );
+      }
       if (!mounted) {
         return;
       }
       Navigator.of(context).pop(provider);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_formatActionError('保存失败', error))),
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -136,28 +336,18 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
       final models = await widget.discoveryService.discoverModels(
         provider: _buildProvider(),
       );
-      for (final row in _models) {
-        row.dispose();
-      }
       if (!mounted) {
         return;
       }
       setState(() {
-        _models = models
-            .map(
-              (item) => _EditableModelRow(
-                idController: TextEditingController(text: item.id),
-                nameController: TextEditingController(text: item.name),
-              ),
-            )
-            .toList(growable: true);
+        _replaceModelRows(models);
       });
     } catch (error) {
       if (!mounted) {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('模型探测失败: $error')),
+        SnackBar(content: Text(_formatActionError('模型探测失败', error))),
       );
     } finally {
       if (mounted) {
@@ -189,9 +379,56 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
     Navigator.of(context).pop(provider);
   }
 
+  Future<void> _speedTest() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    final model = _firstModel();
+    if (model == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先探测模型或手动新增模型')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSpeedTesting = true;
+    });
+
+    try {
+      final result = await widget.testService.speedTestModel(
+        provider: _buildProvider(),
+        model: model,
+      );
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '测速完成，连接正常：首次响应 ${result.ping.latency.inMilliseconds}ms · 再次响应 ${result.pong.latency.inMilliseconds}ms',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_formatActionError('测速失败', error))),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSpeedTesting = false;
+        });
+      }
+    }
+  }
+
   void _addModelRow() {
     setState(() {
-      _models = [..._models, _EditableModelRow.empty()];
+      _models = [..._models, _EditableModelRow.emptySynced()];
     });
   }
 
@@ -209,7 +446,8 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
     final hasModels = _models.isNotEmpty;
 
     return Scaffold(
-      appBar: _buildTintedHeader(context, _isEdit ? '编辑 Provider' : '新增 Provider'),
+      appBar:
+          _buildTintedHeader(context, _isEdit ? '编辑 Provider' : '新增 Provider'),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -223,7 +461,7 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
             SizedBox(height: spacing.lg),
             _SectionCard(
               title: '连接配置',
-              subtitle: '先保存 Provider 名称、Base URL 和 API Key，再执行模型探测。',
+              subtitle: '先填写连接信息。保存时仅在模型列表为空时自动探测；测速会基于当前第一个模型执行。',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -231,10 +469,11 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
                     controller: _nameController,
                     decoration: const InputDecoration(
                       labelText: 'Provider 名称',
-                      hintText: 'OpenAI / AIGoCode',
+                      hintText: '用于展示（例如：OpenAI）',
                     ),
-                    validator: (value) =>
-                        (value?.trim().isEmpty ?? true) ? '请输入 Provider 名称' : null,
+                    validator: (value) => (value?.trim().isEmpty ?? true)
+                        ? '请输入 Provider 名称'
+                        : null,
                     onChanged: (_) => setState(() {}),
                   ),
                   SizedBox(height: spacing.md),
@@ -246,9 +485,15 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
                     ),
                     validator: _validateBaseUrl,
                   ),
+                  SizedBox(height: spacing.sm),
+                  _ApiStyleRow(
+                    selectedStyle: _selectedApiStyle,
+                    onPressed: _selectApiStyle,
+                  ),
                   SizedBox(height: spacing.md),
                   TextFormField(
                     controller: _apiKeyController,
+                    focusNode: _apiKeyFocusNode,
                     decoration: const InputDecoration(
                       labelText: 'API Key',
                       hintText: 'sk-...',
@@ -274,9 +519,9 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
                       SizedBox(width: spacing.sm),
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: _isDiscovering ? null : _discoverModels,
-                          icon: const Icon(Icons.travel_explore_outlined),
-                          label: _isDiscovering
+                          onPressed: _isSpeedTesting ? null : _speedTest,
+                          icon: const Icon(Icons.bolt_rounded),
+                          label: _isSpeedTesting
                               ? const SizedBox(
                                   width: 18,
                                   height: 18,
@@ -284,7 +529,7 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Text('探测模型'),
+                              : const Text('测速'),
                         ),
                       ),
                     ],
@@ -295,15 +540,37 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
             SizedBox(height: spacing.lg),
             _SectionCard(
               title: '模型列表',
-              subtitle: hasModels ? '可直接设为默认，或按需手动补充。' : '可先探测模型，再按需手动新增。',
-              trailing: hasModels
-                  ? TextButton(
-                      onPressed: _addModelRow,
-                      child: const Text('手动新增模型'),
-                    )
-                  : null,
-              child: hasModels
-                  ? Column(
+              subtitle: hasModels
+                  ? '优先通过探测更新模型目录，也可按需手动补充。测速会基于当前第一个模型执行。'
+                  : '可先探测模型，再按需手动新增；测速会基于当前第一个模型执行。',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: spacing.xs,
+                    runSpacing: spacing.xs,
+                    children: [
+                      TextButton(
+                        onPressed: _isDiscovering ? null : _discoverModels,
+                        child: _isDiscovering
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text('探测模型'),
+                      ),
+                      if (hasModels)
+                        TextButton(
+                          onPressed: _addModelRow,
+                          child: const Text('手动新增模型'),
+                        ),
+                    ],
+                  ),
+                  SizedBox(height: spacing.md),
+                  if (hasModels)
+                    Column(
                       children: _models.asMap().entries.map((entry) {
                         final index = entry.key;
                         final row = entry.value;
@@ -321,7 +588,10 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
                         );
                       }).toList(growable: false),
                     )
-                  : _EmptyModelState(onAddModel: _addModelRow),
+                  else
+                    _EmptyModelState(onAddModel: _addModelRow),
+                ],
+              ),
             ),
           ],
         ),
@@ -439,13 +709,11 @@ class _SectionCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.child,
-    this.trailing,
   });
 
   final String title;
   final String subtitle;
   final Widget child;
-  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -473,9 +741,10 @@ class _SectionCard extends StatelessWidget {
                     children: [
                       Text(
                         title,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                       ),
                       SizedBox(height: spacing.xxs),
                       Text(
@@ -488,10 +757,6 @@ class _SectionCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (trailing != null) ...[
-                  SizedBox(width: spacing.sm),
-                  trailing!,
-                ],
               ],
             ),
             SizedBox(height: spacing.md),
@@ -671,23 +936,216 @@ class _InfoChip extends StatelessWidget {
   }
 }
 
+extension on ApiStyle {
+  String get displayName {
+    switch (this) {
+      case ApiStyle.responses:
+        return 'Responses API';
+      case ApiStyle.chatCompletions:
+        return 'Chat Completions';
+      case ApiStyle.anthropicMessages:
+        return 'Anthropic Messages';
+    }
+  }
+
+  String get description {
+    switch (this) {
+      case ApiStyle.responses:
+        return '适合 OpenAI Responses 兼容接口。';
+      case ApiStyle.chatCompletions:
+        return '适合传统 OpenAI Chat Completions 接口。';
+      case ApiStyle.anthropicMessages:
+        return '适合 Anthropic Messages 风格接口。';
+    }
+  }
+}
+
+class _ApiStyleRow extends StatelessWidget {
+  const _ApiStyleRow({
+    required this.selectedStyle,
+    required this.onPressed,
+  });
+
+  final ApiStyle selectedStyle;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final radius = Theme.of(context).extension<AppRadius>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.chatBackground.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(radius.md),
+        border: Border.all(color: colors.divider),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(spacing.md),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'API Style',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  SizedBox(height: spacing.xxs),
+                  Text(
+                    '如果粘贴了完整 endpoint，会自动识别；也可以手动切换。',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.secondaryText,
+                          height: 1.45,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: spacing.sm),
+            OutlinedButton.icon(
+              onPressed: onPressed,
+              icon: const Icon(Icons.alt_route_rounded),
+              label: Text(selectedStyle.displayName),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ApiStyleSelectionSheet extends StatelessWidget {
+  const _ApiStyleSelectionSheet({required this.selectedStyle});
+
+  final ApiStyle selectedStyle;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+    final maxHeight = MediaQuery.of(context).size.height * 0.7;
+    const styles = <ApiStyle>[
+      ApiStyle.responses,
+      ApiStyle.chatCompletions,
+      ApiStyle.anthropicMessages,
+    ];
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.all(spacing.lg),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '选择 API Style',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: colors.primaryText,
+                    ),
+              ),
+              SizedBox(height: spacing.xs),
+              Text(
+                '最终会根据你选择的风格，把 Base URL 规范成对应的 endpoint。',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colors.secondaryText,
+                      height: 1.45,
+                    ),
+              ),
+              SizedBox(height: spacing.md),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: styles.length,
+                  itemBuilder: (context, index) {
+                    final style = styles[index];
+                    final selected = style == selectedStyle;
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: selected
+                          ? Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: colors.workflowRunning,
+                                shape: BoxShape.circle,
+                              ),
+                            )
+                          : const SizedBox(width: 8, height: 8),
+                      title: Text(style.displayName),
+                      subtitle: Text(style.description),
+                      onTap: () => Navigator.of(context).pop(style),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _EditableModelRow {
   final TextEditingController idController;
   final TextEditingController nameController;
+  bool _syncNameWithId;
+  bool _isUpdatingNameFromId = false;
+  late final VoidCallback _idListener;
+  late final VoidCallback _nameListener;
 
-  _EditableModelRow({
+  _EditableModelRow.synced({
     required this.idController,
     required this.nameController,
-  });
+    required bool syncNameWithId,
+  }) : _syncNameWithId = syncNameWithId {
+    _idListener = () {
+      if (!_syncNameWithId) {
+        return;
+      }
+      final nextValue = idController.text;
+      if (nameController.text == nextValue) {
+        return;
+      }
+      _isUpdatingNameFromId = true;
+      nameController.value = nameController.value.copyWith(
+        text: nextValue,
+        selection: TextSelection.collapsed(offset: nextValue.length),
+        composing: TextRange.empty,
+      );
+      _isUpdatingNameFromId = false;
+    };
+    _nameListener = () {
+      if (_isUpdatingNameFromId) {
+        return;
+      }
+      final currentName = nameController.text;
+      final currentId = idController.text;
+      _syncNameWithId = currentName.isEmpty || currentName == currentId;
+    };
+    idController.addListener(_idListener);
+    nameController.addListener(_nameListener);
+  }
 
-  factory _EditableModelRow.empty() {
-    return _EditableModelRow(
+  factory _EditableModelRow.emptySynced() {
+    return _EditableModelRow.synced(
       idController: TextEditingController(),
       nameController: TextEditingController(),
+      syncNameWithId: true,
     );
   }
 
   void dispose() {
+    idController.removeListener(_idListener);
+    nameController.removeListener(_nameListener);
     idController.dispose();
     nameController.dispose();
   }

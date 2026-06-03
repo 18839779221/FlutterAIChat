@@ -40,8 +40,7 @@ class _ModelManagementPageState extends State<ModelManagementPage> {
   void initState() {
     super.initState();
     _testService = widget.testService ?? LlmModelTestService();
-    _discoveryService =
-        widget.discoveryService ?? LlmModelDiscoveryService();
+    _discoveryService = widget.discoveryService ?? LlmModelDiscoveryService();
     _load();
   }
 
@@ -65,13 +64,13 @@ class _ModelManagementPageState extends State<ModelManagementPage> {
           initialProvider: provider,
           repository: widget.repository,
           discoveryService: _discoveryService,
+          testService: _testService,
         ),
       ),
     );
     if (result == null) {
       return;
     }
-    await widget.repository.saveProvider(result);
     await _load();
   }
 
@@ -138,7 +137,8 @@ class _ModelManagementPageState extends State<ModelManagementPage> {
     });
 
     try {
-      final result = await _testService.testModel(provider: provider, model: model);
+      final result =
+          await _testService.testModel(provider: provider, model: model);
       if (!mounted) {
         return;
       }
@@ -503,7 +503,8 @@ class _ProviderListTile extends StatelessWidget {
                               decoration: BoxDecoration(
                                 color: colors.workflowRunning
                                     .withValues(alpha: 0.14),
-                                borderRadius: BorderRadius.circular(radius.pill),
+                                borderRadius:
+                                    BorderRadius.circular(radius.pill),
                               ),
                               child: Text(
                                 '默认',
@@ -552,14 +553,19 @@ class _ProviderListTile extends StatelessWidget {
                         ),
                         Text(
                           '个模型',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: colors.secondaryText,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: colors.secondaryText,
+                                  ),
                         ),
                         Text(
                           '${provider.models.length} 个模型',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: colors.secondaryText.withValues(alpha: 0.0),
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(
+                                color:
+                                    colors.secondaryText.withValues(alpha: 0.0),
                                 fontSize: 1,
                                 height: 0.1,
                               ),
@@ -577,7 +583,9 @@ class _ProviderListTile extends StatelessWidget {
               children: [
                 _MetaTag(
                   icon: Icons.key_outlined,
-                  label: provider.apiKey.trim().isEmpty ? '未填写 API Key' : '已填写 API Key',
+                  label: provider.apiKey.trim().isEmpty
+                      ? '未填写 API Key'
+                      : '已填写 API Key',
                 ),
               ],
             ),

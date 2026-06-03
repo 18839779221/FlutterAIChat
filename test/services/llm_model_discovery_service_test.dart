@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
-import 'package:ai_chat/models/llm/llm_provider_model.dart';
 import 'package:ai_chat/services/llm_model_discovery_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -40,6 +39,38 @@ void main() {
 
       expect(models.map((item) => item.id), ['gpt-4o-mini', 'gpt-4.1']);
       expect(models.map((item) => item.name), ['', '']);
+    });
+
+    test('normalizes explicit endpoint urls back to the shared models endpoint',
+        () async {
+      final service = LlmModelDiscoveryService(
+        httpClient: _FakeHttpClient(
+          handler: (request) async {
+            expect(request.url.toString(), 'https://api.example.com/v1/models');
+            return http.Response(
+              jsonEncode({
+                'data': [
+                  {'id': 'gpt-4o-mini'},
+                ],
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          },
+        ),
+      );
+
+      final models = await service.discoverModels(
+        provider: const LlmProviderConfig(
+          id: 'provider',
+          name: 'Provider',
+          apiKey: 'test-key',
+          baseUrl: 'https://api.example.com/v1/chat/completions',
+          models: [],
+        ),
+      );
+
+      expect(models.map((item) => item.id), ['gpt-4o-mini']);
     });
 
     test('throws readable error when discovery request fails', () async {

@@ -27,6 +27,10 @@ void main() {
     expect(spec.chatBackground, const Color(0xFFFAF9F5));
     expect(spec.settingsPanelBackground, const Color(0xFFF0EEE6));
     expect(spec.toolWorkflowSurface, const Color(0xFFEDE6D6));
+    expect(
+      theme.inputDecorationTheme.hintStyle?.color,
+      spec.semantic.text.tertiary,
+    );
   });
 
   test('claude theme exposes the semantic tokens that drive the UI', () {

@@ -6,6 +6,62 @@ import '../models/llm/api_protocol_resolver.dart';
 import '../models/llm/llm_provider_config.dart';
 import '../models/llm/llm_provider_model.dart';
 
+/// Lightweight probe types used for provider connectivity and latency checks.
+enum LlmModelProbeType {
+  ping,
+  pong,
+}
+
+extension LlmModelProbeTypeExpectation on LlmModelProbeType {
+  String get expectedResponse {
+    switch (this) {
+      case LlmModelProbeType.ping:
+        return 'ping';
+      case LlmModelProbeType.pong:
+        return 'pong';
+    }
+  }
+
+  String get requestPrompt {
+    return 'Reply with exactly: $expectedResponse';
+  }
+
+  String get displayName {
+    switch (this) {
+      case LlmModelProbeType.ping:
+        return 'Ping';
+      case LlmModelProbeType.pong:
+        return 'Pong';
+    }
+  }
+}
+
+/// Result of a single probe request against one configured model.
+class LlmModelProbeResult {
+  final LlmModelProbeType probeType;
+  final String modelId;
+  final String responseText;
+  final Duration latency;
+
+  const LlmModelProbeResult({
+    required this.probeType,
+    required this.modelId,
+    required this.responseText,
+    required this.latency,
+  });
+}
+
+/// Combined latency measurement for the default speed-test flow.
+class LlmModelSpeedTestResult {
+  final LlmModelProbeResult ping;
+  final LlmModelProbeResult pong;
+
+  const LlmModelSpeedTestResult({
+    required this.ping,
+    required this.pong,
+  });
+}
+
 class LlmModelTestService {
   final http.Client _httpClient;
   final ApiProtocolResolver _protocolResolver;
@@ -20,14 +76,29 @@ class LlmModelTestService {
     required LlmProviderConfig provider,
     required LlmProviderModel model,
   }) async {
+    final result = await probeModel(
+      provider: provider,
+      model: model,
+      probeType: LlmModelProbeType.pong,
+    );
+    return result.responseText;
+  }
+
+  Future<LlmModelProbeResult> probeModel({
+    required LlmProviderConfig provider,
+    required LlmProviderModel model,
+    required LlmModelProbeType probeType,
+  }) async {
     _validate(provider: provider, model: model);
 
     final apiStyle = _protocolResolver.resolveStyle(provider.baseUrl);
+    final stopwatch = Stopwatch()..start();
     final response = await _httpClient.post(
       _protocolResolver.buildRequestUri(provider.baseUrl, apiStyle),
       headers: _buildHeaders(provider, apiStyle),
-      body: jsonEncode(_buildPayload(model.id, apiStyle)),
+      body: jsonEncode(_buildPayload(model.id, apiStyle, probeType)),
     );
+    stopwatch.stop();
 
     if (response.statusCode != 200) {
       final body = response.body.trim();
@@ -40,7 +111,34 @@ class LlmModelTestService {
     if (responseText.isEmpty) {
       throw Exception('模型测试失败: 返回内容为空');
     }
-    return responseText;
+    if (responseText.toLowerCase() != probeType.expectedResponse) {
+      throw Exception(
+        '模型测试失败: 期望返回 "${probeType.expectedResponse}"，实际返回 "$responseText"',
+      );
+    }
+    return LlmModelProbeResult(
+      probeType: probeType,
+      modelId: model.id,
+      responseText: responseText,
+      latency: stopwatch.elapsed,
+    );
+  }
+
+  Future<LlmModelSpeedTestResult> speedTestModel({
+    required LlmProviderConfig provider,
+    required LlmProviderModel model,
+  }) async {
+    final ping = await probeModel(
+      provider: provider,
+      model: model,
+      probeType: LlmModelProbeType.ping,
+    );
+    final pong = await probeModel(
+      provider: provider,
+      model: model,
+      probeType: LlmModelProbeType.pong,
+    );
+    return LlmModelSpeedTestResult(ping: ping, pong: pong);
   }
 
   void _validate({
@@ -77,13 +175,18 @@ class LlmModelTestService {
     };
   }
 
-  Map<String, dynamic> _buildPayload(String modelId, ApiStyle style) {
+  Map<String, dynamic> _buildPayload(
+    String modelId,
+    ApiStyle style,
+    LlmModelProbeType probeType,
+  ) {
+    final prompt = probeType.requestPrompt;
     switch (style) {
       case ApiStyle.chatCompletions:
         return {
           'model': modelId,
-          'messages': const [
-            {'role': 'user', 'content': 'Reply with exactly: pong'},
+          'messages': [
+            {'role': 'user', 'content': prompt},
           ],
           'stream': false,
           'max_tokens': 20,
@@ -91,8 +194,8 @@ class LlmModelTestService {
       case ApiStyle.anthropicMessages:
         return {
           'model': modelId,
-          'messages': const [
-            {'role': 'user', 'content': 'Reply with exactly: pong'},
+          'messages': [
+            {'role': 'user', 'content': prompt},
           ],
           'max_tokens': 20,
           'stream': false,
@@ -100,7 +203,7 @@ class LlmModelTestService {
       case ApiStyle.responses:
         return {
           'model': modelId,
-          'input': 'Reply with exactly: pong',
+          'input': prompt,
           'stream': false,
           'max_output_tokens': 20,
         };

@@ -1,0 +1,395 @@
+import 'package:ai_chat/models/llm/llm_provider_config.dart';
+import 'package:ai_chat/models/llm/llm_provider_model.dart';
+import 'package:ai_chat/pages/provider_form_page.dart';
+import 'package:ai_chat/repositories/app_settings_repository.dart';
+import 'package:ai_chat/services/llm_model_discovery_service.dart';
+import 'package:ai_chat/services/llm_model_test_service.dart';
+import 'package:ai_chat/theme/app_theme.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets(
+      'provider form shows speed test in connection section and model actions',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = await _createRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ProviderFormPage(
+          repository: repository,
+          discoveryService: _FakeDiscoveryService(),
+          testService: _FakeModelTestService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('测速'), findsOneWidget);
+    expect(find.byIcon(Icons.bolt_rounded), findsOneWidget);
+    expect(find.text('探测模型'), findsOneWidget);
+    expect(find.text('Ping'), findsNothing);
+    expect(find.text('Pong'), findsNothing);
+
+    expect(find.text('用于展示（例如：OpenAI）'), findsOneWidget);
+  });
+
+  testWidgets('saving with empty model list auto-discovers and runs speed test',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = await _createRepository();
+    final discoveryService = _FakeDiscoveryService(
+      models: const [
+        LlmProviderModel(id: 'gpt-4o-mini', name: ''),
+        LlmProviderModel(id: 'gpt-4.1', name: ''),
+      ],
+    );
+    final testService = _FakeModelTestService();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ProviderFormPage(
+          repository: repository,
+          discoveryService: discoveryService,
+          testService: testService,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Provider 名称'),
+      'OpenAI',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Base URL'),
+      'https://api.openai.com/v1',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'API Key'),
+      'test-key',
+    );
+
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(discoveryService.callCount, 1);
+    expect(testService.speedTestCallCount, 1);
+    expect(testService.lastSpeedModelId, 'gpt-4o-mini');
+
+    final providers = await repository.getProviders();
+    final selection = await repository.getSelectionState();
+    expect(providers, hasLength(1));
+    expect(providers.single.models.map((item) => item.id), [
+      'gpt-4o-mini',
+      'gpt-4.1',
+    ]);
+    expect(providers.single.models.map((item) => item.name), [
+      'gpt-4o-mini',
+      'gpt-4.1',
+    ]);
+    expect(providers.single.apiKey, 'test-key');
+    expect(selection.selectedModelId, 'gpt-4o-mini');
+    expect(selection.defaultModelId, 'gpt-4o-mini');
+  });
+
+  testWidgets('saving with existing models skips auto-discovery',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = await _createRepository();
+    final discoveryService = _FakeDiscoveryService(
+      models: const [LlmProviderModel(id: 'should-not-run', name: '')],
+    );
+    final testService = _FakeModelTestService();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ProviderFormPage(
+          initialProvider: const LlmProviderConfig(
+            id: 'openai',
+            name: 'OpenAI',
+            apiKey: 'test-key',
+            baseUrl: 'https://api.openai.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-4o-mini', name: ''),
+            ],
+          ),
+          repository: repository,
+          discoveryService: discoveryService,
+          testService: testService,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(discoveryService.callCount, 0);
+    expect(testService.speedTestCallCount, 0);
+
+    final providers = await repository.getProviders();
+    expect(providers.single.models.map((item) => item.id), ['gpt-4o-mini']);
+    expect(providers.single.models.map((item) => item.name), ['gpt-4o-mini']);
+  });
+
+  testWidgets('speed test feedback avoids exposing ping pong wording',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = await _createRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ProviderFormPage(
+          initialProvider: const LlmProviderConfig(
+            id: 'openai',
+            name: 'OpenAI',
+            apiKey: 'test-key',
+            baseUrl: 'https://api.openai.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-4o-mini', name: ''),
+            ],
+          ),
+          repository: repository,
+          discoveryService: _FakeDiscoveryService(),
+          testService: _FakeModelTestService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('测速'));
+    await tester.pump();
+
+    expect(find.textContaining('测速完成，连接正常：首次响应 120ms · 再次响应 180ms'), findsOneWidget);
+    expect(find.textContaining('Ping'), findsNothing);
+    expect(find.textContaining('Pong'), findsNothing);
+  });
+
+  testWidgets('api key masks when unfocused and reveals full value on focus',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = await _createRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ProviderFormPage(
+          initialProvider: const LlmProviderConfig(
+            id: 'openai',
+            name: 'OpenAI',
+            apiKey: 'abcd1234wxyz',
+            baseUrl: 'https://api.openai.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-4o-mini', name: ''),
+            ],
+          ),
+          repository: repository,
+          discoveryService: _FakeDiscoveryService(),
+          testService: _FakeModelTestService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('abcd*****wxyz'), findsOneWidget);
+    expect(find.text('abcd1234wxyz'), findsNothing);
+
+    await tester.tap(find.widgetWithText(TextFormField, 'API Key'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('abcd1234wxyz'), findsOneWidget);
+    expect(find.text('abcd*****wxyz'), findsNothing);
+
+    await tester.tap(find.widgetWithText(TextFormField, 'Provider 名称'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('abcd*****wxyz'), findsOneWidget);
+  });
+
+  testWidgets('model name defaults to model id for manual rows',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = await _createRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ProviderFormPage(
+          repository: repository,
+          discoveryService: _FakeDiscoveryService(),
+          testService: _FakeModelTestService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('手动新增模型'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, '模型 ID'),
+      'gpt-4o-mini',
+    );
+    await tester.pumpAndSettle();
+
+    final modelNameField = tester.widget<TextFormField>(
+      find.widgetWithText(TextFormField, '模型名称 1'),
+    );
+    expect(modelNameField.controller?.text, 'gpt-4o-mini');
+  });
+
+  testWidgets('base url with explicit endpoint auto-selects matching api style',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = await _createRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ProviderFormPage(
+          repository: repository,
+          discoveryService: _FakeDiscoveryService(),
+          testService: _FakeModelTestService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Base URL'),
+      'https://api.example.com/v1/messages',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('API Style'), findsOneWidget);
+    expect(find.text('Anthropic Messages'), findsOneWidget);
+  });
+
+  testWidgets('manual api style selection rewrites base url before save',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = await _createRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ProviderFormPage(
+          repository: repository,
+          discoveryService: _FakeDiscoveryService(
+            models: const [LlmProviderModel(id: 'gpt-4o-mini', name: '')],
+          ),
+          testService: _FakeModelTestService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Provider 名称'),
+      'Example',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Base URL'),
+      'https://api.example.com/v1/messages',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'API Key'),
+      'test-key',
+    );
+
+    await tester.tap(find.text('Anthropic Messages'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Responses API').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    final providers = await repository.getProviders();
+    expect(providers.single.baseUrl, 'https://api.example.com/v1/responses');
+  });
+}
+
+Future<AppSettingsRepository> _createRepository() async {
+  SharedPreferences.setMockInitialValues({});
+  return AppSettingsRepository(
+    await SharedPreferences.getInstance(),
+    localDefaultsLoader: () async => null,
+  );
+}
+
+class _FakeDiscoveryService extends LlmModelDiscoveryService {
+  _FakeDiscoveryService({this.models = const []});
+
+  final List<LlmProviderModel> models;
+  int callCount = 0;
+
+  @override
+  Future<List<LlmProviderModel>> discoverModels({
+    required LlmProviderConfig provider,
+  }) async {
+    callCount += 1;
+    return models;
+  }
+}
+
+class _FakeModelTestService extends LlmModelTestService {
+  int speedTestCallCount = 0;
+  String? lastSpeedModelId;
+  final List<LlmModelProbeType> probeCallTypes = <LlmModelProbeType>[];
+  final List<String> probeCallModelIds = <String>[];
+
+  @override
+  Future<LlmModelSpeedTestResult> speedTestModel({
+    required LlmProviderConfig provider,
+    required LlmProviderModel model,
+  }) async {
+    speedTestCallCount += 1;
+    lastSpeedModelId = model.id;
+    return LlmModelSpeedTestResult(
+      ping: LlmModelProbeResult(
+        probeType: LlmModelProbeType.ping,
+        modelId: model.id,
+        responseText: 'ping',
+        latency: const Duration(milliseconds: 120),
+      ),
+      pong: LlmModelProbeResult(
+        probeType: LlmModelProbeType.pong,
+        modelId: model.id,
+        responseText: 'pong',
+        latency: const Duration(milliseconds: 180),
+      ),
+    );
+  }
+
+  @override
+  Future<LlmModelProbeResult> probeModel({
+    required LlmProviderConfig provider,
+    required LlmProviderModel model,
+    required LlmModelProbeType probeType,
+  }) async {
+    probeCallTypes.add(probeType);
+    probeCallModelIds.add(model.id);
+    return LlmModelProbeResult(
+      probeType: probeType,
+      modelId: model.id,
+      responseText: probeType == LlmModelProbeType.ping ? 'ping' : 'pong',
+      latency: const Duration(milliseconds: 90),
+    );
+  }
+}

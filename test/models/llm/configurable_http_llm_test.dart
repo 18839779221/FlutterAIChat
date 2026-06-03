@@ -56,6 +56,44 @@ void main() {
         'https://anthropic.example/v1/messages',
       );
     });
+
+    test('rewrites an existing endpoint suffix to the selected api style', () {
+      const resolver = ApiProtocolResolver();
+
+      expect(
+        resolver
+            .buildRequestUri(
+              'https://api.example.com/v1/messages',
+              ApiStyle.responses,
+            )
+            .toString(),
+        'https://api.example.com/v1/responses',
+      );
+      expect(
+        resolver
+            .buildRequestUri(
+              'https://api.example.com/v1/responses',
+              ApiStyle.chatCompletions,
+            )
+            .toString(),
+        'https://api.example.com/v1/chat/completions',
+      );
+    });
+
+    test('keeps anthropic endpoint stable when selected style already matches',
+        () {
+      const resolver = ApiProtocolResolver();
+
+      expect(
+        resolver
+            .buildRequestUri(
+              'https://api.example.com/v1/messages',
+              ApiStyle.anthropicMessages,
+            )
+            .toString(),
+        'https://api.example.com/v1/messages',
+      );
+    });
   });
 
   group('ConfigurableHttpLLM.planTurnDecision', () {
@@ -97,8 +135,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('继续'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -126,8 +164,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('继续'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -274,8 +312,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('请写文件'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.anthropicMessages,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.anthropicMessages,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -355,8 +393,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('请写文件'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.anthropicMessages,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.anthropicMessages,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -412,8 +450,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('请创建美食页面'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.anthropicMessages,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.anthropicMessages,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -482,8 +520,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('请创建 artifact'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.anthropicMessages,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.anthropicMessages,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -540,8 +578,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('直接回答'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.anthropicMessages,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.anthropicMessages,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -616,8 +654,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('查数据库版本'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -710,8 +748,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('帮我查 OpenAI 最新发布'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiResponses,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.openaiResponses,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -741,7 +779,8 @@ void main() {
       );
       expect(decision.providerStyle, ChatTurnProviderStyle.openaiResponses);
       expect(decision.modelName, 'gpt-5.4');
-      expect(decision.providerState, containsPair('response_id', 'resp_stream'));
+      expect(
+          decision.providerState, containsPair('response_id', 'resp_stream'));
       expect(decision.isTerminal, isFalse);
     });
 
@@ -808,8 +847,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('直接回答'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -928,7 +967,8 @@ void main() {
       final start = collected.lastWhere(
         (entry) => entry['message'] == 'llm.request.start',
       );
-      expect(start['data'], containsPair('cacheStrategy', LlmCacheStrategy.providerHints.name));
+      expect(start['data'],
+          containsPair('cacheStrategy', LlmCacheStrategy.providerHints.name));
       expect(start['data'], containsPair('cacheRetention', 'in-memory'));
       expect(start['data'], containsPair('cacheKeyPresent', false));
     });
@@ -972,8 +1012,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('直接回答'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -1037,8 +1077,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('直接回答'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -1071,8 +1111,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('继续'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -1119,8 +1159,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('直接回答'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiResponses,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.openaiResponses,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -1130,7 +1170,8 @@ void main() {
       expect(decision!.toolCalls, isEmpty);
       expect(decision.assistantMessage, '最终答案');
       expect(decision.visibleReasoning, '先分析');
-      expect(decision.providerState, containsPair('response_id', 'resp_stream'));
+      expect(
+          decision.providerState, containsPair('response_id', 'resp_stream'));
       expect(decision.isTerminal, isTrue);
     });
 
@@ -1153,8 +1194,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('继续'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiResponses,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.openaiResponses,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -1212,12 +1253,12 @@ void main() {
       expect(client.lastRequestBody?['stream'], isTrue);
       expect(decision, isNotNull);
       expect(decision!.assistantMessage, '最终答案');
-      expect(decision.providerState, containsPair('response_id', 'resp_stream_partial'));
+      expect(decision.providerState,
+          containsPair('response_id', 'resp_stream_partial'));
       expect(decision.isTerminal, isTrue);
     });
 
-    test(
-        'streaming planner does not idle-timeout while chunks keep arriving',
+    test('streaming planner does not idle-timeout while chunks keep arriving',
         () async {
       final firstChunk = jsonEncode({
         'id': 'chatcmpl_stream',
@@ -1263,8 +1304,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('直接回答'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -1401,8 +1442,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('继续'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
         onRetryScheduled: progressEvents.add,
@@ -1556,8 +1597,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('帮我查 OpenAI 最新发布'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiResponses,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.openaiResponses,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -1619,8 +1660,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('查数据库版本'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -1643,7 +1684,8 @@ void main() {
         ChatTurnProviderStyle.openaiChatCompletions,
       );
       expect(decision.modelName, 'gpt-5.4');
-      expect(decision.providerState, containsPair('response_id', 'chatcmpl_123'));
+      expect(
+          decision.providerState, containsPair('response_id', 'chatcmpl_123'));
       expect(decision.toolCalls.single.providerCallId, 'call_1');
     });
 
@@ -1675,8 +1717,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('今晚 8 点提醒我'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiResponses,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.openaiResponses,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -1731,8 +1773,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('查数据库版本'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiResponses,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.openaiResponses,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -1808,8 +1850,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('查数据库版本并继续下一步'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -1871,8 +1913,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('继续'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [],
       );
@@ -1922,8 +1964,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('请先问我需要哪个方案'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.openaiResponses,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.openaiResponses,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -1973,8 +2015,8 @@ void main() {
         carriers: [
           SyntheticCarrier.user('继续搜索'),
         ],
-          activeApiStyle: ChatTurnProviderStyle.anthropicMessages,
-          currentTurnRunning: false,
+        activeApiStyle: ChatTurnProviderStyle.anthropicMessages,
+        currentTurnRunning: false,
         config: ChatConfig(systemPrompt: ''),
         availableTools: const [
           PlannerToolOption(
@@ -2054,7 +2096,6 @@ void main() {
       expect(decision!.toolCalls, hasLength(1));
       expect(decision.toolCalls.single.toolName, 'web_search');
     });
-
   });
 
   group('image input payloads', () {
@@ -2140,7 +2181,8 @@ void main() {
       expect(jsonEncode(payload), contains('image_url'));
     });
 
-    test('anthropic adapter serializes image attachments as content blocks', () {
+    test('anthropic adapter serializes image attachments as content blocks',
+        () {
       final payload = const SdkAnthropicMessagesAdapter().buildChatPayload(
         messages: [
           ChatMessage(
@@ -2701,10 +2743,10 @@ class _CountingRuntime extends ProtocolExecutionRuntime {
   _CountingRuntime({
     this.executeResult = const ProtocolExecutionResult(rawResponseJson: {}),
     ProtocolStreamExecutionResult? streamResult,
-  }) : streamResult = streamResult ?? ProtocolStreamExecutionResult(
-          events: const Stream.empty(),
-        );
-  
+  }) : streamResult = streamResult ??
+            ProtocolStreamExecutionResult(
+              events: const Stream.empty(),
+            );
 
   int executeCalls = 0;
   int streamExecuteCalls = 0;
