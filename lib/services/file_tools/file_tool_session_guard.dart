@@ -27,6 +27,21 @@ class FileToolSessionGuard {
   FileToolVersionSnapshot? getSeenVersion(String filePath) =>
       _seenFiles[_normalizeAgentPath(filePath)];
 
+  void clearSeen(String filePath) {
+    _seenFiles.remove(_normalizeAgentPath(filePath));
+  }
+
+  void clearSeenUnder(String pathPrefix) {
+    final normalizedPrefix = _normalizeAgentPath(pathPrefix);
+    final exactPrefix = normalizedPrefix == '/' ? '/' : '$normalizedPrefix/';
+    final matchingKeys = _seenFiles.keys
+        .where((key) => key == normalizedPrefix || key.startsWith(exactPrefix))
+        .toList(growable: false);
+    for (final key in matchingKeys) {
+      _seenFiles.remove(key);
+    }
+  }
+
   void assertWritable({
     required String filePath,
     required FileToolVersionSnapshot currentVersion,

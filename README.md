@@ -97,6 +97,7 @@ flowchart TD
 | `glob` | File | 按模式匹配文件路径 |
 | `grep` | File | 在工作区内搜索文本内容 |
 | `read` | File | 读取文件内容 |
+| `Delete` | File | 删除当前 workspace 内的单个文件或递归删除目录，执行前需要确认 |
 | `write` | File | 写入文件内容 |
 | `edit` | File | 对已有文件执行定向编辑 |
 | `create_reminder` | Action | 创建提醒事项 |

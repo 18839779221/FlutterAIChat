@@ -59,6 +59,7 @@ class ToolResult {
       case 'share_result':
       case 'Write':
       case 'Edit':
+      case 'Delete':
         return true;
       default:
         return false;

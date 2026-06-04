@@ -242,6 +242,8 @@ To add or extend provider support:
 - `config/local_defaults.json` is a runtime-facing local defaults file; schema changes must consider app boot config, settings fallback behavior, and automation scripts that read it directly.
 - `ChatGroup.workspaceId` may be `NULL` in storage, but runtime must always resolve `NULL` to `.default`.
 - Workspace-scoped files live under `/workspaces/<workspaceId>/...`; file tools should default to the resolved workspace root.
+- `Delete` may remove a single file or recursively delete a directory, but it must only operate inside the current resolved workspace.
+- `Delete` must never delete the current workspace root directory itself.
 - Workspace is a file container only; do not make it a new session context, transcript, or summary ownership boundary.
 - Agent-visible file paths use a file-native `/` root and may include `/workspaces`, `/skills`, `/memories`; host filesystem paths must remain internal-only.
 - On each platform, the physical app-private storage root may differ, but it is always mapped behind the same agent path semantics.

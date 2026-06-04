@@ -7,7 +7,8 @@ ScenarioCase buildRealWorkspaceFileOpsScenario() {
     title: 'Real workspace file ops',
     userMessage: '帮我看看这个工作区里的 docs 目录。'
         '我想先知道里面有哪些内容，再看看 spec.md，顺手搜一下还有没有 TODO。'
-        '最后请整理一段中文总结写到 artifacts/summary.md 里；如果要真正写文件，先按正常流程等我确认。',
+        '最后请整理一段中文总结写到 artifacts/summary.md 里。'
+        '如果发现 docs/old_notes 目录已经没用了，请提出删除建议；真正删除前必须先按正常流程等我确认。',
     providerTargets: [
       ProviderMatrixTarget(
         style: ChatTurnProviderStyle.anthropicMessages,

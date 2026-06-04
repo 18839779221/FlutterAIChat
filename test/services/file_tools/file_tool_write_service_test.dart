@@ -116,5 +116,81 @@ void main() {
       expect(await file.readAsString(), contains('delta'));
       expect(guard.hasSeen('/memories/demo.md'), isTrue);
     });
+
+    test('deletePath deletes a single file', () async {
+      final file =
+          File('${rootService.rootPath}/workspaces/ws_1/artifacts/a.txt');
+      await file.create(recursive: true);
+      await file.writeAsString('hello');
+      guard.markRead(
+        filePath: '/workspaces/ws_1/artifacts/a.txt',
+        version: guard.snapshotForStat(await file.stat()),
+      );
+
+      final outcome = await service.deletePath(
+        relativePath: 'workspaces/ws_1/artifacts/a.txt',
+      );
+
+      expect(outcome.filePath, '/workspaces/ws_1/artifacts/a.txt');
+      expect(outcome.deletedType, 'file');
+      expect(outcome.deletedFileCount, 1);
+      expect(outcome.deletedDirectoryCount, 0);
+      expect(outcome.hadChildren, isFalse);
+      expect(file.existsSync(), isFalse);
+      expect(guard.hasSeen('/workspaces/ws_1/artifacts/a.txt'), isFalse);
+    });
+
+    test('deletePath throws file_not_found for missing targets', () async {
+      expect(
+        () => service.deletePath(relativePath: 'workspaces/ws_1/missing.txt'),
+        throwsA(
+          isA<FileToolWriteException>().having(
+            (error) => error.code,
+            'code',
+            'file_not_found',
+          ),
+        ),
+      );
+    });
+
+    test('deletePath deletes an empty directory', () async {
+      final directory = Directory(
+        '${rootService.rootPath}/workspaces/ws_1/artifacts/empty',
+      );
+      await directory.create(recursive: true);
+
+      final outcome = await service.deletePath(
+        relativePath: 'workspaces/ws_1/artifacts/empty',
+      );
+
+      expect(outcome.filePath, '/workspaces/ws_1/artifacts/empty');
+      expect(outcome.deletedType, 'directory');
+      expect(outcome.deletedFileCount, 0);
+      expect(outcome.deletedDirectoryCount, 1);
+      expect(outcome.hadChildren, isFalse);
+      expect(directory.existsSync(), isFalse);
+    });
+
+    test('deletePath recursively deletes a populated directory', () async {
+      final root = Directory(
+        '${rootService.rootPath}/workspaces/ws_1/artifacts/tree',
+      );
+      await Directory('${root.path}/docs').create(recursive: true);
+      await File('${root.path}/README.md').writeAsString('root file');
+      await File('${root.path}/docs/a.txt').writeAsString('a');
+      await File('${root.path}/docs/b.txt').writeAsString('b');
+
+      final outcome = await service.deletePath(
+        relativePath: 'workspaces/ws_1/artifacts/tree',
+      );
+
+      expect(outcome.filePath, '/workspaces/ws_1/artifacts/tree');
+      expect(outcome.deletedType, 'directory');
+      expect(outcome.deletedFileCount, 3);
+      expect(outcome.deletedDirectoryCount, 2);
+      expect(outcome.hadChildren, isTrue);
+      expect(root.existsSync(), isFalse);
+      expect(guard.hasSeen('/workspaces/ws_1/artifacts/tree'), isFalse);
+    });
   });
 }

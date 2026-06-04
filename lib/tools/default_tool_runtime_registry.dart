@@ -7,6 +7,7 @@ import 'handlers/create_calendar_event_tool_handler.dart';
 import 'handlers/create_artifact_tool_handler.dart';
 import 'handlers/create_artifact_guideline_tool_handler.dart';
 import 'handlers/create_reminder_tool_handler.dart';
+import 'handlers/delete_tool_handler.dart';
 import 'handlers/edit_tool_handler.dart';
 import 'handlers/fetch_webpage_tool_handler.dart';
 import 'handlers/glob_tool_handler.dart';
@@ -30,7 +31,8 @@ ToolRuntimeRegistry buildDefaultToolRuntimeRegistry({
 }) {
   return ToolRuntimeRegistry(
     handlers: [
-      if (createArtifactGuidelineHandler != null) createArtifactGuidelineHandler,
+      if (createArtifactGuidelineHandler != null)
+        createArtifactGuidelineHandler,
       if (createArtifactHandler != null) createArtifactHandler,
       if (skillRuntimeService != null)
         SkillToolHandler(
@@ -77,6 +79,7 @@ ToolRuntimeRegistry buildDefaultToolRuntimeRegistry({
       GlobToolHandler(),
       GrepToolHandler(),
       ReadToolHandler(),
+      DeleteToolHandler(),
       WriteToolHandler(),
       EditToolHandler(),
       CreateReminderToolHandler(

@@ -33,10 +33,15 @@ void main() {
       definitions.map((item) => item.name),
       contains('ask_user_question'),
     );
+    expect(
+      definitions.map((item) => item.name),
+      contains('Delete'),
+    );
   });
 
   test('default runtime registry exposes skill tool to planner', () async {
-    final tempDir = await Directory.systemTemp.createTemp('tool-registry-skill-');
+    final tempDir =
+        await Directory.systemTemp.createTemp('tool-registry-skill-');
     addTearDown(() async {
       if (await tempDir.exists()) {
         await tempDir.delete(recursive: true);
@@ -69,7 +74,8 @@ void main() {
     );
   });
 
-  test('default runtime registry exposes create_artifact guideline when wired', () {
+  test('default runtime registry exposes create_artifact guideline when wired',
+      () {
     final registry = buildDefaultToolRuntimeRegistry(
       toolExecutor: ToolExecutor(chatStorage: _FakeChatStorage()),
       createArtifactGuidelineHandler: CreateArtifactGuidelineToolHandler(
@@ -195,7 +201,8 @@ class _FakeChatStorage implements ChatStorage {
       1;
 
   @override
-  Future<int> insertSessionRuntimeMarker(SessionRuntimeMarker marker) async => 1;
+  Future<int> insertSessionRuntimeMarker(SessionRuntimeMarker marker) async =>
+      1;
 
   @override
   Future<int> insertTurn(ChatTurn turn) async => 1;

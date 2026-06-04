@@ -57,6 +57,7 @@ void main() {
             'Glob',
             'Grep',
             'Read',
+            'Delete',
             'Write',
             'Edit',
           ]));
@@ -106,7 +107,8 @@ void main() {
         visible.map((tool) => tool.definition.name),
         isNot(contains('share_result')),
       );
-      expect(visible.map((tool) => tool.definition.name), contains('web_search'));
+      expect(
+          visible.map((tool) => tool.definition.name), contains('web_search'));
     });
 
     test('selectVisibleToolAccess 保留 access snapshot 语义', () {
@@ -213,7 +215,8 @@ void main() {
         visible.map((tool) => tool.definition.name),
         isNot(contains('create_reminder')),
       );
-      expect(visible.map((tool) => tool.definition.name), contains('web_search'));
+      expect(
+          visible.map((tool) => tool.definition.name), contains('web_search'));
     });
   });
 }
@@ -312,6 +315,18 @@ const _definitions = [
         'new_string': ToolArgumentProperty.string(description: '新片段'),
       },
       required: ['file_path', 'old_string', 'new_string'],
+    ),
+    requiresConfirmation: true,
+  ),
+  ToolDefinition(
+    name: 'Delete',
+    title: '删除文件',
+    descriptionForModel: '当用户明确要求删除当前 workspace 内的文件或目录时使用。',
+    argumentSchema: ToolArgumentSchema(
+      properties: {
+        'file_path': ToolArgumentProperty.string(description: '文件路径'),
+      },
+      required: ['file_path'],
     ),
     requiresConfirmation: true,
   ),

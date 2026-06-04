@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'file_tool_models.dart';
 import 'file_tool_post_write_hook.dart';
 import 'file_tool_root_service.dart';
@@ -45,6 +47,18 @@ class FileToolWriteOutcome {
   /// Tool-host metadata produced after the write, such as format results.
   final Map<String, dynamic> postWriteData;
 
+  /// Deleted target type for Delete operations. Null for Write/Edit.
+  final String? deletedType;
+
+  /// Number of files removed by Delete. Zero for Write/Edit.
+  final int deletedFileCount;
+
+  /// Number of directories removed by Delete. Zero for Write/Edit.
+  final int deletedDirectoryCount;
+
+  /// Whether the deleted target contained child entries. False for Write/Edit.
+  final bool hadChildren;
+
   const FileToolWriteOutcome({
     required this.filePath,
     required this.filePreviouslyExisted,
@@ -56,6 +70,10 @@ class FileToolWriteOutcome {
     required this.newContentPreview,
     required this.contentPreviewTruncated,
     required this.postWriteData,
+    this.deletedType,
+    this.deletedFileCount = 0,
+    this.deletedDirectoryCount = 0,
+    this.hadChildren = false,
   });
 
   Map<String, dynamic> toJson() {
@@ -70,6 +88,10 @@ class FileToolWriteOutcome {
       'newContentPreview': newContentPreview,
       'contentPreviewTruncated': contentPreviewTruncated,
       'postWriteData': postWriteData,
+      if (deletedType != null) 'deletedType': deletedType,
+      'deletedFileCount': deletedFileCount,
+      'deletedDirectoryCount': deletedDirectoryCount,
+      'hadChildren': hadChildren,
     };
   }
 }
@@ -92,7 +114,8 @@ class FileToolWriteService {
     required String content,
   }) async {
     final agentPath = _normalizeAgentPath(relativePath);
-    final file = _rootService.resolveFile(_relativePathFromAgentPath(agentPath));
+    final file =
+        _rootService.resolveFile(_relativePathFromAgentPath(agentPath));
     final fileExists = file.existsSync();
     String? oldContent;
     if (fileExists) {
@@ -137,7 +160,8 @@ class FileToolWriteService {
     required bool replaceAll,
   }) async {
     final agentPath = _normalizeAgentPath(relativePath);
-    final file = _rootService.resolveFile(_relativePathFromAgentPath(agentPath));
+    final file =
+        _rootService.resolveFile(_relativePathFromAgentPath(agentPath));
     if (!file.existsSync()) {
       throw FileToolWriteException('file_not_found');
     }
@@ -183,6 +207,81 @@ class FileToolWriteService {
       contentPreviewTruncated: _isPreviewTruncated(originalContent) ||
           _isPreviewTruncated(nextContent),
       postWriteData: postWriteData,
+    );
+  }
+
+  Future<FileToolWriteOutcome> deletePath({
+    required String relativePath,
+  }) async {
+    final agentPath = _normalizeAgentPath(relativePath);
+    final fileSystemEntity = _rootService.resolveFile(
+      _relativePathFromAgentPath(agentPath),
+    );
+    final entityType = FileSystemEntity.typeSync(
+      fileSystemEntity.path,
+      followLinks: false,
+    );
+    if (entityType == FileSystemEntityType.notFound) {
+      throw FileToolWriteException('file_not_found');
+    }
+
+    if (entityType == FileSystemEntityType.file) {
+      final file = File(fileSystemEntity.path);
+      final originalContent = await file.readAsString();
+      await file.delete();
+      _sessionGuard.clearSeen(agentPath);
+      return FileToolWriteOutcome(
+        filePath: agentPath,
+        filePreviouslyExisted: true,
+        version: const FileToolVersionSnapshot(
+          modifiedAtMillis: 0,
+          sizeBytes: 0,
+        ),
+        oldLength: originalContent.length,
+        newLength: 0,
+        replacementCount: 0,
+        oldContentPreview: _previewContent(originalContent),
+        newContentPreview: '',
+        contentPreviewTruncated: _isPreviewTruncated(originalContent),
+        postWriteData: const {},
+        deletedType: 'file',
+        deletedFileCount: 1,
+        deletedDirectoryCount: 0,
+        hadChildren: false,
+      );
+    }
+
+    final directory = Directory(fileSystemEntity.path);
+    final children = directory.listSync(recursive: true, followLinks: false);
+    var deletedFileCount = 0;
+    var deletedDirectoryCount = 1;
+    for (final child in children) {
+      if (child is File) {
+        deletedFileCount += 1;
+      } else if (child is Directory) {
+        deletedDirectoryCount += 1;
+      }
+    }
+    await directory.delete(recursive: true);
+    _sessionGuard.clearSeenUnder(agentPath);
+    return FileToolWriteOutcome(
+      filePath: agentPath,
+      filePreviouslyExisted: true,
+      version: const FileToolVersionSnapshot(
+        modifiedAtMillis: 0,
+        sizeBytes: 0,
+      ),
+      oldLength: 0,
+      newLength: 0,
+      replacementCount: 0,
+      oldContentPreview: '',
+      newContentPreview: '',
+      contentPreviewTruncated: false,
+      postWriteData: const {},
+      deletedType: 'directory',
+      deletedFileCount: deletedFileCount,
+      deletedDirectoryCount: deletedDirectoryCount,
+      hadChildren: children.isNotEmpty,
     );
   }
 
