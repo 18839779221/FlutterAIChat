@@ -937,25 +937,25 @@ class _InfoChip extends StatelessWidget {
 }
 
 extension on ApiStyle {
-  String get displayName {
+  String get displayTitle {
     switch (this) {
       case ApiStyle.responses:
-        return 'Responses API';
+        return 'OpenAI Responses';
       case ApiStyle.chatCompletions:
-        return 'Chat Completions';
+        return 'OpenAI Chat Completions';
       case ApiStyle.anthropicMessages:
         return 'Anthropic Messages';
     }
   }
 
-  String get description {
+  String get protocolStyle {
     switch (this) {
       case ApiStyle.responses:
-        return '适合 OpenAI Responses 兼容接口。';
+        return 'responses';
       case ApiStyle.chatCompletions:
-        return '适合传统 OpenAI Chat Completions 接口。';
+        return 'chat_completions';
       case ApiStyle.anthropicMessages:
-        return '适合 Anthropic Messages 风格接口。';
+        return 'anthropic_messages';
     }
   }
 }
@@ -995,14 +995,6 @@ class _ApiStyleRow extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                         ),
                   ),
-                  SizedBox(height: spacing.xxs),
-                  Text(
-                    '如果粘贴了完整 endpoint，会自动识别；也可以手动切换。',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: colors.secondaryText,
-                          height: 1.45,
-                        ),
-                  ),
                 ],
               ),
             ),
@@ -1010,7 +1002,7 @@ class _ApiStyleRow extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: onPressed,
               icon: const Icon(Icons.alt_route_rounded),
-              label: Text(selectedStyle.displayName),
+              label: Text(selectedStyle.displayTitle),
             ),
           ],
         ),
@@ -1079,8 +1071,8 @@ class _ApiStyleSelectionSheet extends StatelessWidget {
                               ),
                             )
                           : const SizedBox(width: 8, height: 8),
-                      title: Text(style.displayName),
-                      subtitle: Text(style.description),
+                      title: Text(style.displayTitle),
+                      subtitle: Text(style.protocolStyle),
                       onTap: () => Navigator.of(context).pop(style),
                     );
                   },

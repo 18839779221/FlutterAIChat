@@ -173,7 +173,8 @@ void main() {
     await tester.tap(find.text('测速'));
     await tester.pump();
 
-    expect(find.textContaining('测速完成，连接正常：首次响应 120ms · 再次响应 180ms'), findsOneWidget);
+    expect(find.textContaining('测速完成，连接正常：首次响应 120ms · 再次响应 180ms'),
+        findsOneWidget);
     expect(find.textContaining('Ping'), findsNothing);
     expect(find.textContaining('Pong'), findsNothing);
   });
@@ -280,6 +281,50 @@ void main() {
     expect(find.text('Anthropic Messages'), findsOneWidget);
   });
 
+  testWidgets('api style picker uses product titles and protocol subtitles',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = await _createRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ProviderFormPage(
+          initialProvider: const LlmProviderConfig(
+            id: 'openai',
+            name: 'OpenAI',
+            apiKey: 'test-key',
+            baseUrl: 'https://api.openai.com/v1/responses',
+            models: [
+              LlmProviderModel(id: 'gpt-4o-mini', name: ''),
+            ],
+          ),
+          repository: repository,
+          discoveryService: _FakeDiscoveryService(),
+          testService: _FakeModelTestService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('API Style'), findsOneWidget);
+    expect(find.text('如果粘贴了完整 endpoint，会自动识别；也可以手动切换。'), findsNothing);
+
+    await tester.tap(find.text('OpenAI Responses'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('OpenAI Responses'), findsWidgets);
+    expect(find.text('OpenAI Chat Completions'), findsOneWidget);
+    expect(find.text('Anthropic Messages'), findsOneWidget);
+    expect(find.text('responses'), findsOneWidget);
+    expect(find.text('chat_completions'), findsOneWidget);
+    expect(find.text('anthropic_messages'), findsOneWidget);
+    expect(find.text('Responses API'), findsNothing);
+    expect(find.text('Chat Completions'), findsNothing);
+    expect(find.text('适合 OpenAI Responses 兼容接口。'), findsNothing);
+  });
+
   testWidgets('manual api style selection rewrites base url before save',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 1200));
@@ -315,7 +360,7 @@ void main() {
 
     await tester.tap(find.text('Anthropic Messages'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Responses API').last);
+    await tester.tap(find.text('OpenAI Responses').last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
