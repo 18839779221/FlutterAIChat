@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/chat_group.dart';
 import '../models/llm/llm_provider_config.dart';
 import '../models/llm/llm_provider_model.dart';
 import '../models/skill/duplicate_skill_invocation_mode.dart';
@@ -9,7 +8,6 @@ import '../models/skill/skill_descriptor.dart';
 import '../models/tool/tool_policy.dart';
 import '../providers/chat_providers.dart';
 import '../services/llm_model_test_service.dart';
-import '../services/workspace/workspace_binding_service.dart';
 import '../theme/app_theme_spec.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
@@ -40,8 +38,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   String? _latestSkillInstallUrl;
   LlmProviderConfig? _currentProvider;
   LlmProviderModel? _currentModel;
-  final WorkspaceBindingService _workspaceBindingService =
-      WorkspaceBindingService();
 
   @override
   void initState() {
@@ -278,59 +274,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
   }
 
-  List<String> _workspaceChoices(ChatGroup? currentGroup, List<ChatGroup> groups) {
-    final values = <String>[_workspaceBindingService.defaultWorkspaceId];
-    final seen = <String>{_workspaceBindingService.defaultWorkspaceId};
-    for (final group in groups) {
-      final workspaceId = group.workspaceId?.trim();
-      if (workspaceId == null || workspaceId.isEmpty || !seen.add(workspaceId)) {
-        continue;
-      }
-      values.add(workspaceId);
-    }
-    final currentWorkspace = currentGroup?.workspaceId?.trim();
-    if (currentWorkspace != null &&
-        currentWorkspace.isNotEmpty &&
-        seen.add(currentWorkspace)) {
-      values.add(currentWorkspace);
-    }
-    return values;
-  }
-
-  String _workspaceLabel(String workspaceId) {
-    return workspaceId == _workspaceBindingService.defaultWorkspaceId
-        ? '.default (default workspace)'
-        : workspaceId;
-  }
-
-  Future<void> _openWorkspacePicker() async {
-    final currentGroup = ref.read(currentGroupProvider);
-    if (currentGroup == null) {
-      return;
-    }
-    final workspaces = _workspaceChoices(currentGroup, ref.read(groupsProvider));
-    final currentWorkspaceId =
-        _workspaceBindingService.resolveWorkspaceId(currentGroup.workspaceId).workspaceId;
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => _SelectionSheet<String>(
-        title: '选择 workspace',
-        items: workspaces,
-        isSelected: (item) => item == currentWorkspaceId,
-        labelBuilder: _workspaceLabel,
-      ),
-    );
-    if (selected == null || selected == currentWorkspaceId) {
-      return;
-    }
-    await ref.read(chatControllerProvider).updateCurrentGroupWorkspace(
-          selected == _workspaceBindingService.defaultWorkspaceId
-              ? null
-              : selected,
-        );
-  }
-
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
@@ -339,14 +282,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final provider = _currentProvider;
     final model = _currentModel;
     final activeTheme = ref.watch(appThemeControllerProvider);
-    final currentGroup = ref.watch(currentGroupProvider);
-    final groups = ref.watch(groupsProvider);
-    final workspaceChoices = _workspaceChoices(currentGroup, groups);
-    final workspaceSubtitle = currentGroup == null
-        ? '先进入一个对话，再设置 workspace。'
-        : workspaceChoices.length <= 1
-            ? '当前仅有 .default，可在首次长期文件落盘时自动升级。'
-            : '选择当前对话要复用的文件容器。';
     return Scaffold(
       appBar: _buildTintedHeader(context, '设置'),
       body: _isLoading
@@ -489,37 +424,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             ],
                           ),
                         ),
-                    ],
-                  ),
-                ),
-                SizedBox(height: spacing.lg),
-                SettingsGroupSection(
-                  title: '当前对话',
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SettingsRow(
-                        title: 'Workspace',
-                        subtitle: workspaceSubtitle,
-                        trailing: OutlinedButton.icon(
-                          key: const Key('workspace-switcher'),
-                          onPressed: currentGroup == null
-                              ? null
-                              : _openWorkspacePicker,
-                          icon: const Icon(Icons.folder_open_outlined),
-                          label: Text(
-                            currentGroup == null
-                                ? '未选择'
-                                : _workspaceLabel(
-                                    _workspaceBindingService
-                                        .resolveWorkspaceId(
-                                          currentGroup.workspaceId,
-                                        )
-                                        .workspaceId,
-                                  ),
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -731,75 +635,6 @@ class _ThemeCard extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SelectionSheet<T> extends StatelessWidget {
-  final String title;
-  final List<T> items;
-  final bool Function(T item) isSelected;
-  final String Function(T item) labelBuilder;
-
-  const _SelectionSheet({
-    required this.title,
-    required this.items,
-    required this.isSelected,
-    required this.labelBuilder,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final spacing = Theme.of(context).extension<AppSpacing>()!;
-    final colors = Theme.of(context).extension<AppThemeSpec>()!;
-    final maxHeight = MediaQuery.of(context).size.height * 0.7;
-
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.all(spacing.lg),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: maxHeight),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: colors.primaryText,
-                    ),
-              ),
-              SizedBox(height: spacing.md),
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: items.length,
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-                    final selected = isSelected(item);
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: selected
-                          ? Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: colors.workflowRunning,
-                                shape: BoxShape.circle,
-                              ),
-                            )
-                          : const SizedBox(width: 8, height: 8),
-                      title: Text(labelBuilder(item)),
-                      onTap: () => Navigator.of(context).pop(item),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
