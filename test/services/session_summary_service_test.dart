@@ -62,7 +62,15 @@ void main() {
       );
       expect(
         SessionSummaryService.summaryInstructionPrompt,
-        contains('风险与下一步：'),
+        contains('文件/工具/代码结论：'),
+      );
+      expect(
+        SessionSummaryService.summaryInstructionPrompt,
+        contains('当前进展：'),
+      );
+      expect(
+        SessionSummaryService.summaryInstructionPrompt,
+        contains('下一步：'),
       );
     });
 

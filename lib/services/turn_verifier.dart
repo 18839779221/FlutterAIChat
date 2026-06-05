@@ -103,6 +103,8 @@ class TurnVerifier {
   ChatEvent? _findLatestToolLifecycleEvent(List<ChatEvent> transcript) {
     for (final event in transcript.reversed) {
       switch (event.eventType) {
+        case ChatEventType.contextCompacted:
+          continue;
         case ChatEventType.assistantToolCall:
         case ChatEventType.assistantToolConfirmation:
         case ChatEventType.assistantQuestionPrompt:

@@ -371,6 +371,19 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     while (cursor < sortedMessages.length) {
       final current = sortedMessages[cursor];
 
+      if (current.contentType == MessageContentType.contextBoundary) {
+        items.add(
+          ChatTimelineItem(
+            stableKey:
+                'boundary-${current.id ?? current.timestamp.microsecondsSinceEpoch}',
+            type: ChatTimelineItemType.contextBoundary,
+            boundaryMessage: current,
+          ),
+        );
+        cursor += 1;
+        continue;
+      }
+
       if (current.isUser) {
         final segment = <ChatMessage>[current];
         var nextCursor = cursor + 1;
@@ -594,6 +607,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
         return _canProjectToolInvocation(message.payloadJson);
       case MessageContentType.toolResult:
         return _canProjectToolResult(message.payloadJson);
+      case MessageContentType.contextBoundary:
+        return true;
       case MessageContentType.askUserQuestionPrompt:
       case MessageContentType.askUserQuestionResult:
         return true;

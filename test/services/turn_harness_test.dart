@@ -1328,6 +1328,7 @@ void main() {
           snapshotRepository: SessionContextSnapshotRepository(
             _NoopChatStorage(),
           ),
+          chatStorage: _NoopChatStorage(),
           contextProjector: SessionContextProjector(),
           tokenBudgetService: SessionTokenBudgetService(
             modelBudgetResolver: (_) => const SessionModelBudget(
@@ -2312,6 +2313,7 @@ void main() {
           snapshotRepository: SessionContextSnapshotRepository(
             _NoopChatStorage(),
           ),
+          chatStorage: _NoopChatStorage(),
           contextProjector: SessionContextProjector(),
           tokenBudgetService: SessionTokenBudgetService(
             modelBudgetResolver: (_) => const SessionModelBudget(
@@ -2436,6 +2438,7 @@ void main() {
           snapshotRepository: SessionContextSnapshotRepository(
             _NoopChatStorage(),
           ),
+          chatStorage: _NoopChatStorage(),
           contextProjector: SessionContextProjector(),
           tokenBudgetService: SessionTokenBudgetService(
             modelBudgetResolver: (_) => const SessionModelBudget(
@@ -4420,6 +4423,7 @@ class _StubSessionContextService extends SessionContextService {
           snapshotRepository: SessionContextSnapshotRepository(
             _NoopChatStorage(),
           ),
+          chatStorage: _NoopChatStorage(),
           contextProjector: SessionContextProjector(),
           tokenBudgetService: SessionTokenBudgetService(),
           summaryService: SessionSummaryService(

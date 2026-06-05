@@ -253,6 +253,7 @@ class ChatSendLiveTestHarness {
       chatTurnRepository: turnRepository,
       chatEventRepository: eventRepository,
       snapshotRepository: SessionContextSnapshotRepository(databaseHelper),
+      chatStorage: databaseHelper,
       contextProjector: SessionContextProjector(),
       tokenBudgetService: SessionTokenBudgetService(
         modelBudgetRegistry: ModelBudgetRegistry(),

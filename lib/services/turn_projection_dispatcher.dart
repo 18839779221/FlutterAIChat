@@ -160,6 +160,7 @@ class TurnProjectionDispatcher {
         );
         return;
       case ChatEventType.userMessage:
+      case ChatEventType.contextCompacted:
       case ChatEventType.assistantPlannerMessage:
       case ChatEventType.assistantReasoningDelta:
       case ChatEventType.assistantTextDelta:

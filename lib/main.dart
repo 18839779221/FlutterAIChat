@@ -211,6 +211,7 @@ void main() async {
       chatTurnRepository: turnRepository,
       chatEventRepository: eventRepository,
       snapshotRepository: SessionContextSnapshotRepository(storage),
+      chatStorage: storage,
       contextProjector: SessionContextProjector(),
       tokenBudgetService: SessionTokenBudgetService(
         modelBudgetRegistry: modelBudgetRegistry,

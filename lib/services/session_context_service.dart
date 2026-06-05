@@ -4,12 +4,14 @@ import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/context/model_context_item.dart';
 import '../models/context/planner_context_carrier.dart';
+import '../models/response/message_content_type.dart';
 import '../models/session/context_compaction_config.dart';
 import '../models/session/session_context_snapshot.dart';
 import '../models/tool/tool_result.dart';
 import '../repositories/chat_event_repository.dart';
 import '../repositories/chat_turn_repository.dart';
 import '../repositories/session_context_snapshot_repository.dart';
+import '../storage/chat_storage.dart';
 import '../utils/logger.dart';
 import 'chat_service.dart';
 import 'prompt/runtime_user_context_service.dart';
@@ -73,6 +75,16 @@ class SessionContextBuildResult {
       ];
 }
 
+class ManualSessionCompactionResult {
+  final SessionContextSnapshot? snapshot;
+  final bool didCompactHistory;
+
+  const ManualSessionCompactionResult({
+    required this.snapshot,
+    required this.didCompactHistory,
+  });
+}
+
 class SessionContextService {
   static const String _tag = 'SessionContextService';
   // Architecture:
@@ -87,6 +99,7 @@ class SessionContextService {
     required ChatTurnRepository chatTurnRepository,
     required ChatEventRepository chatEventRepository,
     required SessionContextSnapshotRepository snapshotRepository,
+    required ChatStorage chatStorage,
     required SessionContextProjector contextProjector,
     required SessionTokenBudgetService tokenBudgetService,
     required SessionSummaryService summaryService,
@@ -97,6 +110,7 @@ class SessionContextService {
   })  : _chatTurnRepository = chatTurnRepository,
         _chatEventRepository = chatEventRepository,
         _snapshotRepository = snapshotRepository,
+        _chatStorage = chatStorage,
         _contextProjector = contextProjector,
         _tokenBudgetService = tokenBudgetService,
         _summaryService = summaryService,
@@ -111,6 +125,7 @@ class SessionContextService {
   final ChatTurnRepository _chatTurnRepository;
   final ChatEventRepository _chatEventRepository;
   final SessionContextSnapshotRepository _snapshotRepository;
+  final ChatStorage _chatStorage;
   final SessionContextProjector _contextProjector;
   final SessionTokenBudgetService _tokenBudgetService;
   final SessionSummaryService _summaryService;
@@ -118,6 +133,75 @@ class SessionContextService {
   final RuntimeUserContextService _runtimeUserContextService;
   final UserContextMessageBuilder _userContextMessageBuilder;
   final ToolResultContextProjector _toolResultContextProjector;
+
+  Future<ManualSessionCompactionResult> compactCompletedHistoryForGroup({
+    required int groupId,
+    int? keepRecentCompletedTurns,
+  }) async {
+    final existingSnapshot = await _snapshotRepository.getLatestByGroup(groupId);
+    final allTurns = await _chatTurnRepository.getTurnsByGroup(groupId);
+    final completedTurns = allTurns.where((turn) {
+      final turnId = turn.id;
+      if (turnId == null) {
+        return false;
+      }
+      if (existingSnapshot != null &&
+          turnId <= existingSnapshot.coveredUntilTurnId) {
+        return false;
+      }
+      return turn.status == ChatTurnStatus.completed;
+    }).toList(growable: false);
+    if (completedTurns.length <= 1) {
+      return ManualSessionCompactionResult(
+        snapshot: existingSnapshot,
+        didCompactHistory: false,
+      );
+    }
+
+    final groupedHistoryEvents = await _loadHistoryEventsByTurn(
+      groupId: groupId,
+      allowedTurnIds: completedTurns.map((turn) => turn.id!).toSet(),
+    );
+    final historySegments = _buildHistorySegments(
+      historyTurns: completedTurns,
+      groupedEvents: groupedHistoryEvents,
+    );
+    if (historySegments.length <= 1) {
+      return ManualSessionCompactionResult(
+        snapshot: existingSnapshot,
+        didCompactHistory: false,
+      );
+    }
+
+    final keepCount =
+        (keepRecentCompletedTurns ?? 1).clamp(0, historySegments.length - 1);
+    final compactCount = historySegments.length - keepCount;
+    if (compactCount <= 0) {
+      return ManualSessionCompactionResult(
+        snapshot: existingSnapshot,
+        didCompactHistory: false,
+      );
+    }
+
+    final compactedSegments = historySegments
+        .take(compactCount)
+        .toList(growable: false);
+    final snapshot = await _rollSummaryForward(
+      groupId: groupId,
+      existingSnapshot: existingSnapshot,
+      compactedSegments: compactedSegments,
+    );
+    if (snapshot != null) {
+      await _persistContextCompactedBoundary(
+        groupId: groupId,
+        turnId: compactedSegments.last.turnId,
+      );
+    }
+    return ManualSessionCompactionResult(
+      snapshot: snapshot ?? existingSnapshot,
+      didCompactHistory: snapshot != null,
+    );
+  }
 
   Future<List<ChatMessage>> buildPlannerMessages({
     required int groupId,
@@ -168,7 +252,14 @@ class SessionContextService {
     // (2) compaction snapshot summary (plain text)
     final snapshot = state.activeSnapshot;
     if (snapshot != null) {
-      carriers.add(SyntheticCarrier.system(snapshot.summaryText));
+      carriers.add(
+        SyntheticCarrier.user(
+          '<conversation-summary>\n'
+          '已压缩历史上下文：\n'
+          '${snapshot.summaryText.trim()}\n'
+          '</conversation-summary>',
+        ),
+      );
     }
 
     // (3) recent history segments (already pre-projected into carriers)
@@ -413,6 +504,9 @@ class SessionContextService {
             ),
           );
 
+        case ChatEventType.contextCompacted:
+          break;
+
         // UI-only events: skip from LLM round-trip.
         case ChatEventType.assistantPlannerMessage:
         case ChatEventType.assistantTextDelta:
@@ -565,6 +659,10 @@ class SessionContextService {
           didCompactHistory: false,
         );
       }
+      await _persistContextCompactedBoundary(
+        groupId: groupId,
+        turnId: compactedSegments.last.turnId,
+      );
     }
 
     return _CompactionResult(
@@ -600,6 +698,27 @@ class SessionContextService {
       );
       return null;
     }
+  }
+
+  Future<void> _persistContextCompactedBoundary({
+    required int groupId,
+    required int turnId,
+  }) async {
+    const boundaryText = '已压缩历史上下文';
+    await _chatEventRepository.appendContextCompacted(
+      turnId: turnId,
+      groupId: groupId,
+      content: boundaryText,
+    );
+    await _chatStorage.insertMessage(
+      ChatMessage(
+        text: boundaryText,
+        role: MessageRole.system,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.contextBoundary,
+      ),
+      groupId,
+    );
   }
 
   int _estimateSegmentsTokens(Iterable<SessionContextTurnSegment> segments) {

@@ -167,6 +167,8 @@ class ChatTimelineProjectionService {
       );
 
       switch (message.contentType) {
+        case MessageContentType.contextBoundary:
+          break;
         case MessageContentType.toolInvocation:
         case MessageContentType.actionConfirmation:
           final invocation =
@@ -231,6 +233,8 @@ class ChatTimelineProjectionService {
 
   bool _belongsToNonToolBlockProjection(ChatMessage message) {
     switch (message.contentType) {
+      case MessageContentType.contextBoundary:
+        return false;
       case MessageContentType.toolInvocation:
       case MessageContentType.toolResult:
       case MessageContentType.actionConfirmation:

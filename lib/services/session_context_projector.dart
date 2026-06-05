@@ -86,8 +86,8 @@ class SessionContextProjector {
           ),
         ) ??
         ChatMessage(
-          text: summaryText,
-          role: MessageRole.system,
+          text: _formatSnapshotSummary(summaryText),
+          role: MessageRole.user,
           timestamp: timestamp,
           status: MessageStatus.completed,
         );
@@ -97,10 +97,18 @@ class SessionContextProjector {
     String summaryText, {
     DateTime? timestamp,
   }) {
-    return ModelContextItem.systemMessage(
-      summaryText,
+    return ModelContextItem.userMessage(
+      _formatSnapshotSummary(summaryText),
       timestamp: timestamp,
     );
+  }
+
+  String _formatSnapshotSummary(String summaryText) {
+    final trimmed = summaryText.trim();
+    return '<conversation-summary>\n'
+        '已压缩历史上下文：\n'
+        '$trimmed\n'
+        '</conversation-summary>';
   }
 
   ChatMessage? projectEventToContext(ChatEvent event) {
@@ -145,6 +153,8 @@ class SessionContextProjector {
           content,
           timestamp: event.createdAt,
         );
+      case ChatEventType.contextCompacted:
+        return null;
       case ChatEventType.userInteractionResult:
         final content = event.content?.trim() ?? '';
         if (content.isEmpty) {

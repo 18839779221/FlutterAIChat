@@ -7,7 +7,6 @@ import 'package:ai_chat/theme/app_typography.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/skill/skill_catalog_entry.dart';
 import '../providers/chat_providers.dart';
 import 'chat_input_attachment_strip.dart';
 import 'context_window/context_window_usage_indicator.dart';
@@ -33,9 +32,21 @@ class ChatInput extends ConsumerStatefulWidget {
 
 class _ChatInputState extends ConsumerState<ChatInput> {
   final GlobalKey _modelChipKey = GlobalKey();
+  final GlobalKey _composerShellKey = GlobalKey();
   static const double _modelChipFontSize = 12.2;
+  static const List<_SlashSuggestionItem> _slashCommandSuggestions = [
+    _SlashSuggestionItem(
+      title: '/compact',
+      subtitle: '压缩当前会话的历史上下文。',
+      insertText: '/compact',
+    ),
+  ];
   TextEditingController? _listenedController;
   ChangeNotifier? _listenedVoiceController;
+  FocusNode? _listenedFocusNode;
+  OverlayEntry? _slashSuggestionsOverlayEntry;
+  List<_SlashSuggestionItem> _activeSlashSuggestions =
+      const <_SlashSuggestionItem>[];
   String? _selectedModelChipLabel;
 
   @override
@@ -45,12 +56,16 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     _listenedController?.addListener(_handleTextChanged);
     _listenedVoiceController = ref.read(voiceInputControllerProvider);
     _listenedVoiceController?.addListener(_handleVoiceStateChanged);
+    _listenedFocusNode = ref.read(focusNodeProvider);
+    _listenedFocusNode?.addListener(_handleFocusChanged);
   }
 
   @override
   void dispose() {
+    _removeSlashSuggestionsOverlay();
     _listenedController?.removeListener(_handleTextChanged);
     _listenedVoiceController?.removeListener(_handleVoiceStateChanged);
+    _listenedFocusNode?.removeListener(_handleFocusChanged);
     super.dispose();
   }
 
@@ -64,6 +79,10 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     if (mounted) {
       setState(() {});
     }
+  }
+
+  void _handleFocusChanged() {
+    _syncSlashSuggestionsOverlay();
   }
 
   Future<void> _refreshModelChipLabel(AppSettingsRepository repository) async {
@@ -108,6 +127,78 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     setState(() {
       _selectedModelChipLabel = resolvedLabel;
     });
+  }
+
+  void _removeSlashSuggestionsOverlay() {
+    _slashSuggestionsOverlayEntry?.remove();
+    _slashSuggestionsOverlayEntry = null;
+  }
+
+  void _dismissSlashSuggestions() {
+    _listenedFocusNode?.unfocus();
+    _removeSlashSuggestionsOverlay();
+  }
+
+  void _syncSlashSuggestionsOverlay() {
+    if (!mounted) {
+      return;
+    }
+    final focusNode = _listenedFocusNode;
+    final shouldShow =
+        focusNode?.hasFocus == true && _activeSlashSuggestions.isNotEmpty;
+    if (!shouldShow) {
+      _removeSlashSuggestionsOverlay();
+      return;
+    }
+
+    final composerRenderObject =
+        _composerShellKey.currentContext?.findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (composerRenderObject == null || overlay == null) {
+      _removeSlashSuggestionsOverlay();
+      return;
+    }
+
+    if (_slashSuggestionsOverlayEntry == null) {
+      _slashSuggestionsOverlayEntry = OverlayEntry(
+        builder: (context) => _AnchoredSlashSuggestionsOverlay(
+          anchorRect: _resolveSlashSuggestionsAnchorRect(
+            composerRenderObject: composerRenderObject,
+            overlay: overlay,
+          ),
+          suggestions: _activeSlashSuggestions,
+          onSelected: _handleSlashSuggestionSelected,
+          onDismiss: _dismissSlashSuggestions,
+        ),
+      );
+      Overlay.of(context).insert(_slashSuggestionsOverlayEntry!);
+      return;
+    }
+
+    _slashSuggestionsOverlayEntry!.markNeedsBuild();
+  }
+
+  Rect _resolveSlashSuggestionsAnchorRect({
+    required RenderBox composerRenderObject,
+    required RenderBox overlay,
+  }) {
+    final offset =
+        composerRenderObject.localToGlobal(Offset.zero, ancestor: overlay);
+    return offset & composerRenderObject.size;
+  }
+
+  void _handleSlashSuggestionSelected(_SlashSuggestionItem item) {
+    final selection = '${item.insertText} ';
+    final controller = _listenedController;
+    if (controller == null) {
+      return;
+    }
+    controller.value = TextEditingValue(
+      text: selection,
+      selection: TextSelection.collapsed(offset: selection.length),
+    );
+    _removeSlashSuggestionsOverlay();
   }
 
   @override
@@ -163,10 +254,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final isSendButtonEnabled =
         isCancellablePhase || (!isBlockingPhase && !isAwaitingConfirmation);
     final slashQuery = _extractSlashQuery(textController.text);
-    final slashSuggestions = skillCatalog.maybeWhen<List<SkillCatalogEntry>>(
+    final commandSuggestions = _resolveSlashCommandSuggestions(slashQuery);
+    final slashSuggestions = skillCatalog.maybeWhen<List<_SlashSuggestionItem>>(
       data: (skills) {
         if (slashQuery == null) {
-          return const <SkillCatalogEntry>[];
+          return const <_SlashSuggestionItem>[];
         }
         return skills
             .where((skill) {
@@ -176,15 +268,73 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   skill.description.toLowerCase().contains(query);
             })
             .take(5)
+            .map(
+              (skill) => _SlashSuggestionItem.skill(
+                title: skill.id,
+                subtitle: skill.description,
+                insertText: '/${skill.id}',
+              ),
+            )
             .toList(growable: false);
       },
-      orElse: () => const <SkillCatalogEntry>[],
+      orElse: () => const <_SlashSuggestionItem>[],
     );
+    _activeSlashSuggestions = <_SlashSuggestionItem>[
+      ...commandSuggestions,
+      ...slashSuggestions,
+    ];
     if (!identical(_listenedVoiceController, voiceInputController)) {
       _listenedVoiceController?.removeListener(_handleVoiceStateChanged);
       _listenedVoiceController = voiceInputController;
       _listenedVoiceController?.addListener(_handleVoiceStateChanged);
     }
+    if (!identical(_listenedFocusNode, focusNode)) {
+      _listenedFocusNode?.removeListener(_handleFocusChanged);
+      _listenedFocusNode = focusNode;
+      _listenedFocusNode?.addListener(_handleFocusChanged);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncSlashSuggestionsOverlay();
+    });
+
+    Future<bool> handleSlashCommand() async {
+      final command = _extractSlashCommand(textController.text);
+      if (command == null) {
+        return false;
+      }
+      if (command != '/compact') {
+        return false;
+      }
+      if (composerAttachments.isNotEmpty) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('压缩历史上下文前请先移除附件。'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        return true;
+      }
+      textController.clear();
+      try {
+        await chatController.compactCurrentSession();
+      } catch (error) {
+        if (!mounted) {
+          return true;
+        }
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text('压缩失败：$error'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+      }
+      return true;
+    }
+
     Future<void> submitCurrentInput() async {
       final pendingText = textController.text;
       final pendingAttachments = List<ChatAttachment>.from(composerAttachments);
@@ -227,6 +377,10 @@ class _ChatInputState extends ConsumerState<ChatInput> {
           'ChatInput',
           'submitCurrentInput ignored because text and attachments are both empty',
         );
+        return;
+      }
+      final handledSlashCommand = await handleSlashCommand();
+      if (handledSlashCommand) {
         return;
       }
       final allowUnsupportedImageInputAttempt =
@@ -447,114 +601,104 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                           label: '聊天输入框',
                           hint: '输入消息',
                           value: composerValue,
-                          child: Container(
-                            key: const ValueKey('chat-input-composer-shell'),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (isVoiceListening)
-                                  Padding(
-                                    padding: EdgeInsets.fromLTRB(
-                                      spacing.xs,
-                                      spacing.xxs + 2,
-                                      spacing.xs,
-                                      0,
-                                    ),
-                                    child: Row(
-                                      key: const ValueKey(
-                                          'chat-input-voice-status'),
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Container(
-                                          key: const ValueKey(
-                                            'chat-input-voice-status-dot',
-                                          ),
-                                          width: 8,
-                                          height: 8,
-                                          decoration: BoxDecoration(
-                                            color: colors.workflowRunning,
-                                            shape: BoxShape.circle,
-                                          ),
-                                        ),
-                                        SizedBox(width: spacing.xxs + 2),
-                                        Text(
-                                          '正在聆听',
-                                          style: AppTypography.uiStyle(
-                                            color: colors.workflowRunning,
-                                            fontSize: 11.8,
-                                            height: 1.2,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ConstrainedBox(
-                                  constraints:
-                                      const BoxConstraints(minHeight: 36),
-                                  child: TextField(
-                                    key: const ValueKey('chat-input-field'),
-                                    focusNode: focusNode,
-                                    controller: textController,
-                                    enabled: !isComposerLocked,
-                                    minLines: 1,
-                                    maxLines: 4,
-                                    textAlignVertical: TextAlignVertical.center,
-                                    textInputAction: TextInputAction.newline,
-                                    keyboardType: TextInputType.multiline,
-                                    style: AppTypography.uiStyle(
-                                      color: colors.primaryText,
-                                      fontSize: 13.7,
-                                      height: 1.34,
-                                    ),
-                                    decoration: InputDecoration(
-                                      hintText: '继续追问，或补充你的要求',
-                                      hintStyle: AppTypography.uiStyle(
-                                        color: colors.secondaryText.withValues(
-                                          alpha: 0.66,
-                                        ),
-                                        fontSize: 13.3,
-                                        height: 1.28,
-                                      ),
-                                      isDense: true,
-                                      filled: false,
-                                      border: InputBorder.none,
-                                      enabledBorder: InputBorder.none,
-                                      focusedBorder: InputBorder.none,
-                                      disabledBorder: InputBorder.none,
-                                      errorBorder: InputBorder.none,
-                                      focusedErrorBorder: InputBorder.none,
-                                      contentPadding: EdgeInsets.fromLTRB(
+                          child: KeyedSubtree(
+                            key: _composerShellKey,
+                            child: Container(
+                              key: const ValueKey('chat-input-composer-shell'),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (isVoiceListening)
+                                    Padding(
+                                      padding: EdgeInsets.fromLTRB(
                                         spacing.xs,
                                         spacing.xxs + 2,
                                         spacing.xs,
-                                        spacing.xxs + 2,
+                                        0,
+                                      ),
+                                      child: Row(
+                                        key: const ValueKey(
+                                            'chat-input-voice-status'),
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            key: const ValueKey(
+                                              'chat-input-voice-status-dot',
+                                            ),
+                                            width: 8,
+                                            height: 8,
+                                            decoration: BoxDecoration(
+                                              color: colors.workflowRunning,
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                          SizedBox(width: spacing.xxs + 2),
+                                          Text(
+                                            '正在聆听',
+                                            style: AppTypography.uiStyle(
+                                              color: colors.workflowRunning,
+                                              fontSize: 11.8,
+                                              height: 1.2,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                    onSubmitted: (_) {
-                                      submitCurrentInput();
-                                    },
+                                  ConstrainedBox(
+                                    constraints:
+                                        const BoxConstraints(minHeight: 36),
+                                    child: TextField(
+                                      key: const ValueKey('chat-input-field'),
+                                      focusNode: focusNode,
+                                      controller: textController,
+                                      enabled: !isComposerLocked,
+                                      minLines: 1,
+                                      maxLines: 4,
+                                      textAlignVertical:
+                                          TextAlignVertical.center,
+                                      textInputAction: TextInputAction.newline,
+                                      keyboardType: TextInputType.multiline,
+                                      style: AppTypography.uiStyle(
+                                        color: colors.primaryText,
+                                        fontSize: 13.7,
+                                        height: 1.34,
+                                      ),
+                                      decoration: InputDecoration(
+                                        hintText: '继续追问，或补充你的要求',
+                                        hintStyle: AppTypography.uiStyle(
+                                          color: colors.secondaryText
+                                              .withValues(
+                                            alpha: 0.66,
+                                          ),
+                                          fontSize: 13.3,
+                                          height: 1.28,
+                                        ),
+                                        isDense: true,
+                                        filled: false,
+                                        border: InputBorder.none,
+                                        enabledBorder: InputBorder.none,
+                                        focusedBorder: InputBorder.none,
+                                        disabledBorder: InputBorder.none,
+                                        errorBorder: InputBorder.none,
+                                        focusedErrorBorder: InputBorder.none,
+                                        contentPadding: EdgeInsets.fromLTRB(
+                                          spacing.xs,
+                                          spacing.xxs + 2,
+                                          spacing.xs,
+                                          spacing.xxs + 2,
+                                        ),
+                                      ),
+                                      onSubmitted: (_) {
+                                        submitCurrentInput();
+                                      },
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                        if (slashSuggestions.isNotEmpty) ...[
-                          SizedBox(height: spacing.xxs + 2),
-                          _SlashSkillSuggestions(
-                            suggestions: slashSuggestions,
-                            onSelected: (skill) {
-                              final selection = '/${skill.id} ';
-                              textController.value = TextEditingValue(
-                                text: selection,
-                                selection: TextSelection.collapsed(
-                                  offset: selection.length,
-                                ),
-                              );
-                            },
-                          ),
-                        ],
                         if (composerAttachments.isNotEmpty) ...[
                           SizedBox(height: spacing.xxs + 2),
                           ChatInputAttachmentStrip(
@@ -967,6 +1111,29 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     return afterSlash;
   }
 
+  String? _extractSlashCommand(String text) {
+    final trimmed = text.trim();
+    if (!trimmed.startsWith('/')) {
+      return null;
+    }
+    return trimmed.split(RegExp(r'\s+')).first;
+  }
+
+  List<_SlashSuggestionItem> _resolveSlashCommandSuggestions(
+    String? slashQuery,
+  ) {
+    if (slashQuery == null) {
+      return const <_SlashSuggestionItem>[];
+    }
+    final normalizedQuery = '/${slashQuery.toLowerCase()}';
+    return _slashCommandSuggestions
+        .where(
+          (suggestion) =>
+              suggestion.title.toLowerCase().contains(normalizedQuery),
+        )
+        .toList(growable: false);
+  }
+
   Future<bool?> _confirmUnsupportedImageInputIfNeeded({
     required BuildContext context,
     required List<ChatAttachment> attachments,
@@ -1027,6 +1194,28 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     );
     return shouldContinue == true ? true : null;
   }
+}
+
+class _SlashSuggestionItem {
+  const _SlashSuggestionItem({
+    required this.title,
+    required this.subtitle,
+    required this.insertText,
+  });
+
+  const _SlashSuggestionItem.skill({
+    required String title,
+    required String subtitle,
+    required String insertText,
+  }) : this(
+          title: title,
+          subtitle: subtitle,
+          insertText: insertText,
+        );
+
+  final String title;
+  final String subtitle;
+  final String insertText;
 }
 
 class _ModelSelectionResult {
@@ -1262,10 +1451,12 @@ class _PickerActionTile extends StatelessWidget {
     required this.title,
     required this.onTap,
     this.selected = false,
+    this.subtitle,
   });
 
   final String title;
   final bool selected;
+  final String? subtitle;
   final VoidCallback onTap;
 
   @override
@@ -1290,23 +1481,43 @@ class _PickerActionTile extends StatelessWidget {
               vertical: spacing.sm + 1,
             ),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.uiStyle(
-                      color: colors.primaryText,
-                      fontSize: _titleFontSize,
-                      fontWeight: FontWeight.w400,
-                      height: 1.2,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.uiStyle(
+                          color: colors.primaryText,
+                          fontSize: _titleFontSize,
+                          fontWeight: FontWeight.w400,
+                          height: 1.2,
+                        ),
+                      ),
+                      if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
+                        SizedBox(height: spacing.xxs),
+                        Text(
+                          subtitle!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.uiStyle(
+                            color: colors.secondaryText,
+                            fontSize: 11.2,
+                            height: 1.2,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 if (selected)
                   Padding(
-                    padding: EdgeInsets.only(left: spacing.sm),
+                    padding: EdgeInsets.only(left: spacing.sm, top: spacing.xxs),
                     child: Icon(
                       Icons.check_circle_rounded,
                       size: 18,
@@ -1322,45 +1533,74 @@ class _PickerActionTile extends StatelessWidget {
   }
 }
 
-class _SlashSkillSuggestions extends StatelessWidget {
-  const _SlashSkillSuggestions({
+class _AnchoredSlashSuggestionsOverlay extends StatelessWidget {
+  const _AnchoredSlashSuggestionsOverlay({
+    required this.anchorRect,
     required this.suggestions,
     required this.onSelected,
+    required this.onDismiss,
   });
 
-  final List<SkillCatalogEntry> suggestions;
-  final ValueChanged<SkillCatalogEntry> onSelected;
+  final Rect anchorRect;
+  final List<_SlashSuggestionItem> suggestions;
+  final ValueChanged<_SlashSuggestionItem> onSelected;
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
     final spacing = Theme.of(context).extension<AppSpacing>()!;
-    final radius = Theme.of(context).extension<AppRadius>()!;
-    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+    final screenSize = MediaQuery.of(context).size;
+    final panelWidth = screenSize.width < 700
+        ? anchorRect.width.clamp(220.0, 320.0)
+        : anchorRect.width.clamp(240.0, 360.0);
+    final estimatedMenuHeight =
+        (suggestions.length * 56.0) + spacing.xs + 12.0;
+    final availableBelow = screenSize.height - anchorRect.bottom - 8;
+    final availableAbove = anchorRect.top - 8;
+    final shouldOpenAbove = availableAbove >= estimatedMenuHeight ||
+        availableAbove >= availableBelow;
+    final left = anchorRect.left.clamp(
+      12.0,
+      screenSize.width - panelWidth - 12,
+    );
+    final belowTop = anchorRect.bottom + 2;
+    final aboveTop = anchorRect.top - estimatedMenuHeight - 2;
+    final top = (shouldOpenAbove ? aboveTop : belowTop).clamp(
+      8.0,
+      screenSize.height - estimatedMenuHeight - 8,
+    );
 
-    return Container(
-      key: const ValueKey('chat-input-skill-suggestions'),
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: colors.settingsPanelBackground,
-        borderRadius: BorderRadius.circular(radius.md),
-        border: Border.all(color: colors.divider),
-      ),
-      padding: EdgeInsets.symmetric(vertical: spacing.xxs),
-      child: Column(
-        children: suggestions
-            .map(
-              (skill) => ListTile(
-                dense: true,
-                title: Text(skill.id),
-                subtitle: Text(
-                  skill.description,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                onTap: () => onSelected(skill),
+    return Material(
+      color: Colors.transparent,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: onDismiss,
+            ),
+          ),
+          Positioned(
+            left: left,
+            top: top,
+            child: _AnchoredMenuPanel(
+              key: const ValueKey('chat-input-skill-suggestions'),
+              width: panelWidth,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: suggestions
+                    .map(
+                      (item) => _PickerActionTile(
+                        title: item.title,
+                        subtitle: item.subtitle,
+                        onTap: () => onSelected(item),
+                      ),
+                    )
+                    .toList(growable: false),
               ),
-            )
-            .toList(growable: false),
+            ),
+          ),
+        ],
       ),
     );
   }

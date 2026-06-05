@@ -181,6 +181,26 @@ void main() {
       expect(find.text('assistant reply'), findsOneWidget);
     });
 
+    testWidgets('context boundary message renders as divider instead of bubble',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            id: 1,
+            text: '已压缩历史上下文',
+            role: MessageRole.system,
+            contentType: MessageContentType.contextBoundary,
+          ),
+        ],
+      );
+
+      expect(find.byKey(const ValueKey('context-boundary-divider')),
+          findsOneWidget);
+      expect(find.text('已压缩历史上下文'), findsOneWidget);
+      expect(find.byType(UserAnchorBubble), findsNothing);
+    });
+
     testWidgets(
         'runtime preview text block renders as streaming response without generating assistant message',
         (tester) async {

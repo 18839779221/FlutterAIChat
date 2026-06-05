@@ -113,6 +113,14 @@ class AgentEventProcessor {
       case ChatEventType.assistantTextFinal:
       case ChatEventType.error:
         return;
+      case ChatEventType.contextCompacted:
+        await _insertSystemMarker(
+          dbHelper: dbHelper,
+          text: event.content ?? '已压缩历史上下文',
+          contentType: MessageContentType.contextBoundary,
+          payloadJson: _withIdentity(event.payloadJson),
+        );
+        return;
       case ChatEventType.assistantReasoningDelta:
         await _onAssistantReasoningDelta(dbHelper: dbHelper, event: event);
         return;
@@ -297,6 +305,24 @@ class AgentEventProcessor {
     final message = ChatMessage(
       text: text,
       role: MessageRole.assistant,
+      status: MessageStatus.completed,
+      contentType: contentType,
+      payloadJson: payloadJson,
+    );
+    final id = await dbHelper.insertMessage(message, _groupId);
+    message.id = id;
+    _ref.read(messagesProvider.notifier).addMessage(message);
+  }
+
+  Future<void> _insertSystemMarker({
+    required ChatStorage dbHelper,
+    required String text,
+    required MessageContentType contentType,
+    required Map<String, dynamic>? payloadJson,
+  }) async {
+    final message = ChatMessage(
+      text: text,
+      role: MessageRole.system,
       status: MessageStatus.completed,
       contentType: contentType,
       payloadJson: payloadJson,

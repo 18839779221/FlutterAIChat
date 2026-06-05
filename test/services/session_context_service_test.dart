@@ -8,6 +8,7 @@ import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
+import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/session/context_compaction_config.dart';
 import 'package:ai_chat/models/session/model_budget_profile.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
@@ -60,6 +61,7 @@ void main() {
         chatTurnRepository: turnRepository,
         chatEventRepository: eventRepository,
         snapshotRepository: snapshotRepository,
+        chatStorage: storage,
         contextProjector: SessionContextProjector(),
         tokenBudgetService: SessionTokenBudgetService(
           modelBudgetResolver: (_) => const SessionModelBudget(
@@ -130,6 +132,7 @@ void main() {
         chatTurnRepository: turnRepository,
         chatEventRepository: eventRepository,
         snapshotRepository: snapshotRepository,
+        chatStorage: storage,
         contextProjector: SessionContextProjector(),
         tokenBudgetService: SessionTokenBudgetService(
           modelBudgetResolver: (_) => const SessionModelBudget(
@@ -216,6 +219,7 @@ void main() {
         chatTurnRepository: turnRepository,
         chatEventRepository: eventRepository,
         snapshotRepository: snapshotRepository,
+        chatStorage: storage,
         contextProjector: SessionContextProjector(),
         tokenBudgetService: SessionTokenBudgetService(
           modelBudgetResolver: (_) => const SessionModelBudget(
@@ -321,6 +325,7 @@ void main() {
         chatTurnRepository: turnRepository,
         chatEventRepository: eventRepository,
         snapshotRepository: snapshotRepository,
+        chatStorage: storage,
         contextProjector: SessionContextProjector(),
         tokenBudgetService: SessionTokenBudgetService(
           modelBudgetResolver: (_) => const SessionModelBudget(
@@ -363,11 +368,101 @@ void main() {
       expect(snapshot, isNotNull);
       expect(snapshot!.coveredUntilTurnId, historicalTurnId);
       expect(plannerMessages.first.text, contains('# currentDate'));
+      final summaryMessage = plannerMessages.firstWhere(
+        (message) => message.text.contains('已确认事实：需要按 token budget 自动压缩'),
+      );
+      expect(summaryMessage.role, MessageRole.user);
       expect(
         plannerMessages.map((message) => message.text).join('\n'),
         contains('最近历史：前一个 completed turn 应该保留原文'),
       );
       expect(plannerMessages.last.text, '继续');
+
+      await storage.deleteGroup(groupId);
+    });
+
+    test('manual compact rolls completed history into snapshot and keeps recent tail',
+        () async {
+      final storage = DatabaseHelper(
+        databaseName: 'session_context_service_manual_compact_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(
+          title: 'Session Context Manual Compact',
+          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        ),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final eventRepository = ChatEventRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+
+      Future<int> createCompletedTurn(String text) async {
+        final turnId = await turnRepository.createTurn(
+          ChatTurn(
+            groupId: groupId,
+            status: ChatTurnStatus.completed,
+            userInput: text,
+          ),
+        );
+        await eventRepository.appendUserMessage(
+          turnId: turnId,
+          groupId: groupId,
+          content: text,
+        );
+        return turnId;
+      }
+
+      final olderTurnId = await createCompletedTurn('older completed turn');
+      await createCompletedTurn('recent completed turn');
+
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        chatStorage: storage,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetResolver: (_) => const SessionModelBudget(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => '''
+当前目标：手动压缩会话
+已确认事实：older completed turn 已经折叠
+用户偏好/限制：保留最近一轮
+已确认决策：无
+已否决方案：无
+文件/工具/代码结论：无
+错误与修正：无
+未完成事项：继续对话
+当前进展：已生成手动 compact 摘要
+下一步：继续基于摘要工作
+''',
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      );
+
+      final result = await service.compactCompletedHistoryForGroup(
+        groupId: groupId,
+        keepRecentCompletedTurns: 1,
+      );
+
+      expect(result.didCompactHistory, isTrue);
+      expect(result.snapshot, isNotNull);
+      expect(result.snapshot!.summaryText, contains('当前目标：手动压缩会话'));
+      expect(result.snapshot!.coveredUntilTurnId, olderTurnId);
+      final persistedMessages = await storage.getMessagesByGroup(groupId);
+      final boundaryMessages = persistedMessages
+          .where(
+            (message) =>
+                message.contentType == MessageContentType.contextBoundary,
+          )
+          .toList(growable: false);
+      expect(boundaryMessages, hasLength(1));
+      expect(boundaryMessages.single.text, '已压缩历史上下文');
 
       await storage.deleteGroup(groupId);
     });
@@ -436,6 +531,7 @@ void main() {
         chatTurnRepository: turnRepository,
         chatEventRepository: eventRepository,
         snapshotRepository: snapshotRepository,
+        chatStorage: storage,
         contextProjector: SessionContextProjector(),
         tokenBudgetService: SessionTokenBudgetService(
           modelBudgetResolver: (_) => const SessionModelBudget(
@@ -483,6 +579,33 @@ void main() {
       final snapshot = await snapshotRepository.getLatestByGroup(groupId);
       expect(snapshot, isNotNull);
       expect(snapshot!.coveredUntilTurnId, lessThan(recentTurnId));
+      final summaryMessage = plannerMessages.firstWhere(
+        (message) => message.text.contains('已确认事实：旧历史已经被压缩为 snapshot'),
+      );
+      expect(summaryMessage.role, MessageRole.user);
+
+      final plannerCarriers = await service.buildPlannerCarriers(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: [
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '继续完善 token-aware working set',
+          ),
+        ],
+        config: ChatConfig(systemPrompt: '你是一个助手'),
+      );
+      final summaryCarrier = plannerCarriers
+          .whereType<SyntheticCarrier>()
+          .firstWhere(
+            (carrier) => carrier.content.contains('旧历史已经被压缩为 snapshot'),
+          );
+      expect(summaryCarrier.role, SyntheticRole.user);
+
       expect(plannerMessages.first.text, contains('# currentDate'));
       expect(
         plannerMessages.map((message) => message.text).join('\n'),
@@ -535,6 +658,7 @@ void main() {
         chatTurnRepository: turnRepository,
         chatEventRepository: eventRepository,
         snapshotRepository: snapshotRepository,
+        chatStorage: storage,
         contextProjector: SessionContextProjector(),
         tokenBudgetService: SessionTokenBudgetService(
           modelBudgetRegistry: ModelBudgetRegistry(
@@ -627,6 +751,7 @@ void main() {
         chatTurnRepository: turnRepository,
         chatEventRepository: eventRepository,
         snapshotRepository: snapshotRepository,
+        chatStorage: storage,
         contextProjector: SessionContextProjector(),
         tokenBudgetService: SessionTokenBudgetService(
           modelBudgetRegistry: ModelBudgetRegistry(
@@ -746,6 +871,7 @@ void main() {
         chatTurnRepository: turnRepository,
         chatEventRepository: eventRepository,
         snapshotRepository: snapshotRepository,
+        chatStorage: storage,
         contextProjector: SessionContextProjector(),
         tokenBudgetService: SessionTokenBudgetService(
           modelBudgetResolver: (_) => const SessionModelBudget(
@@ -841,6 +967,7 @@ void main() {
         chatTurnRepository: turnRepository,
         chatEventRepository: eventRepository,
         snapshotRepository: snapshotRepository,
+        chatStorage: storage,
         contextProjector: SessionContextProjector(),
         tokenBudgetService: SessionTokenBudgetService(
           modelBudgetResolver: (_) => const SessionModelBudget(
@@ -924,6 +1051,7 @@ void main() {
         chatTurnRepository: turnRepository,
         chatEventRepository: eventRepository,
         snapshotRepository: snapshotRepository,
+        chatStorage: storage,
         contextProjector: SessionContextProjector(),
         tokenBudgetService: SessionTokenBudgetService(
           modelBudgetResolver: (_) => const SessionModelBudget(
@@ -1048,6 +1176,7 @@ void main() {
         chatTurnRepository: turnRepository,
         chatEventRepository: eventRepository,
         snapshotRepository: snapshotRepository,
+        chatStorage: storage,
         contextProjector: SessionContextProjector(),
         tokenBudgetService: SessionTokenBudgetService(
           modelBudgetResolver: (_) => const SessionModelBudget(
@@ -1160,6 +1289,7 @@ void main() {
         chatTurnRepository: turnRepository,
         chatEventRepository: eventRepository,
         snapshotRepository: snapshotRepository,
+        chatStorage: storage,
         contextProjector: SessionContextProjector(),
         tokenBudgetService: SessionTokenBudgetService(
           modelBudgetResolver: (_) => const SessionModelBudget(
@@ -1255,6 +1385,7 @@ void main() {
         chatTurnRepository: turnRepository,
         chatEventRepository: eventRepository,
         snapshotRepository: snapshotRepository,
+        chatStorage: storage,
         contextProjector: SessionContextProjector(),
         tokenBudgetService: SessionTokenBudgetService(
           modelBudgetResolver: (_) => const SessionModelBudget(
@@ -1378,6 +1509,7 @@ void main() {
         chatTurnRepository: turnRepository,
         chatEventRepository: eventRepository,
         snapshotRepository: snapshotRepository,
+        chatStorage: storage,
         contextProjector: SessionContextProjector(),
         tokenBudgetService: SessionTokenBudgetService(
           modelBudgetResolver: (_) => const SessionModelBudget(

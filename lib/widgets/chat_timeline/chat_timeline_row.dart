@@ -28,6 +28,7 @@ import 'package:ai_chat/widgets/chat_message_image_attachments.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_card.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_result_card.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_timeline_card.dart';
+import 'package:ai_chat/widgets/chat_timeline/context_boundary_divider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -61,6 +62,7 @@ class ChatTimelineRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final row = switch (item.type) {
+      ChatTimelineItemType.contextBoundary => _buildContextBoundary(),
       ChatTimelineItemType.userBubble => _buildUserBubble(),
       ChatTimelineItemType.assistantBlock => _buildAssistantBlock(
           context,
@@ -120,6 +122,11 @@ class ChatTimelineRow extends ConsumerWidget {
           ChatMessageImageAttachments(attachments: message.attachments),
       ],
     );
+  }
+
+  Widget _buildContextBoundary() {
+    final message = item.boundaryMessage!;
+    return ContextBoundaryDivider(text: message.text);
   }
 
   Widget _buildAssistantBlock(BuildContext context, WidgetRef ref) {

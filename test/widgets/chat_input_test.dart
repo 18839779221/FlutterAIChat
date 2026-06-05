@@ -21,6 +21,7 @@ import 'package:ai_chat/services/attachments/chat_attachment_picker_service.dart
 import 'package:ai_chat/services/attachments/chat_attachment_storage_service.dart';
 import 'package:ai_chat/services/audio/audio_capture_service.dart';
 import 'package:ai_chat/services/speech/speech_to_text_service.dart';
+import 'package:ai_chat/services/session_context_service.dart';
 import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_input.dart';
@@ -790,6 +791,166 @@ void main() {
     expect(textField.controller?.text, '/verify ');
   });
 
+  testWidgets('chat input shows compact slash command suggestions', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('chat-input-field')));
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey('chat-input-field')),
+      '/comp',
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('chat-input-composer-shell')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('chat-input-skill-suggestions')),
+      findsOneWidget,
+    );
+    expect(find.text('/compact'), findsOneWidget);
+  });
+
+  testWidgets('chat input closes slash suggestion overlay on outside tap', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('chat-input-field')));
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey('chat-input-field')),
+      '/comp',
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('chat-input-skill-suggestions')),
+      findsOneWidget,
+    );
+
+    await tester.tapAt(const Offset(8, 8));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('chat-input-skill-suggestions')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('chat input submits compact command without sending message', (
+    tester,
+  ) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatControllerProvider.overrideWith(
+          (ref) => _RecordingCompactChatController(ref),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('chat-input-field')),
+      '/compact',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+
+    final controller =
+        container.read(chatControllerProvider) as _RecordingCompactChatController;
+    expect(controller.compactCount, 1);
+    expect(controller.sentRequests, isEmpty);
+  });
+
+  testWidgets('chat input rejects compact command when attachments exist', (
+    tester,
+  ) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatControllerProvider.overrideWith(
+          (ref) => _RecordingCompactChatController(ref),
+        ),
+        chatAttachmentPickerServiceProvider.overrideWithValue(
+          _FakeAttachmentPickerService(
+            attachments: [
+              ChatAttachment.image(
+                localId: 'att-1',
+                fileName: 'demo.png',
+                mimeType: 'image/png',
+                byteSize: 128,
+                status: ChatAttachmentStatus.selected,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('chat-input-add-image')));
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey('chat-input-field')),
+      '/compact',
+    );
+    await tester.tap(find.byType(FilledButton));
+    await tester.pump();
+
+    final controller =
+        container.read(chatControllerProvider) as _RecordingCompactChatController;
+    expect(controller.compactCount, 0);
+    expect(controller.sentRequests, isEmpty);
+    expect(find.text('压缩历史上下文前请先移除附件。'), findsOneWidget);
+  });
+
   testWidgets('chat input opens picker and renders selected image', (
     tester,
   ) async {
@@ -1079,6 +1240,35 @@ class _SpyChatController extends ChatController {
   @override
   void cancelStreamSubscription() {
     onCancel();
+  }
+}
+
+class _RecordingCompactChatController extends ChatController {
+  _RecordingCompactChatController(
+    super.ref,
+  )
+      : super(
+          sendCoordinator: _NoopChatSendCoordinator(),
+          sessionCoordinator: _NoopChatSessionCoordinator(),
+          summaryController: _NoopChatSummaryController(),
+          preferencesController: _NoopChatPreferencesController(),
+        );
+
+  final List<SendMessageRequest> sentRequests = <SendMessageRequest>[];
+  int compactCount = 0;
+
+  @override
+  Future<void> sendMessageRequest(SendMessageRequest request) async {
+    sentRequests.add(request);
+  }
+
+  @override
+  Future<ManualSessionCompactionResult> compactCurrentSession() async {
+    compactCount += 1;
+    return const ManualSessionCompactionResult(
+      snapshot: null,
+      didCompactHistory: true,
+    );
   }
 }
 

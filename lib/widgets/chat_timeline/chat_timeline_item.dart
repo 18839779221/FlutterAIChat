@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 
 /// Stable description for a single rendered timeline row.
 enum ChatTimelineItemType {
+  contextBoundary,
   userBubble,
   assistantBlock,
 }
@@ -19,6 +20,9 @@ class ChatTimelineItem {
 
   /// User message for anchor bubble rows.
   final ChatMessage? userMessage;
+
+  /// Source system marker message for non-bubble timeline dividers.
+  final ChatMessage? boundaryMessage;
 
   /// Source assistant message that produced the current block when available.
   final ChatMessage? sourceMessage;
@@ -43,6 +47,7 @@ class ChatTimelineItem {
     required this.stableKey,
     required this.type,
     this.userMessage,
+    this.boundaryMessage,
     this.sourceMessage,
     this.sourceMessages = const [],
     this.block,

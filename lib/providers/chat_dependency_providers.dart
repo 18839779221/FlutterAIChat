@@ -303,6 +303,7 @@ final sessionContextServiceProvider = Provider<SessionContextService>((ref) {
     chatTurnRepository: ref.watch(chatTurnRepositoryProvider),
     chatEventRepository: ref.watch(chatEventRepositoryProvider),
     snapshotRepository: ref.watch(sessionContextSnapshotRepositoryProvider),
+    chatStorage: ref.watch(databaseProvider),
     contextProjector: ref.watch(sessionContextProjectorProvider),
     tokenBudgetService: ref.watch(sessionTokenBudgetServiceProvider),
     summaryService: ref.watch(sessionSummaryServiceProvider),

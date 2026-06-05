@@ -77,6 +77,17 @@ class ChatBlockBuilder {
     required int sequence,
   }) {
     switch (message.contentType) {
+      case MessageContentType.contextBoundary:
+        return AssistantTurnBlock(
+          id: '$turnId-analysis-$sequence',
+          turnId: turnId,
+          type: AssistantTurnBlockType.analysis,
+          sequence: sequence,
+          createdAt: message.timestamp,
+          updatedAt: message.timestamp,
+          text: '',
+          payload: message.payloadJson,
+        );
       case MessageContentType.askUserQuestionPrompt:
         final request = _readAskUserQuestionRequest(message.payloadJson);
         return AssistantTurnBlock(

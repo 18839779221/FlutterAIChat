@@ -302,6 +302,22 @@ class ChatEventRepository {
     );
   }
 
+  Future<ChatEvent> appendContextCompacted({
+    required int turnId,
+    required int groupId,
+    required String content,
+    Map<String, dynamic>? payloadJson,
+  }) {
+    return _appendEvent(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.contextCompacted,
+      role: MessageRole.system,
+      content: content,
+      payloadJson: payloadJson,
+    );
+  }
+
   Future<ChatEvent> appendTurnStatus({
     required int turnId,
     required int groupId,

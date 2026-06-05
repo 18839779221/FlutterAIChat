@@ -75,6 +75,7 @@ void main() {
         chatTurnRepository: turnRepository,
         chatEventRepository: eventRepository,
         snapshotRepository: snapshotRepository,
+        chatStorage: storage,
         contextProjector: SessionContextProjector(),
         tokenBudgetService: SessionTokenBudgetService(
           modelBudgetResolver: (_) => const SessionModelBudget(
@@ -137,6 +138,7 @@ void main() {
         chatTurnRepository: turnRepository,
         chatEventRepository: eventRepository,
         snapshotRepository: snapshotRepository,
+        chatStorage: storage,
         contextProjector: SessionContextProjector(),
         tokenBudgetService: SessionTokenBudgetService(
           modelBudgetResolver: (_) => const SessionModelBudget(

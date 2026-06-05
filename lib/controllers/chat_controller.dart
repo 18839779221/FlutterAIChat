@@ -11,6 +11,7 @@ import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/providers/chat_send_state_providers.dart';
 import 'package:ai_chat/providers/chat_ui_providers.dart';
+import 'package:ai_chat/services/session_context_service.dart';
 import 'package:ai_chat/utils/logger.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -150,6 +151,35 @@ class ChatController {
 
   Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {
     await _sessionCoordinator.updateCurrentGroupWorkspace(workspaceId);
+  }
+
+  Future<ManualSessionCompactionResult> compactCurrentSession() async {
+    final currentGroup = _ref.read(currentGroupProvider);
+    final groupId = currentGroup?.id;
+    if (groupId == null) {
+      throw StateError('current_group_missing');
+    }
+
+    _ref.read(chatSendStateProvider.notifier).update(
+          phase: ChatSendPhase.preparing,
+          isGenerating: false,
+          statusText: '正在压缩历史上下文',
+        );
+    try {
+      final result = await _ref.read(sessionContextServiceProvider).compactCompletedHistoryForGroup(
+            groupId: groupId,
+          );
+      if (result.didCompactHistory) {
+        await _sessionCoordinator.loadMessages();
+      }
+      return result;
+    } finally {
+      _ref.read(chatSendStateProvider.notifier).update(
+            phase: ChatSendPhase.idle,
+            isGenerating: false,
+            clearStatusText: true,
+          );
+    }
   }
 
   Future<String?> summarizeAndUpdateTitle() async {

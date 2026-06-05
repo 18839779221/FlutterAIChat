@@ -9,15 +9,27 @@ import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
+import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
 import 'package:ai_chat/models/session/session_runtime_marker.dart';
+import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/services/session_context_projector.dart';
+import 'package:ai_chat/services/session_context_service.dart';
+import 'package:ai_chat/services/session_summary_service.dart';
+import 'package:ai_chat/services/session_token_budget_service.dart';
+import 'package:ai_chat/models/agent/model_turn_decision.dart';
+import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/models/llm/llm_provider_model.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
+import 'package:ai_chat/repositories/chat_event_repository.dart';
+import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
+import 'package:ai_chat/repositories/session_context_snapshot_repository.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -287,6 +299,39 @@ void main() {
     expect(sendCoordinator.lastRequest?.attachments, hasLength(1));
     expect(sendCoordinator.lastRequest?.text, '看下这张图');
   });
+
+  test('chat controller triggers manual compaction for current group', () async {
+    final compactService = _SpySessionContextService();
+    final sessionCoordinator = _RecordingChatSessionCoordinator();
+    final container = ProviderContainer(
+      overrides: [
+        databaseProvider.overrideWithValue(_FakeChatStorage()),
+        sessionContextServiceProvider.overrideWith((ref) => compactService),
+        chatControllerProvider.overrideWith(
+          (ref) => ChatController(
+            ref,
+            sendCoordinator: _NoopChatSendCoordinator(),
+            sessionCoordinator: sessionCoordinator,
+            summaryController: _NoopChatSummaryController(),
+            preferencesController: _NoopChatPreferencesController(),
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.read(currentGroupProvider.notifier).state = ChatGroup(
+      id: 42,
+      title: 'active group',
+      lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+    );
+
+    final result = await container.read(chatControllerProvider).compactCurrentSession();
+
+    expect(compactService.lastGroupId, 42);
+    expect(result.didCompactHistory, isTrue);
+    expect(sessionCoordinator.loadMessagesCalls, 1);
+  });
 }
 
 class _SpyChatSummaryController implements ChatSummaryController {
@@ -414,6 +459,15 @@ class _NoopChatSessionCoordinator implements ChatSessionCoordinator {
   Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {}
 }
 
+class _RecordingChatSessionCoordinator extends _NoopChatSessionCoordinator {
+  int loadMessagesCalls = 0;
+
+  @override
+  Future<void> loadMessages() async {
+    loadMessagesCalls += 1;
+  }
+}
+
 class _NoopChatSummaryController implements ChatSummaryController {
   @override
   void cancelAutoSummaryTimer() {}
@@ -428,6 +482,83 @@ class _NoopChatSummaryController implements ChatSummaryController {
 class _NoopChatPreferencesController implements ChatPreferencesController {
   @override
   Future<void> setSystemPrompt(String? prompt) async {}
+}
+
+class _SpySessionContextService extends SessionContextService {
+  _SpySessionContextService()
+      : super(
+          chatTurnRepository: _NoopChatTurnRepository(),
+          chatEventRepository: _NoopChatEventRepository(),
+          snapshotRepository: _NoopSessionContextSnapshotRepository(),
+          chatStorage: _FakeChatStorage(),
+          contextProjector: SessionContextProjector(),
+          tokenBudgetService: SessionTokenBudgetService(),
+          summaryService: SessionSummaryService(
+            summaryGenerator: (_) async => '',
+          ),
+          chatService: ChatService(llm: _ControllerFakeBaseLlm()),
+        );
+
+  int? lastGroupId;
+
+  @override
+  Future<ManualSessionCompactionResult> compactCompletedHistoryForGroup({
+    required int groupId,
+    int? keepRecentCompletedTurns,
+  }) async {
+    lastGroupId = groupId;
+    return ManualSessionCompactionResult(
+      snapshot: SessionContextSnapshot(
+        groupId: groupId,
+        summaryText: 'manual summary',
+        coveredUntilTurnId: 1,
+      ),
+      didCompactHistory: true,
+    );
+  }
+}
+
+class _ControllerFakeBaseLlm implements BaseLLM {
+  @override
+  Map<String, dynamic> get config => const {};
+
+  @override
+  String getModelName(ChatConfig config) => 'gpt-5.4';
+
+  @override
+  Future<ModelTurnDecision?> planTurnDecision({
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+    void Function(LlmRetryProgress progress)? onRetryScheduled,
+  }) async {
+    return null;
+  }
+
+  @override
+  Future<String> processWebpageContent({
+    required String webpageContent,
+    required String prompt,
+  }) async =>
+      '';
+
+  @override
+  Future<String> summarizeConversation(List<ChatMessage> messages) async => '';
+}
+
+class _NoopChatTurnRepository extends ChatTurnRepository {
+  _NoopChatTurnRepository() : super(_FakeChatStorage());
+}
+
+class _NoopChatEventRepository extends ChatEventRepository {
+  _NoopChatEventRepository() : super(_FakeChatStorage());
+}
+
+class _NoopSessionContextSnapshotRepository
+    extends SessionContextSnapshotRepository {
+  _NoopSessionContextSnapshotRepository() : super(_FakeChatStorage());
 }
 
 class _FakeChatStorage implements ChatStorage {

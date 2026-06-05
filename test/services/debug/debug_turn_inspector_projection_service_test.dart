@@ -44,6 +44,7 @@ void main() {
       chatTurnRepository: turnRepository,
       chatEventRepository: eventRepository,
       snapshotRepository: SessionContextSnapshotRepository(storage),
+      chatStorage: storage,
       contextProjector: SessionContextProjector(),
       tokenBudgetService: SessionTokenBudgetService(
         modelBudgetRegistry: ModelBudgetRegistry(),
@@ -165,6 +166,7 @@ void main() {
       chatTurnRepository: turnRepository,
       chatEventRepository: eventRepository,
       snapshotRepository: SessionContextSnapshotRepository(storage),
+      chatStorage: storage,
       contextProjector: SessionContextProjector(),
       tokenBudgetService: SessionTokenBudgetService(
         modelBudgetRegistry: ModelBudgetRegistry(),
