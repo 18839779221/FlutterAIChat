@@ -230,6 +230,10 @@ artifact / visualizer 相关日志建议沿用同一分类，不新增第二套�
   - 适用于 artifact 文件保存、source 读取失败、registry 重建等基础设施日志
 - `trace`
   - 适用于时间线 projection 阶段的 artifact refresh / stale 诊断
+  - 也适用于 inline artifact render-session 的异常摘要，例如：
+    - `artifact.preview.anomaly`
+    - `artifact.preview.session_done`
+  - 这些仍写入同一个 `logs/app.log`，不构成第二条 observability 通道
 
 ### interaction 锚点
 

@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
+import 'package:ai_chat/models/artifact/artifact_render_session_snapshot.dart';
+import 'package:ai_chat/services/artifact/artifact_render_session_recorder.dart';
 import 'package:ai_chat/services/artifact/artifact_host_style_builder.dart';
 import 'package:ai_chat/services/artifact/artifact_theme_token_mapper.dart';
 import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/utils/logger.dart';
 import 'package:ai_chat/widgets/chat_blocks/artifact_preview_page_storage.dart';
+import 'package:ai_chat/widgets/tool_renderers/tool_running_effects.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -14,10 +18,12 @@ const double _minArtifactPreviewHeight = 180;
 const double _defaultArtifactPreviewHeight = 260;
 const double _maxArtifactPreviewScreenCount = 3;
 const String _artifactHeightChannelName = 'ArtifactHeight';
+const String _artifactRenderStateChannelName = 'ArtifactRenderState';
 const String artifactPreviewTruncationMessage = '内容较长，长按进入详情页查看完整内容。';
 const Duration _streamingDebounceDelay = Duration(milliseconds: 1000);
 const Duration _heightUpdateDebounceDelay = Duration(milliseconds: 100);
 const String _artifactPreviewLogTag = 'ArtifactPreviewSurface';
+const String _artifactPreviewSweepShellKey = 'artifact-preview-sweep-shell';
 
 double clampArtifactPreviewHeight(
   double rawHeight, {
@@ -107,6 +113,12 @@ String buildArtifactPreviewDocument({
           setTimeout(window.__artifactHeight__, 50);
           setTimeout(window.__artifactHeight__, 150);
         }
+        if (window.__artifactDomCommit__) {
+          window.__artifactDomCommit__({
+            sourceLength: source.length,
+            artifactRectHeight: root.getBoundingClientRect().height
+          });
+        }
         return 'success';
       } catch (e) {
         return 'error:' + e.message;
@@ -156,6 +168,16 @@ String buildArtifactPreviewDocument({
         window.ArtifactHeight.postMessage(JSON.stringify({
           ...payload,
           height
+        }));
+      }
+    };
+    window.__artifactDomCommit__ = (meta) => {
+      if (window.ArtifactRenderState &&
+          typeof window.ArtifactRenderState.postMessage === 'function') {
+        window.ArtifactRenderState.postMessage(JSON.stringify({
+          event: 'dom_commit',
+          sourceLength: meta && meta.sourceLength,
+          artifactRectHeight: meta && meta.artifactRectHeight
         }));
       }
     };
@@ -352,6 +374,9 @@ class ArtifactPreviewSurface extends StatefulWidget {
     required this.sourcePath,
     this.isRuntimePreview = false,
     this.enableInternalScroll = false,
+    this.sessionRecorder,
+    this.turnId,
+    this.providerCallId,
   });
 
   final String artifactId;
@@ -359,6 +384,9 @@ class ArtifactPreviewSurface extends StatefulWidget {
   final String sourcePath;
   final bool isRuntimePreview;
   final bool enableInternalScroll;
+  final ArtifactRenderSessionRecorder? sessionRecorder;
+  final String? turnId;
+  final String? providerCallId;
 
   @override
   State<ArtifactPreviewSurface> createState() => _ArtifactPreviewSurfaceState();
@@ -385,11 +413,20 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   Timer? _heightDebounceTimer;
   double? _pendingHeight;
   bool? _pendingTruncated;
+  late final ArtifactRenderSessionRecorder _sessionRecorder;
+  late final String _sessionId;
+  int _mountSequence = 0;
+  bool _hasFinishedSession = false;
+  bool _hasRenderedVisibleContent = false;
+  int _lastObservedSourceLength = 0;
 
   @override
   void initState() {
     super.initState();
     _lastRenderedSource = null;
+    _sessionRecorder = widget.sessionRecorder ?? ArtifactRenderSessionRecorder();
+    _sessionId = _buildSessionId();
+    _startRenderSession();
   }
 
   @override
@@ -433,6 +470,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
           'delta': newLength - oldLength,
         },
       );
+      _recordSourceProgress(widget.source);
 
       final source = widget.source;
       if (source == null || source.trim().isEmpty) {
@@ -536,6 +574,11 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     if (controller == null) {
       return;
     }
+    _sessionRecorder.recordFinalControllerPrepared(
+      sessionId: _sessionId,
+      sourceLength: source.length,
+      timestamp: DateTime.now(),
+    );
     setState(() {
       _errorText = null;
       _pendingFinalSource = source;
@@ -553,12 +596,18 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         _pendingFinalController != controller) {
       return;
     }
+    _sessionRecorder.recordFinalTakeover(
+      sessionId: _sessionId,
+      sourceLength: source.length,
+      timestamp: DateTime.now(),
+    );
     setState(() {
       _controller = controller;
       _pendingFinalController = null;
       _pendingFinalSource = null;
       _lastRenderedSource = source;
       _isControllerReady = true;
+      _hasRenderedVisibleContent = true;
       _controllerReadyCompleter?.complete();
     });
   }
@@ -568,6 +617,11 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     String source,
   ) async {
     try {
+      _sessionRecorder.recordRuntimeApplyStarted(
+        sessionId: _sessionId,
+        sourceLength: source.length,
+        timestamp: DateTime.now(),
+      );
       Logger.temp(
         _artifactPreviewLogTag,
         'using runtime apply path',
@@ -598,6 +652,12 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
       final result =
           await controller.runJavaScriptReturningResult(updateScript);
       _lastRenderedSource = source;
+      _sessionRecorder.recordRuntimeApplyCompleted(
+        sessionId: _sessionId,
+        sourceLength: source.length,
+        result: result.toString(),
+        timestamp: DateTime.now(),
+      );
       Logger.temp(
         _artifactPreviewLogTag,
         'runtime apply completed',
@@ -630,6 +690,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   void dispose() {
     _streamingUpdateTimer?.cancel();
     _heightDebounceTimer?.cancel();
+    _finishRenderSession();
     super.dispose();
   }
 
@@ -672,6 +733,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         );
       if (!widget.enableInternalScroll) {
         _addArtifactHeightChannel(controller);
+        _addArtifactRenderStateChannel(controller);
       }
       controller.loadHtmlString(
         widget.isRuntimePreview
@@ -730,6 +792,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         );
       if (!widget.enableInternalScroll) {
         _addArtifactHeightChannel(controller);
+        _addArtifactRenderStateChannel(controller);
       }
       controller.loadHtmlString(
         buildFinalArtifactPreviewDocument(
@@ -793,6 +856,12 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
 
         _pendingHeight = clampedHeight;
         _pendingTruncated = value > clampedHeight;
+        _sessionRecorder.recordHeightSampled(
+          sessionId: _sessionId,
+          rawHeight: value,
+          clampedHeight: clampedHeight,
+          timestamp: DateTime.now(),
+        );
         _heightDebounceTimer?.cancel();
         _heightDebounceTimer = Timer(_heightUpdateDebounceDelay, () {
           if (!mounted) return;
@@ -806,6 +875,12 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
             previewHeight: nextHeight,
             isPreviewTruncated: nextTruncated,
           );
+          _sessionRecorder.recordHeightApplied(
+            sessionId: _sessionId,
+            appliedHeight: nextHeight,
+            isPreviewTruncated: nextTruncated,
+            timestamp: DateTime.now(),
+          );
           Logger.temp(
             _artifactPreviewLogTag,
             'artifact height applied',
@@ -817,6 +892,30 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
             },
           );
         });
+      },
+    );
+  }
+
+  void _addArtifactRenderStateChannel(WebViewController controller) {
+    controller.addJavaScriptChannel(
+      _artifactRenderStateChannelName,
+      onMessageReceived: (message) {
+        if (!mounted) {
+          return;
+        }
+        final payload = _parseArtifactRenderStatePayload(message.message);
+        if (payload == null) {
+          return;
+        }
+        if (payload.event == 'dom_commit') {
+          _hasRenderedVisibleContent = true;
+          _sessionRecorder.recordDomCommit(
+            sessionId: _sessionId,
+            sourceLength: payload.sourceLength ?? _lastObservedSourceLength,
+            artifactRectHeight: payload.artifactRectHeight,
+            timestamp: DateTime.now(),
+          );
+        }
       },
     );
   }
@@ -851,7 +950,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     }
     if (source == null || source.trim().isEmpty) {
       if (widget.isRuntimePreview) {
-        return _buildPreviewPlaceholder(context, label: '正在准备预览');
+        return _buildPreviewShell(context, isRunning: true);
       }
       return _buildInfoMessage(
         context,
@@ -859,22 +958,26 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
       );
     }
     if (_controller == null) {
-      return _buildPreviewPlaceholder(context);
+      return _buildPreviewShell(context, isRunning: true);
     }
 
-    final isUpdating = _pendingSource != null || _isStreamingUpdateInFlight;
+    final isUpdating = _pendingSource != null ||
+        _isStreamingUpdateInFlight ||
+        _pendingFinalController != null;
+    final showWaitingShell = !_hasRenderedVisibleContent;
     if (widget.enableInternalScroll) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: Stack(
           children: [
-            Positioned.fill(
-              child: RepaintBoundary(
-                child: WebViewWidget(
-                  controller: _controller!,
+            if (!showWaitingShell)
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: WebViewWidget(
+                    controller: _controller!,
+                  ),
                 ),
               ),
-            ),
             if (_pendingFinalController != null)
               Positioned.fill(
                 child: IgnorePointer(
@@ -888,11 +991,15 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
                   ),
                 ),
               ),
-            if (isUpdating)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: _buildStreamingIndicator(context),
+            if (showWaitingShell)
+              Positioned.fill(
+                child: _buildPreviewShell(context, isRunning: true),
+              )
+            else if (isUpdating)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: _buildSweepOverlay(context),
+                ),
               ),
           ],
         ),
@@ -910,13 +1017,14 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
                 height: _previewHeight,
                 child: Stack(
                   children: [
-                    Positioned.fill(
-                      child: RepaintBoundary(
-                        child: WebViewWidget(
-                          controller: _controller!,
+                    if (!showWaitingShell)
+                      Positioned.fill(
+                        child: RepaintBoundary(
+                          child: WebViewWidget(
+                            controller: _controller!,
+                          ),
                         ),
                       ),
-                    ),
                     if (_pendingFinalController != null)
                       Positioned.fill(
                         child: IgnorePointer(
@@ -930,14 +1038,18 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
                           ),
                         ),
                       ),
+                    if (showWaitingShell)
+                      Positioned.fill(
+                        child: _buildPreviewShell(context, isRunning: true),
+                      ),
                   ],
                 ),
               ),
-              if (isUpdating)
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: _buildStreamingIndicator(context),
+              if (!showWaitingShell && isUpdating)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: _buildSweepOverlay(context),
+                  ),
                 ),
             ],
           ),
@@ -1004,44 +1116,16 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     return entries.map((entry) => '${entry.key}=${entry.value}').join(';');
   }
 
-  Widget _buildStreamingIndicator(BuildContext context) {
-    final theme = Theme.of(context);
-    final appColors = theme.extension<AppThemeSpec>()!;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: appColors.core.elevation.shadowColor,
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 12,
-            height: 12,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                theme.colorScheme.primary,
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            '更新中',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
+  Widget _buildSweepOverlay(BuildContext context) {
+    return RunningSweepSurface(
+      isRunning: true,
+      showBorder: false,
+      sweepOpacity: 0.58,
+      duration: const Duration(milliseconds: 1400),
+      sweepAngle: math.pi / 4,
+      travelDirection: AxisDirection.left,
+      borderRadius: BorderRadius.circular(12),
+      child: const SizedBox.expand(),
     );
   }
 
@@ -1076,12 +1160,13 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     );
   }
 
-  Widget _buildPreviewPlaceholder(
+  Widget _buildPreviewShell(
     BuildContext context, {
-    String? label,
+    required bool isRunning,
   }) {
     final theme = Theme.of(context);
     return Container(
+      key: const Key(_artifactPreviewSweepShellKey),
       width: double.infinity,
       height: _previewHeight,
       decoration: BoxDecoration(
@@ -1089,64 +1174,67 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
             theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
         borderRadius: BorderRadius.circular(12),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 96,
-                height: 12,
-                decoration: BoxDecoration(
-                  color:
-                      theme.colorScheme.outlineVariant.withValues(alpha: 0.42),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
-              if (label != null) ...[
-                const SizedBox(width: 10),
-                Text(
-                  label,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    height: 1.2,
-                  ),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 14),
-          Container(
-            width: double.infinity,
-            height: 10,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.28),
-              borderRadius: BorderRadius.circular(999),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Container(
-            width: double.infinity,
-            height: 10,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.24),
-              borderRadius: BorderRadius.circular(999),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Container(
-            width: 180,
-            height: 10,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(999),
-            ),
-          ),
-        ],
-      ),
+      child: isRunning ? _buildSweepOverlay(context) : const SizedBox.shrink(),
     );
+  }
+
+  String _buildSessionId() {
+    final turnId = widget.turnId?.trim();
+    final providerCallId = widget.providerCallId?.trim();
+    final turnToken = (turnId == null || turnId.isEmpty) ? 'artifact' : turnId;
+    final providerToken = (providerCallId == null || providerCallId.isEmpty)
+        ? widget.artifactId
+        : providerCallId;
+    _mountSequence += 1;
+    return '$turnToken:${widget.artifactId}:$providerToken:${_mountSequence - 1}';
+  }
+
+  void _startRenderSession() {
+    _sessionRecorder.startSession(
+      sessionId: _sessionId,
+      turnId: widget.turnId?.trim().isNotEmpty == true
+          ? widget.turnId!.trim()
+          : widget.artifactId,
+      artifactId: widget.artifactId,
+      providerCallId: widget.providerCallId?.trim(),
+      sourcePath: widget.sourcePath,
+      phase: widget.isRuntimePreview
+          ? ArtifactRenderPhase.runtime
+          : ArtifactRenderPhase.finalTakeover,
+      isRuntimePreview: widget.isRuntimePreview,
+      timestamp: DateTime.now(),
+    );
+    _recordSourceProgress(widget.source);
+  }
+
+  void _recordSourceProgress(String? source) {
+    final length = source?.length ?? 0;
+    if (length <= _lastObservedSourceLength) {
+      return;
+    }
+    final delta = length - _lastObservedSourceLength;
+    _lastObservedSourceLength = length;
+    _sessionRecorder.recordSourceProgressed(
+      sessionId: _sessionId,
+      sourceLength: length,
+      deltaLength: delta,
+      timestamp: DateTime.now(),
+    );
+  }
+
+  void _finishRenderSession() {
+    if (_hasFinishedSession) {
+      return;
+    }
+    _hasFinishedSession = true;
+    try {
+      _sessionRecorder.finishSession(
+        sessionId: _sessionId,
+        timestamp: DateTime.now(),
+      );
+    } catch (_) {
+      // Session may remain unused in some test-only empty-source paths.
+    }
   }
 }
 
@@ -1207,4 +1295,38 @@ String _truncateForLog(String text, {int maxLength = 240}) {
     return text;
   }
   return '${text.substring(0, maxLength)}...';
+}
+
+_ArtifactRenderStatePayload? _parseArtifactRenderStatePayload(String rawPayload) {
+  try {
+    final decoded = jsonDecode(rawPayload);
+    if (decoded is! Map<String, dynamic>) {
+      return null;
+    }
+    final event = decoded['event'];
+    if (event is! String || event.trim().isEmpty) {
+      return null;
+    }
+    return _ArtifactRenderStatePayload(
+      event: event,
+      sourceLength: decoded['sourceLength'] is num
+          ? (decoded['sourceLength'] as num).toInt()
+          : int.tryParse('${decoded['sourceLength']}'),
+      artifactRectHeight: _toDouble(decoded['artifactRectHeight']),
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
+class _ArtifactRenderStatePayload {
+  const _ArtifactRenderStatePayload({
+    required this.event,
+    this.sourceLength,
+    this.artifactRectHeight,
+  });
+
+  final String event;
+  final int? sourceLength;
+  final double? artifactRectHeight;
 }

@@ -210,6 +210,8 @@ class RunningSweepSurface extends StatefulWidget {
     this.duration = const Duration(milliseconds: 1500),
     this.showBorder = true,
     this.sweepOpacity = 1.0,
+    this.sweepAngle = -0.32,
+    this.travelDirection = AxisDirection.right,
   });
 
   final Widget child;
@@ -218,6 +220,8 @@ class RunningSweepSurface extends StatefulWidget {
   final Duration duration;
   final bool showBorder;
   final double sweepOpacity;
+  final double sweepAngle;
+  final AxisDirection travelDirection;
 
   @override
   State<RunningSweepSurface> createState() => _RunningSweepSurfaceState();
@@ -289,7 +293,10 @@ class _RunningSweepSurfaceState extends State<RunningSweepSurface>
             animation: _curve,
             child: widget.child,
             builder: (context, child) {
-              final left = (-sweepWidth) + (travel * _curve.value);
+              final progress = widget.travelDirection == AxisDirection.left
+                  ? 1 - _curve.value
+                  : _curve.value;
+              final left = (-sweepWidth) + (travel * progress);
               final borderOpacity = 0.16 + (0.16 * _curve.value);
               return Stack(
                 fit: StackFit.passthrough,
@@ -318,8 +325,8 @@ class _RunningSweepSurfaceState extends State<RunningSweepSurface>
                         2,
                     height: sweepHeight,
                     child: IgnorePointer(
-                      child: Transform.rotate(
-                        angle: -0.32,
+                    child: Transform.rotate(
+                        angle: widget.sweepAngle,
                         child: Container(
                           width: sweepWidth,
                           decoration: BoxDecoration(
@@ -491,7 +498,7 @@ class _SlidingGradientTransform extends GradientTransform {
 
   @override
   Matrix4 transform(Rect bounds, {TextDirection? textDirection}) {
-    return Matrix4.identity()..translate(offsetX);
+    return Matrix4.identity()..translateByDouble(offsetX, 0, 0, 1);
   }
 }
 

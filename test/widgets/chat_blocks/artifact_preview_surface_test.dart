@@ -42,6 +42,27 @@ void main() {
     expect(find.textContaining('Hello artifact'), findsNothing);
   });
 
+  testWidgets('waiting runtime preview uses sweep shell instead of legacy text label',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: ArtifactPreviewSurface(
+            artifactId: 'artifact-1',
+            source: null,
+            sourcePath: 'runtime://artifact',
+            isRuntimePreview: true,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+
+    expect(find.byKey(const Key('artifact-preview-sweep-shell')), findsOneWidget);
+    expect(find.textContaining('正在准备预览'), findsNothing);
+  });
+
   test('wraps fragment source into constrained host document', () {
     final document = buildArtifactPreviewDocument(
       hostCssVariables: const <String, String>{

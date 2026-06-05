@@ -50,7 +50,7 @@
 - Create: `lib/models/artifact/artifact_render_session_snapshot.dart`
 - Test: `test/services/artifact/artifact_render_session_recorder_test.dart`
 
-- [ ] **Step 1: Write the failing recorder-domain test for height-drop anomaly**
+- [x] **Step 1: Write the failing recorder-domain test for height-drop anomaly**
 
 ```dart
 test('marks session anomalous when applied height drops by more than 30px', () {
@@ -91,13 +91,13 @@ test('marks session anomalous when applied height drops by more than 30px', () {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `fvm flutter test test/services/artifact/artifact_render_session_recorder_test.dart`
 
 Expected: FAIL because `ArtifactRenderSessionRecorder` and related models do not exist yet.
 
-- [ ] **Step 3: Implement the minimal session snapshot model**
+- [x] **Step 3: Implement the minimal session snapshot model**
 
 Create `lib/models/artifact/artifact_render_session_snapshot.dart` with focused enums and DTOs:
 
@@ -157,7 +157,7 @@ class ArtifactRenderSessionSnapshot {
 }
 ```
 
-- [ ] **Step 4: Run test to verify model-only progress still fails for missing recorder behavior**
+- [x] **Step 4: Run test to verify model-only progress still fails for missing recorder behavior**
 
 Run: `fvm flutter test test/services/artifact/artifact_render_session_recorder_test.dart`
 
@@ -179,7 +179,7 @@ git commit -m "feat: add artifact render session model"
 - Test: `test/services/artifact/artifact_render_session_recorder_test.dart`
 - Modify: `docs/architecture/logging.md`
 
-- [ ] **Step 1: Extend tests for first-successful-render and final-second anomaly**
+- [x] **Step 1: Extend tests for first-successful-render and final-second anomaly**
 
 Add failing tests covering:
 
@@ -238,13 +238,13 @@ test('flags first render in final second when stream lasts longer than 3s', () {
 
 Add at least one failing classification test for `finalTakeoverDrop`.
 
-- [ ] **Step 2: Run recorder tests to verify they fail**
+- [x] **Step 2: Run recorder tests to verify they fail**
 
 Run: `fvm flutter test test/services/artifact/artifact_render_session_recorder_test.dart`
 
 Expected: FAIL because recorder methods and classification rules are incomplete.
 
-- [ ] **Step 3: Implement the recorder with the smallest viable state machine**
+- [x] **Step 3: Implement the recorder with the smallest viable state machine**
 
 Create `lib/services/artifact/artifact_render_session_recorder.dart` with one in-memory active-session map keyed by `sessionId`.
 
@@ -297,11 +297,11 @@ Trace output requirements:
 - Emit `artifact.preview.session_done` via `Logger.trace`
 - Keep raw per-event emission opt-in and low-noise; avoid exploding trace volume unnecessarily
 
-- [ ] **Step 4: Update logging docs**
+- [x] **Step 4: Update logging docs**
 
 Append a concise note to `docs/architecture/logging.md` that artifact render-session anomalies and summaries are formal `trace` entries inside `logs/app.log`, not a second observability lane.
 
-- [ ] **Step 5: Run tests to verify recorder behavior passes**
+- [x] **Step 5: Run tests to verify recorder behavior passes**
 
 Run: `fvm flutter test test/services/artifact/artifact_render_session_recorder_test.dart`
 
@@ -323,7 +323,7 @@ git commit -m "feat: add artifact render session recorder"
 - Modify: `lib/widgets/chat_blocks/artifact_preview_surface.dart`
 - Test: `test/widgets/chat_blocks/artifact_preview_surface_debouncing_test.dart`
 
-- [ ] **Step 1: Add the first failing widget-level observability test**
+- [x] **Step 1: Add the first failing widget-level observability test**
 
 Add a focused test that simulates a runtime preview staying empty initially, then updating, and asserts the widget emits a session summary through an injected fake recorder.
 
@@ -367,13 +367,13 @@ testWidgets('runtime preview reports session lifecycle to recorder', (tester) as
 });
 ```
 
-- [ ] **Step 2: Run the widget test to verify it fails**
+- [x] **Step 2: Run the widget test to verify it fails**
 
 Run: `fvm flutter test test/widgets/chat_blocks/artifact_preview_surface_debouncing_test.dart`
 
 Expected: FAIL because `ArtifactPreviewSurface` has no recorder injection or event emission yet.
 
-- [ ] **Step 3: Inject recorder dependency and session lifecycle**
+- [x] **Step 3: Inject recorder dependency and session lifecycle**
 
 Modify `ArtifactPreviewSurface` constructor to accept an optional recorder:
 
@@ -405,7 +405,7 @@ Inside `_ArtifactPreviewSurfaceState`:
 
 Do not move responsibility into `TurnHarness` or timeline projection.
 
-- [ ] **Step 4: Add WebView `dom_commit` back-channel**
+- [x] **Step 4: Add WebView `dom_commit` back-channel**
 
 Extend the injected HTML/JS in `artifact_preview_surface.dart`:
 
@@ -426,7 +426,7 @@ After a successful `__applyArtifactPayload__`, trigger `__artifactDomCommit__`.
 
 Register a second JS channel in Flutter and forward `dom_commit` into the recorder.
 
-- [ ] **Step 5: Run the widget tests to verify they pass**
+- [x] **Step 5: Run the widget tests to verify they pass**
 
 Run: `fvm flutter test test/widgets/chat_blocks/artifact_preview_surface_debouncing_test.dart test/widgets/chat_blocks/artifact_preview_surface_test.dart`
 
@@ -449,7 +449,7 @@ git commit -m "feat: instrument artifact preview sessions"
 - Test: `test/widgets/chat_blocks/artifact_preview_surface_debouncing_test.dart`
 - Test: `test/widgets/chat_blocks/artifact_preview_surface_test.dart`
 
-- [ ] **Step 1: Add the failing UI-state tests**
+- [x] **Step 1: Add the failing UI-state tests**
 
 Write widget tests that assert:
 
@@ -477,13 +477,13 @@ testWidgets('waiting runtime preview shows sweep shell instead of skeleton lines
 
 Add a second failing test asserting the sweep overlay remains present while runtime updates are in flight.
 
-- [ ] **Step 2: Run widget tests to verify they fail**
+- [x] **Step 2: Run widget tests to verify they fail**
 
 Run: `fvm flutter test test/widgets/chat_blocks/artifact_preview_surface_debouncing_test.dart test/widgets/chat_blocks/artifact_preview_surface_test.dart`
 
 Expected: FAIL because the old placeholder still renders skeleton rows and no sweep shell key exists.
 
-- [ ] **Step 3: Extract or reuse a low-noise sweep primitive**
+- [x] **Step 3: Extract or reuse a low-noise sweep primitive**
 
 Inspect `lib/widgets/tool_renderers/tool_running_effects.dart` and either:
 
@@ -497,7 +497,7 @@ Constraints to preserve:
 - diagonal travel from upper-right to lower-left
 - lower visual intensity than large running workflow cards
 
-- [ ] **Step 4: Replace placeholder rendering**
+- [x] **Step 4: Replace placeholder rendering**
 
 Update `_buildPreviewPlaceholder(...)` in `artifact_preview_surface.dart` so it no longer renders fake text bars.
 
@@ -524,7 +524,7 @@ UI rules:
 - during runtime update or pending final takeover: show sweep overlay above content
 - do not reintroduce fake line skeletons
 
-- [ ] **Step 5: Run widget tests to verify the new UI passes**
+- [x] **Step 5: Run widget tests to verify the new UI passes**
 
 Run: `fvm flutter test test/widgets/chat_blocks/artifact_preview_surface_debouncing_test.dart test/widgets/chat_blocks/artifact_preview_surface_test.dart`
 
@@ -545,7 +545,7 @@ git commit -m "feat: add artifact preview sweep loading state"
 **Files:**
 - Modify: `docs/superpowers/plans/2026-06-06-create-artifact-render-observability-implementation-plan.md`
 
-- [ ] **Step 1: Run the focused verification suite**
+- [x] **Step 1: Run the focused verification suite**
 
 Run:
 
@@ -561,11 +561,11 @@ Expected:
 - all three targeted test files PASS
 - `flutter analyze` PASS with no new diagnostics from touched files
 
-- [ ] **Step 2: If a verification command fails, fix only the revealed issue and rerun that command**
+- [x] **Step 2: If a verification command fails, fix only the revealed issue and rerun that command**
 
 Do not batch speculative fixes. Return to the exact failing test or analyzer output, correct it, and rerun the smallest relevant command first.
 
-- [ ] **Step 3: Mark completed steps in this plan**
+- [x] **Step 3: Mark completed steps in this plan**
 
 Update this plan document so every completed checkbox is checked before handoff or merge.
 
