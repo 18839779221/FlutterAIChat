@@ -155,7 +155,8 @@ class WebChatStorage implements ChatStorage {
     await _writeMessageAttachments(
       attachments
           .where(
-            (attachment) => !deletedMessageIds.contains(attachment['message_id']),
+            (attachment) =>
+                !deletedMessageIds.contains(attachment['message_id']),
           )
           .toList(),
     );
@@ -163,9 +164,7 @@ class WebChatStorage implements ChatStorage {
       snapshots.where((snapshot) => snapshot['group_id'] != groupId).toList(),
     );
     await _writeSessionRuntimeMarkers(
-      runtimeMarkers
-          .where((marker) => marker['group_id'] != groupId)
-          .toList(),
+      runtimeMarkers.where((marker) => marker['group_id'] != groupId).toList(),
     );
     await _writeArtifactRegistry(
       artifacts.where((artifact) => artifact['group_id'] != groupId).toList(),
@@ -287,7 +286,9 @@ class WebChatStorage implements ChatStorage {
       final existingId = artifacts[existingIndex]['id'] as int?;
       artifacts[existingIndex] = {
         ...record.toMap(),
-        'id': existingId ?? record.id ?? _nextId(artifacts.map((e) => e['id'] as int?)),
+        'id': existingId ??
+            record.id ??
+            _nextId(artifacts.map((e) => e['id'] as int?)),
       };
       await _writeArtifactRegistry(artifacts);
       return artifacts[existingIndex]['id'] as int;
@@ -309,7 +310,8 @@ class WebChatStorage implements ChatStorage {
   }) async {
     final artifacts = await _readArtifactRegistry();
     final matches = artifacts.where(
-      (item) => item['group_id'] == groupId && item['artifact_id'] == artifactId,
+      (item) =>
+          item['group_id'] == groupId && item['artifact_id'] == artifactId,
     );
     if (matches.isEmpty) {
       return null;
@@ -324,7 +326,8 @@ class WebChatStorage implements ChatStorage {
   }) async {
     final artifacts = await _readArtifactRegistry();
     final matches = artifacts.where(
-      (item) => item['group_id'] == groupId && item['source_path'] == sourcePath,
+      (item) =>
+          item['group_id'] == groupId && item['source_path'] == sourcePath,
     );
     if (matches.isEmpty) {
       return null;
@@ -479,12 +482,13 @@ class WebChatStorage implements ChatStorage {
     int groupId,
   ) async {
     final markers = await _readSessionRuntimeMarkers();
-    final matches =
-        markers.where((marker) => marker['group_id'] == groupId).toList()
-          ..sort(
-            (left, right) =>
-                (right['updated_at'] as int).compareTo(left['updated_at'] as int),
-          );
+    final matches = markers
+        .where((marker) => marker['group_id'] == groupId)
+        .toList()
+      ..sort(
+        (left, right) =>
+            (right['updated_at'] as int).compareTo(left['updated_at'] as int),
+      );
     if (matches.isEmpty) {
       return null;
     }
@@ -543,6 +547,14 @@ class WebChatStorage implements ChatStorage {
 
   @override
   Future<List<ChatMessage>> getMessagesByGroup(int groupId) async {
+    final decoded = await _getAllMessagesByGroupAscending(groupId);
+    if (decoded.length <= 20) {
+      return decoded;
+    }
+    return decoded.sublist(decoded.length - 20);
+  }
+
+  Future<List<ChatMessage>> _getAllMessagesByGroupAscending(int groupId) async {
     final messages = await _groupMessages(groupId);
     messages.sort(
         (a, b) => (a['timestamp'] as int).compareTo(b['timestamp'] as int));
@@ -575,12 +587,13 @@ class WebChatStorage implements ChatStorage {
     required int limit,
     required int offset,
   }) async {
-    final messages = await getMessagesByGroup(groupId);
-    if (offset >= messages.length) {
+    final messages = await _getAllMessagesByGroupAscending(groupId);
+    final end = messages.length - offset;
+    if (end <= 0) {
       return [];
     }
-    final end = (offset + limit).clamp(0, messages.length);
-    return messages.sublist(offset, end);
+    final start = (end - limit).clamp(0, messages.length);
+    return messages.sublist(start, end);
   }
 
   @override

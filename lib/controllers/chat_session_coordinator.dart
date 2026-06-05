@@ -178,6 +178,7 @@ class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
     try {
       final dbHelper = _ref.read(databaseProvider);
       final currentCount = _ref.read(messagesProvider).length;
+      final totalCount = await dbHelper.getGroupMessageCount(groupId);
       final newMessages = await dbHelper.getMessagesByGroupWithPagination(
         groupId: groupId,
         limit: _pageSize,
@@ -189,9 +190,9 @@ class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
         return;
       }
 
-      _ref
-          .read(messagesProvider.notifier)
-          .insertMessages(currentCount, newMessages);
+      _ref.read(messagesProvider.notifier).insertMessages(0, newMessages);
+      _ref.read(hasMoreMessagesProvider.notifier).state =
+          totalCount > currentCount + newMessages.length;
     } catch (e) {
       Logger.e(_tag, '加载更多消息失败', e);
     } finally {
@@ -203,6 +204,7 @@ class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
   Future<void> selectGroup(ChatGroup group) async {
     _ref.read(currentGroupProvider.notifier).state = group;
     _ref.read(systemPromptProvider.notifier).state = group.systemPrompt;
+    _ref.read(messagesProvider.notifier).clearMessages();
     await loadMessages();
   }
 
@@ -213,14 +215,14 @@ class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
       return;
     }
 
-    final normalizedWorkspaceId = workspaceId?.trim().isEmpty ?? true
-        ? null
-        : workspaceId!.trim();
+    final normalizedWorkspaceId =
+        workspaceId?.trim().isEmpty ?? true ? null : workspaceId!.trim();
     if (currentGroup.workspaceId == normalizedWorkspaceId) {
       return;
     }
 
-    final updatedGroup = currentGroup.copyWith(workspaceId: normalizedWorkspaceId);
+    final updatedGroup =
+        currentGroup.copyWith(workspaceId: normalizedWorkspaceId);
     _ref.read(currentGroupProvider.notifier).state = updatedGroup;
 
     final groups = _ref.read(groupsProvider);

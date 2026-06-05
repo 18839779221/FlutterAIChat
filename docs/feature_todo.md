@@ -4,6 +4,8 @@
 
 ## 候选功能
 
+### 整体重新梳理下切换group时的操作，明确切换group的行为，然后同时梳理清楚哪些组件属于一个session，为后续多消息并行做准备
+
 ## BUGFIX
 
 ### create_artifact卡片优化

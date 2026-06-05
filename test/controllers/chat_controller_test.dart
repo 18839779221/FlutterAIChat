@@ -227,6 +227,110 @@ void main() {
     );
   });
 
+  test('loadMoreMessages prepends older page and clears exhausted pagination',
+      () async {
+    final storage = _FakeChatStorage(
+      groupMessageCount: 3,
+      paginatedMessages: [
+        ChatMessage(
+          id: 1,
+          text: 'Older message',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          timestamp: DateTime(2026, 1, 1, 10),
+        ),
+      ],
+    );
+    final container = ProviderContainer(
+      overrides: [
+        databaseProvider.overrideWithValue(storage),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.read(currentGroupProvider.notifier).state = ChatGroup(
+      id: 7,
+      title: 'group',
+      lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+    );
+    container.read(hasMoreMessagesProvider.notifier).state = true;
+    container.read(messagesProvider.notifier).setMessages([
+      ChatMessage(
+        id: 2,
+        text: 'Newer message 1',
+        role: MessageRole.assistant,
+        status: MessageStatus.completed,
+        timestamp: DateTime(2026, 1, 1, 11),
+      ),
+      ChatMessage(
+        id: 3,
+        text: 'Newer message 2',
+        role: MessageRole.user,
+        status: MessageStatus.completed,
+        timestamp: DateTime(2026, 1, 1, 12),
+      ),
+    ]);
+
+    await container.read(chatSessionCoordinatorProvider).loadMoreMessages();
+
+    expect(
+      container.read(messagesProvider).map((message) => message.text).toList(),
+      ['Older message', 'Newer message 1', 'Newer message 2'],
+    );
+    expect(container.read(hasMoreMessagesProvider), isFalse);
+  });
+
+  test('selectGroup clears stale messages before loading the next group',
+      () async {
+    final storage = _FakeChatStorage(
+      messagesByGroup: {
+        2: [
+          ChatMessage(
+            id: 2,
+            text: 'Next group message',
+            role: MessageRole.user,
+            status: MessageStatus.completed,
+            timestamp: DateTime(2026, 1, 1, 11),
+          ),
+        ],
+      },
+      groupMessageCount: 1,
+    );
+    final container = ProviderContainer(
+      overrides: [
+        databaseProvider.overrideWithValue(storage),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.read(messagesProvider.notifier).setMessages([
+      ChatMessage(
+        id: 1,
+        text: 'Previous group message',
+        role: MessageRole.user,
+        status: MessageStatus.completed,
+        timestamp: DateTime(2026, 1, 1, 10),
+      ),
+    ]);
+    final selectFuture = container
+        .read(chatSessionCoordinatorProvider)
+        .selectGroup(
+          ChatGroup(
+            id: 2,
+            title: 'Next group',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          ),
+        );
+
+    expect(container.read(messagesProvider), isEmpty);
+
+    await selectFuture;
+    expect(
+      container.read(messagesProvider).map((message) => message.text).toList(),
+      ['Next group message'],
+    );
+  });
+
   test('database stores and loads message attachments', () async {
     final databaseHelper = DatabaseHelper(
       databaseName:
@@ -300,7 +404,8 @@ void main() {
     expect(sendCoordinator.lastRequest?.text, '看下这张图');
   });
 
-  test('chat controller triggers manual compaction for current group', () async {
+  test('chat controller triggers manual compaction for current group',
+      () async {
     final compactService = _SpySessionContextService();
     final sessionCoordinator = _RecordingChatSessionCoordinator();
     final container = ProviderContainer(
@@ -326,7 +431,8 @@ void main() {
       lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
     );
 
-    final result = await container.read(chatControllerProvider).compactCurrentSession();
+    final result =
+        await container.read(chatControllerProvider).compactCurrentSession();
 
     expect(compactService.lastGroupId, 42);
     expect(result.didCompactHistory, isTrue);
@@ -562,6 +668,16 @@ class _NoopSessionContextSnapshotRepository
 }
 
 class _FakeChatStorage implements ChatStorage {
+  _FakeChatStorage({
+    this.messagesByGroup = const {},
+    this.paginatedMessages = const [],
+    this.groupMessageCount = 0,
+  });
+
+  final Map<int, List<ChatMessage>> messagesByGroup;
+  final List<ChatMessage> paginatedMessages;
+  final int groupMessageCount;
+
   @override
   Future<int> insertOrReplaceArtifactRecord(ArtifactRecord record) async => 1;
 
@@ -608,7 +724,7 @@ class _FakeChatStorage implements ChatStorage {
   Future<int> getNextEventSequence(int turnId) async => 1;
 
   @override
-  Future<int> getGroupMessageCount(int groupId) async => 0;
+  Future<int> getGroupMessageCount(int groupId) async => groupMessageCount;
 
   @override
   Future<ChatGroup?> getLatestGroup() async => null;
@@ -623,7 +739,8 @@ class _FakeChatStorage implements ChatStorage {
       null;
 
   @override
-  Future<List<ChatMessage>> getMessagesByGroup(int groupId) async => const [];
+  Future<List<ChatMessage>> getMessagesByGroup(int groupId) async =>
+      messagesByGroup[groupId] ?? const [];
 
   @override
   Future<List<ChatMessage>> getMessagesByGroupWithPagination({
@@ -631,7 +748,7 @@ class _FakeChatStorage implements ChatStorage {
     required int limit,
     required int offset,
   }) async =>
-      const [];
+      paginatedMessages;
 
   @override
   Future<ChatTurn?> getTurn(int id) async => null;

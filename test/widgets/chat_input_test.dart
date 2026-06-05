@@ -545,6 +545,73 @@ void main() {
   });
 
   testWidgets(
+      'chat input model menu opens on selected provider when it differs from default',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final settingsRepository = AppSettingsRepository(
+      preferences,
+      localDefaultsLoader: () async => const LlmLocalDefaults(
+        defaultProviderId: 'aigocode',
+        defaultModelId: 'gpt-4o-mini',
+        providers: [
+          LlmProviderConfig(
+            id: 'aigocode',
+            name: 'AIGoCode',
+            apiKey: 'key',
+            baseUrl: 'https://api.aigocode.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-4o-mini', name: ''),
+              LlmProviderModel(id: 'gpt-5.4', name: ''),
+            ],
+          ),
+          LlmProviderConfig(
+            id: 'openai',
+            name: 'OpenAI',
+            apiKey: 'key',
+            baseUrl: 'https://api.openai.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-4.1', name: ''),
+            ],
+          ),
+        ],
+      ),
+    );
+    await settingsRepository.selectProviderAndModel(
+      providerId: 'openai',
+      modelId: 'gpt-4.1',
+    );
+    final container = ProviderContainer(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('gpt-4.1'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('chat-input-model-chip')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('chat-input-model-menu')), findsOneWidget);
+    expect(find.text('OpenAI'), findsOneWidget);
+    expect(find.text('gpt-4.1'), findsNWidgets(2));
+    expect(find.text('gpt-4o-mini'), findsNothing);
+  });
+
+  testWidgets(
       'chat input does not show pending label while awaiting confirmation', (
     tester,
   ) async {
@@ -817,7 +884,8 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.byKey(const ValueKey('chat-input-composer-shell')), findsOneWidget);
+    expect(find.byKey(const ValueKey('chat-input-composer-shell')),
+        findsOneWidget);
     expect(
       find.byKey(const ValueKey('chat-input-skill-suggestions')),
       findsOneWidget,
@@ -894,8 +962,8 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
 
-    final controller =
-        container.read(chatControllerProvider) as _RecordingCompactChatController;
+    final controller = container.read(chatControllerProvider)
+        as _RecordingCompactChatController;
     expect(controller.compactCount, 1);
     expect(controller.sentRequests, isEmpty);
   });
@@ -944,8 +1012,8 @@ void main() {
     await tester.tap(find.byType(FilledButton));
     await tester.pump();
 
-    final controller =
-        container.read(chatControllerProvider) as _RecordingCompactChatController;
+    final controller = container.read(chatControllerProvider)
+        as _RecordingCompactChatController;
     expect(controller.compactCount, 0);
     expect(controller.sentRequests, isEmpty);
     expect(find.text('压缩历史上下文前请先移除附件。'), findsOneWidget);
@@ -1246,8 +1314,7 @@ class _SpyChatController extends ChatController {
 class _RecordingCompactChatController extends ChatController {
   _RecordingCompactChatController(
     super.ref,
-  )
-      : super(
+  ) : super(
           sendCoordinator: _NoopChatSendCoordinator(),
           sessionCoordinator: _NoopChatSessionCoordinator(),
           summaryController: _NoopChatSummaryController(),

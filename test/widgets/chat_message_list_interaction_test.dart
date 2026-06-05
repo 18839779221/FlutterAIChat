@@ -1,6 +1,7 @@
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat/send_message_request.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
@@ -322,16 +323,228 @@ void main() {
 
     final bottomOffset = scrollController.offset;
 
-    await tester.drag(find.byType(CustomScrollView), const Offset(0, -600));
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, 600));
     await tester.pump();
 
     final browsedOffset = scrollController.offset;
-    expect(browsedOffset, greaterThan(bottomOffset));
+    expect(browsedOffset, lessThan(bottomOffset));
 
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 350));
 
     expect(scrollController.offset, closeTo(browsedOffset, 0.1));
+  });
+
+  testWidgets('initial history opens at latest message', (tester) async {
+    final scrollController = ScrollController();
+    final container = ProviderContainer(
+      overrides: [
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+        scrollControllerProvider.overrideWith((ref) => scrollController),
+        chatSendStateProvider.overrideWith(
+          (ref) => ChatSendStateNotifier()
+            ..update(
+              phase: ChatSendPhase.idle,
+              isGenerating: false,
+            ),
+        ),
+      ],
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      scrollController.dispose();
+    });
+
+    container.read(messagesProvider.notifier).setMessages([
+      for (var i = 0; i < 30; i++) ...[
+        ChatMessage(
+          id: i * 2 + 1,
+          text: 'User message $i',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+        ),
+        ChatMessage(
+          id: i * 2 + 2,
+          text: 'Assistant message $i',
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+        ),
+      ],
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatMessageList()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(scrollController.offset,
+        closeTo(scrollController.position.maxScrollExtent, 0.1));
+  });
+
+  testWidgets('switching chat group resets scroll position to latest message',
+      (tester) async {
+    final scrollController = ScrollController();
+    final container = ProviderContainer(
+      overrides: [
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+        scrollControllerProvider.overrideWith((ref) => scrollController),
+        chatSendStateProvider.overrideWith(
+          (ref) => ChatSendStateNotifier()
+            ..update(
+              phase: ChatSendPhase.idle,
+              isGenerating: false,
+            ),
+        ),
+      ],
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      scrollController.dispose();
+    });
+
+    container.read(currentGroupProvider.notifier).state = ChatGroup(
+      id: 1,
+      title: 'First group',
+      lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+    );
+    container.read(messagesProvider.notifier).setMessages([
+      for (var i = 0; i < 30; i++) ...[
+        ChatMessage(
+          id: i * 2 + 1,
+          text: 'First user $i',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+        ),
+        ChatMessage(
+          id: i * 2 + 2,
+          text: 'First assistant $i',
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+        ),
+      ],
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatMessageList()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final firstLatestOffset = scrollController.offset;
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, 600));
+    await tester.pump();
+    final browsedOffset = scrollController.offset;
+    expect(browsedOffset, lessThan(firstLatestOffset));
+
+    container.read(currentGroupProvider.notifier).state = ChatGroup(
+      id: 2,
+      title: 'Second group',
+      lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+    );
+    await tester.pumpAndSettle();
+
+    container.read(messagesProvider.notifier).setMessages([
+      for (var i = 0; i < 50; i++) ...[
+        ChatMessage(
+          id: 1000 + i * 2 + 1,
+          text: 'Second user $i',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+        ),
+        ChatMessage(
+          id: 1000 + i * 2 + 2,
+          text: 'Second assistant $i',
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+        ),
+      ],
+    ]);
+    await tester.pumpAndSettle();
+
+    expect(scrollController.offset,
+        closeTo(scrollController.position.maxScrollExtent, 0.1));
+  });
+
+  testWidgets('older-history loading indicator is pinned to timeline top',
+      (tester) async {
+    final scrollController = ScrollController();
+    final container = ProviderContainer(
+      overrides: [
+        scrollControllerProvider.overrideWith((ref) => scrollController),
+        hasMoreMessagesProvider.overrideWith((ref) => true),
+        chatControllerProvider
+            .overrideWith((ref) => _PassiveChatController(ref)),
+        chatSendStateProvider.overrideWith(
+          (ref) => ChatSendStateNotifier()
+            ..update(
+              phase: ChatSendPhase.idle,
+              isGenerating: false,
+            ),
+        ),
+      ],
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      scrollController.dispose();
+    });
+
+    container.read(messagesProvider.notifier).setMessages([
+      for (var i = 20; i < 40; i++) ...[
+        ChatMessage(
+          id: i * 2 + 1,
+          text: 'User message $i',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+        ),
+        ChatMessage(
+          id: i * 2 + 2,
+          text: 'Assistant message $i',
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+        ),
+      ],
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatMessageList()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    scrollController.jumpTo(scrollController.position.minScrollExtent);
+    await tester.pump();
+
+    final loaderTop =
+        tester.getTopLeft(find.byType(CircularProgressIndicator)).dy;
+    final firstMessageTop = tester.getTopLeft(find.text('User message 20')).dy;
+    expect(loaderTop, lessThan(firstMessageTop));
   });
 
   testWidgets('loading older history preserves viewport anchor',
@@ -482,7 +695,8 @@ void main() {
     expect(scrollController.offset, greaterThanOrEqualTo(outerOffsetBefore));
   });
 
-  testWidgets('dragging inside active ask user question moves the outer timeline',
+  testWidgets(
+      'dragging inside active ask user question moves the outer timeline',
       (tester) async {
     final scrollController = ScrollController();
     final container = ProviderContainer(
@@ -608,6 +822,16 @@ class _LoadMoreChatController extends ChatController {
     ]);
     _ref.read(hasMoreMessagesProvider.notifier).state = false;
   }
+}
+
+class _PassiveChatController extends ChatController {
+  _PassiveChatController(super.ref)
+      : super(
+          sendCoordinator: _NoopChatSendCoordinator(),
+          sessionCoordinator: _NoopChatSessionCoordinator(),
+          summaryController: _NoopChatSummaryController(),
+          preferencesController: _NoopChatPreferencesController(),
+        );
 }
 
 class _NoopChatSendCoordinator implements ChatSendCoordinator {

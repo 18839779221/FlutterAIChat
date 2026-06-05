@@ -57,6 +57,9 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   bool _pendingVisibilityCheck = false;
   int _visibilityCheckGeneration = 0;
   bool _pendingDynamicInsetSync = false;
+  bool _hasPositionedInitialHistory = false;
+  int? _pendingInitialHistoryGroupId;
+  List<ChatMessage>? _groupSwitchStaleMessages;
   String? _lastPinnedLatestUserStableKey;
   double? _cachedMinBottomInset;
   double? _cachedTopTargetInset;
@@ -135,13 +138,28 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     }
   }
 
-  void _resetScrollToInitial() {
+  void _scheduleScrollToLatest() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) {
         return;
       }
-      _scrollController.jumpTo(_scrollController.position.minScrollExtent);
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) {
+          return;
+        }
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      });
     });
+  }
+
+  void _resetInitialHistoryPosition({
+    int? pendingGroupId,
+    List<ChatMessage>? staleMessages,
+  }) {
+    _hasPositionedInitialHistory = false;
+    _pendingInitialHistoryGroupId = pendingGroupId;
+    _groupSwitchStaleMessages = staleMessages;
   }
 
   void _resetDynamicInsetState() {
@@ -163,7 +181,10 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     ref.listen<ChatGroup?>(currentGroupProvider, (previous, next) {
       if (previous?.id != next?.id) {
         _resetDynamicInsetState();
-        _resetScrollToInitial();
+        _resetInitialHistoryPosition(
+          pendingGroupId: next?.id,
+          staleMessages: ref.read(messagesProvider),
+        );
       }
     });
 
@@ -217,7 +238,27 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final hasNewItems = timelineItems.length > _previousItemCount;
     _previousItemCount = timelineItems.length;
 
+    final isWaitingForGroupMessageBatch =
+        _pendingInitialHistoryGroupId == currentGroupId &&
+            identical(messages, _groupSwitchStaleMessages);
+    if (_pendingInitialHistoryGroupId != null &&
+        _pendingInitialHistoryGroupId != currentGroupId) {
+      _pendingInitialHistoryGroupId = null;
+      _groupSwitchStaleMessages = null;
+    }
+
+    if (sendPhase == ChatSendPhase.idle &&
+        timelineItems.length > 1 &&
+        !_hasPositionedInitialHistory &&
+        !isWaitingForGroupMessageBatch) {
+      _hasPositionedInitialHistory = true;
+      _pendingInitialHistoryGroupId = null;
+      _groupSwitchStaleMessages = null;
+      _scheduleScrollToLatest();
+    }
+
     if (messages.isEmpty) {
+      _resetInitialHistoryPosition();
       _resetDynamicInsetState();
       AppSettingsRepository? repository;
       try {
@@ -312,8 +353,9 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
             sliver: SliverList.builder(
               itemCount: itemCount,
               itemBuilder: (context, index) {
-                if (hasMoreMessages && index == timelineItems.length) {
+                if (hasMoreMessages && index == 0) {
                   return const Center(
+                    key: ValueKey('chat-message-list-load-older-indicator'),
                     child: Padding(
                       padding: EdgeInsets.all(8.0),
                       child: CircularProgressIndicator(),
@@ -321,8 +363,9 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
                   );
                 }
 
-                final item = timelineItems[index];
-                final isLastItem = index == timelineItems.length - 1;
+                final timelineIndex = hasMoreMessages ? index - 1 : index;
+                final item = timelineItems[timelineIndex];
+                final isLastItem = timelineIndex == timelineItems.length - 1;
                 final shouldAnimate = hasNewItems && isLastItem;
 
                 return Align(
@@ -366,10 +409,10 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     if (providers.isEmpty) {
       return const _EmptyStateModelSetupState(requiresSetup: true);
     }
-    final selectedProviderId = selection.selectedProviderId as String?;
-    final defaultProviderId = selection.defaultProviderId as String?;
-    final selectedModelId = selection.selectedModelId as String?;
-    final defaultModelId = selection.defaultModelId as String?;
+    final selectedProviderId = selection.selectedProviderId;
+    final defaultProviderId = selection.defaultProviderId;
+    final selectedModelId = selection.selectedModelId;
+    final defaultModelId = selection.defaultModelId;
 
     LlmProviderConfig? provider;
     for (final candidateId in [selectedProviderId, defaultProviderId]) {
@@ -846,8 +889,10 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   }) {
     _cachedMinBottomInset = minBottomInset ?? _cachedMinBottomInset;
     _cachedTopTargetInset = topTargetInset ?? _cachedTopTargetInset;
-    _cachedLatestUserStableKey = latestUserStableKey ?? _cachedLatestUserStableKey;
-    _cachedLatestTailStableKey = latestTailStableKey ?? _cachedLatestTailStableKey;
+    _cachedLatestUserStableKey =
+        latestUserStableKey ?? _cachedLatestUserStableKey;
+    _cachedLatestTailStableKey =
+        latestTailStableKey ?? _cachedLatestTailStableKey;
     _cachedPendingPinnedUserStableKey =
         pendingPinnedUserStableKey ?? _cachedPendingPinnedUserStableKey;
     _cachedSendPhase = sendPhase ?? _cachedSendPhase;
@@ -947,8 +992,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     _lastPinnedLatestUserStableKey = latestUserStableKey;
 
     if (delta > 1) {
-      ref.read(chatMessageListExtraBottomInsetProvider.notifier).state +=
-          delta;
+      ref.read(chatMessageListExtraBottomInsetProvider.notifier).state += delta;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_scrollController.hasClients) {
           return;

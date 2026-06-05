@@ -461,14 +461,17 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         return;
       }
 
-      LlmProviderConfig provider = providers.first;
+      LlmProviderConfig? selectedProvider;
+      LlmProviderConfig? defaultProvider;
       for (final item in providers) {
-        if (item.id == selection.selectedProviderId ||
-            item.id == selection.defaultProviderId) {
-          provider = item;
-          break;
+        if (item.id == selection.selectedProviderId) {
+          selectedProvider = item;
+        }
+        if (item.id == selection.defaultProviderId) {
+          defaultProvider = item;
         }
       }
+      final provider = selectedProvider ?? defaultProvider ?? providers.first;
       final renderObject =
           _modelChipKey.currentContext?.findRenderObject() as RenderBox?;
       final overlay =
@@ -667,8 +670,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                                       decoration: InputDecoration(
                                         hintText: '继续追问，或补充你的要求',
                                         hintStyle: AppTypography.uiStyle(
-                                          color: colors.secondaryText
-                                              .withValues(
+                                          color:
+                                              colors.secondaryText.withValues(
                                             alpha: 0.66,
                                           ),
                                           fontSize: 13.3,
@@ -1517,7 +1520,8 @@ class _PickerActionTile extends StatelessWidget {
                 ),
                 if (selected)
                   Padding(
-                    padding: EdgeInsets.only(left: spacing.sm, top: spacing.xxs),
+                    padding:
+                        EdgeInsets.only(left: spacing.sm, top: spacing.xxs),
                     child: Icon(
                       Icons.check_circle_rounded,
                       size: 18,
@@ -1553,8 +1557,7 @@ class _AnchoredSlashSuggestionsOverlay extends StatelessWidget {
     final panelWidth = screenSize.width < 700
         ? anchorRect.width.clamp(220.0, 320.0)
         : anchorRect.width.clamp(240.0, 360.0);
-    final estimatedMenuHeight =
-        (suggestions.length * 56.0) + spacing.xs + 12.0;
+    final estimatedMenuHeight = (suggestions.length * 56.0) + spacing.xs + 12.0;
     final availableBelow = screenSize.height - anchorRect.bottom - 8;
     final availableAbove = anchorRect.top - 8;
     final shouldOpenAbove = availableAbove >= estimatedMenuHeight ||
