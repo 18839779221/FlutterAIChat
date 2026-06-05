@@ -104,9 +104,9 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       data: {
         'textLength': text.length,
         'attachmentCount': attachments.length,
-        'allowUnsupportedImageInputAttempt':
-            allowUnsupportedImageInputAttempt,
-        'attachmentKinds': attachments.map((attachment) => attachment.kind.name).join(','),
+        'allowUnsupportedImageInputAttempt': allowUnsupportedImageInputAttempt,
+        'attachmentKinds':
+            attachments.map((attachment) => attachment.kind.name).join(','),
         'attachmentStatuses':
             attachments.map((attachment) => attachment.status.name).join(','),
       },
@@ -115,7 +115,8 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
 
     var currentGroup = _ref.read(currentGroupProvider);
     if (currentGroup == null) {
-      Logger.w(_tag, 'current group missing before send, creating a draft group');
+      Logger.w(
+          _tag, 'current group missing before send, creating a draft group');
       final systemPrompt = _ref.read(systemPromptProvider);
       ChatTurnProviderStyle lockedProviderStyle;
       try {
@@ -247,6 +248,8 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
             },
     );
 
+    _ref.read(pendingPinnedUserMessageStableKeyProvider.notifier).state =
+        'user-${userMessage.timestamp.microsecondsSinceEpoch}';
     _ref.read(messagesProvider.notifier).addMessage(userMessage);
     Logger.runtime(
       _tag,
@@ -399,14 +402,14 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     final turnRecordId = await turnRepository.createTurn(createdTurn);
     final persistedTurn = createdTurn.copyWith(id: turnRecordId);
     _ref.read(streamingTraceRecorderProvider.notifier).recordStage(
-          traceId: streamingTraceIdForTurn(turnRecordId),
-          turnId: turnRecordId.toString(),
-          stage: StreamingTraceStage.turnStarted,
-          timestamp: userMessage.timestamp,
-          details: {
-            'userMessagePreview': text.substring(0, text.length.clamp(0, 80)),
-          },
-        );
+      traceId: streamingTraceIdForTurn(turnRecordId),
+      turnId: turnRecordId.toString(),
+      stage: StreamingTraceStage.turnStarted,
+      timestamp: userMessage.timestamp,
+      details: {
+        'userMessagePreview': text.substring(0, text.length.clamp(0, 80)),
+      },
+    );
     await runtimeMarkerService.persistInjectedDate(
       groupId: currentGroupId,
       currentDate: runtimeMarkerPreparation.currentDate,
@@ -533,10 +536,10 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         reason: 'diagnose_image_attachment_context_chain',
         data: {
           'attachmentCount': attachments.length,
-          'localIds': attachments.map((attachment) => attachment.localId).toList(),
-          'statuses': attachments
-              .map((attachment) => attachment.status.name)
-              .toList(),
+          'localIds':
+              attachments.map((attachment) => attachment.localId).toList(),
+          'statuses':
+              attachments.map((attachment) => attachment.status.name).toList(),
           'hasProviderDataUrl': attachments
               .map(
                 (attachment) =>
@@ -555,7 +558,8 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         SessionRuntimeMarkerService.runtimeContextKey: runtimeContext,
       };
     }
-    final reminder = const InvokedSkillReminderBuilder().build(explicitInvokedSkill);
+    final reminder =
+        const InvokedSkillReminderBuilder().build(explicitInvokedSkill);
     runtimeContext['explicit_skill_reminder'] = reminder;
     runtimeContext['explicit_skill_context'] = explicitInvokedSkill.toJson();
     return {
@@ -974,9 +978,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
           'supportsImageInput': runtimeSupport,
         },
       );
-      return runtimeSupport
-          ? null
-          : '当前模型不支持图片输入，请切换到支持多模态图片输入的模型后重试。';
+      return runtimeSupport ? null : '当前模型不支持图片输入，请切换到支持多模态图片输入的模型后重试。';
     }
 
     final explicitSupport = llm.config['supportsImageInput'];
@@ -1000,9 +1002,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
           'supportsImageInput': selectedModelSupport,
         },
       );
-      return selectedModelSupport
-          ? null
-          : '当前模型不支持图片输入，请切换到支持多模态图片输入的模型后重试。';
+      return selectedModelSupport ? null : '当前模型不支持图片输入，请切换到支持多模态图片输入的模型后重试。';
     }
 
     switch (currentGroup.lockedProviderStyle) {
@@ -1032,8 +1032,8 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     try {
       final repository = _ref.read(appSettingsRepositoryProvider);
       final config = await repository.getLlmConfig();
-      final raw =
-          config.additionalConfig['llm.runtime_selected_model_supports_image_input'];
+      final raw = config
+          .additionalConfig['llm.runtime_selected_model_supports_image_input'];
       if (raw is bool) {
         return raw;
       }

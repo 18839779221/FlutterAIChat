@@ -59,6 +59,17 @@ final composerAttachmentsProvider =
 /// floating composer and any stacked bottom affordances.
 final chatBottomOverlayHeightProvider = StateProvider<double>((ref) => 0);
 
+/// Extra bottom inset temporarily injected into the timeline so a freshly sent
+/// user message can pin beneath the header before later content growth shrinks
+/// the gap back down to the stable minimum safe distance.
+final chatMessageListExtraBottomInsetProvider =
+    StateProvider<double>((ref) => 0);
+
+/// Stable key of the freshly inserted user row that should be pinned beneath
+/// the header exactly once when it becomes renderable.
+final pendingPinnedUserMessageStableKeyProvider =
+    StateProvider<String?>((ref) => null);
+
 // 焦点提供者
 final focusNodeProvider = Provider<FocusNode>((ref) {
   final focusNode = FocusNode();
@@ -155,7 +166,8 @@ final runtimeStreamingPreviewStateProvider = StateNotifierProvider<
 });
 
 /// Shared serialized commit pipeline for runtime preview and truth events.
-final turnProjectionDispatcherProvider = Provider<TurnProjectionDispatcher>((ref) {
+final turnProjectionDispatcherProvider =
+    Provider<TurnProjectionDispatcher>((ref) {
   return TurnProjectionDispatcher(ref);
 });
 
@@ -179,11 +191,11 @@ final chatTimelineProjectionProvider = Provider<ChatTimelineProjection>((ref) {
   final runtimeDraft = ref.watch(runtimeAssistantDraftProvider);
   final runtimePreviewState = ref.watch(runtimeStreamingPreviewStateProvider);
   return ref.watch(chatTimelineProjectionServiceProvider).build(
-    messages: messages,
-    groupId: groupId,
-    runtimeDraft: runtimeDraft,
-    runtimePreviewState: runtimePreviewState,
-  );
+        messages: messages,
+        groupId: groupId,
+        runtimeDraft: runtimeDraft,
+        runtimePreviewState: runtimePreviewState,
+      );
 });
 
 /// Returns the latest unresolved ask-user-question prompt so the timeline can

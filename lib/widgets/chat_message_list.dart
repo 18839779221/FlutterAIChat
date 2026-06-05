@@ -41,14 +41,29 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   static const double _anchorThreshold = 100;
   static const double _floatingEnterViewportMargin = 12;
   static const double _floatingExitViewportMargin = 4;
+  static const double _ghostHeaderHeight = 56;
   bool _isLoadingOlderHistory = false;
   late final ScrollController _scrollController;
   final GlobalKey _activeStatusAnchorKey = GlobalKey(
     debugLabel: 'active-turn-status-anchor',
   );
+  final GlobalKey _latestUserRowAnchorKey = GlobalKey(
+    debugLabel: 'latest-user-row-anchor',
+  );
+  final GlobalKey _latestTimelineTailAnchorKey = GlobalKey(
+    debugLabel: 'latest-timeline-tail-anchor',
+  );
   int _previousItemCount = 0;
   bool _pendingVisibilityCheck = false;
   int _visibilityCheckGeneration = 0;
+  bool _pendingDynamicInsetSync = false;
+  String? _lastPinnedLatestUserStableKey;
+  double? _cachedMinBottomInset;
+  double? _cachedTopTargetInset;
+  String? _cachedLatestUserStableKey;
+  String? _cachedLatestTailStableKey;
+  String? _cachedPendingPinnedUserStableKey;
+  ChatSendPhase? _cachedSendPhase;
 
   @override
   void initState() {
@@ -75,6 +90,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     }
 
     _scheduleActiveStatusVisibilitySync();
+    _scheduleDynamicInsetSync();
   }
 
   bool _shouldLoadOlderHistory(ScrollController scrollController) {
@@ -128,10 +144,25 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     });
   }
 
+  void _resetDynamicInsetState() {
+    _lastPinnedLatestUserStableKey = null;
+    _cachedLatestUserStableKey = null;
+    _cachedLatestTailStableKey = null;
+    _cachedPendingPinnedUserStableKey = null;
+    _cachedSendPhase = null;
+    ref.read(pendingPinnedUserMessageStableKeyProvider.notifier).state = null;
+    final notifier = ref.read(chatMessageListExtraBottomInsetProvider.notifier);
+    if (notifier.state == 0) {
+      return;
+    }
+    notifier.state = 0;
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen<ChatGroup?>(currentGroupProvider, (previous, next) {
       if (previous?.id != next?.id) {
+        _resetDynamicInsetState();
         _resetScrollToInitial();
       }
     });
@@ -154,12 +185,18 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     );
     final hasMoreMessages = ref.watch(hasMoreMessagesProvider);
     final bottomOverlayHeight = ref.watch(chatBottomOverlayHeightProvider);
+    final extraBottomInset = ref.watch(chatMessageListExtraBottomInsetProvider);
+    final pendingPinnedUserStableKey =
+        ref.watch(pendingPinnedUserMessageStableKeyProvider);
+    final sendPhase = ref.watch(sendPhaseProvider);
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final textController = ref.read(textControllerProvider);
     final focusNode = ref.read(focusNodeProvider);
-    final bottomTimelineInset = bottomOverlayHeight > 0
-        ? spacing.sm
+    final topPinnedTargetInset = _ghostHeaderHeight + spacing.xs;
+    final minBottomInset = bottomOverlayHeight > 0
+        ? bottomOverlayHeight + spacing.lg
         : spacing.xl * 4.2;
+    final bottomTimelineInset = minBottomInset + extraBottomInset;
 
     final timelineItems = _buildTimelineItems(
       messages,
@@ -167,6 +204,12 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       activeTurnStatus,
       hideInlineActiveStatus: shouldFloatActiveStatus,
     );
+    final latestUserStableKey =
+        timelineItems.lastOrNull?.type == ChatTimelineItemType.userBubble
+            ? timelineItems.last.stableKey
+            : null;
+    final latestTailStableKey =
+        timelineItems.isEmpty ? null : timelineItems.last.stableKey;
     final itemCount = timelineItems.length + (hasMoreMessages ? 1 : 0);
     final currentGroupId = ref.read(currentGroupProvider)?.id;
 
@@ -175,6 +218,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     _previousItemCount = timelineItems.length;
 
     if (messages.isEmpty) {
+      _resetDynamicInsetState();
       AppSettingsRepository? repository;
       try {
         repository = ref.read(appSettingsRepositoryProvider);
@@ -232,9 +276,26 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       );
     }
 
+    _scheduleDynamicInsetSync(
+      minBottomInset: minBottomInset,
+      topTargetInset: topPinnedTargetInset,
+      latestUserStableKey: latestUserStableKey,
+      latestTailStableKey: latestTailStableKey,
+      pendingPinnedUserStableKey: pendingPinnedUserStableKey,
+      sendPhase: sendPhase,
+    );
+
     return NotificationListener<SizeChangedLayoutNotification>(
       onNotification: (_) {
         _scheduleActiveStatusVisibilitySync();
+        _scheduleDynamicInsetSync(
+          minBottomInset: minBottomInset,
+          topTargetInset: topPinnedTargetInset,
+          latestUserStableKey: latestUserStableKey,
+          latestTailStableKey: latestTailStableKey,
+          pendingPinnedUserStableKey: pendingPinnedUserStableKey,
+          sendPhase: sendPhase,
+        );
         return false;
       },
       child: CustomScrollView(
@@ -244,7 +305,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           SliverPadding(
             padding: EdgeInsets.fromLTRB(
               spacing.sm,
-              spacing.xl * 2 + spacing.xxs,
+              topPinnedTargetInset,
               spacing.sm,
               bottomTimelineInset,
             ),
@@ -272,15 +333,18 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
                     ),
                     child: Padding(
                       padding: EdgeInsets.only(bottom: spacing.sm),
-                      child: ChatTimelineRow(
-                        key: ValueKey('timeline-block-${item.stableKey}'),
-                        item: item,
-                        blockBuilder: _blockBuilder,
-                        currentGroupId: currentGroupId,
-                        onLongPressMessage: _showMessageOptionMenu,
-                        shouldAnimate: shouldAnimate,
-                        onActiveStatusLayoutChanged:
-                            _scheduleActiveStatusVisibilitySync,
+                      child: KeyedSubtree(
+                        key: item.rowAnchorKey,
+                        child: ChatTimelineRow(
+                          key: ValueKey('timeline-block-${item.stableKey}'),
+                          item: item,
+                          blockBuilder: _blockBuilder,
+                          currentGroupId: currentGroupId,
+                          onLongPressMessage: _showMessageOptionMenu,
+                          shouldAnimate: shouldAnimate,
+                          onActiveStatusLayoutChanged:
+                              _scheduleActiveStatusVisibilitySync,
+                        ),
                       ),
                     ),
                   ),
@@ -340,11 +404,10 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   }
 
   List<ChatTimelineItem> _buildTimelineItems(
-    List<ChatMessage> messages,
-    List<AssistantTurnBlock> projectedAssistantBlocks,
-    ActiveTurnStatusPresentation? activeTurnStatus,
-    {required bool hideInlineActiveStatus}
-  ) {
+      List<ChatMessage> messages,
+      List<AssistantTurnBlock> projectedAssistantBlocks,
+      ActiveTurnStatusPresentation? activeTurnStatus,
+      {required bool hideInlineActiveStatus}) {
     if (messages.isEmpty) {
       return const [];
     }
@@ -355,9 +418,14 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       reason: 'diagnose streaming performance',
       data: {
         'projectedBlockCount': projectedAssistantBlocks.length,
-        'projectedBlockTypes': projectedAssistantBlocks.map((b) => b.type.name).join(','),
-        'projectedArtifactCount': projectedAssistantBlocks.where((b) => b.type == AssistantTurnBlockType.artifact).length,
-        'allProjectedTurnIds': projectedAssistantBlocks.map((b) => '${b.type.name}:${b.turnId}').join(' | '),
+        'projectedBlockTypes':
+            projectedAssistantBlocks.map((b) => b.type.name).join(','),
+        'projectedArtifactCount': projectedAssistantBlocks
+            .where((b) => b.type == AssistantTurnBlockType.artifact)
+            .length,
+        'allProjectedTurnIds': projectedAssistantBlocks
+            .map((b) => '${b.type.name}:${b.turnId}')
+            .join(' | '),
       },
     );
 
@@ -408,6 +476,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
             type: ChatTimelineItemType.userBubble,
             userMessage: current,
             sourceMessages: segment,
+            rowAnchorKey: isLatestTurn ? _latestUserRowAnchorKey : null,
             activeStatus:
                 isLatestTurn && !hasAssistantOutput && effectiveStatus != null
                     ? effectiveStatus
@@ -428,6 +497,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
             blocks: blocks,
             activeStatus:
                 isLatestTurn && hasAssistantOutput ? effectiveStatus : null,
+            latestTurnHasAssistantOutput: isLatestTurn && hasAssistantOutput,
             hideInlineStatus:
                 isLatestTurn && hasAssistantOutput && effectiveStatus != null
                     ? hideInlineActiveStatus
@@ -450,6 +520,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           blocks: orphanBlocks,
           activeStatus:
               cursor == sortedMessages.length - 1 ? effectiveStatus : null,
+          latestTurnHasAssistantOutput: cursor == sortedMessages.length - 1,
           hideInlineStatus:
               cursor == sortedMessages.length - 1 && effectiveStatus != null
                   ? hideInlineActiveStatus
@@ -505,6 +576,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     required List<ChatMessage> sourceMessages,
     required List<AssistantTurnBlock> blocks,
     required ActiveTurnStatusPresentation? activeStatus,
+    required bool latestTurnHasAssistantOutput,
     required bool hideInlineStatus,
   }) {
     Logger.temp(
@@ -527,16 +599,19 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
           sourceMessage: sourceMessage,
           sourceMessages: sourceMessages,
           block: block,
+          rowAnchorKey:
+              latestTurnHasAssistantOutput && index == blocks.length - 1
+                  ? _latestTimelineTailAnchorKey
+                  : null,
           activeStatus: activeStatus != null && index == blocks.length - 1
               ? activeStatus
               : null,
           statusAnchorKey: activeStatus != null && index == blocks.length - 1
               ? _activeStatusAnchorKey
               : null,
-          hideInlineStatus:
-              activeStatus != null && index == blocks.length - 1
-                  ? hideInlineStatus
-                  : false,
+          hideInlineStatus: activeStatus != null && index == blocks.length - 1
+              ? hideInlineStatus
+              : false,
         ),
       );
     }
@@ -568,9 +643,14 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       data: {
         'targetTurnId': turnId,
         'projectedBlockCount': projectedAssistantBlocks.length,
-        'projectedBlockTypes': projectedAssistantBlocks.map((b) => b.type.name).join(','),
-        'projectedArtifactCount': projectedAssistantBlocks.where((b) => b.type == AssistantTurnBlockType.artifact).length,
-        'allBlockTurnIds': projectedAssistantBlocks.map((b) => '${b.type.name}:${b.turnId}').join(' | '),
+        'projectedBlockTypes':
+            projectedAssistantBlocks.map((b) => b.type.name).join(','),
+        'projectedArtifactCount': projectedAssistantBlocks
+            .where((b) => b.type == AssistantTurnBlockType.artifact)
+            .length,
+        'allBlockTurnIds': projectedAssistantBlocks
+            .map((b) => '${b.type.name}:${b.turnId}')
+            .join(' | '),
       },
     );
     final blocks = projectedAssistantBlocks
@@ -583,7 +663,9 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       data: {
         'filteredBlockCount': blocks.length,
         'filteredBlockTypes': blocks.map((b) => b.type.name).join(','),
-        'filteredArtifactCount': blocks.where((b) => b.type == AssistantTurnBlockType.artifact).length,
+        'filteredArtifactCount': blocks
+            .where((b) => b.type == AssistantTurnBlockType.artifact)
+            .length,
       },
     );
     if (blocks.isNotEmpty) {
@@ -642,7 +724,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   }
 
   String _buildUserItemKey(ChatMessage message) {
-    return 'user-${message.id ?? message.timestamp.microsecondsSinceEpoch}';
+    return 'user-${message.timestamp.microsecondsSinceEpoch}';
   }
 
   String _buildAssistantItemKey(
@@ -747,10 +829,175 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
         return;
       }
       _syncActiveStatusVisibility(
-        activeStatus: activeStatus ?? ref.read(activeTurnStatusPresentationProvider),
+        activeStatus:
+            activeStatus ?? ref.read(activeTurnStatusPresentationProvider),
         hasAnchor: hasAnchor,
       );
     });
+  }
+
+  void _scheduleDynamicInsetSync({
+    double? minBottomInset,
+    double? topTargetInset,
+    String? latestUserStableKey,
+    String? latestTailStableKey,
+    String? pendingPinnedUserStableKey,
+    ChatSendPhase? sendPhase,
+  }) {
+    _cachedMinBottomInset = minBottomInset ?? _cachedMinBottomInset;
+    _cachedTopTargetInset = topTargetInset ?? _cachedTopTargetInset;
+    _cachedLatestUserStableKey = latestUserStableKey ?? _cachedLatestUserStableKey;
+    _cachedLatestTailStableKey = latestTailStableKey ?? _cachedLatestTailStableKey;
+    _cachedPendingPinnedUserStableKey =
+        pendingPinnedUserStableKey ?? _cachedPendingPinnedUserStableKey;
+    _cachedSendPhase = sendPhase ?? _cachedSendPhase;
+    if (_pendingDynamicInsetSync) {
+      return;
+    }
+    _pendingDynamicInsetSync = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pendingDynamicInsetSync = false;
+      if (!mounted) {
+        return;
+      }
+      _syncDynamicInset(
+        minBottomInset: _cachedMinBottomInset,
+        topTargetInset: _cachedTopTargetInset,
+        latestUserStableKey: _cachedLatestUserStableKey,
+        latestTailStableKey: _cachedLatestTailStableKey,
+        pendingPinnedUserStableKey: _cachedPendingPinnedUserStableKey,
+        sendPhase: _cachedSendPhase,
+      );
+    });
+  }
+
+  void _syncDynamicInset({
+    double? minBottomInset,
+    double? topTargetInset,
+    String? latestUserStableKey,
+    String? latestTailStableKey,
+    String? pendingPinnedUserStableKey,
+    ChatSendPhase? sendPhase,
+  }) {
+    if (!_scrollController.hasClients) {
+      return;
+    }
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final resolvedMinBottomInset = minBottomInset ??
+        (ref.read(chatBottomOverlayHeightProvider) > 0
+            ? ref.read(chatBottomOverlayHeightProvider) + spacing.lg
+            : spacing.xl * 4.2);
+    final resolvedTopTargetInset =
+        topTargetInset ?? (_ghostHeaderHeight + spacing.xs);
+    final resolvedSendPhase = sendPhase ?? ref.read(sendPhaseProvider);
+
+    if (latestUserStableKey != null &&
+        pendingPinnedUserStableKey == latestUserStableKey &&
+        resolvedSendPhase == ChatSendPhase.preparing &&
+        latestUserStableKey != _lastPinnedLatestUserStableKey) {
+      _initializePinnedLatestUserInset(
+        latestUserStableKey: latestUserStableKey,
+        topTargetInset: resolvedTopTargetInset,
+      );
+      return;
+    }
+
+    final shouldShrinkExtraInset = latestTailStableKey != null &&
+        latestUserStableKey != null &&
+        latestTailStableKey != latestUserStableKey;
+    if (!shouldShrinkExtraInset) {
+      return;
+    }
+
+    _shrinkDynamicInsetIfNeeded(minBottomInset: resolvedMinBottomInset);
+  }
+
+  void _initializePinnedLatestUserInset({
+    required String latestUserStableKey,
+    required double topTargetInset,
+  }) {
+    if (!_scrollController.hasClients) {
+      return;
+    }
+
+    final rowContext = _latestUserRowAnchorKey.currentContext;
+    if (rowContext == null) {
+      final nextOffset = _scrollController.position.maxScrollExtent;
+      if ((_scrollController.offset - nextOffset).abs() > 0.5) {
+        _scrollController.jumpTo(nextOffset);
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        _scheduleDynamicInsetSync();
+      });
+      return;
+    }
+
+    final listBox = context.findRenderObject() as RenderBox?;
+    final userBox = rowContext.findRenderObject() as RenderBox?;
+    if (listBox == null || userBox == null) {
+      return;
+    }
+
+    final listTop = listBox.localToGlobal(Offset.zero).dy;
+    final userTop = userBox.localToGlobal(Offset.zero).dy;
+    final delta = userTop - (listTop + topTargetInset);
+    _lastPinnedLatestUserStableKey = latestUserStableKey;
+
+    if (delta > 1) {
+      ref.read(chatMessageListExtraBottomInsetProvider.notifier).state +=
+          delta;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) {
+          return;
+        }
+        final nextOffset = (_scrollController.offset + delta).clamp(
+          _scrollController.position.minScrollExtent,
+          _scrollController.position.maxScrollExtent,
+        );
+        _scrollController.jumpTo(nextOffset);
+        ref.read(pendingPinnedUserMessageStableKeyProvider.notifier).state =
+            null;
+        _cachedPendingPinnedUserStableKey = null;
+        _scheduleDynamicInsetSync();
+      });
+      return;
+    }
+
+    ref.read(pendingPinnedUserMessageStableKeyProvider.notifier).state = null;
+    _cachedPendingPinnedUserStableKey = null;
+    _scheduleDynamicInsetSync();
+  }
+
+  void _shrinkDynamicInsetIfNeeded({
+    required double minBottomInset,
+  }) {
+    final listBox = context.findRenderObject() as RenderBox?;
+    final tailObject =
+        _latestTimelineTailAnchorKey.currentContext?.findRenderObject() ??
+            _latestUserRowAnchorKey.currentContext?.findRenderObject();
+    final tailBox = tailObject as RenderBox?;
+    if (listBox == null || tailBox == null) {
+      return;
+    }
+
+    final currentExtraInset = ref.read(chatMessageListExtraBottomInsetProvider);
+    if (currentExtraInset <= 0) {
+      return;
+    }
+
+    final listBottom = listBox.localToGlobal(Offset(0, listBox.size.height)).dy;
+    final tailBottom = tailBox.localToGlobal(Offset(0, tailBox.size.height)).dy;
+    final safeBottom = listBottom - minBottomInset;
+    final allowedExtraInset =
+        (safeBottom - tailBottom).clamp(0, double.infinity);
+    if (allowedExtraInset >= currentExtraInset - 0.5) {
+      return;
+    }
+    ref.read(chatMessageListExtraBottomInsetProvider.notifier).state =
+        allowedExtraInset.toDouble();
   }
 
   void _syncActiveStatusVisibility({
@@ -800,9 +1047,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       anchorRenderObject.getTransformTo(null),
       Offset.zero & anchorRenderObject.size,
     );
-    final isFullyVisible =
-        anchorRect.top >= listRect.top + viewportMargin &&
-            anchorRect.bottom <= listRect.bottom - viewportMargin;
+    final isFullyVisible = anchorRect.top >= listRect.top + viewportMargin &&
+        anchorRect.bottom <= listRect.bottom - viewportMargin;
 
     _setActiveStatusFloatingState(
       ActiveTurnStatusFloatingState(

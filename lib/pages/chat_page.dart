@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -722,93 +723,107 @@ class _HeaderButtonState extends State<_HeaderButton> {
             },
             child: ClipRRect(
               borderRadius: BorderRadius.circular(radius.pill),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  shape: isLabelButton ? BoxShape.rectangle : BoxShape.circle,
-                  borderRadius:
-                      isLabelButton ? BorderRadius.circular(radius.pill) : null,
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      colors.assistantSurface
-                          .withValues(alpha: widget.filled ? 0.36 : 0.3),
-                      colors.assistantSurface
-                          .withValues(alpha: widget.filled ? 0.62 : 0.56),
-                      colors.assistantSurface
-                          .withValues(alpha: widget.filled ? 0.8 : 0.74),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    shape: isLabelButton ? BoxShape.rectangle : BoxShape.circle,
+                    borderRadius: isLabelButton
+                        ? BorderRadius.circular(radius.pill)
+                        : null,
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        colors.assistantSurface
+                            .withValues(alpha: widget.filled ? 0.28 : 0.24),
+                        colors.assistantSurface
+                            .withValues(alpha: widget.filled ? 0.52 : 0.46),
+                        colors.assistantSurface
+                            .withValues(alpha: widget.filled ? 0.72 : 0.66),
+                      ],
+                      stops: const [0, 0.42, 1],
+                    ),
+                    border: Border.all(
+                      color: colors.semantic.text.inverse.withValues(
+                        alpha: widget.filled ? 0.28 : 0.22,
+                      ),
+                      width: 1.05,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: colors.core.elevation.shadowColor.withValues(
+                          alpha: 0.055,
+                        ),
+                        blurRadius: 24,
+                        spreadRadius: 1,
+                        offset: const Offset(0, 10),
+                      ),
+                      BoxShadow(
+                        color: colors.primaryText.withValues(alpha: 0.1),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                      BoxShadow(
+                        color:
+                            colors.semantic.text.inverse.withValues(alpha: 0.18),
+                        blurRadius: 6,
+                        offset: const Offset(0, -2),
+                      ),
                     ],
-                    stops: const [0, 0.42, 1],
                   ),
-                  border: Border.all(
-                    color: colors.semantic.text.inverse.withValues(alpha: 0.78),
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: colors.primaryText.withValues(alpha: 0.11),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 110),
+                    curve: Curves.easeOutCubic,
+                    width: isLabelButton ? null : iconButtonSize,
+                    height: isLabelButton ? labelButtonHeight : iconButtonSize,
+                    constraints: isLabelButton && maxButtonWidth != null
+                        ? BoxConstraints(maxWidth: maxButtonWidth)
+                        : null,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isLabelButton ? labelHorizontalPadding : 0,
+                      vertical: 0,
                     ),
-                    BoxShadow(
-                      color:
-                          colors.semantic.text.inverse.withValues(alpha: 0.24),
-                      blurRadius: 7,
-                      offset: const Offset(0, -2),
-                    ),
-                  ],
-                ),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 110),
-                  curve: Curves.easeOutCubic,
-                  width: isLabelButton ? null : iconButtonSize,
-                  height: isLabelButton ? labelButtonHeight : iconButtonSize,
-                  constraints: isLabelButton && maxButtonWidth != null
-                      ? BoxConstraints(maxWidth: maxButtonWidth)
-                      : null,
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isLabelButton ? labelHorizontalPadding : 0,
-                    vertical: 0,
-                  ),
-                  alignment: Alignment.center,
-                  child: isLabelButton
-                      ? Row(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Flexible(
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  maxWidth: maxTextWidth ?? 120,
-                                ),
-                                child: Text(
-                                  widget.label!,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  softWrap: false,
-                                  style: TextStyle(
-                                    color: widget.onPressed == null
-                                        ? colors.secondaryText
-                                            .withValues(alpha: 0.45)
-                                        : colors.primaryText
-                                            .withValues(alpha: 0.94),
-                                    fontSize: 12.2,
-                                    fontWeight: FontWeight.w600,
-                                    height: 1.1,
+                    alignment: Alignment.center,
+                    child: isLabelButton
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Flexible(
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxWidth: maxTextWidth ?? 120,
+                                  ),
+                                  child: Text(
+                                    widget.label!,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    softWrap: false,
+                                    style: TextStyle(
+                                      color: widget.onPressed == null
+                                          ? colors.secondaryText
+                                              .withValues(alpha: 0.45)
+                                          : colors.primaryText
+                                              .withValues(alpha: 0.94),
+                                      fontSize: 12.2,
+                                      fontWeight: FontWeight.w600,
+                                      height: 1.1,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
-                        )
-                      : Icon(
-                          widget.icon,
-                          size: 17.5,
-                          color: widget.onPressed == null
-                              ? colors.secondaryText.withValues(alpha: 0.45)
-                              : colors.primaryText.withValues(alpha: 0.9),
-                        ),
+                            ],
+                          )
+                        : Icon(
+                            widget.icon,
+                            size: 17.5,
+                            color: widget.onPressed == null
+                                ? colors.secondaryText.withValues(alpha: 0.45)
+                                : colors.primaryText.withValues(alpha: 0.9),
+                          ),
+                  ),
                 ),
               ),
             ),

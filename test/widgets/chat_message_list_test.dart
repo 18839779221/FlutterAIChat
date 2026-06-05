@@ -14,6 +14,7 @@ import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
+import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/artifact_preview_surface.dart';
@@ -55,7 +56,8 @@ void main() {
       expect(find.text('单工具自动执行'), findsOneWidget);
     });
 
-    testWidgets('empty conversation shows model setup callout before suggestions',
+    testWidgets(
+        'empty conversation shows model setup callout before suggestions',
         (tester) async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
@@ -393,7 +395,8 @@ void main() {
       expect(find.text('先确认上下文，再给出答案。'), findsOneWidget);
     });
 
-    testWidgets('tool-use reasoning uses final reasoning style and stays expanded',
+    testWidgets(
+        'tool-use reasoning uses final reasoning style and stays expanded',
         (tester) async {
       await _pumpMessageList(
         tester,
@@ -597,6 +600,197 @@ void main() {
       expect(find.byKey(const ValueKey('latest-message-running-tail')),
           findsOneWidget);
       expect(find.text('正在请求模型'), findsOneWidget);
+    });
+
+    testWidgets(
+        'latest user message pins beneath the header target when a send starts',
+        (tester) async {
+      final scrollController = ScrollController();
+      final latestUserTimestamp = DateTime(2026, 6, 5, 11);
+      final latestUserStableKey =
+          'user-${latestUserTimestamp.microsecondsSinceEpoch}';
+      addTearDown(scrollController.dispose);
+
+      final container = ProviderContainer(
+        overrides: [
+          hasMoreMessagesProvider.overrideWith((ref) => false),
+          scrollControllerProvider.overrideWith((ref) => scrollController),
+          chatBottomOverlayHeightProvider.overrideWith((ref) => 220),
+          chatSendStateProvider.overrideWith(
+            (ref) => ChatSendStateNotifier()
+              ..update(
+                phase: ChatSendPhase.preparing,
+                isGenerating: false,
+              ),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        container.dispose();
+      });
+
+      container.read(messagesProvider.notifier).setMessages([
+        for (var i = 0; i < 10; i++) ...[
+          _buildMessage(
+            id: i * 2 + 1,
+            timestamp: DateTime(2026, 6, 5, 10, i),
+            text: 'Older user $i',
+            role: MessageRole.user,
+            contentType: MessageContentType.plainText,
+          ),
+          _buildMessage(
+            id: i * 2 + 2,
+            timestamp: DateTime(2026, 6, 5, 10, i, 30),
+            text: 'Older assistant $i',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+        _buildMessage(
+          id: 999,
+          timestamp: latestUserTimestamp,
+          text: 'Latest user message',
+          role: MessageRole.user,
+          contentType: MessageContentType.plainText,
+        ),
+      ]);
+      container.read(pendingPinnedUserMessageStableKeyProvider.notifier).state =
+          latestUserStableKey;
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const Scaffold(
+              body: SizedBox(
+                height: 520,
+                child: ChatMessageList(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      final listRect = tester.getRect(find.byType(ChatMessageList));
+      final rowRect = tester.getRect(
+        find.byKey(ValueKey('timeline-block-$latestUserStableKey')),
+      );
+      final sliverPadding =
+          tester.widget<SliverPadding>(find.byType(SliverPadding));
+      final padding = sliverPadding.padding as EdgeInsets;
+
+      expect(
+        rowRect.top,
+        closeTo(listRect.top + padding.top, 2),
+      );
+    });
+
+    testWidgets(
+        'dynamic extra bottom inset shrinks monotonically as the latest content grows',
+        (tester) async {
+      final scrollController = ScrollController();
+      final latestUserTimestamp = DateTime(2026, 6, 5, 13);
+      final latestUserStableKey =
+          'user-${latestUserTimestamp.microsecondsSinceEpoch}';
+      addTearDown(scrollController.dispose);
+
+      final container = ProviderContainer(
+        overrides: [
+          hasMoreMessagesProvider.overrideWith((ref) => false),
+          scrollControllerProvider.overrideWith((ref) => scrollController),
+          chatBottomOverlayHeightProvider.overrideWith((ref) => 220),
+          chatSendStateProvider.overrideWith(
+            (ref) => ChatSendStateNotifier()
+              ..update(
+                phase: ChatSendPhase.preparing,
+                isGenerating: false,
+              ),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        container.dispose();
+      });
+
+      container.read(messagesProvider.notifier).setMessages([
+        for (var i = 0; i < 10; i++) ...[
+          _buildMessage(
+            id: i * 2 + 1,
+            timestamp: DateTime(2026, 6, 5, 12, i),
+            text: 'Older user $i',
+            role: MessageRole.user,
+            contentType: MessageContentType.plainText,
+          ),
+          _buildMessage(
+            id: i * 2 + 2,
+            timestamp: DateTime(2026, 6, 5, 12, i, 20),
+            text: List.filled(8, 'Older assistant $i').join(' '),
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+        _buildMessage(
+          id: 101,
+          timestamp: latestUserTimestamp,
+          text: 'Latest user message',
+          role: MessageRole.user,
+          contentType: MessageContentType.plainText,
+        ),
+      ]);
+      container.read(pendingPinnedUserMessageStableKeyProvider.notifier).state =
+          latestUserStableKey;
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const Scaffold(
+              body: SizedBox(
+                height: 520,
+                child: ChatMessageList(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      final firstExtraInset =
+          container.read(chatMessageListExtraBottomInsetProvider);
+
+      container.read(messagesProvider.notifier).addMessage(
+        _buildMessage(
+              id: 102,
+              timestamp: DateTime(2026, 6, 5, 13, 0, 30),
+              text: List.filled(40, 'assistant growth').join(' '),
+              role: MessageRole.assistant,
+              contentType: MessageContentType.plainText,
+            ),
+          );
+      await tester.pump();
+      await tester.pump();
+
+      final nextExtraInset =
+          container.read(chatMessageListExtraBottomInsetProvider);
+
+      expect(firstExtraInset, greaterThan(0));
+      expect(nextExtraInset, lessThanOrEqualTo(firstExtraInset));
+      expect(nextExtraInset, greaterThanOrEqualTo(0));
     });
 
     testWidgets('idle phase can render explicit testing status copy',
@@ -812,7 +1006,8 @@ void main() {
       );
 
       expect(
-        find.byKey(const ValueKey('timeline-block-preview_message:block:0:toolUse')),
+        find.byKey(
+            const ValueKey('timeline-block-preview_message:block:0:toolUse')),
         findsOneWidget,
       );
 
@@ -846,7 +1041,8 @@ void main() {
       await tester.pump();
 
       expect(
-        find.byKey(const ValueKey('timeline-block-preview_message:block:0:toolUse')),
+        find.byKey(
+            const ValueKey('timeline-block-preview_message:block:0:toolUse')),
         findsOneWidget,
       );
     });
@@ -1346,7 +1542,8 @@ void main() {
       expect(find.text('准备搜索 OpenAI 最新消息'), findsNothing);
     });
 
-    testWidgets('ask user question proposed workflow stays hidden', (tester) async {
+    testWidgets('ask user question proposed workflow stays hidden',
+        (tester) async {
       await _pumpMessageList(
         tester,
         messages: [
@@ -1756,6 +1953,9 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
 
       scrollController.jumpTo(scrollController.position.maxScrollExtent);
       await tester.pump();
@@ -1912,7 +2112,8 @@ void main() {
           role: MessageRole.assistant,
           status: MessageStatus.completed,
           contentType: MessageContentType.plainText,
-          reasoningContent: List.filled(80, '这里是额外展开后的长分析内容，会把状态条顶到屏幕外').join('\n'),
+          reasoningContent:
+              List.filled(80, '这里是额外展开后的长分析内容，会把状态条顶到屏幕外').join('\n'),
         ),
       ]);
 
@@ -1949,8 +2150,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 150));
 
       final listRect = tester.getRect(find.byType(ChatMessageList));
-      final statusRect =
-          tester.getRect(find.byKey(const ValueKey('latest-message-running-tail')));
+      final statusRect = tester
+          .getRect(find.byKey(const ValueKey('latest-message-running-tail')));
       expect(statusRect.bottom, greaterThan(listRect.bottom));
 
       expect(
@@ -1959,7 +2160,8 @@ void main() {
       );
     });
 
-    testWidgets('assistant text does not expose removed structured output action',
+    testWidgets(
+        'assistant text does not expose removed structured output action',
         (tester) async {
       await _pumpMessageList(
         tester,

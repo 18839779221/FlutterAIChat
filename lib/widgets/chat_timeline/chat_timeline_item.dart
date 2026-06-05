@@ -39,6 +39,10 @@ class ChatTimelineItem {
   /// Stable anchor key used to measure inline status visibility in the viewport.
   final Key? statusAnchorKey;
 
+  /// Optional row-level key used for transient viewport measurements such as
+  /// send-time pinning and latest-tail inset shrink calculations.
+  final Key? rowAnchorKey;
+
   /// Whether the inline status should stay laid out but visually hidden because
   /// the floating host is currently active.
   final bool hideInlineStatus;
@@ -53,6 +57,7 @@ class ChatTimelineItem {
     this.block,
     this.activeStatus,
     this.statusAnchorKey,
+    this.rowAnchorKey,
     this.hideInlineStatus = false,
   });
 }

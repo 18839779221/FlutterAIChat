@@ -257,7 +257,7 @@ void main() {
   });
 
   testWidgets(
-      'chat page keeps only a shallow overlap inset beneath the overlay composer',
+      'chat page keeps a stable bottom-safe inset beneath the overlay composer',
       (tester) async {
     final container = ProviderContainer(
       overrides: [
@@ -314,11 +314,11 @@ void main() {
     expect(overlayHeight, greaterThan(0));
     expect(
       padding.bottom,
-      greaterThanOrEqualTo(spacing.sm),
+      greaterThan(spacing.xl),
     );
     expect(
       padding.bottom,
-      lessThan(overlayHeight),
+      greaterThanOrEqualTo(overlayHeight + spacing.lg),
     );
   });
 
