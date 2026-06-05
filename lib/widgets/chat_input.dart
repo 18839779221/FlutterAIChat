@@ -33,6 +33,7 @@ class ChatInput extends ConsumerStatefulWidget {
 
 class _ChatInputState extends ConsumerState<ChatInput> {
   final GlobalKey _modelChipKey = GlobalKey();
+  static const double _modelChipFontSize = 12.2;
   TextEditingController? _listenedController;
   ChangeNotifier? _listenedVoiceController;
   String? _selectedModelChipLabel;
@@ -363,6 +364,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final modelChipLabel = settingsRepository == null
         ? '未配置模型'
         : (_selectedModelChipLabel ?? '未配置模型');
+    final screenWidth = MediaQuery.of(context).size.width;
+    final modelChipMaxTextWidth = screenWidth < 700 ? 132.0 : 156.0;
 
     return Semantics(
       container: true,
@@ -814,13 +817,18 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Flexible(
+                                        ConstrainedBox(
+                                          constraints: BoxConstraints(
+                                            maxWidth: modelChipMaxTextWidth,
+                                          ),
                                           child: Text(
                                             modelChipLabel,
                                             overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
+                                            style: AppTypography.uiStyle(
                                               color: colors.primaryText,
-                                              fontWeight: FontWeight.w500,
+                                              fontSize: _modelChipFontSize,
+                                              fontWeight: FontWeight.w400,
+                                              height: 1.2,
                                             ),
                                           ),
                                         ),
@@ -1052,6 +1060,7 @@ class _AnchoredModelMenuDialog extends StatefulWidget {
 }
 
 class _AnchoredModelMenuDialogState extends State<_AnchoredModelMenuDialog> {
+  static const double _menuFontSize = 12.2;
   late String _activeProviderId;
   bool _showProviderPanel = false;
 
@@ -1149,10 +1158,12 @@ class _AnchoredModelMenuDialogState extends State<_AnchoredModelMenuDialog> {
                                   _activeProvider.name,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .labelLarge
-                                      ?.copyWith(fontWeight: FontWeight.w600),
+                                  style: AppTypography.uiStyle(
+                                    color: colors.primaryText,
+                                    fontSize: _menuFontSize,
+                                    fontWeight: FontWeight.w400,
+                                    height: 1.2,
+                                  ),
                                 ),
                               ),
                               Icon(
@@ -1246,16 +1257,15 @@ class _AnchoredMenuPanel extends StatelessWidget {
 }
 
 class _PickerActionTile extends StatelessWidget {
+  static const double _titleFontSize = 12.2;
   const _PickerActionTile({
     required this.title,
     required this.onTap,
     this.selected = false,
-    this.trailingIcon,
   });
 
   final String title;
   final bool selected;
-  final IconData? trailingIcon;
   final VoidCallback onTap;
 
   @override
@@ -1286,9 +1296,12 @@ class _PickerActionTile extends StatelessWidget {
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                    style: AppTypography.uiStyle(
+                      color: colors.primaryText,
+                      fontSize: _titleFontSize,
+                      fontWeight: FontWeight.w400,
+                      height: 1.2,
+                    ),
                   ),
                 ),
                 if (selected)
@@ -1298,15 +1311,6 @@ class _PickerActionTile extends StatelessWidget {
                       Icons.check_circle_rounded,
                       size: 18,
                       color: colors.workflowRunning,
-                    ),
-                  ),
-                if (trailingIcon != null)
-                  Padding(
-                    padding: EdgeInsets.only(left: spacing.sm),
-                    child: Icon(
-                      trailingIcon,
-                      size: 18,
-                      color: colors.secondaryText,
                     ),
                   ),
               ],
