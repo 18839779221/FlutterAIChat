@@ -115,5 +115,24 @@ Use Android edge-to-edge guidance.
       expect(result.descriptors, hasLength(1));
       expect(result.descriptors.single.id, 'android-edge-skill');
     });
+
+    test('repo-local create artifact render analysis skill has valid frontmatter',
+        () async {
+      final skillFile = File(
+        '.agents/skills/create-artifact-render-analysis/SKILL.md',
+      );
+
+      expect(await skillFile.exists(), isTrue);
+
+      final parsed =
+          const SkillFrontmatterParser().parse(await skillFile.readAsString());
+
+      expect(parsed.name, 'create-artifact-render-analysis');
+      expect(
+        parsed.description,
+        contains('create_artifact inline preview issues'),
+      );
+      expect(parsed.body, contains('scripts/analyze_create_artifact_render.sh'));
+    });
   });
 }

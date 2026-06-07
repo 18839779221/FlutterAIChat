@@ -207,7 +207,7 @@ class _TimelineSegmentRow extends StatelessWidget {
               ),
               SizedBox(height: spacing.xxs),
               Text(
-                segment.detail,
+                _buildSegmentDetail(segment),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: AppTypography.uiStyle(
@@ -240,6 +240,22 @@ class _TimelineSegmentRow extends StatelessWidget {
       return '${(durationMs / 1000).toStringAsFixed(1)}s';
     }
     return '${durationMs}ms';
+  }
+
+  String _buildSegmentDetail(StreamingTurnTimelineSegment segment) {
+    final metrics = <String>[];
+    final firstChunkDelayMs = segment.modelFirstChunkDelayMs;
+    if (firstChunkDelayMs != null) {
+      metrics.add('首包 ${ _formatDuration(firstChunkDelayMs) }');
+    }
+    final streamingDurationMs = segment.modelStreamingDurationMs;
+    if (streamingDurationMs != null) {
+      metrics.add('流式 ${ _formatDuration(streamingDurationMs) }');
+    }
+    if (metrics.isEmpty) {
+      return segment.detail;
+    }
+    return '${segment.detail} · ${metrics.join(' / ')}';
   }
 
   Color _accentColor(
