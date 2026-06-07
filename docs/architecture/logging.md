@@ -233,7 +233,16 @@ artifact / visualizer 相关日志建议沿用同一分类，不新增第二套�
   - 也适用于 inline artifact render-session 的异常摘要，例如：
     - `artifact.preview.anomaly`
     - `artifact.preview.session_done`
+  - 也适用于流式 timeline 的高信号阶段持久化，例如：
+    - `streaming.trace.stage`
+    - `streaming.trace.lifecycle`
   - 这些仍写入同一个 `logs/app.log`，不构成第二条 observability 通道
+
+当前 repo 内与 `create_artifact` / 流式 timeline 相关的一键分析入口：
+
+- `bash scripts/analyze_create_artifact_render.sh ...`
+- `bash scripts/analyze_streaming_trace.sh ...`
+- `bash scripts/analyze_create_artifact_incident.sh ...`
 
 ### interaction 锚点
 

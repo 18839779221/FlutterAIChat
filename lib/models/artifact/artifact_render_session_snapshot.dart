@@ -23,6 +23,7 @@ enum ArtifactRenderHeightPattern {
 class ArtifactRenderSessionSnapshot {
   const ArtifactRenderSessionSnapshot({
     required this.sessionId,
+    required this.flowId,
     required this.turnId,
     required this.artifactId,
     required this.sourcePath,
@@ -43,6 +44,7 @@ class ArtifactRenderSessionSnapshot {
   });
 
   final String sessionId;
+  final String flowId;
   final String turnId;
   final String artifactId;
   final String sourcePath;

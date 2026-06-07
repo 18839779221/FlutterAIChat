@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
-import 'package:ai_chat/models/chat/tool_card_presentation_variant.dart';
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
@@ -18,9 +17,7 @@ import 'package:ai_chat/widgets/chat_blocks/artifact_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/reasoning_section.dart';
 import 'package:ai_chat/widgets/chat_blocks/structured_output_block.dart';
-import 'package:ai_chat/widgets/chat_blocks/tool_exception_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
-import 'package:ai_chat/widgets/chat_blocks/tool_outcome_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/unified_turn_status_bar.dart';
 import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
@@ -272,6 +269,7 @@ class ChatTimelineRow extends ConsumerWidget {
           child: ArtifactBlock(
             key: ValueKey(block.artifactProjection?.artifactId),
             projection: block.artifactProjection,
+            logicalId: block.logicalId,
           ),
         );
         break;

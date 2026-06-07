@@ -1,5 +1,6 @@
 import 'package:ai_chat/models/chat/active_turn_status_presentation.dart';
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
+import 'package:ai_chat/providers/streaming_trace_providers.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/tools/core/tool_display_names.dart';
@@ -22,6 +23,7 @@ import 'package:ai_chat/widgets/shared/highlighted_code_content.dart';
 import 'package:ai_chat/widgets/technical_content_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -510,6 +512,41 @@ $$
       // mounted (active-turn status surfaces the running signal elsewhere).
       expect(find.byType(MarkdownBody), findsOneWidget);
       expect(find.byType(SelectableText), findsNothing);
+    });
+
+    testWidgets('streaming final response tags first visible source', (
+      tester,
+    ) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const Scaffold(
+              body: FinalResponseBlock(
+                title: '最终回答',
+                text: '这是一段会进入 trace 的流式回答。',
+                isStreaming: true,
+                streamTraceId: 'turn_301_stream',
+                streamTurnId: '301',
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+
+      final snapshot = container.read(streamingTraceRecorderProvider);
+      expect(snapshot, isNotNull);
+      expect(snapshot!.entries, isNotEmpty);
+      expect(
+        snapshot.entries.first.details['source'],
+        'final_response_text',
+      );
     });
 
     testWidgets('completed final response renders Markdown without cursor', (

@@ -228,9 +228,7 @@ void main() async {
           _resolveRuntimePlatform(),
         ),
         onPlannerRetryScheduled: (progress) {
-          final reason = progress.error is TimeoutException
-              ? '请求超时'
-              : '请求失败';
+          final reason = progress.error is TimeoutException ? '请求超时' : '请求失败';
           container.read(chatSendStateProvider.notifier).setStatusText(
                 '$reason，正在重试 ${progress.attempt}/${progress.maxAttempts}',
               );
@@ -241,6 +239,11 @@ void main() async {
                 .read(turnProjectionDispatcherProvider)
                 .dispatchPreviewEvent(entries),
           );
+        },
+        onPlannerRequestTrace: (event) {
+          final coordinator = container.read(chatSendCoordinatorProvider)
+              as DefaultChatSendCoordinator;
+          coordinator.recordPlannerRequestTrace(event);
         },
       ),
       turnRepository: turnRepository,

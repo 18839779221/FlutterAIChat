@@ -783,7 +783,12 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     AssistantTurnBlock block,
     ChatMessage? sourceMessage,
   ) {
-    final key = block.id;
+    final logicalId = block.logicalId?.trim();
+    final key = block.type == AssistantTurnBlockType.artifact &&
+            logicalId != null &&
+            logicalId.isNotEmpty
+        ? logicalId
+        : block.id;
     Logger.temp(
       'ChatMessageList',
       'stableKey generated',

@@ -108,6 +108,7 @@ class _FinalResponseBlockState extends ConsumerState<FinalResponseBlock> {
         stage: StreamingTraceStage.uiFirstVisible,
         timestamp: now,
         details: {
+          'source': 'final_response_text',
           'textLength': widget.text.length,
           'previewText': widget.text,
         },
@@ -122,6 +123,7 @@ class _FinalResponseBlockState extends ConsumerState<FinalResponseBlock> {
         stage: StreamingTraceStage.uiUpdated,
         timestamp: now,
         details: {
+          'source': 'final_response_text',
           'textLength': widget.text.length,
           'previewText': widget.text,
         },
@@ -135,8 +137,7 @@ class _FinalResponseBlockState extends ConsumerState<FinalResponseBlock> {
     final spacing = Theme.of(context).extension<AppSpacing>()!;
 
     final hasReasoning = (widget.reasoningText ?? '').trim().isNotEmpty;
-    final showTitle =
-        widget.title.trim().isNotEmpty && widget.title != '最终回答';
+    final showTitle = widget.title.trim().isNotEmpty && widget.title != '最终回答';
 
     // Streaming and completed phases render the exact same Markdown subtree
     // so takeover is a pure text update with no visual transition. The

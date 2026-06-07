@@ -21,6 +21,30 @@ import 'tool_policy_service.dart';
 import '../utils/logger.dart';
 import 'prompt/prompt_stage.dart';
 
+enum PlannerRequestTraceStage {
+  requestStarted,
+  firstChunk,
+  requestCompleted,
+}
+
+class PlannerRequestTraceEvent {
+  const PlannerRequestTraceEvent({
+    required this.turnId,
+    required this.requestId,
+    required this.stage,
+    required this.timestamp,
+    this.phase,
+    this.toolName,
+  });
+
+  final int turnId;
+  final String requestId;
+  final PlannerRequestTraceStage stage;
+  final DateTime timestamp;
+  final String? phase;
+  final String? toolName;
+}
+
 class AgentPlannerService {
   static const _tag = 'AgentPlannerService';
   // Architecture:
@@ -37,6 +61,7 @@ class AgentPlannerService {
   final PromptBuilderService _promptBuilder;
   final void Function(LlmRetryProgress progress)? _onPlannerRetryScheduled;
   final void Function(StreamingMessageEvent event)? _onPlannerRuntimeStream;
+  final void Function(PlannerRequestTraceEvent event)? _onPlannerRequestTrace;
 
   AgentPlannerService({
     required BaseLLM llm,
@@ -46,6 +71,7 @@ class AgentPlannerService {
     PromptBuilderService? promptBuilder,
     void Function(LlmRetryProgress progress)? onPlannerRetryScheduled,
     void Function(StreamingMessageEvent event)? onPlannerRuntimeStream,
+    void Function(PlannerRequestTraceEvent event)? onPlannerRequestTrace,
   })  : _llm = llm,
         _availableTools = availableTools,
         _toolExposureService =
@@ -53,7 +79,8 @@ class AgentPlannerService {
         _toolPolicyService = toolPolicyService,
         _promptBuilder = promptBuilder ?? const PromptBuilderService(),
         _onPlannerRetryScheduled = onPlannerRetryScheduled,
-        _onPlannerRuntimeStream = onPlannerRuntimeStream;
+        _onPlannerRuntimeStream = onPlannerRuntimeStream,
+        _onPlannerRequestTrace = onPlannerRequestTrace;
 
   Future<ModelTurnDecision?> planNextDecision({
     required ChatTurn turn,
@@ -84,16 +111,40 @@ class AgentPlannerService {
       promptLocale: config.promptLocale,
     );
     final runtimeStreamTraceId = streamingTraceIdForTurn(turn.id!);
-    final plannerRuntimeStreamListener = _onPlannerRuntimeStream == null
-        ? null
-        : (StreamingMessageEvent event) {
-            _onPlannerRuntimeStream!(
-              event.copyWithMergedRuntimeMetadata({
-                'streamTraceId': runtimeStreamTraceId,
-                'streamTurnId': turn.id.toString(),
-              }),
-            );
-          };
+    final plannerRequestId = _buildPlannerRequestId(turn);
+    _emitPlannerRequestTrace(
+      PlannerRequestTraceEvent(
+        turnId: turn.id!,
+        requestId: plannerRequestId,
+        stage: PlannerRequestTraceStage.requestStarted,
+        timestamp: DateTime.now(),
+      ),
+    );
+    var hasRecordedFirstChunk = false;
+    final plannerRuntimeStreamListener =
+        (_onPlannerRuntimeStream == null && _onPlannerRequestTrace == null)
+            ? null
+            : (StreamingMessageEvent event) {
+                if (!hasRecordedFirstChunk) {
+                  hasRecordedFirstChunk = true;
+                  _emitPlannerRequestTrace(
+                    PlannerRequestTraceEvent(
+                      turnId: turn.id!,
+                      requestId: plannerRequestId,
+                      stage: PlannerRequestTraceStage.firstChunk,
+                      timestamp: DateTime.now(),
+                    ),
+                  );
+                }
+                if (_onPlannerRuntimeStream != null) {
+                  _onPlannerRuntimeStream!(
+                    event.copyWithMergedRuntimeMetadata({
+                      'streamTraceId': runtimeStreamTraceId,
+                      'streamTurnId': turn.id.toString(),
+                    }),
+                  );
+                }
+              };
 
     try {
       if (_llm is PlannerRuntimeStreamingCapable) {
@@ -113,17 +164,45 @@ class AgentPlannerService {
         onRetryScheduled: _onPlannerRetryScheduled,
       );
       if (decision != null) {
+        _emitPlannerRequestTrace(
+          PlannerRequestTraceEvent(
+            turnId: turn.id!,
+            requestId: plannerRequestId,
+            stage: PlannerRequestTraceStage.requestCompleted,
+            timestamp: DateTime.now(),
+            phase: _phaseForDecision(decision),
+            toolName: decision.toolCalls.length == 1
+                ? decision.toolCalls.single.toolName.trim()
+                : null,
+          ),
+        );
         return _sanitizeDecision(
           decision,
           allowedToolNames: allowedToolNames,
         );
       }
+      _emitPlannerRequestTrace(
+        PlannerRequestTraceEvent(
+          turnId: turn.id!,
+          requestId: plannerRequestId,
+          stage: PlannerRequestTraceStage.requestCompleted,
+          timestamp: DateTime.now(),
+        ),
+      );
       Logger.w(
         _tag,
         'native planner returned null, terminating turn with planner_request_failed',
       );
       return _plannerRequestFailedDecision();
     } catch (error, stackTrace) {
+      _emitPlannerRequestTrace(
+        PlannerRequestTraceEvent(
+          turnId: turn.id!,
+          requestId: plannerRequestId,
+          stage: PlannerRequestTraceStage.requestCompleted,
+          timestamp: DateTime.now(),
+        ),
+      );
       final detail = _preview(error.toString());
       Logger.w(
         _tag,
@@ -145,6 +224,26 @@ class AgentPlannerService {
       return explicit;
     }
     return config.systemPrompt.trim();
+  }
+
+  void _emitPlannerRequestTrace(PlannerRequestTraceEvent event) {
+    _onPlannerRequestTrace?.call(event);
+  }
+
+  String _buildPlannerRequestId(ChatTurn turn) {
+    final turnId = turn.id ?? 0;
+    return 'planner_${turnId}_${turn.iterationCount}_${DateTime.now().microsecondsSinceEpoch}';
+  }
+
+  String? _phaseForDecision(ModelTurnDecision decision) {
+    if (decision.toolCalls.isNotEmpty) {
+      return 'tool_call';
+    }
+    final assistantMessage = (decision.assistantMessage ?? '').trim();
+    if (decision.isTerminal && assistantMessage.isNotEmpty) {
+      return 'final_answer';
+    }
+    return null;
   }
 
   ModelTurnDecision _sanitizeDecision(

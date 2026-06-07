@@ -7,6 +7,7 @@ import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/utils/logger.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/llm/adapters/adapter_utils.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
@@ -58,6 +59,10 @@ class ChatTimelineProjectionService {
       groupId: groupId,
       runtimeDraft: runtimeDraft,
     );
+    final runtimeArtifactOrderAnchors = _buildRuntimeArtifactOrderAnchors(
+      runtimePreviewState: runtimePreviewState,
+      resolvedTurnId: runtimeTurnId,
+    );
     final toolPresentationEvents = _buildToolPresentationEvents(
       messages: messages,
       groupId: groupId,
@@ -72,6 +77,7 @@ class ChatTimelineProjectionService {
     final artifactBlocks = _buildArtifactBlocks(
       messages: messages,
       groupId: groupId,
+      runtimeArtifactOrderAnchors: runtimeArtifactOrderAnchors,
     );
     final resolvedArtifactProviderCallIds = artifactBlocks
         .map((block) => block.artifactProjection?.providerCallId?.trim())
@@ -110,7 +116,8 @@ class ChatTimelineProjectionService {
         'runtimeArtifactBlockCount': runtimeArtifactBlocks.length,
         'artifactBlockCount': artifactBlocks.length,
         'finalMergedBlockTypes': mergedBlocks.map((b) => b.type.name).join(','),
-        'finalMergedTurnIds': mergedBlocks.map((b) => '${b.type.name}:${b.turnId}').join(' | '),
+        'finalMergedTurnIds':
+            mergedBlocks.map((b) => '${b.type.name}:${b.turnId}').join(' | '),
       },
     );
     return ChatTimelineProjection(
@@ -129,7 +136,8 @@ class ChatTimelineProjectionService {
   }) {
     final nonToolMessages = messages
         .where(
-          (message) => message.isUser || _belongsToNonToolBlockProjection(message),
+          (message) =>
+              message.isUser || _belongsToNonToolBlockProjection(message),
         )
         .toList(growable: false);
     return _blockBuilder
@@ -182,7 +190,7 @@ class ChatTimelineProjectionService {
                 turnId: currentTurnId,
                 payload: message.payloadJson,
               ),
-                providerCallId: _readProviderCallId(message.payloadJson),
+              providerCallId: _readProviderCallId(message.payloadJson),
               sourceContentType: message.contentType,
               sourceMessageId: message.id,
               timestamp: message.timestamp,
@@ -209,7 +217,7 @@ class ChatTimelineProjectionService {
                 turnId: currentTurnId,
                 payload: message.payloadJson,
               ),
-                providerCallId: _readProviderCallId(message.payloadJson),
+              providerCallId: _readProviderCallId(message.payloadJson),
               sourceContentType: message.contentType,
               sourceMessageId: message.id,
               timestamp: message.timestamp,
@@ -249,6 +257,7 @@ class ChatTimelineProjectionService {
   List<AssistantTurnBlock> _buildArtifactBlocks({
     required List<ChatMessage> messages,
     required int? groupId,
+    required Map<String, _ArtifactOrderAnchor> runtimeArtifactOrderAnchors,
   }) {
     final resolver = _artifactTurnResolver;
     if (resolver == null) {
@@ -256,13 +265,20 @@ class ChatTimelineProjectionService {
     }
     final projections = resolver.resolve(messages: messages, groupId: groupId);
     return projections.map((projection) {
+      final logicalId = _artifactLogicalId(
+        providerCallId: projection.providerCallId,
+        turnId: projection.turnId,
+        artifactId: projection.artifactId,
+      );
+      final orderAnchor = runtimeArtifactOrderAnchors[logicalId];
       return AssistantTurnBlock(
         id: '${projection.turnId}-artifact-${projection.artifactId}',
         turnId: projection.turnId,
         type: AssistantTurnBlockType.artifact,
-        sequence: 100000,
-        createdAt: projection.createdAt,
+        sequence: orderAnchor?.sequence ?? 100000,
+        createdAt: orderAnchor?.createdAt ?? projection.createdAt,
         updatedAt: projection.updatedAt,
+        logicalId: logicalId,
         title: projection.title,
         text: projection.source,
         payload: {
@@ -277,6 +293,47 @@ class ChatTimelineProjectionService {
         artifactProjection: projection,
       );
     }).toList(growable: false);
+  }
+
+  Map<String, _ArtifactOrderAnchor> _buildRuntimeArtifactOrderAnchors({
+    required RuntimeStreamingPreviewState runtimePreviewState,
+    required String? resolvedTurnId,
+  }) {
+    if (runtimePreviewState.isEmpty) {
+      return const <String, _ArtifactOrderAnchor>{};
+    }
+
+    final anchors = <String, _ArtifactOrderAnchor>{};
+    for (final message in runtimePreviewState.messages) {
+      for (final block in message.blocks) {
+        final turnId = _resolveProjectedRuntimeTurnId(
+          entryTurnId: 'preview:${message.messageId}',
+          fallbackTurnId: resolvedTurnId,
+        );
+        final preview = _runtimeArtifactPreviewParser.parse(
+          message: message,
+          block: block,
+          turnId: turnId,
+        );
+        if (preview == null) {
+          continue;
+        }
+        final logicalId = _artifactLogicalId(
+          providerCallId: preview.providerCallId,
+          turnId: preview.turnId,
+          artifactId: preview.artifactId,
+        );
+        final existing = anchors[logicalId];
+        if (existing == null ||
+            preview.createdAt.isBefore(existing.createdAt)) {
+          anchors[logicalId] = _ArtifactOrderAnchor(
+            createdAt: preview.createdAt,
+            sequence: 99998,
+          );
+        }
+      }
+    }
+    return anchors;
   }
 
   List<AssistantTurnBlock> _buildRuntimePreviewBlocks({
@@ -389,6 +446,11 @@ class ChatTimelineProjectionService {
           );
           continue;
         }
+        final logicalId = _artifactLogicalId(
+          providerCallId: providerCallId,
+          turnId: preview.turnId,
+          artifactId: preview.artifactId,
+        );
         final artifactBlock = AssistantTurnBlock(
           id: preview.entryId,
           turnId: targetTurnId,
@@ -396,6 +458,7 @@ class ChatTimelineProjectionService {
           sequence: 99998,
           createdAt: preview.createdAt,
           updatedAt: preview.updatedAt,
+          logicalId: logicalId,
           title: preview.title,
           text: preview.source,
           payload: {
@@ -433,6 +496,18 @@ class ChatTimelineProjectionService {
     return runtimeArtifactBlocks;
   }
 
+  static String _artifactLogicalId({
+    required String? providerCallId,
+    required String turnId,
+    required String artifactId,
+  }) {
+    final trimmedCallId = (providerCallId ?? '').trim();
+    if (trimmedCallId.isNotEmpty) {
+      return 'artifact:$trimmedCallId';
+    }
+    return 'artifact:$turnId:$artifactId';
+  }
+
   AssistantTurnBlock? _buildRuntimePreviewBlock({
     required RuntimeStreamingPreviewMessage message,
     required RuntimeStreamingPreviewBlock block,
@@ -440,8 +515,27 @@ class ChatTimelineProjectionService {
     required int sequence,
   }) {
     if (block.blockType == StreamingContentBlockType.text) {
-      if (block.text.isEmpty) {
+      final extraction = extractThinkTaggedText(block.text);
+      final content = extraction.content;
+      final reasoning = extraction.reasoning;
+      if ((content ?? '').isEmpty && (reasoning ?? '').isEmpty) {
         return null;
+      }
+      if ((content ?? '').isEmpty) {
+        return AssistantTurnBlock(
+          id: '${block.contentBlockId}:thinking-inline',
+          turnId: turnId,
+          type: AssistantTurnBlockType.analysis,
+          sequence: sequence,
+          createdAt: block.createdAt,
+          updatedAt: block.updatedAt,
+          reasoningText: reasoning,
+          payload: _runtimePreviewPayload(
+            message: message,
+            messageId: message.messageId,
+            block: block,
+          ),
+        );
       }
       return AssistantTurnBlock(
         id: block.contentBlockId,
@@ -451,7 +545,8 @@ class ChatTimelineProjectionService {
         createdAt: block.createdAt,
         updatedAt: block.updatedAt,
         logicalId: 'final:$turnId',
-        text: block.text,
+        text: content,
+        reasoningText: reasoning,
         payload: _runtimePreviewPayload(
           message: message,
           messageId: message.messageId,
@@ -519,7 +614,8 @@ class ChatTimelineProjectionService {
     required int? groupId,
     required RuntimeAssistantDraft? runtimeDraft,
   }) {
-    if (runtimeDraft != null && !_isTransientRuntimeTurnId(runtimeDraft.turnId)) {
+    if (runtimeDraft != null &&
+        !_isTransientRuntimeTurnId(runtimeDraft.turnId)) {
       return runtimeDraft.turnId;
     }
 
@@ -561,8 +657,8 @@ class ChatTimelineProjectionService {
 
   bool _isTransientRuntimeTurnId(String turnId) {
     return turnId == 'planner_runtime' ||
-           turnId.contains('_runtime_') ||
-           turnId.startsWith('preview:');
+        turnId.contains('_runtime_') ||
+        turnId.startsWith('preview:');
   }
 
   List<AssistantTurnBlock> _mergeBlocks({
@@ -576,8 +672,8 @@ class ChatTimelineProjectionService {
       blocksByTurn.putIfAbsent(block.turnId, () => []).add(block);
     }
     for (final artifactBlock in artifactBlocks) {
-      final turnBlocks =
-          blocksByTurn.putIfAbsent(artifactBlock.turnId, () => <AssistantTurnBlock>[]);
+      final turnBlocks = blocksByTurn.putIfAbsent(
+          artifactBlock.turnId, () => <AssistantTurnBlock>[]);
       final finalResponseIndex = turnBlocks.indexWhere(
         (block) => block.type == AssistantTurnBlockType.finalResponse,
       );
@@ -614,8 +710,11 @@ class ChatTimelineProjectionService {
         'artifactBlockCount': artifactBlocks.length,
         'mergedBlockCount': merged.length,
         'mergedBlockTypes': merged.map((b) => b.type.name).join(','),
-        'mergedArtifactCount': merged.where((b) => b.type == AssistantTurnBlockType.artifact).length,
-        'allMergedTurnIds': merged.map((b) => '${b.type.name}:${b.turnId}').join(' | '),
+        'mergedArtifactCount': merged
+            .where((b) => b.type == AssistantTurnBlockType.artifact)
+            .length,
+        'allMergedTurnIds':
+            merged.map((b) => '${b.type.name}:${b.turnId}').join(' | '),
       },
     );
     return merged;
@@ -703,8 +802,8 @@ class ChatTimelineProjectionService {
       return sequenceOrder;
     }
 
-    final typeOrder =
-        _turnBlockTypePriority(left.type).compareTo(_turnBlockTypePriority(right.type));
+    final typeOrder = _turnBlockTypePriority(left.type)
+        .compareTo(_turnBlockTypePriority(right.type));
     if (typeOrder != 0) {
       return typeOrder;
     }
@@ -736,7 +835,7 @@ class ChatTimelineProjectionService {
       if (message.contentType != MessageContentType.askUserQuestionResult) {
         continue;
       }
-        final turnId = message.payloadJson?['agentTurnId'];
+      final turnId = message.payloadJson?['agentTurnId'];
       if (turnId is int) {
         resolvedTurnIds.add(turnId);
       }
@@ -746,7 +845,7 @@ class ChatTimelineProjectionService {
       if (message.contentType != MessageContentType.askUserQuestionPrompt) {
         continue;
       }
-        final payload = message.payloadJson;
+      final payload = message.payloadJson;
       final turnId = payload?['agentTurnId'];
       final status = payload?['status'];
       if (turnId is! int || resolvedTurnIds.contains(turnId)) {
@@ -773,7 +872,7 @@ class ChatTimelineProjectionService {
         continue;
       }
 
-        final payload = message.payloadJson;
+      final payload = message.payloadJson;
       if (payload == null) {
         continue;
       }
@@ -838,4 +937,14 @@ class ChatTimelineProjectionService {
     final trimmed = raw.trim();
     return trimmed.isEmpty ? null : trimmed;
   }
+}
+
+class _ArtifactOrderAnchor {
+  const _ArtifactOrderAnchor({
+    required this.createdAt,
+    required this.sequence,
+  });
+
+  final DateTime createdAt;
+  final int sequence;
 }

@@ -36,6 +36,7 @@ class ArtifactRenderSessionRecorder {
 
   void startSession({
     required String sessionId,
+    required String flowId,
     required String turnId,
     required String artifactId,
     String? providerCallId,
@@ -46,6 +47,7 @@ class ArtifactRenderSessionRecorder {
   }) {
     _sessions[sessionId] = _ActiveArtifactRenderSession(
       sessionId: sessionId,
+      flowId: flowId,
       turnId: turnId,
       artifactId: artifactId,
       providerCallId: providerCallId,
@@ -59,6 +61,7 @@ class ArtifactRenderSessionRecorder {
       sessionId: sessionId,
       data: {
         'turnId': turnId,
+        'flowId': flowId,
         'artifactId': artifactId,
         'providerCallId': providerCallId,
         'sourcePath': sourcePath,
@@ -172,6 +175,7 @@ class ArtifactRenderSessionRecorder {
     required double rawHeight,
     required double clampedHeight,
     required DateTime timestamp,
+    Map<String, dynamic> context = const <String, dynamic>{},
   }) {
     final session = _sessions[sessionId];
     if (session == null) {
@@ -179,6 +183,7 @@ class ArtifactRenderSessionRecorder {
     }
     session.heightSampleCount += 1;
     session.lastUpdatedAt = timestamp;
+    session.lastHeightSampleContext = Map<String, dynamic>.from(context);
     _emitSessionEvent(
       'artifact.preview.height_sampled',
       sessionId: sessionId,
@@ -187,6 +192,7 @@ class ArtifactRenderSessionRecorder {
         'seq': session.heightSampleCount,
         'rawHeight': rawHeight,
         'clampedHeight': clampedHeight,
+        ...context,
       },
     );
   }
@@ -234,6 +240,7 @@ class ArtifactRenderSessionRecorder {
           'artifact.preview.anomaly',
           data: {
             'sessionId': session.sessionId,
+            'flowId': session.flowId,
             'diagnosticCode': artifactHeightDropOver30pxDiagnosticCode,
             'phase': session.currentPhase.name,
             'artifactId': session.artifactId,
@@ -313,6 +320,28 @@ class ArtifactRenderSessionRecorder {
     );
   }
 
+  void recordSurfaceLifecycle({
+    required String sessionId,
+    required String event,
+    required DateTime timestamp,
+    Map<String, dynamic> data = const <String, dynamic>{},
+  }) {
+    final session = _sessions[sessionId];
+    if (session == null) {
+      return;
+    }
+    session.lastUpdatedAt = timestamp;
+    _emitSessionEvent(
+      'artifact.preview.surface_lifecycle',
+      sessionId: sessionId,
+      data: <String, dynamic>{
+        'phase': session.currentPhase.name,
+        'event': event,
+        ...data,
+      },
+    );
+  }
+
   ArtifactRenderSessionSnapshot finishSession({
     required String sessionId,
     required DateTime timestamp,
@@ -326,9 +355,8 @@ class ArtifactRenderSessionRecorder {
     final totalStreamingDurationMs =
         timestamp.difference(session.startedAt).inMilliseconds;
     final firstSuccessfulRenderAt = session.firstSuccessfulRenderAt;
-    final firstSuccessfulRenderAtMs = firstSuccessfulRenderAt
-        ?.difference(session.startedAt)
-        .inMilliseconds;
+    final firstSuccessfulRenderAtMs =
+        firstSuccessfulRenderAt?.difference(session.startedAt).inMilliseconds;
 
     if (firstSuccessfulRenderAtMs != null &&
         totalStreamingDurationMs > 3000 &&
@@ -342,6 +370,7 @@ class ArtifactRenderSessionRecorder {
         'artifact.preview.anomaly',
         data: {
           'sessionId': session.sessionId,
+          'flowId': session.flowId,
           'diagnosticCode': artifactFirstRenderInFinalSecondDiagnosticCode,
           'phase': session.currentPhase.name,
           'artifactId': session.artifactId,
@@ -350,7 +379,8 @@ class ArtifactRenderSessionRecorder {
           'details': <String, dynamic>{
             'totalStreamingDurationMs': totalStreamingDurationMs,
             'firstSuccessfulRenderAtMs': firstSuccessfulRenderAtMs,
-            'tailWindowMs': totalStreamingDurationMs - firstSuccessfulRenderAtMs,
+            'tailWindowMs':
+                totalStreamingDurationMs - firstSuccessfulRenderAtMs,
             'sourceProgressCount': session.sourceProgressCount,
             'applyCount': session.applyCount,
             'domCommitCount': session.domCommitCount,
@@ -362,6 +392,7 @@ class ArtifactRenderSessionRecorder {
 
     final snapshot = ArtifactRenderSessionSnapshot(
       sessionId: session.sessionId,
+      flowId: session.flowId,
       turnId: session.turnId,
       artifactId: session.artifactId,
       sourcePath: session.sourcePath,
@@ -390,6 +421,7 @@ class ArtifactRenderSessionRecorder {
       'artifact.preview.session_done',
       data: {
         'sessionId': snapshot.sessionId,
+        'flowId': snapshot.flowId,
         'verdict': snapshot.verdict.name,
         'anomalyCodes': snapshot.anomalyCodes,
         'phaseSummary': snapshot.phaseSummary,
@@ -480,6 +512,7 @@ class ArtifactRenderSessionRecorder {
 class _ActiveArtifactRenderSession {
   _ActiveArtifactRenderSession({
     required this.sessionId,
+    required this.flowId,
     required this.turnId,
     required this.artifactId,
     required this.providerCallId,
@@ -490,6 +523,7 @@ class _ActiveArtifactRenderSession {
   });
 
   final String sessionId;
+  final String flowId;
   final String turnId;
   final String artifactId;
   final String? providerCallId;
@@ -518,6 +552,7 @@ class _ActiveArtifactRenderSession {
   double? maxAppliedHeight;
   double? finalAppliedHeight;
   double largestDropPx = 0;
+  Map<String, dynamic> lastHeightSampleContext = <String, dynamic>{};
 
   final List<String> anomalyCodes = <String>[];
 }

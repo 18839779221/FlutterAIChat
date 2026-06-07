@@ -2128,6 +2128,7 @@ void main() {
     test('forwards runtime planner stream entries without changing decision flow',
         () async {
       final emittedEvents = <StreamingMessageEvent>[];
+      final traceEvents = <PlannerRequestTraceEvent>[];
       final llm = _RuntimeStreamingDecisionLLM(
         decision: const ModelTurnDecision(
           toolCalls: [],
@@ -2150,6 +2151,9 @@ void main() {
         onPlannerRuntimeStream: (event) {
           emittedEvents.add(event);
         },
+        onPlannerRequestTrace: (event) {
+          traceEvents.add(event);
+        },
       );
 
       final decision = await service.planNextDecision(
@@ -2165,6 +2169,15 @@ void main() {
 
       expect(decision?.assistantMessage, 'ok');
       expect(emittedEvents, hasLength(1));
+      expect(
+        traceEvents.map((event) => event.stage).toList(),
+        [
+          PlannerRequestTraceStage.requestStarted,
+          PlannerRequestTraceStage.firstChunk,
+          PlannerRequestTraceStage.requestCompleted,
+        ],
+      );
+      expect(traceEvents.last.phase, 'final_answer');
       expect(
         emittedEvents.single,
         isA<StreamingContentBlockStartEvent>()

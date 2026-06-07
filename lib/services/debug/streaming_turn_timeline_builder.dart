@@ -17,6 +17,7 @@ class StreamingTurnTimelineBuilder {
     final turnStart = _resolveTurnStart(snapshot, entries);
     final finalAnswerStart = _resolveFinalAnswerStart(entries);
     final finalAnswerPreview = _resolveLatestPreviewText(entries);
+    final modelPhases = _resolveModelPhases(entries, resolvedNow);
     final toolSpans = _resolveToolSpans(entries, resolvedNow);
     final completedEnd = snapshot.takeoverAt;
     final timelineEnd = completedEnd ?? resolvedNow;
@@ -38,15 +39,13 @@ class StreamingTurnTimelineBuilder {
         );
       }
       segments.add(
-        StreamingTurnTimelineSegment(
-          id: 'tool_${segments.length}_${span.toolName}',
-          type: StreamingTurnTimelineSegmentType.toolCall,
-          title: '调用 ${span.toolName}',
-          detail: '正在调用 ${span.toolName}',
-          startedAt: span.startedAt,
-          endedAt: span.endedAt,
-          durationMs: span.endedAt.difference(span.startedAt).inMilliseconds,
-          isOngoing: span.isOngoing,
+        _buildToolSegment(
+          index: segments.length,
+          span: span,
+          modelPhase: _matchToolModelPhase(
+            modelPhases: modelPhases,
+            span: span,
+          ),
         ),
       );
       cursor = span.endedAt;
@@ -68,6 +67,11 @@ class StreamingTurnTimelineBuilder {
       final answerEnd = completedEnd ?? resolvedNow;
       final effectiveFinalAnswerStart =
           finalAnswerStart.isAfter(cursor) ? finalAnswerStart : cursor;
+      final finalAnswerModelPhase = _matchFinalAnswerModelPhase(
+        modelPhases: modelPhases,
+        startedAt: effectiveFinalAnswerStart,
+        endedAt: answerEnd,
+      );
       segments.add(
         StreamingTurnTimelineSegment(
           id: 'final_${segments.length}',
@@ -78,6 +82,8 @@ class StreamingTurnTimelineBuilder {
           endedAt: answerEnd,
           durationMs:
               answerEnd.difference(effectiveFinalAnswerStart).inMilliseconds,
+          modelFirstChunkDelayMs: finalAnswerModelPhase?.firstChunkDelayMs,
+          modelStreamingDurationMs: finalAnswerModelPhase?.streamingDurationMs,
           isOngoing: completedEnd == null,
         ),
       );
@@ -160,6 +166,25 @@ class StreamingTurnTimelineBuilder {
     return null;
   }
 
+  StreamingTurnTimelineSegment _buildToolSegment({
+    required int index,
+    required _ToolSpan span,
+    required _ModelRequestPhase? modelPhase,
+  }) {
+    return StreamingTurnTimelineSegment(
+      id: 'tool_${index}_${span.toolName}',
+      type: StreamingTurnTimelineSegmentType.toolCall,
+      title: '调用 ${span.toolName}',
+      detail: '正在调用 ${span.toolName}',
+      startedAt: span.startedAt,
+      endedAt: span.endedAt,
+      durationMs: span.endedAt.difference(span.startedAt).inMilliseconds,
+      modelFirstChunkDelayMs: modelPhase?.firstChunkDelayMs,
+      modelStreamingDurationMs: modelPhase?.streamingDurationMs,
+      isOngoing: span.isOngoing,
+    );
+  }
+
   List<_ToolSpan> _resolveToolSpans(
     List<StreamingTraceEntry> entries,
     DateTime now,
@@ -233,6 +258,108 @@ class StreamingTurnTimelineBuilder {
     return merged;
   }
 
+  List<_ModelRequestPhase> _resolveModelPhases(
+    List<StreamingTraceEntry> entries,
+    DateTime now,
+  ) {
+    final phases = <_ModelRequestPhase>[];
+    _OpenModelRequestPhase? openPhase;
+
+    for (final entry in entries) {
+      switch (entry.stage) {
+        case StreamingTraceStage.modelRequestStarted:
+          final nextPhase = _readModelPhase(entry);
+          if (nextPhase == null) {
+            continue;
+          }
+          if (openPhase != null) {
+            phases.add(
+              openPhase.toClosed(
+                completedAt: entry.timestamp,
+                firstChunkAt: openPhase.firstChunkAt,
+                isOngoing: false,
+              ),
+            );
+          }
+          openPhase = _OpenModelRequestPhase(
+            phase: nextPhase,
+            toolName: _readToolName(entry),
+            startedAt: entry.timestamp,
+          );
+          break;
+        case StreamingTraceStage.modelFirstChunk:
+          final nextPhase = _readModelPhase(entry);
+          if (openPhase == null || nextPhase == null) {
+            continue;
+          }
+          if (openPhase.phase != nextPhase) {
+            continue;
+          }
+          if (nextPhase == _ModelReplyPhase.toolCall) {
+            final toolName = _readToolName(entry);
+            if (toolName != null &&
+                toolName.isNotEmpty &&
+                toolName != openPhase.toolName) {
+              continue;
+            }
+          }
+          openPhase = openPhase.copyWith(firstChunkAt: entry.timestamp);
+          break;
+        case StreamingTraceStage.modelRequestCompleted:
+          final nextPhase = _readModelPhase(entry);
+          if (openPhase == null || nextPhase == null) {
+            continue;
+          }
+          if (openPhase.phase != nextPhase) {
+            continue;
+          }
+          if (nextPhase == _ModelReplyPhase.toolCall) {
+            final toolName = _readToolName(entry);
+            if (toolName != null &&
+                toolName.isNotEmpty &&
+                toolName != openPhase.toolName) {
+              continue;
+            }
+          }
+          phases.add(
+            openPhase.toClosed(
+              completedAt: entry.timestamp,
+              firstChunkAt: openPhase.firstChunkAt,
+              isOngoing: false,
+            ),
+          );
+          openPhase = null;
+          break;
+        case StreamingTraceStage.turnStarted:
+        case StreamingTraceStage.streamEventReceived:
+        case StreamingTraceStage.previewEventConsumed:
+        case StreamingTraceStage.previewStateCommitted:
+        case StreamingTraceStage.timelineProjectionBuilt:
+        case StreamingTraceStage.toolCallStreamStarted:
+        case StreamingTraceStage.toolCallStreamCompleted:
+        case StreamingTraceStage.toolCallStarted:
+        case StreamingTraceStage.toolCallCompleted:
+        case StreamingTraceStage.toolCallFailed:
+        case StreamingTraceStage.uiFirstVisible:
+        case StreamingTraceStage.uiUpdated:
+        case StreamingTraceStage.finalTakeover:
+          break;
+      }
+    }
+
+    if (openPhase != null) {
+      phases.add(
+        openPhase.toClosed(
+          completedAt: now,
+          firstChunkAt: openPhase.firstChunkAt,
+          isOngoing: true,
+        ),
+      );
+    }
+
+    return phases;
+  }
+
   List<_ToolSpan> _resolvePreviewToolSpans(
     List<StreamingTraceEntry> entries,
     DateTime now,
@@ -281,6 +408,9 @@ class StreamingTurnTimelineBuilder {
           openSpan = null;
           break;
         case StreamingTraceStage.turnStarted:
+        case StreamingTraceStage.modelRequestStarted:
+        case StreamingTraceStage.modelFirstChunk:
+        case StreamingTraceStage.modelRequestCompleted:
         case StreamingTraceStage.streamEventReceived:
         case StreamingTraceStage.previewEventConsumed:
         case StreamingTraceStage.previewStateCommitted:
@@ -361,6 +491,9 @@ class StreamingTurnTimelineBuilder {
           openSpan = null;
           break;
         case StreamingTraceStage.turnStarted:
+        case StreamingTraceStage.modelRequestStarted:
+        case StreamingTraceStage.modelFirstChunk:
+        case StreamingTraceStage.modelRequestCompleted:
         case StreamingTraceStage.streamEventReceived:
         case StreamingTraceStage.previewEventConsumed:
         case StreamingTraceStage.previewStateCommitted:
@@ -386,6 +519,50 @@ class StreamingTurnTimelineBuilder {
     }
 
     return spans;
+  }
+
+  _ModelRequestPhase? _matchToolModelPhase({
+    required List<_ModelRequestPhase> modelPhases,
+    required _ToolSpan span,
+  }) {
+    for (final phase in modelPhases) {
+      if (phase.phase != _ModelReplyPhase.toolCall) {
+        continue;
+      }
+      if (phase.toolName != span.toolName) {
+        continue;
+      }
+      if (_rangesOverlap(
+        startedAt: phase.startedAt,
+        endedAt: phase.endedAt,
+        otherStartedAt: span.startedAt,
+        otherEndedAt: span.endedAt,
+      )) {
+        return phase;
+      }
+    }
+    return null;
+  }
+
+  _ModelRequestPhase? _matchFinalAnswerModelPhase({
+    required List<_ModelRequestPhase> modelPhases,
+    required DateTime startedAt,
+    required DateTime endedAt,
+  }) {
+    for (final phase in modelPhases) {
+      if (phase.phase != _ModelReplyPhase.finalAnswer) {
+        continue;
+      }
+      if (_rangesOverlap(
+        startedAt: phase.startedAt,
+        endedAt: phase.endedAt,
+        otherStartedAt: startedAt,
+        otherEndedAt: endedAt,
+      )) {
+        return phase;
+      }
+    }
+    return null;
   }
 
   StreamingTurnTimelineSegment _buildGapSegment({
@@ -440,6 +617,32 @@ class StreamingTurnTimelineBuilder {
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
   }
+
+  _ModelReplyPhase? _readModelPhase(StreamingTraceEntry entry) {
+    final value = entry.details['phase'];
+    if (value is! String) {
+      return null;
+    }
+    final trimmed = value.trim();
+    switch (trimmed) {
+      case 'tool_call':
+        return _ModelReplyPhase.toolCall;
+      case 'final_answer':
+        return _ModelReplyPhase.finalAnswer;
+      default:
+        return null;
+    }
+  }
+
+  bool _rangesOverlap({
+    required DateTime startedAt,
+    required DateTime endedAt,
+    required DateTime otherStartedAt,
+    required DateTime otherEndedAt,
+  }) {
+    return startedAt.isBefore(otherEndedAt) &&
+        endedAt.isAfter(otherStartedAt.subtract(const Duration(milliseconds: 1)));
+  }
 }
 
 class _OpenToolSpan {
@@ -466,4 +669,72 @@ class _ToolSpan {
   final bool isOngoing;
 
   int get durationMs => endedAt.difference(startedAt).inMilliseconds;
+}
+
+enum _ModelReplyPhase {
+  toolCall,
+  finalAnswer,
+}
+
+class _OpenModelRequestPhase {
+  const _OpenModelRequestPhase({
+    required this.phase,
+    required this.toolName,
+    required this.startedAt,
+    this.firstChunkAt,
+  });
+
+  final _ModelReplyPhase phase;
+  final String? toolName;
+  final DateTime startedAt;
+  final DateTime? firstChunkAt;
+
+  _OpenModelRequestPhase copyWith({
+    DateTime? firstChunkAt,
+  }) {
+    return _OpenModelRequestPhase(
+      phase: phase,
+      toolName: toolName,
+      startedAt: startedAt,
+      firstChunkAt: firstChunkAt ?? this.firstChunkAt,
+    );
+  }
+
+  _ModelRequestPhase toClosed({
+    required DateTime completedAt,
+    required DateTime? firstChunkAt,
+    required bool isOngoing,
+  }) {
+    return _ModelRequestPhase(
+      phase: phase,
+      toolName: toolName,
+      startedAt: startedAt,
+      firstChunkAt: firstChunkAt,
+      endedAt: completedAt,
+      isOngoing: isOngoing,
+    );
+  }
+}
+
+class _ModelRequestPhase {
+  const _ModelRequestPhase({
+    required this.phase,
+    required this.toolName,
+    required this.startedAt,
+    required this.firstChunkAt,
+    required this.endedAt,
+    required this.isOngoing,
+  });
+
+  final _ModelReplyPhase phase;
+  final String? toolName;
+  final DateTime startedAt;
+  final DateTime? firstChunkAt;
+  final DateTime endedAt;
+  final bool isOngoing;
+
+  int? get firstChunkDelayMs => firstChunkAt?.difference(startedAt).inMilliseconds;
+
+  int? get streamingDurationMs =>
+      firstChunkAt == null ? null : endedAt.difference(firstChunkAt!).inMilliseconds;
 }

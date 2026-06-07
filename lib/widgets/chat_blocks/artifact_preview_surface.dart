@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:ai_chat/models/artifact/artifact_render_session_snapshot.dart';
+import 'package:ai_chat/providers/streaming_trace_providers.dart';
 import 'package:ai_chat/services/artifact/artifact_render_session_recorder.dart';
 import 'package:ai_chat/services/artifact/artifact_host_style_builder.dart';
+import 'package:ai_chat/services/debug/streaming_visibility_reporter.dart';
 import 'package:ai_chat/services/artifact/artifact_theme_token_mapper.dart';
 import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/utils/logger.dart';
@@ -10,6 +12,7 @@ import 'package:ai_chat/widgets/chat_blocks/artifact_preview_page_storage.dart';
 import 'package:ai_chat/widgets/tool_renderers/tool_running_effects.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' show ProviderScope;
 import 'package:webview_flutter/webview_flutter.dart';
 
 const double _minArtifactPreviewHeight = 180;
@@ -41,6 +44,222 @@ double clampArtifactPreviewHeight(
         maxArtifactPreviewHeight,
       )
       .toDouble();
+}
+
+enum ArtifactMeasuredHeightBasis {
+  reported,
+  artifactRect,
+  body,
+  rootOffset,
+  rootScroll,
+}
+
+class ArtifactMeasuredHeightResolution {
+  const ArtifactMeasuredHeightResolution({
+    required this.height,
+    required this.basis,
+  });
+
+  final double height;
+  final ArtifactMeasuredHeightBasis basis;
+}
+
+class ArtifactHostViewportMetrics {
+  const ArtifactHostViewportMetrics({
+    required this.configuredPreviewHeight,
+    required this.renderHeight,
+    required this.overshootPx,
+    required this.gapFromMeasuredHeightPx,
+    required this.gapFromClampedHeightPx,
+  });
+
+  final double configuredPreviewHeight;
+  final double renderHeight;
+  final double overshootPx;
+  final double? gapFromMeasuredHeightPx;
+  final double? gapFromClampedHeightPx;
+}
+
+enum ArtifactHostViewportProbeStatus {
+  ok,
+  noContext,
+  noRenderObject,
+  nonRenderBox,
+  noSize,
+  invalidHeight,
+}
+
+extension ArtifactHostViewportProbeStatusWireName
+    on ArtifactHostViewportProbeStatus {
+  String get wireName {
+    switch (this) {
+      case ArtifactHostViewportProbeStatus.ok:
+        return 'ok';
+      case ArtifactHostViewportProbeStatus.noContext:
+        return 'no_context';
+      case ArtifactHostViewportProbeStatus.noRenderObject:
+        return 'no_render_object';
+      case ArtifactHostViewportProbeStatus.nonRenderBox:
+        return 'non_render_box';
+      case ArtifactHostViewportProbeStatus.noSize:
+        return 'no_size';
+      case ArtifactHostViewportProbeStatus.invalidHeight:
+        return 'invalid_height';
+    }
+  }
+}
+
+class ArtifactHostViewportProbeSample {
+  const ArtifactHostViewportProbeSample({
+    required this.status,
+    required this.renderHeight,
+  });
+
+  final ArtifactHostViewportProbeStatus status;
+  final double? renderHeight;
+}
+
+@visibleForTesting
+ArtifactHostViewportProbeStatus resolveArtifactHostViewportProbeStatus({
+  required bool hasContext,
+  required bool hasRenderObject,
+  required bool isRenderBox,
+  required bool hasSize,
+  required double? renderHeight,
+}) {
+  if (!hasContext) {
+    return ArtifactHostViewportProbeStatus.noContext;
+  }
+  if (!hasRenderObject) {
+    return ArtifactHostViewportProbeStatus.noRenderObject;
+  }
+  if (!isRenderBox) {
+    return ArtifactHostViewportProbeStatus.nonRenderBox;
+  }
+  if (!hasSize) {
+    return ArtifactHostViewportProbeStatus.noSize;
+  }
+  if (_normalizePositiveHeight(renderHeight) == null) {
+    return ArtifactHostViewportProbeStatus.invalidHeight;
+  }
+  return ArtifactHostViewportProbeStatus.ok;
+}
+
+@visibleForTesting
+ArtifactMeasuredHeightResolution? resolveArtifactMeasuredHeight({
+  required double? reportedHeight,
+  double? artifactRectHeight,
+  double? bodyScrollHeight,
+  double? bodyOffsetHeight,
+  double? rootScrollHeight,
+  double? rootOffsetHeight,
+}) {
+  final hasStructuredMetrics = artifactRectHeight != null ||
+      bodyScrollHeight != null ||
+      bodyOffsetHeight != null ||
+      rootScrollHeight != null ||
+      rootOffsetHeight != null;
+
+  final artifactRect = _normalizePositiveHeight(
+    artifactRectHeight,
+    roundUp: true,
+  );
+  if (artifactRect != null) {
+    return ArtifactMeasuredHeightResolution(
+      height: artifactRect,
+      basis: ArtifactMeasuredHeightBasis.artifactRect,
+    );
+  }
+
+  final bodyHeight = _maxNormalizedPositiveHeight(
+    bodyScrollHeight,
+    bodyOffsetHeight,
+  );
+  if (bodyHeight != null) {
+    return ArtifactMeasuredHeightResolution(
+      height: bodyHeight,
+      basis: ArtifactMeasuredHeightBasis.body,
+    );
+  }
+
+  final rootOffset = _normalizePositiveHeight(rootOffsetHeight);
+  if (rootOffset != null) {
+    return ArtifactMeasuredHeightResolution(
+      height: rootOffset,
+      basis: ArtifactMeasuredHeightBasis.rootOffset,
+    );
+  }
+
+  final rootScroll = _normalizePositiveHeight(rootScrollHeight);
+  if (rootScroll != null) {
+    return ArtifactMeasuredHeightResolution(
+      height: rootScroll,
+      basis: ArtifactMeasuredHeightBasis.rootScroll,
+    );
+  }
+
+  final reported = _normalizePositiveHeight(reportedHeight);
+  if (reported != null || !hasStructuredMetrics) {
+    if (reported == null) {
+      return null;
+    }
+    return ArtifactMeasuredHeightResolution(
+      height: reported,
+      basis: ArtifactMeasuredHeightBasis.reported,
+    );
+  }
+
+  return null;
+}
+
+@visibleForTesting
+ArtifactHostViewportMetrics? resolveArtifactHostViewportMetrics({
+  required double configuredPreviewHeight,
+  required double? hostRenderHeight,
+  required double? measuredHeight,
+  required double? clampedHeight,
+}) {
+  final renderHeight = _normalizePositiveHeight(hostRenderHeight);
+  if (renderHeight == null) {
+    return null;
+  }
+  final configuredHeight =
+      _normalizePositiveHeight(configuredPreviewHeight) ?? renderHeight;
+  final normalizedMeasuredHeight = _normalizePositiveHeight(measuredHeight);
+  final normalizedClampedHeight = _normalizePositiveHeight(clampedHeight);
+  return ArtifactHostViewportMetrics(
+    configuredPreviewHeight: configuredHeight,
+    renderHeight: renderHeight,
+    overshootPx: (renderHeight - configuredHeight).clamp(0.0, double.infinity),
+    gapFromMeasuredHeightPx: normalizedMeasuredHeight == null
+        ? null
+        : (renderHeight - normalizedMeasuredHeight).clamp(0.0, double.infinity),
+    gapFromClampedHeightPx: normalizedClampedHeight == null
+        ? null
+        : (renderHeight - normalizedClampedHeight).clamp(0.0, double.infinity),
+  );
+}
+
+double? _normalizePositiveHeight(
+  double? value, {
+  bool roundUp = false,
+}) {
+  if (value == null || !value.isFinite || value <= 0) {
+    return null;
+  }
+  return roundUp ? value.ceilToDouble() : value;
+}
+
+double? _maxNormalizedPositiveHeight(double? first, double? second) {
+  final a = _normalizePositiveHeight(first);
+  final b = _normalizePositiveHeight(second);
+  if (a == null) {
+    return b;
+  }
+  if (b == null) {
+    return a;
+  }
+  return a > b ? a : b;
 }
 
 /// Builds a constrained HTML document for native artifact preview.
@@ -148,24 +367,46 @@ String buildArtifactPreviewDocument({
       const artifactRectHeight = artifactRoot
         ? artifactRoot.getBoundingClientRect().height
         : 0;
+      const artifactOffsetHeight = artifactRoot ? artifactRoot.offsetHeight : 0;
+      const artifactScrollHeight = artifactRoot ? artifactRoot.scrollHeight : 0;
+      const artifactClientHeight = artifactRoot ? artifactRoot.clientHeight : 0;
+      const bodyHeight = Math.max(
+        body ? body.scrollHeight : 0,
+        body ? body.offsetHeight : 0
+      );
       const payload = {
         event: 'height_measure',
         artifactRectHeight,
+        artifactOffsetHeight,
+        artifactScrollHeight,
+        artifactClientHeight,
         bodyScrollHeight: body ? body.scrollHeight : 0,
         bodyOffsetHeight: body ? body.offsetHeight : 0,
+        bodyClientHeight: body ? body.clientHeight : 0,
         rootScrollHeight: root ? root.scrollHeight : 0,
-        rootOffsetHeight: root ? root.offsetHeight : 0
+        rootOffsetHeight: root ? root.offsetHeight : 0,
+        rootClientHeight: root ? root.clientHeight : 0
       };
-      const height = Math.max(
-        payload.bodyScrollHeight,
-        payload.bodyOffsetHeight,
-        payload.rootScrollHeight,
-        payload.rootOffsetHeight
-      );
+      let height = 0;
+      let heightBasis = 'none';
+      if (artifactRectHeight > 0) {
+        height = Math.ceil(artifactRectHeight);
+        heightBasis = 'artifactRect';
+      } else if (bodyHeight > 0) {
+        height = bodyHeight;
+        heightBasis = 'body';
+      } else if (payload.rootOffsetHeight > 0) {
+        height = payload.rootOffsetHeight;
+        heightBasis = 'rootOffset';
+      } else if (payload.rootScrollHeight > 0) {
+        height = payload.rootScrollHeight;
+        heightBasis = 'rootScroll';
+      }
       if (window.ArtifactHeight && typeof window.ArtifactHeight.postMessage === 'function') {
         window.ArtifactHeight.postMessage(JSON.stringify({
           ...payload,
-          height
+          height,
+          heightBasis
         }));
       }
     };
@@ -301,24 +542,46 @@ String _buildArtifactPreviewHeadInjection({
       const artifactRectHeight = artifactRoot
         ? artifactRoot.getBoundingClientRect().height
         : 0;
+      const artifactOffsetHeight = artifactRoot ? artifactRoot.offsetHeight : 0;
+      const artifactScrollHeight = artifactRoot ? artifactRoot.scrollHeight : 0;
+      const artifactClientHeight = artifactRoot ? artifactRoot.clientHeight : 0;
+      const bodyHeight = Math.max(
+        body ? body.scrollHeight : 0,
+        body ? body.offsetHeight : 0
+      );
       const payload = {
         event: 'height_measure',
         artifactRectHeight,
+        artifactOffsetHeight,
+        artifactScrollHeight,
+        artifactClientHeight,
         bodyScrollHeight: body ? body.scrollHeight : 0,
         bodyOffsetHeight: body ? body.offsetHeight : 0,
+        bodyClientHeight: body ? body.clientHeight : 0,
         rootScrollHeight: root ? root.scrollHeight : 0,
-        rootOffsetHeight: root ? root.offsetHeight : 0
+        rootOffsetHeight: root ? root.offsetHeight : 0,
+        rootClientHeight: root ? root.clientHeight : 0
       };
-      const height = Math.max(
-        payload.bodyScrollHeight,
-        payload.bodyOffsetHeight,
-        payload.rootScrollHeight,
-        payload.rootOffsetHeight
-      );
+      let height = 0;
+      let heightBasis = 'none';
+      if (artifactRectHeight > 0) {
+        height = Math.ceil(artifactRectHeight);
+        heightBasis = 'artifactRect';
+      } else if (bodyHeight > 0) {
+        height = bodyHeight;
+        heightBasis = 'body';
+      } else if (payload.rootOffsetHeight > 0) {
+        height = payload.rootOffsetHeight;
+        heightBasis = 'rootOffset';
+      } else if (payload.rootScrollHeight > 0) {
+        height = payload.rootScrollHeight;
+        heightBasis = 'rootScroll';
+      }
       if (window.ArtifactHeight && typeof window.ArtifactHeight.postMessage === 'function') {
         window.ArtifactHeight.postMessage(JSON.stringify({
           ...payload,
-          height
+          height,
+          heightBasis
         }));
       }
     };
@@ -391,6 +654,19 @@ class ArtifactPreviewSurface extends StatefulWidget {
 }
 
 class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
+  final GlobalKey _previewViewportKey = GlobalKey(
+    debugLabel: 'artifactPreviewViewport',
+  );
+  final Expando<String> _controllerDebugIds = Expando<String>(
+    'artifactPreviewControllerId',
+  );
+  final Expando<String> _controllerDebugOrigins = Expando<String>(
+    'artifactPreviewControllerOrigin',
+  );
+  final Expando<String> _controllerDebugSourcePaths = Expando<String>(
+    'artifactPreviewControllerSourcePath',
+  );
+
   WebViewController? _controller;
   WebViewController? _pendingFinalController;
   String? _errorText;
@@ -412,11 +688,13 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   double? _pendingHeight;
   bool? _pendingTruncated;
   late final ArtifactRenderSessionRecorder _sessionRecorder;
+  late final StreamingVisibilityReporter _streamingVisibilityReporter;
   late final String _flowId;
   late final String _sessionId;
   bool _hasFinishedSession = false;
   bool _hasRenderedVisibleContent = false;
   int _lastObservedSourceLength = 0;
+  int _controllerOrdinal = 0;
 
   @override
   void initState() {
@@ -424,9 +702,11 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     _lastRenderedSource = null;
     _sessionRecorder =
         widget.sessionRecorder ?? ArtifactRenderSessionRecorder();
+    _streamingVisibilityReporter = const StreamingVisibilityReporter();
     _flowId = _buildFlowId();
     _sessionId = _buildSurfaceSessionId(_flowId);
     _startRenderSession();
+    _recordSurfaceLifecycle('initState');
   }
 
   @override
@@ -454,6 +734,19 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   @override
   void didUpdateWidget(covariant ArtifactPreviewSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _recordSurfaceLifecycle(
+      'didUpdateWidget',
+      data: <String, dynamic>{
+        'oldArtifactId': oldWidget.artifactId,
+        'newArtifactId': widget.artifactId,
+        'oldSourcePath': oldWidget.sourcePath,
+        'newSourcePath': widget.sourcePath,
+        'oldSourceLength': oldWidget.source?.length ?? 0,
+        'newSourceLength': widget.source?.length ?? 0,
+        'oldIsRuntimePreview': oldWidget.isRuntimePreview,
+        'newIsRuntimePreview': widget.isRuntimePreview,
+      },
+    );
 
     if (oldWidget.source != widget.source ||
         oldWidget.isRuntimePreview != widget.isRuntimePreview) {
@@ -607,9 +900,9 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
       _pendingFinalSource = null;
       _lastRenderedSource = source;
       _isControllerReady = true;
-      _hasRenderedVisibleContent = true;
       _controllerReadyCompleter?.complete();
     });
+    _markVisibleContentReady();
   }
 
   Future<void> _applySourceToController(
@@ -693,6 +986,12 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   void dispose() {
     _streamingUpdateTimer?.cancel();
     _heightDebounceTimer?.cancel();
+    _recordSurfaceLifecycle(
+      'dispose',
+      data: <String, dynamic>{
+        'hasRenderedVisibleContent': _hasRenderedVisibleContent,
+      },
+    );
     _finishRenderSession();
     super.dispose();
   }
@@ -739,6 +1038,11 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
             },
           ),
         );
+      _registerControllerDebugMetadata(
+        controller,
+        origin: widget.isRuntimePreview ? 'runtime_host' : 'initial_final',
+        sourcePath: widget.sourcePath,
+      );
       if (!widget.enableInternalScroll) {
         _addArtifactHeightChannel(controller);
         _addArtifactRenderStateChannel(controller);
@@ -798,6 +1102,11 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
             },
           ),
         );
+      _registerControllerDebugMetadata(
+        controller,
+        origin: 'final_preload',
+        sourcePath: widget.sourcePath,
+      );
       if (!widget.enableInternalScroll) {
         _addArtifactHeightChannel(controller);
         _addArtifactRenderStateChannel(controller);
@@ -825,8 +1134,16 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
           return;
         }
         final parsed = _parseArtifactHeightPayload(payload);
-        final value = parsed.height;
-        if (value == null) {
+        final measured = resolveArtifactMeasuredHeight(
+          reportedHeight: parsed.height,
+          artifactRectHeight: parsed.artifactRectHeight,
+          bodyScrollHeight: parsed.bodyScrollHeight,
+          bodyOffsetHeight: parsed.bodyOffsetHeight,
+          rootScrollHeight: parsed.rootScrollHeight,
+          rootOffsetHeight: parsed.rootOffsetHeight,
+        );
+        final value = measured?.height;
+        if (value == null || measured == null) {
           Logger.temp(
             _artifactPreviewLogTag,
             'artifact height payload parse failed',
@@ -844,21 +1161,25 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
           value,
           viewportHeight: viewportHeight,
         );
+        final sampleContext = _buildHeightSampleContext(
+          controller,
+          parsed,
+          sampledHeight: value,
+          clampedHeight: clampedHeight,
+          resolvedHeightBasis: parsed.heightBasis ?? measured.basis.name,
+        );
         Logger.temp(
           _artifactPreviewLogTag,
           'artifact height payload received',
           reason: 'diagnose inline artifact height sync',
           data: {
             'sourcePath': widget.sourcePath,
+            'reportedHeight': parsed.height,
             'rawHeight': value,
             'clampedHeight': clampedHeight,
             'previousHeight': _previewHeight,
             'viewportHeight': viewportHeight,
-            'artifactRectHeight': parsed.artifactRectHeight,
-            'bodyScrollHeight': parsed.bodyScrollHeight,
-            'bodyOffsetHeight': parsed.bodyOffsetHeight,
-            'rootScrollHeight': parsed.rootScrollHeight,
-            'rootOffsetHeight': parsed.rootOffsetHeight,
+            ...sampleContext,
           },
         );
 
@@ -869,6 +1190,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
           rawHeight: value,
           clampedHeight: clampedHeight,
           timestamp: DateTime.now(),
+          context: sampleContext,
         );
         _heightDebounceTimer?.cancel();
         _heightDebounceTimer = Timer(_heightUpdateDebounceDelay, () {
@@ -946,6 +1268,29 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     setState(() {
       _hasRenderedVisibleContent = true;
     });
+    _reportStreamingVisibility();
+  }
+
+  void _reportStreamingVisibility() {
+    final turnId = widget.turnId?.trim();
+    if (turnId == null || turnId.isEmpty) {
+      return;
+    }
+    try {
+      final container = ProviderScope.containerOf(context, listen: false);
+      final recorder = container.read(streamingTraceRecorderProvider.notifier);
+      _streamingVisibilityReporter.recordArtifactPreviewFirstVisible(
+        recorder: recorder,
+        turnId: turnId,
+        artifactId: widget.artifactId,
+        sourcePath: widget.sourcePath,
+        isRuntimePreview: widget.isRuntimePreview,
+        sourceLength: widget.source?.length ?? _lastObservedSourceLength,
+        timestamp: DateTime.now(),
+      );
+    } catch (_) {
+      // Provider scope is optional in focused widget tests and debug surfaces.
+    }
   }
 
   @override
@@ -985,6 +1330,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     final showWaitingShell = !_hasRenderedVisibleContent;
     if (widget.enableInternalScroll) {
       return ClipRRect(
+        key: _previewViewportKey,
         borderRadius: BorderRadius.circular(12),
         child: Stack(
           children: [
@@ -1032,6 +1378,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
           Stack(
             children: [
               SizedBox(
+                key: _previewViewportKey,
                 height: _previewHeight,
                 child: Stack(
                   children: [
@@ -1197,11 +1544,10 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     final theme = Theme.of(context);
     final spec = theme.extension<AppThemeSpec>();
     final shellSurface = Color.lerp(
-          spec?.structuredSurface ?? theme.colorScheme.surfaceContainerHigh,
-          spec?.toolOutcomeSurface ??
-              theme.colorScheme.surfaceContainerHighest,
-          0.28,
-        )!
+      spec?.structuredSurface ?? theme.colorScheme.surfaceContainerHigh,
+      spec?.toolOutcomeSurface ?? theme.colorScheme.surfaceContainerHighest,
+      0.28,
+    )!
         .withValues(alpha: 0.97);
     final borderColor = spec?.divider ?? theme.colorScheme.outlineVariant;
     return Container(
@@ -1253,6 +1599,27 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     _recordSourceProgress(widget.source);
   }
 
+  void _recordSurfaceLifecycle(
+    String event, {
+    Map<String, dynamic> data = const <String, dynamic>{},
+  }) {
+    _sessionRecorder.recordSurfaceLifecycle(
+      sessionId: _sessionId,
+      event: event,
+      timestamp: DateTime.now(),
+      data: <String, dynamic>{
+        'flowId': _flowId,
+        'artifactId': widget.artifactId,
+        'providerCallId': widget.providerCallId?.trim(),
+        'sourcePath': widget.sourcePath,
+        'isRuntimePreview': widget.isRuntimePreview,
+        'sourceLength': widget.source?.length ?? 0,
+        'hasRenderedVisibleContent': _hasRenderedVisibleContent,
+        ...data,
+      },
+    );
+  }
+
   void _recordSourceProgress(String? source) {
     final length = source?.length ?? 0;
     if (length <= _lastObservedSourceLength) {
@@ -1282,23 +1649,165 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
       // Session may remain unused in some test-only empty-source paths.
     }
   }
+
+  void _registerControllerDebugMetadata(
+    WebViewController controller, {
+    required String origin,
+    required String sourcePath,
+  }) {
+    _controllerOrdinal += 1;
+    _controllerDebugIds[controller] = 'wv_${_controllerOrdinal}_$origin';
+    _controllerDebugOrigins[controller] = origin;
+    _controllerDebugSourcePaths[controller] = sourcePath;
+  }
+
+  String? _controllerDebugIdOf(WebViewController? controller) {
+    if (controller == null) {
+      return null;
+    }
+    return _controllerDebugIds[controller];
+  }
+
+  String? _controllerDebugOriginOf(WebViewController? controller) {
+    if (controller == null) {
+      return null;
+    }
+    return _controllerDebugOrigins[controller];
+  }
+
+  String? _controllerDebugSourcePathOf(WebViewController? controller) {
+    if (controller == null) {
+      return null;
+    }
+    return _controllerDebugSourcePaths[controller];
+  }
+
+  String _resolveControllerRole(WebViewController controller) {
+    if (identical(controller, _controller)) {
+      return 'active';
+    }
+    if (identical(controller, _pendingFinalController)) {
+      return 'pendingFinal';
+    }
+    return 'detached';
+  }
+
+  Map<String, dynamic> _buildHeightSampleContext(
+    WebViewController controller,
+    _ArtifactHeightPayload payload, {
+    required double sampledHeight,
+    required double clampedHeight,
+    required String resolvedHeightBasis,
+  }) {
+    final previousAppliedHeight = _previewHeight;
+    final controllerSourcePath = _controllerDebugSourcePathOf(controller);
+    final pendingFinalController = _pendingFinalController;
+    final hostViewportProbe = _resolveHostViewportProbeSample();
+    final hostViewportMetrics = resolveArtifactHostViewportMetrics(
+      configuredPreviewHeight: _previewHeight,
+      hostRenderHeight: hostViewportProbe.renderHeight,
+      measuredHeight: sampledHeight,
+      clampedHeight: clampedHeight,
+    );
+    return <String, dynamic>{
+      'heightBasis': resolvedHeightBasis,
+      'artifactRectHeight': payload.artifactRectHeight,
+      'artifactOffsetHeight': payload.artifactOffsetHeight,
+      'artifactScrollHeight': payload.artifactScrollHeight,
+      'artifactClientHeight': payload.artifactClientHeight,
+      'bodyScrollHeight': payload.bodyScrollHeight,
+      'bodyOffsetHeight': payload.bodyOffsetHeight,
+      'bodyClientHeight': payload.bodyClientHeight,
+      'rootScrollHeight': payload.rootScrollHeight,
+      'rootOffsetHeight': payload.rootOffsetHeight,
+      'rootClientHeight': payload.rootClientHeight,
+      'controllerId': _controllerDebugIdOf(controller),
+      'controllerRole': _resolveControllerRole(controller),
+      'controllerOrigin': _controllerDebugOriginOf(controller),
+      'controllerSourcePath': controllerSourcePath,
+      'activeControllerId': _controllerDebugIdOf(_controller),
+      'activeControllerOrigin': _controllerDebugOriginOf(_controller),
+      'activeControllerSourcePath': _controllerDebugSourcePathOf(_controller),
+      'pendingFinalControllerId': _controllerDebugIdOf(pendingFinalController),
+      'pendingFinalControllerOrigin': _controllerDebugOriginOf(
+        pendingFinalController,
+      ),
+      'pendingFinalSourcePath': _controllerDebugSourcePathOf(
+        pendingFinalController,
+      ),
+      'widgetSourcePath': widget.sourcePath,
+      'previousAppliedHeight': previousAppliedHeight,
+      'sampleDeltaFromPreviousAppliedPx':
+          sampledHeight - previousAppliedHeight,
+      'sampledFromPendingFinalController': identical(
+        controller,
+        pendingFinalController,
+      ),
+      'hasPendingFinalController': pendingFinalController != null,
+      'hostViewportProbeStatus': hostViewportProbe.status.wireName,
+      'hostViewportConfiguredHeight': hostViewportMetrics?.configuredPreviewHeight,
+      'hostViewportRenderHeight': hostViewportMetrics?.renderHeight,
+      'hostViewportOvershootPx': hostViewportMetrics?.overshootPx,
+      'hostViewportGapFromMeasuredHeightPx':
+          hostViewportMetrics?.gapFromMeasuredHeightPx,
+      'hostViewportGapFromClampedHeightPx':
+          hostViewportMetrics?.gapFromClampedHeightPx,
+      'controllerSourcePathMismatch': controllerSourcePath != null &&
+          controllerSourcePath != widget.sourcePath,
+      'rootScrollOutlierPx': _resolveRootScrollOutlierPx(payload),
+      'artifactRectStretchPx': _resolveArtifactRectStretchPx(payload),
+    };
+  }
+
+  ArtifactHostViewportProbeSample _resolveHostViewportProbeSample() {
+    final context = _previewViewportKey.currentContext;
+    final renderObject = context?.findRenderObject();
+    final renderBox = renderObject is RenderBox ? renderObject : null;
+    final rawHeight =
+        renderBox != null && renderBox.hasSize ? renderBox.size.height : null;
+    final status = resolveArtifactHostViewportProbeStatus(
+      hasContext: context != null,
+      hasRenderObject: renderObject != null,
+      isRenderBox: renderBox != null,
+      hasSize: renderBox?.hasSize ?? false,
+      renderHeight: rawHeight,
+    );
+    return ArtifactHostViewportProbeSample(
+      status: status,
+      renderHeight: status == ArtifactHostViewportProbeStatus.ok
+          ? _normalizePositiveHeight(rawHeight)
+          : null,
+    );
+  }
 }
 
 class _ArtifactHeightPayload {
   final double? height;
+  final String? heightBasis;
   final double? artifactRectHeight;
+  final double? artifactOffsetHeight;
+  final double? artifactScrollHeight;
+  final double? artifactClientHeight;
   final double? bodyScrollHeight;
   final double? bodyOffsetHeight;
+  final double? bodyClientHeight;
   final double? rootScrollHeight;
   final double? rootOffsetHeight;
+  final double? rootClientHeight;
 
   const _ArtifactHeightPayload({
     required this.height,
+    this.heightBasis,
     this.artifactRectHeight,
+    this.artifactOffsetHeight,
+    this.artifactScrollHeight,
+    this.artifactClientHeight,
     this.bodyScrollHeight,
     this.bodyOffsetHeight,
+    this.bodyClientHeight,
     this.rootScrollHeight,
     this.rootOffsetHeight,
+    this.rootClientHeight,
   });
 }
 
@@ -1315,11 +1824,17 @@ _ArtifactHeightPayload _parseArtifactHeightPayload(String rawPayload) {
     }
     return _ArtifactHeightPayload(
       height: _toDouble(decoded['height']),
+      heightBasis: decoded['heightBasis']?.toString(),
       artifactRectHeight: _toDouble(decoded['artifactRectHeight']),
+      artifactOffsetHeight: _toDouble(decoded['artifactOffsetHeight']),
+      artifactScrollHeight: _toDouble(decoded['artifactScrollHeight']),
+      artifactClientHeight: _toDouble(decoded['artifactClientHeight']),
       bodyScrollHeight: _toDouble(decoded['bodyScrollHeight']),
       bodyOffsetHeight: _toDouble(decoded['bodyOffsetHeight']),
+      bodyClientHeight: _toDouble(decoded['bodyClientHeight']),
       rootScrollHeight: _toDouble(decoded['rootScrollHeight']),
       rootOffsetHeight: _toDouble(decoded['rootOffsetHeight']),
+      rootClientHeight: _toDouble(decoded['rootClientHeight']),
     );
   } catch (_) {
     return const _ArtifactHeightPayload(height: null);
@@ -1334,6 +1849,52 @@ double? _toDouble(Object? value) {
     return double.tryParse(value);
   }
   return null;
+}
+
+double _resolveRootScrollOutlierPx(_ArtifactHeightPayload payload) {
+  final rootScrollHeight = payload.rootScrollHeight;
+  if (rootScrollHeight == null || !rootScrollHeight.isFinite) {
+    return 0;
+  }
+  final baselines = <double?>[
+    payload.artifactRectHeight,
+    payload.artifactOffsetHeight,
+    payload.artifactScrollHeight,
+    payload.artifactClientHeight,
+    payload.bodyScrollHeight,
+    payload.bodyOffsetHeight,
+    payload.bodyClientHeight,
+    payload.rootOffsetHeight,
+    payload.rootClientHeight,
+  ].whereType<double>().where((value) => value.isFinite && value > 0);
+  var maxBaseline = 0.0;
+  for (final baseline in baselines) {
+    if (baseline > maxBaseline) {
+      maxBaseline = baseline;
+    }
+  }
+  final outlier = rootScrollHeight - maxBaseline;
+  return outlier > 0 ? outlier : 0;
+}
+
+double _resolveArtifactRectStretchPx(_ArtifactHeightPayload payload) {
+  final artifactRectHeight = payload.artifactRectHeight;
+  if (artifactRectHeight == null || !artifactRectHeight.isFinite) {
+    return 0;
+  }
+  final intrinsicHeights = <double?>[
+    payload.artifactOffsetHeight,
+    payload.artifactScrollHeight,
+    payload.artifactClientHeight,
+  ].whereType<double>().where((value) => value.isFinite && value > 0);
+  var maxIntrinsicHeight = 0.0;
+  for (final intrinsicHeight in intrinsicHeights) {
+    if (intrinsicHeight > maxIntrinsicHeight) {
+      maxIntrinsicHeight = intrinsicHeight;
+    }
+  }
+  final stretch = artifactRectHeight - maxIntrinsicHeight;
+  return stretch > 0 ? stretch : 0;
 }
 
 String _truncateForLog(String text, {int maxLength = 240}) {

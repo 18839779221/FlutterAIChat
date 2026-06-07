@@ -18,9 +18,12 @@ import 'package:ai_chat/services/prompt/prompt_builder_service.dart';
 import 'package:ai_chat/services/prompt/prompt_stage.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/session_context_service.dart';
+import 'package:ai_chat/services/session_runtime_marker_service.dart';
 import 'package:ai_chat/services/tool_result_context_projector.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'llm_cache_stats_service.dart';
+
+const String _traceTurnIdRuntimeContextKey = 'trace_turn_id';
 
 class DebugTurnInspectorProjectionService {
   DebugTurnInspectorProjectionService({
@@ -143,6 +146,7 @@ class DebugTurnInspectorProjectionService {
             ),
       timelineEntries: _buildTimelineEntries(
         turnId: effectiveSelectedTurnId,
+        turn: activeTurn,
         transcript: transcript,
         plannerMessages: plannerMessages,
       ),
@@ -198,6 +202,7 @@ class DebugTurnInspectorProjectionService {
 
   List<DebugTurnTimelineEntry> _buildTimelineEntries({
     required int? turnId,
+    required ChatTurn? turn,
     required List<ChatEvent> transcript,
     required List<ChatMessage> plannerMessages,
   }) {
@@ -238,6 +243,7 @@ class DebugTurnInspectorProjectionService {
     }
     for (final traceTurnId in _resolveTraceTurnIds(
       turnId: turnId,
+      turn: turn,
       transcript: transcript,
       plannerMessages: plannerMessages,
     )) {
@@ -566,6 +572,7 @@ class DebugTurnInspectorProjectionService {
 
   List<String> _resolveTraceTurnIds({
     required int? turnId,
+    required ChatTurn? turn,
     required List<ChatEvent> transcript,
     required List<ChatMessage> plannerMessages,
   }) {
@@ -587,6 +594,11 @@ class DebugTurnInspectorProjectionService {
     for (final message in plannerMessages) {
       addCandidate(message.payloadJson?['traceTurnId']);
       addCandidate(message.payloadJson?['payloadJson']?['traceTurnId']);
+    }
+    final runtimeContext =
+        turn?.providerStateJson?[SessionRuntimeMarkerService.runtimeContextKey];
+    if (runtimeContext is Map) {
+      addCandidate(runtimeContext[_traceTurnIdRuntimeContextKey]);
     }
     if (ids.isEmpty && turnId != null) {
       addCandidate('turn_$turnId');

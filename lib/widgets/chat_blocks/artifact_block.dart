@@ -4,14 +4,26 @@ import 'package:ai_chat/utils/logger.dart';
 import 'package:ai_chat/widgets/chat_blocks/artifact_preview_surface.dart';
 import 'package:flutter/material.dart';
 
+final Map<String, GlobalKey> _artifactPreviewSurfaceKeys =
+    <String, GlobalKey>{};
+
+GlobalKey _artifactPreviewSurfaceKeyFor(String cacheKey) {
+  return _artifactPreviewSurfaceKeys.putIfAbsent(
+    cacheKey,
+    () => GlobalKey(debugLabel: 'artifact-preview:$cacheKey'),
+  );
+}
+
 /// Lightweight inline artifact card.
 class ArtifactBlock extends StatelessWidget {
   const ArtifactBlock({
     super.key,
     required this.projection,
+    this.logicalId,
   });
 
   final ArtifactTurnProjection? projection;
+  final String? logicalId;
 
   @override
   Widget build(BuildContext context) {
@@ -23,6 +35,10 @@ class ArtifactBlock extends StatelessWidget {
       data: {
         'hasArtifact': artifact != null,
         'artifactId': artifact?.artifactId ?? 'null',
+        'logicalId': logicalId ?? 'null',
+        'previewCacheKey': artifact == null
+            ? 'null'
+            : _buildArtifactPreviewCacheKey(artifact),
         'sourceLength': artifact?.source?.length ?? 0,
         'sourcePath': artifact?.sourcePath ?? 'null',
       },
@@ -30,9 +46,10 @@ class ArtifactBlock extends StatelessWidget {
     if (artifact == null) {
       return const SizedBox.shrink();
     }
+    final previewCacheKey = _buildArtifactPreviewCacheKey(artifact);
 
     return GestureDetector(
-      key: ValueKey('inner_gesture_${_buildArtifactCacheKey(artifact)}'),
+      key: ValueKey('inner_gesture_$previewCacheKey'),
       behavior: HitTestBehavior.opaque,
       onLongPress: () {
         Navigator.of(context).push(
@@ -44,7 +61,7 @@ class ArtifactBlock extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: ArtifactPreviewSurface(
-          key: ValueKey(_buildArtifactCacheKey(artifact)),
+          key: _artifactPreviewSurfaceKeyFor(previewCacheKey),
           artifactId: artifact.artifactId,
           source: artifact.source,
           sourcePath: artifact.sourcePath,
@@ -56,7 +73,15 @@ class ArtifactBlock extends StatelessWidget {
     );
   }
 
-  String _buildArtifactCacheKey(ArtifactTurnProjection artifact) {
-    return artifact.artifactId;
+  String _buildArtifactPreviewCacheKey(ArtifactTurnProjection artifact) {
+    final trimmedLogicalId = logicalId?.trim();
+    if (trimmedLogicalId != null && trimmedLogicalId.isNotEmpty) {
+      return trimmedLogicalId;
+    }
+    final providerCallId = artifact.providerCallId?.trim();
+    if (providerCallId != null && providerCallId.isNotEmpty) {
+      return 'artifact:$providerCallId';
+    }
+    return 'artifact:${artifact.turnId}:${artifact.artifactId}';
   }
 }

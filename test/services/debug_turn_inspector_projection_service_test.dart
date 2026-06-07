@@ -109,6 +109,122 @@ void main() {
     await storage.deleteGroup(groupId);
   });
 
+  test('debug inspector reads llm phase trace events from turn runtime context',
+      () async {
+    final storage = DatabaseHelper(
+      databaseName: 'debug_turn_inspector_runtime_context_trace_turn_id_test.db',
+    );
+    final turnRepository = ChatTurnRepository(storage);
+    final eventRepository = ChatEventRepository(storage);
+    final snapshotRepository = SessionContextSnapshotRepository(storage);
+    final traceRecorder = ChatTraceRecorder();
+    final groupId = await storage.insertGroup(
+      ChatGroup(
+        title: 'Debug Runtime Trace Inspector',
+        lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+      ),
+    );
+    final turnId = await turnRepository.createTurn(
+      ChatTurn(
+        groupId: groupId,
+        status: ChatTurnStatus.running,
+        userInput: 'trace runtime context',
+        providerStateJson: const {
+          'runtime_context': {
+            'trace_turn_id': 'turn_runtime_trace_1',
+          },
+        },
+      ),
+    );
+
+    await eventRepository.appendUserMessage(
+      turnId: turnId,
+      groupId: groupId,
+      content: 'trace runtime context',
+    );
+
+    final startedAt = DateTime.parse('2026-06-07T10:00:00.000Z');
+    traceRecorder.record(
+      turnId: 'turn_runtime_trace_1',
+      stage: ChatTraceStage.llmRequestStart,
+      status: ChatTraceStatus.started,
+      summary: 'planner request started',
+      data: const {
+        'agentTurnId': 1,
+        'requestId': 'planner_1',
+        'phase': 'final_answer',
+      },
+      timestamp: startedAt,
+    );
+    traceRecorder.record(
+      turnId: 'turn_runtime_trace_1',
+      stage: ChatTraceStage.llmFirstToken,
+      status: ChatTraceStatus.success,
+      summary: 'planner first chunk received',
+      data: const {
+        'agentTurnId': 1,
+        'requestId': 'planner_1',
+        'phase': 'final_answer',
+      },
+      timestamp: startedAt.add(const Duration(milliseconds: 800)),
+    );
+    traceRecorder.record(
+      turnId: 'turn_runtime_trace_1',
+      stage: ChatTraceStage.llmDone,
+      status: ChatTraceStatus.success,
+      summary: 'planner request completed',
+      data: const {
+        'agentTurnId': 1,
+        'requestId': 'planner_1',
+        'phase': 'final_answer',
+      },
+      timestamp: startedAt.add(const Duration(milliseconds: 1800)),
+    );
+
+    final service = DebugTurnInspectorProjectionService(
+      chatTurnRepository: turnRepository,
+      chatEventRepository: eventRepository,
+      sessionContextService: SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        chatStorage: storage,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetResolver: (_) => const SessionModelBudget(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw UnimplementedError(),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      ),
+      traceRecorder: traceRecorder,
+    );
+
+    final projection = await service.buildForTurn(
+      groupId: groupId,
+      selectedTurnId: turnId,
+    );
+
+    final traceEntries = projection.timelineEntries
+        .where((entry) => entry.source == DebugTurnTimelineSource.trace)
+        .toList(growable: false);
+    expect(
+      traceEntries.map((entry) => entry.title),
+      containsAll(<String>[
+        ChatTraceStage.llmRequestStart.name,
+        ChatTraceStage.llmFirstToken.name,
+        ChatTraceStage.llmDone.name,
+      ]),
+    );
+
+    await storage.deleteGroup(groupId);
+  });
+
   test('debug inspector projection includes cache panel projection', () async {
     final storage = DatabaseHelper(
       databaseName: 'debug_turn_inspector_cache_panel_test.db',

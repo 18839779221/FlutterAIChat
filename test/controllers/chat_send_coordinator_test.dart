@@ -247,6 +247,48 @@ void main() {
       expect(userMessage.attachments.single.fileName, 'demo.png');
     });
 
+    test('persists trace turn id into runtime context before agent loop',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: const [],
+      );
+      final container = await _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId = await databaseHelper.insertGroup(
+        ChatGroup(
+          title: 'group',
+          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        ),
+      );
+      container.read(currentGroupProvider.notifier).state = ChatGroup(
+            id: groupId,
+            title: 'group',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          );
+
+      await container.read(chatSendCoordinatorProvider).sendMessage(
+            'trace this turn',
+            scheduleAutoSummary: () {},
+            cancelActiveStream:
+                container.read(chatControllerProvider).cancelStreamSubscription,
+          );
+
+      expect(harness.recordedTurns, isNotEmpty);
+      final runtimeContext =
+          harness.recordedTurns.single.providerStateJson?['runtime_context']
+              as Map<String, dynamic>?;
+      final traceTurnId = runtimeContext?['trace_turn_id'] as String?;
+      expect(traceTurnId, isNotNull);
+      expect(traceTurnId, isNotEmpty);
+      expect(traceTurnId, startsWith('turn_'));
+    });
+
     test('keeps attachment-only send out of persisted user text messages',
         () async {
       final databaseHelper = _createTestDatabaseHelper();

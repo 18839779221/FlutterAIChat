@@ -14,13 +14,11 @@ import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
-import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/artifact_preview_surface.dart';
 import 'package:ai_chat/widgets/chat_blocks/unified_turn_status_bar.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
-import 'package:ai_chat/widgets/chat_blocks/tool_outcome_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_result_summary_row.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
@@ -278,6 +276,46 @@ void main() {
 
       expect(find.text('思考过程'), findsOneWidget);
       expect(find.text('先整理答案结构'), findsOneWidget);
+    });
+
+    testWidgets(
+        'runtime preview think-tagged text renders reasoning and visible content together',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我回答',
+            role: MessageRole.user,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'preview_message_3',
+              createdAt: DateTime(2026, 5, 5, 10, 0, 1),
+              updatedAt: DateTime(2026, 5, 5, 10, 0, 2),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'preview_message_3:text',
+                  blockType: StreamingContentBlockType.text,
+                  createdAt: DateTime(2026, 5, 5, 10, 0, 1),
+                  updatedAt: DateTime(2026, 5, 5, 10, 0, 2),
+                  text: '<think>先整理答案结构</think>\n\n这是运行中的正文',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      expect(_findStreamingFinalBlock(), findsOneWidget);
+      expect(find.text('思考过程'), findsOneWidget);
+      expect(find.text('先整理答案结构'), findsOneWidget);
+      expect(find.text('这是运行中的正文'), findsOneWidget);
     });
 
     testWidgets(
@@ -774,7 +812,7 @@ void main() {
           container.read(chatMessageListExtraBottomInsetProvider);
 
       container.read(messagesProvider.notifier).addMessage(
-        _buildMessage(
+            _buildMessage(
               id: 102,
               timestamp: DateTime(2026, 6, 5, 13, 0, 30),
               text: List.filled(40, 'assistant growth').join(' '),
@@ -1006,8 +1044,7 @@ void main() {
       );
 
       expect(
-        find.byKey(
-            const ValueKey('timeline-block-preview_message:block:0:toolUse')),
+        find.byKey(const ValueKey('timeline-block-artifact:call_preview_1')),
         findsOneWidget,
       );
 
@@ -1041,9 +1078,265 @@ void main() {
       await tester.pump();
 
       expect(
-        find.byKey(
-            const ValueKey('timeline-block-preview_message:block:0:toolUse')),
+        find.byKey(const ValueKey('timeline-block-artifact:call_preview_1')),
         findsOneWidget,
+      );
+    });
+
+    testWidgets(
+        'runtime artifact preview row key uses provider call logical identity',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          ChatMessage(
+            id: 1,
+            text: '做个 artifact',
+            role: MessageRole.user,
+            status: MessageStatus.completed,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'preview_message',
+              createdAt: DateTime(2026, 5, 29, 14, 0, 0),
+              updatedAt: DateTime(2026, 5, 29, 14, 0, 0),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'preview_message:block:0:toolUse',
+                  blockType: StreamingContentBlockType.toolUse,
+                  createdAt: DateTime(2026, 5, 29, 14, 0, 0),
+                  updatedAt: DateTime(2026, 5, 29, 14, 0, 0),
+                  toolUseId: 'call_preview_1',
+                  toolName: 'create_artifact',
+                  text:
+                      '{"id":"demo-artifact","type":"html","title":"Demo","source":"<div>1</div>"}',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      expect(
+        find.byKey(const ValueKey('timeline-block-artifact:call_preview_1')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+        'artifact preview element stays stable when final response is appended after it',
+        (tester) async {
+      final container = ProviderContainer(
+        overrides: [
+          hasMoreMessagesProvider.overrideWith((ref) => false),
+          chatSendStateProvider.overrideWith(
+            (ref) => ChatSendStateNotifier()
+              ..update(
+                phase: ChatSendPhase.streamingResponse,
+                isGenerating: true,
+              ),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        container.dispose();
+      });
+
+      container.read(messagesProvider.notifier).setMessages([
+        ChatMessage(
+          id: 1,
+          text: '做个 artifact',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+          timestamp: DateTime(2026, 5, 29, 14, 0, 0),
+        ),
+      ]);
+      container.read(runtimeStreamingPreviewStateProvider.notifier).state =
+          RuntimeStreamingPreviewState(
+        messages: [
+          RuntimeStreamingPreviewMessage(
+            messageId: 'preview_message',
+            createdAt: DateTime(2026, 5, 29, 14, 0, 0),
+            updatedAt: DateTime(2026, 5, 29, 14, 0, 1),
+            blocks: [
+              RuntimeStreamingPreviewBlock(
+                contentBlockId: 'preview_message:block:0:toolUse',
+                blockType: StreamingContentBlockType.toolUse,
+                createdAt: DateTime(2026, 5, 29, 14, 0, 0),
+                updatedAt: DateTime(2026, 5, 29, 14, 0, 1),
+                toolUseId: 'call_preview_1',
+                toolName: 'create_artifact',
+                text:
+                    '{"id":"demo-artifact","type":"html","title":"Demo","source":"<div>1</div>"}',
+              ),
+            ],
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const Scaffold(
+              body: ChatMessageList(),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final previewFinder = find.byType(ArtifactPreviewSurface);
+      final initialElement = tester.element(previewFinder);
+
+      container.read(runtimeStreamingPreviewStateProvider.notifier).state =
+          RuntimeStreamingPreviewState(
+        messages: [
+          RuntimeStreamingPreviewMessage(
+            messageId: 'preview_message',
+            createdAt: DateTime(2026, 5, 29, 14, 0, 0),
+            updatedAt: DateTime(2026, 5, 29, 14, 0, 2),
+            blocks: [
+              RuntimeStreamingPreviewBlock(
+                contentBlockId: 'preview_message:block:0:toolUse',
+                blockType: StreamingContentBlockType.toolUse,
+                createdAt: DateTime(2026, 5, 29, 14, 0, 0),
+                updatedAt: DateTime(2026, 5, 29, 14, 0, 1),
+                toolUseId: 'call_preview_1',
+                toolName: 'create_artifact',
+                text:
+                    '{"id":"demo-artifact","type":"html","title":"Demo","source":"<div>12</div>"}',
+              ),
+              RuntimeStreamingPreviewBlock(
+                contentBlockId: 'preview_message:block:1:text',
+                blockType: StreamingContentBlockType.text,
+                createdAt: DateTime(2026, 5, 29, 14, 0, 1),
+                updatedAt: DateTime(2026, 5, 29, 14, 0, 2),
+                text: '这是最终回答',
+              ),
+            ],
+          ),
+        ],
+      );
+
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey('timeline-block-artifact:call_preview_1')),
+        findsOneWidget,
+      );
+      expect(
+        identical(initialElement, tester.element(previewFinder)),
+        isTrue,
+      );
+    });
+
+    testWidgets(
+        'assistant row keeps the same element when earlier timeline rows are inserted',
+        (tester) async {
+      final container = ProviderContainer(
+        overrides: [
+          hasMoreMessagesProvider.overrideWith((ref) => false),
+          chatSendStateProvider.overrideWith(
+            (ref) => ChatSendStateNotifier()
+              ..update(
+                phase: ChatSendPhase.idle,
+                isGenerating: false,
+              ),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        container.dispose();
+      });
+
+      container.read(messagesProvider.notifier).setMessages([
+        ChatMessage(
+          id: 30,
+          text: '当前问题',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+          timestamp: DateTime(2026, 5, 29, 14, 0, 0),
+        ),
+        ChatMessage(
+          id: 31,
+          text: '当前回答',
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+          timestamp: DateTime(2026, 5, 29, 14, 0, 2),
+        ),
+      ]);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const Scaffold(
+              body: ChatMessageList(),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final initialElement = tester.element(
+        find.byKey(const ValueKey('timeline-block-0_30-analysis-1')),
+      );
+
+      container.read(messagesProvider.notifier).setMessages([
+        ChatMessage(
+          id: 10,
+          text: '更早的问题',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+          timestamp: DateTime(2026, 5, 29, 13, 59, 0),
+        ),
+        ChatMessage(
+          id: 11,
+          text: '更早的回答',
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+          timestamp: DateTime(2026, 5, 29, 13, 59, 30),
+        ),
+        ChatMessage(
+          id: 30,
+          text: '当前问题',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+          timestamp: DateTime(2026, 5, 29, 14, 0, 0),
+        ),
+        ChatMessage(
+          id: 31,
+          text: '当前回答',
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+          timestamp: DateTime(2026, 5, 29, 14, 0, 2),
+        ),
+      ]);
+      await tester.pump();
+
+      expect(
+        identical(
+          initialElement,
+          tester.element(
+            find.byKey(const ValueKey('timeline-block-0_30-analysis-1')),
+          ),
+        ),
+        isTrue,
       );
     });
 

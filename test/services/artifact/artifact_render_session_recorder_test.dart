@@ -11,6 +11,7 @@ void main() {
 
       recorder.startSession(
         sessionId: sessionId,
+        flowId: 'turn_1:artifact_1:call_1',
         turnId: 'turn_1',
         artifactId: 'artifact_1',
         providerCallId: 'call_1',
@@ -53,6 +54,7 @@ void main() {
 
       recorder.startSession(
         sessionId: sessionId,
+        flowId: 'turn_1:artifact_1',
         turnId: 'turn_1',
         artifactId: 'artifact_1',
         sourcePath: 'runtime://artifact_1',
@@ -104,6 +106,7 @@ void main() {
 
       recorder.startSession(
         sessionId: sessionId,
+        flowId: 'turn_1:artifact_1',
         turnId: 'turn_1',
         artifactId: 'artifact_1',
         sourcePath: 'runtime://artifact_1',

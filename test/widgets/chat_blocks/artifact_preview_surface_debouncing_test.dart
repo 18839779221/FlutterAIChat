@@ -1,6 +1,9 @@
 import 'package:ai_chat/models/artifact/artifact_render_session_snapshot.dart';
+import 'package:ai_chat/models/artifact/artifact_turn_projection.dart';
+import 'package:ai_chat/models/artifact/artifact_type.dart';
 import 'package:ai_chat/services/artifact/artifact_render_session_recorder.dart';
 import 'package:ai_chat/utils/logger.dart';
+import 'package:ai_chat/widgets/chat_blocks/artifact_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/artifact_preview_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -161,6 +164,116 @@ void main() {
       expect(recorder.sourceProgressLengths, contains('<div>Updated</div>'.length));
     });
 
+    testWidgets(
+        'remounted artifact surfaces use distinct session ids for the same flow',
+        (WidgetTester tester) async {
+      final recorder = FakeArtifactRenderSessionRecorder();
+
+      Future<void> pumpSurface() async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ArtifactPreviewSurface(
+                artifactId: 'artifact-1',
+                source: '<div>Updated</div>',
+                sourcePath: 'runtime://artifact',
+                isRuntimePreview: true,
+                sessionRecorder: recorder,
+                turnId: 'turn-1',
+                providerCallId: 'call-1',
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+      }
+
+      await pumpSurface();
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: SizedBox.shrink(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await pumpSurface();
+
+      expect(recorder.startedSessionIds, hasLength(2));
+      expect(recorder.startedFlowIds, hasLength(2));
+      expect(
+        recorder.startedSessionIds[0],
+        isNot(equals(recorder.startedSessionIds[1])),
+      );
+      expect(
+        recorder.startedFlowIds[0],
+        equals(recorder.startedFlowIds[1]),
+      );
+    });
+
+    testWidgets(
+        'artifact block keeps the same preview session when parent structure changes',
+        (WidgetTester tester) async {
+      final projection = ArtifactTurnProjection(
+        artifactId: 'artifact-1',
+        turnId: 'turn-1',
+        title: 'Artifact',
+        type: ArtifactType.html,
+        providerCallId: 'call-1',
+        isRuntimePreview: false,
+        sourcePath: 'test://artifact-1.html',
+        source: '<div>Artifact</div>',
+        createdAt: DateTime(2026, 6, 7, 12, 0, 0),
+        updatedAt: DateTime(2026, 6, 7, 12, 0, 1),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ArtifactBlock(
+              projection: projection,
+              logicalId: 'artifact:call-1',
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+
+      final previewFinder = find.byType(ArtifactPreviewSurface);
+      final initialElement = tester.element(previewFinder);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Stack(
+              children: [
+                ArtifactBlock(
+                  projection: projection,
+                  logicalId: 'artifact:call-1',
+                ),
+                const Positioned(
+                  child: IgnorePointer(
+                    child: Align(
+                      alignment: Alignment.bottomLeft,
+                      child: SizedBox(width: 0, height: 0),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+
+      expect(
+        identical(initialElement, tester.element(previewFinder)),
+        isTrue,
+      );
+    });
+
     test('buildArtifactPreviewDocument still works correctly', () {
       final document = buildArtifactPreviewDocument();
 
@@ -179,11 +292,13 @@ class FakeArtifactRenderSessionRecorder extends ArtifactRenderSessionRecorder {
       : super(traceEmitter: (_, __, {level = LogLevel.info, data}) {});
 
   final List<String> startedSessionIds = <String>[];
+  final List<String> startedFlowIds = <String>[];
   final List<int> sourceProgressLengths = <int>[];
 
   @override
   void startSession({
     required String sessionId,
+    required String flowId,
     required String turnId,
     required String artifactId,
     String? providerCallId,
@@ -193,8 +308,10 @@ class FakeArtifactRenderSessionRecorder extends ArtifactRenderSessionRecorder {
     required DateTime timestamp,
   }) {
     startedSessionIds.add(sessionId);
+    startedFlowIds.add(flowId);
     super.startSession(
       sessionId: sessionId,
+      flowId: flowId,
       turnId: turnId,
       artifactId: artifactId,
       providerCallId: providerCallId,

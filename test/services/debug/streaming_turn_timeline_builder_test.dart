@@ -26,6 +26,24 @@ void main() {
           StreamingTraceEntry(
             eventId: 'e1',
             traceId: 'trace_1',
+            stage: StreamingTraceStage.modelRequestStarted,
+            timestamp: startedAt.add(const Duration(milliseconds: 200)),
+            elapsedMsFromStart: 200,
+            title: 'modelRequestStarted',
+            details: const {'phase': 'tool_call', 'toolName': 'web_search'},
+          ),
+          StreamingTraceEntry(
+            eventId: 'e2',
+            traceId: 'trace_1',
+            stage: StreamingTraceStage.modelFirstChunk,
+            timestamp: startedAt.add(const Duration(milliseconds: 900)),
+            elapsedMsFromStart: 900,
+            title: 'modelFirstChunk',
+            details: const {'phase': 'tool_call', 'toolName': 'web_search'},
+          ),
+          StreamingTraceEntry(
+            eventId: 'e3',
+            traceId: 'trace_1',
             stage: StreamingTraceStage.toolCallStarted,
             timestamp: startedAt.add(const Duration(milliseconds: 1200)),
             elapsedMsFromStart: 1200,
@@ -33,7 +51,7 @@ void main() {
             details: const {'toolName': 'web_search'},
           ),
           StreamingTraceEntry(
-            eventId: 'e2',
+            eventId: 'e4',
             traceId: 'trace_1',
             stage: StreamingTraceStage.toolCallCompleted,
             timestamp: startedAt.add(const Duration(milliseconds: 3100)),
@@ -42,7 +60,34 @@ void main() {
             details: const {'toolName': 'web_search'},
           ),
           StreamingTraceEntry(
-            eventId: 'e3',
+            eventId: 'e5',
+            traceId: 'trace_1',
+            stage: StreamingTraceStage.modelRequestCompleted,
+            timestamp: startedAt.add(const Duration(milliseconds: 3400)),
+            elapsedMsFromStart: 3400,
+            title: 'modelRequestCompleted',
+            details: const {'phase': 'tool_call', 'toolName': 'web_search'},
+          ),
+          StreamingTraceEntry(
+            eventId: 'e6',
+            traceId: 'trace_1',
+            stage: StreamingTraceStage.modelRequestStarted,
+            timestamp: startedAt.add(const Duration(milliseconds: 3600)),
+            elapsedMsFromStart: 3600,
+            title: 'modelRequestStarted',
+            details: const {'phase': 'final_answer'},
+          ),
+          StreamingTraceEntry(
+            eventId: 'e7',
+            traceId: 'trace_1',
+            stage: StreamingTraceStage.modelFirstChunk,
+            timestamp: startedAt.add(const Duration(milliseconds: 4300)),
+            elapsedMsFromStart: 4300,
+            title: 'modelFirstChunk',
+            details: const {'phase': 'final_answer'},
+          ),
+          StreamingTraceEntry(
+            eventId: 'e8',
             traceId: 'trace_1',
             stage: StreamingTraceStage.uiFirstVisible,
             timestamp: startedAt.add(const Duration(milliseconds: 4300)),
@@ -51,7 +96,16 @@ void main() {
             details: const {'previewText': '今天的主要变化是'},
           ),
           StreamingTraceEntry(
-            eventId: 'e4',
+            eventId: 'e9',
+            traceId: 'trace_1',
+            stage: StreamingTraceStage.modelRequestCompleted,
+            timestamp: startedAt.add(const Duration(milliseconds: 6200)),
+            elapsedMsFromStart: 6200,
+            title: 'modelRequestCompleted',
+            details: const {'phase': 'final_answer'},
+          ),
+          StreamingTraceEntry(
+            eventId: 'e10',
             traceId: 'trace_1',
             stage: StreamingTraceStage.finalTakeover,
             timestamp: startedAt.add(const Duration(milliseconds: 6200)),
@@ -75,6 +129,116 @@ void main() {
         [1200, 1900, 1200, 1900],
       );
       expect(timeline.segments.last.detail, '正在生成：今天的主要变化是');
+      expect(timeline.segments[1].modelFirstChunkDelayMs, 700);
+      expect(timeline.segments[1].modelStreamingDurationMs, 2500);
+      expect(timeline.segments.last.modelFirstChunkDelayMs, 700);
+      expect(timeline.segments.last.modelStreamingDurationMs, 1900);
+    });
+
+    test('attaches model metrics to ongoing tool and final answer segments', () {
+      final startedAt = DateTime(2026, 5, 31, 12, 0, 0);
+      final snapshot = StreamingTraceSnapshot(
+        traceId: 'trace_metrics',
+        turnId: 'turn_metrics',
+        status: StreamingTraceLifecycleStatus.running,
+        currentStage: StreamingTraceStage.uiUpdated,
+        summaryText: 'running',
+        startedAt: startedAt,
+        entries: [
+          StreamingTraceEntry(
+            eventId: 'e0',
+            traceId: 'trace_metrics',
+            stage: StreamingTraceStage.turnStarted,
+            timestamp: startedAt,
+            elapsedMsFromStart: 0,
+            title: 'turnStarted',
+          ),
+          StreamingTraceEntry(
+            eventId: 'e1',
+            traceId: 'trace_metrics',
+            stage: StreamingTraceStage.modelRequestStarted,
+            timestamp: startedAt.add(const Duration(milliseconds: 100)),
+            elapsedMsFromStart: 100,
+            title: 'modelRequestStarted',
+            details: const {'phase': 'tool_call', 'toolName': 'create_artifact'},
+          ),
+          StreamingTraceEntry(
+            eventId: 'e2',
+            traceId: 'trace_metrics',
+            stage: StreamingTraceStage.modelFirstChunk,
+            timestamp: startedAt.add(const Duration(milliseconds: 2400)),
+            elapsedMsFromStart: 2400,
+            title: 'modelFirstChunk',
+            details: const {'phase': 'tool_call', 'toolName': 'create_artifact'},
+          ),
+          StreamingTraceEntry(
+            eventId: 'e3',
+            traceId: 'trace_metrics',
+            stage: StreamingTraceStage.toolCallStarted,
+            timestamp: startedAt.add(const Duration(milliseconds: 2500)),
+            elapsedMsFromStart: 2500,
+            title: 'toolCallStarted',
+            details: const {'toolName': 'create_artifact'},
+          ),
+          StreamingTraceEntry(
+            eventId: 'e4',
+            traceId: 'trace_metrics',
+            stage: StreamingTraceStage.toolCallCompleted,
+            timestamp: startedAt.add(const Duration(milliseconds: 5000)),
+            elapsedMsFromStart: 5000,
+            title: 'toolCallCompleted',
+            details: const {'toolName': 'create_artifact'},
+          ),
+          StreamingTraceEntry(
+            eventId: 'e5',
+            traceId: 'trace_metrics',
+            stage: StreamingTraceStage.modelRequestCompleted,
+            timestamp: startedAt.add(const Duration(milliseconds: 5200)),
+            elapsedMsFromStart: 5200,
+            title: 'modelRequestCompleted',
+            details: const {'phase': 'tool_call', 'toolName': 'create_artifact'},
+          ),
+          StreamingTraceEntry(
+            eventId: 'e6',
+            traceId: 'trace_metrics',
+            stage: StreamingTraceStage.modelRequestStarted,
+            timestamp: startedAt.add(const Duration(milliseconds: 5400)),
+            elapsedMsFromStart: 5400,
+            title: 'modelRequestStarted',
+            details: const {'phase': 'final_answer'},
+          ),
+          StreamingTraceEntry(
+            eventId: 'e7',
+            traceId: 'trace_metrics',
+            stage: StreamingTraceStage.modelFirstChunk,
+            timestamp: startedAt.add(const Duration(milliseconds: 8600)),
+            elapsedMsFromStart: 8600,
+            title: 'modelFirstChunk',
+            details: const {'phase': 'final_answer'},
+          ),
+          StreamingTraceEntry(
+            eventId: 'e8',
+            traceId: 'trace_metrics',
+            stage: StreamingTraceStage.uiFirstVisible,
+            timestamp: startedAt.add(const Duration(milliseconds: 8600)),
+            elapsedMsFromStart: 8600,
+            title: 'uiFirstVisible',
+            details: const {'previewText': '已开始输出'},
+          ),
+        ],
+      );
+
+      final timeline = const StreamingTurnTimelineBuilder().build(
+        snapshot,
+        now: startedAt.add(const Duration(milliseconds: 9800)),
+      );
+
+      expect(timeline.segments[1].modelFirstChunkDelayMs, 2300);
+      expect(timeline.segments[1].modelStreamingDurationMs, 2800);
+      expect(timeline.segments.last.title, '回复生成中');
+      expect(timeline.segments.last.modelFirstChunkDelayMs, 3200);
+      expect(timeline.segments.last.modelStreamingDurationMs, 1200);
+      expect(timeline.segments.last.isOngoing, isTrue);
     });
 
     test('splits serial tool calls into separate duration segments', () {

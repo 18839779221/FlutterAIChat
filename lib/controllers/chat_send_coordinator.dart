@@ -26,6 +26,8 @@ import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/debug/streaming_trace_recorder.dart';
+import 'package:ai_chat/services/agent_planner_service.dart'
+    show PlannerRequestTraceEvent, PlannerRequestTraceStage;
 import 'package:ai_chat/services/session_runtime_marker_service.dart';
 import 'package:ai_chat/services/skills/explicit_skill_invocation_parser.dart';
 import 'package:ai_chat/services/skills/invoked_skill_reminder_builder.dart';
@@ -37,6 +39,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'agent_event_processor.dart';
 
 const String traceTurnIdPayloadKey = 'traceTurnId';
+const String traceTurnIdRuntimeContextKey = 'trace_turn_id';
 
 abstract class ChatSendCoordinator {
   Future<void> sendMessageRequest(
@@ -82,6 +85,72 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       scheduleAutoSummary: scheduleAutoSummary,
       cancelActiveStream: cancelActiveStream,
     );
+  }
+
+  void recordPlannerRequestTrace(PlannerRequestTraceEvent event) {
+    final traceRecorder = _ref.read(streamingTraceRecorderProvider.notifier);
+    final persistentTraceRecorder = _ref.read(traceRecorderProvider);
+    final traceId = streamingTraceIdForTurn(event.turnId);
+    final details = <String, dynamic>{
+      'agentTurnId': event.turnId,
+      'requestId': event.requestId,
+      if ((event.phase ?? '').trim().isNotEmpty) 'phase': event.phase!.trim(),
+      if ((event.toolName ?? '').trim().isNotEmpty)
+        'toolName': event.toolName!.trim(),
+    };
+    switch (event.stage) {
+      case PlannerRequestTraceStage.requestStarted:
+        traceRecorder.recordStage(
+          traceId: traceId,
+          turnId: event.turnId.toString(),
+          stage: StreamingTraceStage.modelRequestStarted,
+          timestamp: event.timestamp,
+          details: details,
+        );
+        _recordPersistentPlannerTrace(
+          recorder: persistentTraceRecorder,
+          event: event,
+          stage: ChatTraceStage.llmRequestStart,
+          status: ChatTraceStatus.started,
+          summary: 'planner request started',
+          details: details,
+        );
+        break;
+      case PlannerRequestTraceStage.firstChunk:
+        traceRecorder.recordStage(
+          traceId: traceId,
+          turnId: event.turnId.toString(),
+          stage: StreamingTraceStage.modelFirstChunk,
+          timestamp: event.timestamp,
+          details: details,
+        );
+        _recordPersistentPlannerTrace(
+          recorder: persistentTraceRecorder,
+          event: event,
+          stage: ChatTraceStage.llmFirstToken,
+          status: ChatTraceStatus.success,
+          summary: 'planner first chunk received',
+          details: details,
+        );
+        break;
+      case PlannerRequestTraceStage.requestCompleted:
+        traceRecorder.recordStage(
+          traceId: traceId,
+          turnId: event.turnId.toString(),
+          stage: StreamingTraceStage.modelRequestCompleted,
+          timestamp: event.timestamp,
+          details: details,
+        );
+        _recordPersistentPlannerTrace(
+          recorder: persistentTraceRecorder,
+          event: event,
+          stage: ChatTraceStage.llmDone,
+          status: ChatTraceStatus.success,
+          summary: 'planner request completed',
+          details: details,
+        );
+        break;
+    }
   }
 
   @override
@@ -397,6 +466,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         runtimeMarkerPreparation: runtimeMarkerPreparation,
         explicitInvokedSkill: explicitInvokedSkill,
         attachments: userMessage.attachments,
+        traceTurnId: turnId,
       ),
     );
     final turnRecordId = await turnRepository.createTurn(createdTurn);
@@ -520,6 +590,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     required SessionRuntimeMarkerPreparation runtimeMarkerPreparation,
     required InvokedSkillContext? explicitInvokedSkill,
     required List<ChatAttachment> attachments,
+    required String traceTurnId,
   }) {
     final context = runtimeMarkerService.buildTurnRuntimeContext(
       runtimeMarkerPreparation,
@@ -527,6 +598,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     final runtimeContext = Map<String, dynamic>.from(
       context[SessionRuntimeMarkerService.runtimeContextKey] as Map,
     );
+    runtimeContext[traceTurnIdRuntimeContextKey] = traceTurnId;
     if (attachments.isNotEmpty) {
       runtimeContext['user_attachments'] =
           attachments.map((attachment) => attachment.toJson()).toList();
@@ -1449,6 +1521,47 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       return rawTurnId;
     }
     return traceRecorder.newTurnId();
+  }
+
+  void _recordPersistentPlannerTrace({
+    required ChatTraceRecorder recorder,
+    required PlannerRequestTraceEvent event,
+    required ChatTraceStage stage,
+    required ChatTraceStatus status,
+    required String summary,
+    required Map<String, dynamic> details,
+  }) {
+    unawaited(
+      _resolvePersistentTraceTurnId(event.turnId).then((traceTurnId) {
+        recorder.record(
+          turnId: traceTurnId,
+          stage: stage,
+          status: status,
+          summary: summary,
+          data: details,
+          timestamp: event.timestamp,
+        );
+      }),
+    );
+  }
+
+  Future<String> _resolvePersistentTraceTurnId(int agentTurnId) async {
+    final turn = await _ref.read(chatTurnRepositoryProvider).getTurn(agentTurnId);
+    return _readTraceTurnIdFromTurn(turn) ?? 'turn_$agentTurnId';
+  }
+
+  String? _readTraceTurnIdFromTurn(ChatTurn? turn) {
+    final runtimeContext =
+        turn?.providerStateJson?[SessionRuntimeMarkerService.runtimeContextKey];
+    if (runtimeContext is! Map) {
+      return null;
+    }
+    final raw = runtimeContext[traceTurnIdRuntimeContextKey];
+    final value = raw?.toString().trim();
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return value;
   }
 
   ChatMessage? _resolveLatestMessageById(ChatMessage message) {

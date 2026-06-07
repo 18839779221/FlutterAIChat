@@ -1,6 +1,9 @@
 /// Stable stage names used by the runtime-only streaming trace overlay.
 enum StreamingTraceStage {
   turnStarted,
+  modelRequestStarted,
+  modelFirstChunk,
+  modelRequestCompleted,
   streamEventReceived,
   previewEventConsumed,
   previewStateCommitted,
@@ -141,6 +144,8 @@ class StreamingTurnTimelineSegment {
     required this.startedAt,
     required this.endedAt,
     required this.durationMs,
+    this.modelFirstChunkDelayMs,
+    this.modelStreamingDurationMs,
     this.isOngoing = false,
   });
 
@@ -164,6 +169,12 @@ class StreamingTurnTimelineSegment {
 
   /// Duration of the segment in milliseconds.
   final int durationMs;
+
+  /// Delay from model request start to first chunk for this segment, when known.
+  final int? modelFirstChunkDelayMs;
+
+  /// Duration from first chunk to request completion for this segment, when known.
+  final int? modelStreamingDurationMs;
 
   /// Whether the segment is still active at render time.
   final bool isOngoing;

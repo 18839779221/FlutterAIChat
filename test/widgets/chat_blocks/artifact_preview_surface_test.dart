@@ -243,6 +243,87 @@ void main() {
     expect(clampArtifactPreviewHeight(5000, viewportHeight: 800), 2400);
   });
 
+  test(
+      'prefers artifact rect height when root scroll height is transiently stretched',
+      () {
+    final resolved = resolveArtifactMeasuredHeight(
+      reportedHeight: 1338,
+      artifactRectHeight: 667.1049,
+      bodyScrollHeight: 667,
+      bodyOffsetHeight: 667,
+      rootScrollHeight: 1338,
+      rootOffsetHeight: 667,
+    );
+
+    expect(resolved, isNotNull);
+    expect(resolved!.height, 668);
+    expect(resolved.basis, ArtifactMeasuredHeightBasis.artifactRect);
+  });
+
+  test('falls back to body height when artifact rect height is missing', () {
+    final resolved = resolveArtifactMeasuredHeight(
+      reportedHeight: null,
+      artifactRectHeight: 0,
+      bodyScrollHeight: 637,
+      bodyOffsetHeight: 637,
+      rootScrollHeight: 903,
+      rootOffsetHeight: 637,
+    );
+
+    expect(resolved, isNotNull);
+    expect(resolved!.height, 637);
+    expect(resolved.basis, ArtifactMeasuredHeightBasis.body);
+  });
+
+  test('derives host viewport metrics from measured and clamped heights', () {
+    final metrics = resolveArtifactHostViewportMetrics(
+      configuredPreviewHeight: 263,
+      hostRenderHeight: 320,
+      measuredHeight: 114,
+      clampedHeight: 180,
+    );
+
+    expect(metrics, isNotNull);
+    expect(metrics!.renderHeight, 320);
+    expect(metrics.configuredPreviewHeight, 263);
+    expect(metrics.overshootPx, 57);
+    expect(metrics.gapFromMeasuredHeightPx, 206);
+    expect(metrics.gapFromClampedHeightPx, 140);
+  });
+
+  test('classifies host viewport probe status from render availability', () {
+    expect(
+      resolveArtifactHostViewportProbeStatus(
+        hasContext: false,
+        hasRenderObject: false,
+        isRenderBox: false,
+        hasSize: false,
+        renderHeight: null,
+      ),
+      ArtifactHostViewportProbeStatus.noContext,
+    );
+    expect(
+      resolveArtifactHostViewportProbeStatus(
+        hasContext: true,
+        hasRenderObject: true,
+        isRenderBox: true,
+        hasSize: false,
+        renderHeight: null,
+      ),
+      ArtifactHostViewportProbeStatus.noSize,
+    );
+    expect(
+      resolveArtifactHostViewportProbeStatus(
+        hasContext: true,
+        hasRenderObject: true,
+        isRenderBox: true,
+        hasSize: true,
+        renderHeight: 320,
+      ),
+      ArtifactHostViewportProbeStatus.ok,
+    );
+  });
+
   test('exposes a stable truncation hint for overlong artifact previews', () {
     expect(artifactPreviewTruncationMessage, contains('详情页'));
     expect(artifactPreviewTruncationMessage, contains('完整内容'));

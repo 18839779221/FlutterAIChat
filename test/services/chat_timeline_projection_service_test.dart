@@ -149,7 +149,8 @@ void main() {
       );
 
       final resultBlocks = projection.assistantBlocks
-          .where((block) => block.type == AssistantTurnBlockType.toolResultSummary)
+          .where(
+              (block) => block.type == AssistantTurnBlockType.toolResultSummary)
           .toList(growable: false);
       expect(resultBlocks, hasLength(1));
       expect(resultBlocks.single.toolResult, isNotNull);
@@ -228,7 +229,8 @@ void main() {
       final resultEvent = projection.toolPresentationEvents.last;
       expect(resultEvent.phase, ToolPresentationEventPhase.result);
       expect(resultEvent.sourceContentType, MessageContentType.toolResult);
-      expect(resultEvent.data['data'], containsPair('filePath', 'lib/main.dart'));
+      expect(
+          resultEvent.data['data'], containsPair('filePath', 'lib/main.dart'));
     });
 
     test('appends runtime reasoning draft as analysis block', () {
@@ -382,6 +384,46 @@ void main() {
       expect(runtimeAnalysisBlocks.single.payload?['isRuntimePreview'], isTrue);
     });
 
+    test('splits think-tagged runtime text preview into reasoning and content', () {
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我回答',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'message_text_2',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_text_2:text',
+                  blockType: StreamingContentBlockType.text,
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  text: '<think>先整理答案结构</think>\n\n这是运行中的正文',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final block = projection.assistantBlocks
+          .where((entry) => entry.type == AssistantTurnBlockType.finalResponse)
+          .single;
+      expect(block.reasoningText, '先整理答案结构');
+      expect(block.text, '这是运行中的正文');
+      expect(block.logicalId, 'final:7_30');
+      expect(block.payload?['isRuntimePreview'], isTrue);
+    });
+
     test(
         'suppresses generic runtime tool use preview so persisted toolInvocation owns the card',
         () {
@@ -476,6 +518,63 @@ void main() {
     });
 
     test(
+        'streaming projection reflects both bodies when ownership handoff has not retired truth placeholder',
+        () {
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我回答',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 31,
+            text: '这是运行中的正文',
+            role: MessageRole.assistant,
+            status: MessageStatus.generating,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 1),
+            payloadJson: const {
+              'draftStage': 'response',
+            },
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'message_text_1',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 2),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 3),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_text_1:text',
+                  blockType: StreamingContentBlockType.text,
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 3),
+                  text: '这是运行中的正文',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final finalBlocks = projection.assistantBlocks
+          .where((block) => block.type == AssistantTurnBlockType.finalResponse)
+          .toList(growable: false);
+      expect(finalBlocks, hasLength(2));
+      expect(
+        finalBlocks.where((block) => block.payload?['isRuntimePreview'] == true),
+        hasLength(1),
+      );
+      expect(
+        finalBlocks.where((block) => block.payload?['isRuntimePreview'] != true),
+        hasLength(1),
+      );
+    });
+
+    test(
         'lets iteration-2 streaming text through when only intermediate planner message exists',
         () {
       // Regression: an intermediate planner message between tool iterations
@@ -529,12 +628,16 @@ void main() {
           .toList(growable: false);
       expect(finalBlocks, hasLength(2));
       expect(
-        finalBlocks.where((b) => b.payload?['isRuntimePreview'] == true).single
+        finalBlocks
+            .where((b) => b.payload?['isRuntimePreview'] == true)
+            .single
             .text,
         '基于查询结果的回答',
       );
       expect(
-        finalBlocks.where((b) => b.payload?['isRuntimePreview'] != true).single
+        finalBlocks
+            .where((b) => b.payload?['isRuntimePreview'] != true)
+            .single
             .logicalId,
         isNull,
       );
@@ -657,8 +760,7 @@ void main() {
       await tempDirectory.delete(recursive: true);
     });
 
-    test(
-        'projects runtime create_artifact preview from runtime preview state',
+    test('projects runtime create_artifact preview from runtime preview state',
         () {
       final projection = service.build(
         groupId: 7,
@@ -702,6 +804,8 @@ void main() {
         runtimeArtifactBlocks.single.artifactProjection?.isRuntimePreview,
         isTrue,
       );
+      expect(
+          runtimeArtifactBlocks.single.logicalId, 'artifact:call_artifact_1');
       expect(runtimeArtifactBlocks.single.text, contains('渐进预览'));
       expect(projection.runtimePreviewState.messages, hasLength(1));
       expect(
@@ -779,7 +883,7 @@ void main() {
       );
       final fileStorageService =
           ArtifactFileStorageService(rootDirectory: tempDirectory);
-      await fileStorageService.saveArtifactSource(
+      final savedArtifact = await fileStorageService.saveArtifactSource(
         groupId: 7,
         artifactId: 'food-rank',
         title: '中国美食',
@@ -816,7 +920,7 @@ void main() {
                 'artifactId': 'food-rank',
                 'title': '中国美食',
                 'type': 'html',
-                'sourcePath': 'artifacts/7/food-rank.html',
+                'sourcePath': '/workspaces/.default/artifacts/food-rank.html',
               },
             },
           ),
@@ -855,10 +959,218 @@ void main() {
       );
       expect(
         artifactBlocks.single.artifactProjection?.sourcePath,
-        'artifacts/7/food-rank.html',
+        savedArtifact.sourcePath,
       );
       expect(
         artifactBlocks.single.artifactProjection?.source,
+        '<div>最终落盘内容</div>',
+      );
+      expect(artifactBlocks.single.logicalId, 'artifact:call_artifact_1');
+
+      await tempDirectory.delete(recursive: true);
+    });
+
+    test(
+        'keeps artifact relative order stable when persisted takeover replaces runtime artifact',
+        () async {
+      final tempDirectory = await Directory.systemTemp.createTemp(
+        'timeline-artifact-order-',
+      );
+      final fileStorageService =
+          ArtifactFileStorageService(rootDirectory: tempDirectory);
+      await fileStorageService.saveArtifactSource(
+        groupId: 7,
+        artifactId: 'food-rank',
+        title: '中国美食',
+        type: ArtifactType.html,
+        source: '<div>最终落盘内容</div>',
+      );
+      final service = ChatTimelineProjectionService(
+        artifactTurnResolver: ArtifactTurnResolver(
+          fileStorageService: fileStorageService,
+        ),
+        toolBlockProjector: const ToolPresentationBlockProjector(
+          registry: ToolUiRendererRegistry(
+            renderers: [CreateArtifactToolUiRenderer()],
+          ),
+        ),
+      );
+
+      final runtimeOnlyProjection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我做个 artifact',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 301,
+            text: '天气搜索完成',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolResult,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 1, 500),
+            payloadJson: const {
+              'toolName': 'fetch_weather',
+              'status': 'success',
+              'summary': '天气搜索完成',
+              'data': {'city': 'Shanghai'},
+            },
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'message_1',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 3),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_1:thinking:0',
+                  blockType: StreamingContentBlockType.thinking,
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  text: '先规划结构',
+                ),
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_1:tool:0',
+                  blockType: StreamingContentBlockType.toolUse,
+                  toolUseId: 'call_artifact_1',
+                  toolName: 'create_artifact',
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  text:
+                      '{"id":"food-rank","type":"html","title":"中国美食","source":"<div>渐进预览</div>"}',
+                ),
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_1:text:1',
+                  blockType: StreamingContentBlockType.text,
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 3),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 3),
+                  text: '先给你正文说明',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      expect(
+        runtimeOnlyProjection.assistantBlocks
+            .map((block) => block.type)
+            .toList(growable: false),
+        [
+          AssistantTurnBlockType.analysis,
+          AssistantTurnBlockType.toolResultSummary,
+          AssistantTurnBlockType.artifact,
+          AssistantTurnBlockType.finalResponse,
+        ],
+      );
+
+      final takeoverProjection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我做个 artifact',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 301,
+            text: '天气搜索完成',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolResult,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 1, 500),
+            payloadJson: const {
+              'toolName': 'fetch_weather',
+              'status': 'success',
+              'summary': '天气搜索完成',
+              'data': {'city': 'Shanghai'},
+            },
+          ),
+          ChatMessage(
+            id: 31,
+            text: '已创建 artifact：food-rank',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolResult,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 4),
+            payloadJson: const {
+              'toolName': 'create_artifact',
+              'status': 'success',
+              'summary': '已创建 artifact：food-rank',
+              'providerCallId': 'call_artifact_1',
+              'data': {
+                'artifactId': 'food-rank',
+                'title': '中国美食',
+                'type': 'html',
+                'sourcePath': '/workspaces/.default/artifacts/food-rank.html',
+              },
+            },
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'message_1',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 3),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_1:thinking:0',
+                  blockType: StreamingContentBlockType.thinking,
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  text: '先规划结构',
+                ),
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_1:tool:0',
+                  blockType: StreamingContentBlockType.toolUse,
+                  toolUseId: 'call_artifact_1',
+                  toolName: 'create_artifact',
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  text:
+                      '{"id":"food-rank","type":"html","title":"中国美食","source":"<div>渐进预览</div>"}',
+                ),
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_1:text:1',
+                  blockType: StreamingContentBlockType.text,
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 3),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 3),
+                  text: '先给你正文说明',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      expect(
+        takeoverProjection.assistantBlocks
+            .map((block) => block.type)
+            .toList(growable: false),
+        [
+          AssistantTurnBlockType.analysis,
+          AssistantTurnBlockType.toolResultSummary,
+          AssistantTurnBlockType.artifact,
+          AssistantTurnBlockType.finalResponse,
+        ],
+      );
+      final artifactIndex = takeoverProjection.assistantBlocks.indexWhere(
+        (block) => block.type == AssistantTurnBlockType.artifact,
+      );
+      expect(artifactIndex, 2);
+      expect(
+        takeoverProjection.assistantBlocks[artifactIndex]
+            .payload?['isRuntimePreview'],
+        isNot(true),
+      );
+      expect(
+        takeoverProjection.assistantBlocks[artifactIndex]
+            .artifactProjection
+            ?.source,
         '<div>最终落盘内容</div>',
       );
 
