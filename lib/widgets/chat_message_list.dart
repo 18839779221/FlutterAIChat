@@ -231,11 +231,11 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
             : null;
     final latestTailStableKey =
         timelineItems.isEmpty ? null : timelineItems.last.stableKey;
-    final itemCount = timelineItems.length + (hasMoreMessages ? 1 : 0);
+    final itemCount = timelineItems.length + 1;
     final currentGroupId = ref.read(currentGroupProvider)?.id;
-
     // Detect if new items were added (only animate the last item if count increased)
-    final hasNewItems = timelineItems.length > _previousItemCount;
+    final previousItemCount = _previousItemCount;
+    final hasNewItems = timelineItems.length > previousItemCount;
     _previousItemCount = timelineItems.length;
 
     final isWaitingForGroupMessageBatch =
@@ -249,6 +249,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
 
     if (sendPhase == ChatSendPhase.idle &&
         timelineItems.length > 1 &&
+        (previousItemCount == 0 || _pendingInitialHistoryGroupId != null) &&
         !_hasPositionedInitialHistory &&
         !isWaitingForGroupMessageBatch) {
       _hasPositionedInitialHistory = true;
@@ -350,49 +351,57 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
               spacing.sm,
               bottomTimelineInset,
             ),
-            sliver: SliverList.builder(
-              itemCount: itemCount,
-              itemBuilder: (context, index) {
-                if (hasMoreMessages && index == 0) {
-                  return const Center(
-                    key: ValueKey('chat-message-list-load-older-indicator'),
-                    child: Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: CircularProgressIndicator(),
-                    ),
-                  );
-                }
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  if (index == 0) {
+                    return Center(
+                      key: const ValueKey('chat-message-list-load-older-slot'),
+                      child: hasMoreMessages
+                          ? const Padding(
+                              padding: EdgeInsets.all(8.0),
+                              child: CircularProgressIndicator(
+                                key: ValueKey(
+                                  'chat-message-list-load-older-indicator',
+                                ),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    );
+                  }
 
-                final timelineIndex = hasMoreMessages ? index - 1 : index;
-                final item = timelineItems[timelineIndex];
-                final isLastItem = timelineIndex == timelineItems.length - 1;
-                final shouldAnimate = hasNewItems && isLastItem;
+                  final timelineIndex = index - 1;
+                  final item = timelineItems[timelineIndex];
+                  final isLastItem = timelineIndex == timelineItems.length - 1;
+                  final shouldAnimate = hasNewItems && isLastItem;
 
-                return Align(
-                  alignment: Alignment.topCenter,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      maxWidth: kIsWeb ? 860 : 720,
-                    ),
-                    child: Padding(
-                      padding: EdgeInsets.only(bottom: spacing.sm),
-                      child: KeyedSubtree(
-                        key: item.rowAnchorKey,
-                        child: ChatTimelineRow(
-                          key: ValueKey('timeline-block-${item.stableKey}'),
+                  return Align(
+                    key: ValueKey('timeline-block-${item.stableKey}'),
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: kIsWeb ? 860 : 720,
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: spacing.sm),
+                        child: _buildRowWithOptionalAnchor(
                           item: item,
-                          blockBuilder: _blockBuilder,
-                          currentGroupId: currentGroupId,
-                          onLongPressMessage: _showMessageOptionMenu,
-                          shouldAnimate: shouldAnimate,
-                          onActiveStatusLayoutChanged:
-                              _scheduleActiveStatusVisibilitySync,
+                          child: ChatTimelineRow(
+                            item: item,
+                            blockBuilder: _blockBuilder,
+                            currentGroupId: currentGroupId,
+                            onLongPressMessage: _showMessageOptionMenu,
+                            shouldAnimate: shouldAnimate,
+                            onActiveStatusLayoutChanged:
+                                _scheduleActiveStatusVisibilitySync,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+                childCount: itemCount,
+              ),
             ),
           ),
         ],
@@ -804,6 +813,38 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     return messages
         .where((message) => message.timestamp == block.createdAt)
         .firstOrNull;
+  }
+
+  Widget _buildRowWithOptionalAnchor({
+    required ChatTimelineItem item,
+    required Widget child,
+  }) {
+    final anchorKey = item.rowAnchorKey;
+    if (anchorKey == null) {
+      return child;
+    }
+
+    final alignment = item.type == ChatTimelineItemType.assistantBlock
+        ? Alignment.bottomLeft
+        : Alignment.topLeft;
+    return Stack(
+      fit: StackFit.passthrough,
+      children: [
+        child,
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Align(
+              alignment: alignment,
+              child: SizedBox(
+                key: anchorKey,
+                width: 0,
+                height: 0,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   void _showMessageOptionMenu(ChatMessage message) {

@@ -158,6 +158,18 @@ int compareChatMessagesForTimeline(ChatMessage left, ChatMessage right) {
     return timestampComparison;
   }
 
+  final leftId = left.id;
+  final rightId = right.id;
+  if (leftId != null && rightId != null) {
+    return leftId.compareTo(rightId);
+  }
+  if (leftId != null) {
+    return -1;
+  }
+  if (rightId != null) {
+    return 1;
+  }
+
   final roleComparison = _timelineRolePriority(left.role).compareTo(
     _timelineRolePriority(right.role),
   );
@@ -165,10 +177,26 @@ int compareChatMessagesForTimeline(ChatMessage left, ChatMessage right) {
     return roleComparison;
   }
 
-  final leftId = left.id;
-  final rightId = right.id;
-  if (leftId != null && rightId != null) {
-    return leftId.compareTo(rightId);
+  final leftContentType = left.contentType.index.compareTo(right.contentType.index);
+  if (leftContentType != 0) {
+    return leftContentType;
+  }
+
+  final leftStatus = left.status.index.compareTo(right.status.index);
+  if (leftStatus != 0) {
+    return leftStatus;
+  }
+
+  final textComparison = left.text.compareTo(right.text);
+  if (textComparison != 0) {
+    return textComparison;
+  }
+
+  final leftReasoning = left.reasoningContent ?? '';
+  final rightReasoning = right.reasoningContent ?? '';
+  final reasoningComparison = leftReasoning.compareTo(rightReasoning);
+  if (reasoningComparison != 0) {
+    return reasoningComparison;
   }
 
   return 0;

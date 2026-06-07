@@ -1,8 +1,10 @@
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
 import 'package:ai_chat/models/chat/send_message_request.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
+import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/theme/app_theme.dart';
@@ -269,6 +271,101 @@ void main() {
   });
 
   testWidgets(
+      'stream completion does not snap back to final answer while user is browsing earlier runtime preview content',
+      (tester) async {
+    final scrollController = ScrollController();
+    final sendState = ChatSendStateNotifier()
+      ..update(
+        phase: ChatSendPhase.streamingResponse,
+        isGenerating: true,
+      );
+    final container = ProviderContainer(
+      overrides: [
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+        scrollControllerProvider.overrideWith((ref) => scrollController),
+        chatSendStateProvider.overrideWith((ref) => sendState),
+      ],
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      scrollController.dispose();
+    });
+
+    container.read(messagesProvider.notifier).setMessages([
+      ChatMessage(
+        id: 1,
+        text: '请写一篇长一点的说明',
+        role: MessageRole.user,
+        status: MessageStatus.completed,
+        contentType: MessageContentType.plainText,
+      ),
+    ]);
+    container.read(runtimeStreamingPreviewStateProvider.notifier).state =
+        RuntimeStreamingPreviewState(
+      messages: [
+        RuntimeStreamingPreviewMessage(
+          messageId: 'preview_1',
+          createdAt: DateTime(2026, 6, 8, 12, 0, 1),
+          updatedAt: DateTime(2026, 6, 8, 12, 0, 2),
+          blocks: [
+            RuntimeStreamingPreviewBlock(
+              contentBlockId: 'preview_1:text',
+              blockType: StreamingContentBlockType.text,
+              createdAt: DateTime(2026, 6, 8, 12, 0, 1),
+              updatedAt: DateTime(2026, 6, 8, 12, 0, 2),
+              text: List.filled(
+                80,
+                '这是流式输出中的一段较长内容，用来验证结束时不会强制跳回底部。',
+              ).join('\n\n'),
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: SizedBox(
+              height: 320,
+              child: ChatMessageList(),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    scrollController.jumpTo(scrollController.position.maxScrollExtent);
+    await tester.pump();
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, 220));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+
+    final browsedOffset = scrollController.offset;
+    expect(
+      browsedOffset,
+      lessThan(scrollController.position.maxScrollExtent),
+    );
+
+    sendState.update(
+      phase: ChatSendPhase.idle,
+      isGenerating: false,
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+
+    expect(scrollController.offset, closeTo(browsedOffset, 0.1));
+  });
+
+  testWidgets(
       'idle timeline does not snap back to latest anchor after manual browse',
       (tester) async {
     final scrollController = ScrollController();
@@ -516,6 +613,7 @@ void main() {
           role: MessageRole.user,
           status: MessageStatus.completed,
           contentType: MessageContentType.plainText,
+          timestamp: DateTime(2026, 6, 8, 10, i),
         ),
         ChatMessage(
           id: i * 2 + 2,
@@ -523,6 +621,7 @@ void main() {
           role: MessageRole.assistant,
           status: MessageStatus.completed,
           contentType: MessageContentType.plainText,
+          timestamp: DateTime(2026, 6, 8, 10, i, 30),
         ),
       ],
     ]);
@@ -810,6 +909,7 @@ class _LoadMoreChatController extends ChatController {
           role: MessageRole.user,
           status: MessageStatus.completed,
           contentType: MessageContentType.plainText,
+          timestamp: DateTime(2026, 6, 8, 9, i),
         ),
         ChatMessage(
           id: i * 2 + 2,
@@ -817,6 +917,7 @@ class _LoadMoreChatController extends ChatController {
           role: MessageRole.assistant,
           status: MessageStatus.completed,
           contentType: MessageContentType.plainText,
+          timestamp: DateTime(2026, 6, 8, 9, i, 30),
         ),
       ],
     ]);

@@ -584,6 +584,110 @@ void main() {
       expect(persistedAssistantMessages.single.status, MessageStatus.completed);
     });
 
+    test(
+        'runtime preview handoff retires truth placeholder instead of rendering two streaming bodies',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final afterEventsGate = Completer<void>();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.assistantTextDelta,
+            role: MessageRole.assistant,
+            content: '你好，',
+          ),
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 2,
+            eventType: ChatEventType.assistantTextDelta,
+            role: MessageRole.assistant,
+            content: '世界',
+          ),
+        ],
+        afterEventsGate: afterEventsGate,
+      );
+      final container = await _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId = await databaseHelper.insertGroup(
+        ChatGroup(
+          title: 'group',
+          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        ),
+      );
+      container.read(currentGroupProvider.notifier).state = ChatGroup(
+            id: groupId,
+            title: 'group',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          );
+
+      final sendFuture = container.read(chatSendCoordinatorProvider).sendMessage(
+            '打一声招呼',
+            scheduleAutoSummary: () {},
+            cancelActiveStream:
+                container.read(chatControllerProvider).cancelStreamSubscription,
+          );
+
+      await _waitForAssistantStatus(
+        container,
+        MessageStatus.generating,
+      );
+
+      final turnId = harness.recordedTurns.single.id!;
+      final dispatcher = container.read(turnProjectionDispatcherProvider);
+      await dispatcher.dispatchPreviewEvent(
+        StreamingMessageStartEvent(
+          messageId: 'preview_1',
+          runtimeMetadata: {
+            'streamTraceId': 'trace_1',
+            'streamTurnId': '$turnId',
+          },
+        ),
+      );
+      await dispatcher.dispatchPreviewEvent(
+        StreamingContentBlockStartEvent(
+          messageId: 'preview_1',
+          contentBlockId: 'preview_1:text',
+          blockType: StreamingContentBlockType.text,
+          runtimeMetadata: {
+            'streamTraceId': 'trace_1',
+            'streamTurnId': '$turnId',
+          },
+        ),
+      );
+      await dispatcher.dispatchPreviewEvent(
+        StreamingContentBlockDeltaEvent(
+          messageId: 'preview_1',
+          contentBlockId: 'preview_1:text',
+          deltaType: StreamingContentDeltaType.text,
+          value: '你好，世界',
+          runtimeMetadata: {
+            'streamTraceId': 'trace_1',
+            'streamTurnId': '$turnId',
+          },
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 140));
+
+      expect(
+        container
+            .read(messagesProvider)
+            .where((message) => message.role == MessageRole.assistant),
+        isEmpty,
+      );
+
+      afterEventsGate.complete();
+      await sendFuture.timeout(const Duration(seconds: 1));
+    });
+
     test('final answer clears runtime preview before completed message settles',
         () async {
       final databaseHelper = _createTestDatabaseHelper();

@@ -15,19 +15,23 @@ class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
 
   MessagesNotifier(this._ref) : super([]);
 
+  List<ChatMessage> _sorted(List<ChatMessage> messages) {
+    final next = [...messages]..sort(compareChatMessagesForTimeline);
+    return next;
+  }
+
   void setMessages(List<ChatMessage> messages) {
-    final sortedMessages = [...messages]..sort(compareChatMessagesForTimeline);
-    state = sortedMessages;
+    state = _sorted(messages);
   }
 
   void addMessage(ChatMessage message) {
-    state = [...state, message];
+    state = _sorted([...state, message]);
   }
 
   void insertMessages(int index, List<ChatMessage> messages) {
     final newList = [...state];
     newList.insertAll(index, messages);
-    state = newList;
+    state = _sorted(newList);
   }
 
   void updateMessage(int id, String text) {
@@ -35,7 +39,7 @@ class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
     if (index != -1) {
       final message = state[index];
       message.text = text;
-      state = [...state];
+      state = _sorted(state);
     }
   }
 
@@ -44,7 +48,7 @@ class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
     if (index != -1) {
       final message = state[index];
       message.appendText(text);
-      state = [...state];
+      state = _sorted(state);
     }
   }
 
@@ -53,7 +57,7 @@ class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
     if (index != -1) {
       final message = state[index];
       message.appendReasoning(reasoning);
-      state = [...state];
+      state = _sorted(state);
     }
   }
 
@@ -63,7 +67,7 @@ class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
       final message = state[index].copyWith(status: status);
       final newList = [...state];
       newList[index] = message;
-      state = newList;
+      state = _sorted(newList);
     }
   }
 
@@ -76,7 +80,7 @@ class MessagesNotifier extends StateNotifier<List<ChatMessage>> {
 
     final newList = [...state];
     newList[index] = updatedMessage;
-    state = newList;
+    state = _sorted(newList);
   }
 
   void deleteMessageById(int id) {

@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
+import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/llm/adapters/adapter_utils.dart';
+import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
@@ -60,7 +63,15 @@ class AgentEventProcessor {
         _groupId = groupId,
         _traceTurnId = traceTurnId,
         _agentTurnId = agentTurnId,
-        _hooks = hooks;
+        _hooks = hooks {
+    _runtimePreviewSubscription = _ref.listen<RuntimeStreamingPreviewState>(
+      runtimeStreamingPreviewStateProvider,
+      (previous, next) {
+        unawaited(_handleRuntimePreviewStateChanged(next));
+      },
+      fireImmediately: true,
+    );
+  }
 
   final Ref _ref;
   final int _groupId;
@@ -76,7 +87,11 @@ class AgentEventProcessor {
   AssistantStreamOutputBuffer? _assistantStreamBuffer;
   bool _hasPendingConfirmation = false;
   bool _receivedFinalAnswer = false;
+  bool _responseOwnedByRuntimePreview = false;
+  String? _latestRuntimePreviewResponseText;
   bool _disposed = false;
+  ProviderSubscription<RuntimeStreamingPreviewState>?
+      _runtimePreviewSubscription;
 
   /// Whether the most recent [ChatEventType.assistantToolConfirmation] has
   /// not yet been resolved. Callers use this to decide the phase to fall back
@@ -258,6 +273,8 @@ class AgentEventProcessor {
       return;
     }
     _disposed = true;
+    _runtimePreviewSubscription?.close();
+    _runtimePreviewSubscription = null;
     await _assistantStreamBuffer?.cancel();
     _assistantStreamBuffer?.dispose();
     _assistantStreamBuffer = null;
@@ -364,11 +381,16 @@ class AgentEventProcessor {
     required ChatEvent event,
   }) async {
     _ensureAssistantDraftStage(_AssistantDraftStage.response);
-    final hasRuntimePreview = _ref
-        .read(runtimeStreamingPreviewStateProvider)
-        .messages
-        .isNotEmpty;
-    if (!hasRuntimePreview && _assistantMessageId == null) {
+    if (_currentTurnHasVisibleRuntimePreviewResponse()) {
+      _responseOwnedByRuntimePreview = true;
+      await _retireTruthResponsePlaceholder(dbHelper: dbHelper);
+      _ref.read(chatSendStateProvider.notifier).update(
+            isGenerating: true,
+            phase: ChatSendPhase.streamingResponse,
+          );
+      return;
+    }
+    if (!_responseOwnedByRuntimePreview && _assistantMessageId == null) {
       final placeholder = ChatMessage(
         text: '',
         role: MessageRole.assistant,
@@ -489,7 +511,10 @@ class AgentEventProcessor {
     final previousAssistantMessage = _assistantMessage;
     final runtimeDraft = _ref.read(runtimeAssistantDraftProvider);
     final finalText = previousAssistantMessageId == null
-        ? (event.content ?? previousAssistantMessage?.text ?? '')
+        ? (event.content ??
+            previousAssistantMessage?.text ??
+            _latestRuntimePreviewResponseText ??
+            '')
         : await _finalizeAssistantText(
             buffer: _assistantStreamBuffer,
             messageId: previousAssistantMessageId,
@@ -533,6 +558,89 @@ class AgentEventProcessor {
           isGenerating: false,
           phase: ChatSendPhase.idle,
         );
+  }
+
+  Future<void> _handleRuntimePreviewStateChanged(
+    RuntimeStreamingPreviewState state,
+  ) async {
+    if (_disposed) {
+      return;
+    }
+
+    final responseText = _resolvePairedRuntimePreviewResponseText(state);
+    if (responseText == null) {
+      return;
+    }
+    _latestRuntimePreviewResponseText = responseText;
+    if (_responseOwnedByRuntimePreview) {
+      return;
+    }
+
+    _responseOwnedByRuntimePreview = true;
+    await _retireTruthResponsePlaceholder(
+      dbHelper: _ref.read(databaseProvider),
+    );
+  }
+
+  bool _currentTurnHasVisibleRuntimePreviewResponse() {
+    final responseText = _resolvePairedRuntimePreviewResponseText(
+      _ref.read(runtimeStreamingPreviewStateProvider),
+    );
+    if (responseText == null) {
+      return false;
+    }
+    _latestRuntimePreviewResponseText = responseText;
+    return true;
+  }
+
+  Future<void> _retireTruthResponsePlaceholder({
+    required ChatStorage dbHelper,
+  }) async {
+    final messageId = _assistantMessageId;
+    final message = _assistantMessage;
+    if (messageId == null || message == null) {
+      return;
+    }
+    if (message.payloadJson?['draftStage'] != 'response') {
+      return;
+    }
+    if (message.payloadJson?['isFinalAnswer'] == true) {
+      return;
+    }
+
+    _ref.read(messagesProvider.notifier).deleteMessageById(messageId);
+    await dbHelper.deleteMessage(messageId);
+    await _assistantStreamBuffer?.cancel();
+    _assistantStreamBuffer?.dispose();
+    _assistantStreamBuffer = null;
+    _assistantMessageId = null;
+    _assistantMessage = null;
+  }
+
+  String? _resolvePairedRuntimePreviewResponseText(
+    RuntimeStreamingPreviewState state,
+  ) {
+    final agentTurnId = _agentTurnId;
+    if (agentTurnId == null) {
+      return null;
+    }
+    final matchedMessages = state.messages
+        .where((message) => message.streamTurnId?.trim() == '$agentTurnId')
+        .toList(growable: false);
+    for (final message in matchedMessages.reversed) {
+      for (final block in message.blocks.reversed) {
+        if (block.blockType != StreamingContentBlockType.text) {
+          continue;
+        }
+        final extraction = extractThinkTaggedText(block.text);
+        final content = extraction.content?.trim();
+        if (content == null || content.isEmpty) {
+          continue;
+        }
+        return extraction.content;
+      }
+    }
+    return null;
   }
 
   Future<void> _appendToolUseReasoningMessage({

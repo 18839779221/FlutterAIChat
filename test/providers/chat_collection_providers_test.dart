@@ -61,5 +61,39 @@ void main() {
         [1, 2],
       );
     });
+
+    test('setMessages 在同一时间戳且无 id 时仍保持稳定全序', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final timestamp = DateTime(2026, 4, 13, 1, 40, 0);
+      final messages = [
+        ChatMessage(
+          text: 'assistant beta',
+          role: MessageRole.assistant,
+          timestamp: timestamp,
+        ),
+        ChatMessage(
+          text: 'assistant alpha',
+          role: MessageRole.assistant,
+          timestamp: timestamp,
+        ),
+      ];
+
+      container.read(messagesProvider.notifier).setMessages(messages);
+      final firstPass = container
+          .read(messagesProvider)
+          .map((message) => message.text)
+          .toList(growable: false);
+
+      container.read(messagesProvider.notifier).setMessages(messages.reversed.toList());
+      final secondPass = container
+          .read(messagesProvider)
+          .map((message) => message.text)
+          .toList(growable: false);
+
+      expect(firstPass, ['assistant alpha', 'assistant beta']);
+      expect(secondPass, firstPass);
+    });
   });
 }
