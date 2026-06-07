@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:ai_chat/constants/route_constant.dart';
+import 'package:ai_chat/pages/component_motion_debug_page.dart';
 import 'package:ai_chat/pages/debug_hub_page.dart';
 import 'package:ai_chat/pages/layout_debug_page.dart';
 import 'package:ai_chat/pages/webview_debug_page.dart';
@@ -329,6 +330,8 @@ class MyApp extends ConsumerWidget {
       RouteConstant.settingsPage: (context) => const SettingsPage(),
       RouteConstant.testPage: (context) => const TestPage(),
       RouteConstant.debugHubPage: (context) => const DebugHubPage(),
+      RouteConstant.componentMotionDebugPage: (context) =>
+          const ComponentMotionDebugPage(),
       RouteConstant.layoutDebugPage: (context) => const LayoutDebugPage(),
       RouteConstant.webviewDebugPage: (context) => const WebviewDebugPage(),
     };

@@ -21,6 +21,7 @@ class ResearchToolCardShell extends StatelessWidget {
     this.expanded = false,
     this.onTap,
     this.expandedChild,
+    this.usePreciseSweepBounds = true,
   });
 
   final String actionLabel;
@@ -33,6 +34,7 @@ class ResearchToolCardShell extends StatelessWidget {
   final bool expanded;
   final VoidCallback? onTap;
   final Widget? expandedChild;
+  final bool usePreciseSweepBounds;
 
   @override
   Widget build(BuildContext context) {
@@ -46,7 +48,15 @@ class ResearchToolCardShell extends StatelessWidget {
       onTap: onTap,
       child: RunningSweepSurface(
         isRunning: isRunning,
+        duration: kRunningCardSweepDuration,
+        showBorder: false,
+        sweepOpacity: kRunningCardSweepOpacity,
+        sweepAngle: kRunningCardSweepAngle,
+        sweepColor: kRunningCardSweepColor,
+        activeSweepFraction: 1.0,
         borderRadius: BorderRadius.circular(radius.md),
+        usePreciseChildExtent: usePreciseSweepBounds,
+        widthFactor: kRunningCardSweepWidthFactor,
         child: Container(
           width: double.infinity,
           padding: EdgeInsets.symmetric(
@@ -368,4 +378,3 @@ Color resultStatusColor(BuildContext context, ToolResult result) {
       ? colors.workflowSuccess
       : colors.workflowWarning;
 }
-

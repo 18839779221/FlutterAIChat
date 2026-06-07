@@ -13,10 +13,14 @@ class UnifiedTurnStatusBar extends StatelessWidget {
     super.key,
     required this.status,
     this.variant = UnifiedTurnStatusBarVariant.inline,
+    this.isRunning = true,
+    this.textSweepDuration = const Duration(milliseconds: 2500),
   });
 
   final ActiveTurnStatusPresentation status;
   final UnifiedTurnStatusBarVariant variant;
+  final bool isRunning;
+  final Duration textSweepDuration;
 
   bool get _isFloating => variant == UnifiedTurnStatusBarVariant.floating;
 
@@ -44,7 +48,7 @@ class UnifiedTurnStatusBar extends StatelessWidget {
       color: (_isFloating ? colors.primaryText : colors.secondaryText)
           .withValues(alpha: _isFloating ? 0.84 : 0.88),
       fontSize: _isFloating ? 12 : 11.5,
-      fontWeight: FontWeight.w600,
+      fontWeight: FontWeight.w700,
       height: 1.18,
     );
 
@@ -73,7 +77,7 @@ class UnifiedTurnStatusBar extends StatelessWidget {
                 )
               : const BoxDecoration(),
           child: RunningSweepSurface(
-            isRunning: true,
+            isRunning: isRunning,
             duration: const Duration(milliseconds: 2600),
             showBorder: false,
             sweepOpacity: _isFloating ? 0.42 : 0.58,
@@ -93,24 +97,16 @@ class UnifiedTurnStatusBar extends StatelessWidget {
               child: Padding(
                 key: const ValueKey('latest-message-running-tail'),
                 padding: padding,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    RunningStatusDot(
-                      color: colors.workflowRunning,
-                      isRunning: true,
-                      size: _isFloating ? 7 : 6.5,
-                      margin: EdgeInsets.only(right: spacing.xs),
-                    ),
-                    Flexible(
-                      child: Text(
-                        status.text,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: textStyle,
-                      ),
-                    ),
-                  ],
+                child: RunningSweepStatusLine(
+                  text: status.text,
+                  style: textStyle,
+                  dotColor: colors.workflowRunning,
+                  isRunning: isRunning,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  visibleSweepDuration: textSweepDuration,
+                  dotSize: _isFloating ? 7 : 6.5,
+                  dotSpacing: spacing.xs,
                 ),
               ),
             ),

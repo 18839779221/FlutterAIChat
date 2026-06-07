@@ -91,7 +91,8 @@ void main() {
       expect(find.byType(AnimatedOpacity), findsOneWidget);
     });
 
-    testWidgets('running tail uses the same quiet settle wrapper', (tester) async {
+    testWidgets('running tail uses the same quiet settle wrapper',
+        (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.light(),
@@ -128,6 +129,31 @@ void main() {
 
       expect(find.text('正在规划下一步'), findsOneWidget);
       expect(find.byType(AnimatedOpacity), findsOneWidget);
+      expect(find.byType(RunningSweepText), findsOneWidget);
+      final sweepText = tester.widget<RunningSweepText>(
+        find.byType(RunningSweepText),
+      );
+      expect(sweepText.style.fontWeight, FontWeight.w700);
+      expect(
+        sweepText.visibleSweepDuration,
+        const Duration(milliseconds: 2500),
+      );
+      expect(find.byType(RunningSweepStatusDot), findsOneWidget);
+      final sweepDot = tester.widget<RunningSweepStatusDot>(
+        find.byType(RunningSweepStatusDot),
+      );
+      expect(
+        sweepDot.sweepDuration,
+        const Duration(milliseconds: 2500),
+      );
+      expect(sweepDot.minOpacity, 0.6);
+      expect(
+        find.descendant(
+          of: find.byType(RunningSweepText),
+          matching: find.byType(Text),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('floating unified turn status bar keeps floating decoration',
@@ -152,6 +178,16 @@ void main() {
 
       expect(find.text('正在规划下一步'), findsOneWidget);
       expect(find.byType(AnimatedOpacity), findsOneWidget);
+      expect(find.byType(RunningSweepText), findsOneWidget);
+      final sweepText = tester.widget<RunningSweepText>(
+        find.byType(RunningSweepText),
+      );
+      expect(sweepText.style.fontWeight, FontWeight.w700);
+      expect(
+        sweepText.visibleSweepDuration,
+        const Duration(milliseconds: 2500),
+      );
+      expect(find.byType(RunningSweepStatusDot), findsOneWidget);
     });
 
     testWidgets('running status dot keeps a restrained pulse footprint',
@@ -172,6 +208,88 @@ void main() {
         find.byType(AnimatedBuilder).first,
       );
       expect(animatedBuilder.animation, isNotNull);
+    });
+
+    testWidgets('running sweep status dot stays near-rest at sweep edges',
+        (tester) async {
+      Future<void> pumpSweepDot(double progress) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.light(),
+            home: Scaffold(
+              body: RunningSweepStatusDot(
+                color: Colors.blue,
+                isRunning: true,
+                sweepProgress: progress,
+                sweepDuration: const Duration(milliseconds: 2500),
+              ),
+            ),
+          ),
+        );
+      }
+
+      await pumpSweepDot(0.0);
+      var transform = tester.widget<Transform>(
+        find.descendant(
+          of: find.byType(RunningSweepStatusDot),
+          matching: find.byType(Transform),
+        ),
+      );
+      var fill = tester.widget<DecoratedBox>(
+        find.descendant(
+          of: find.descendant(
+            of: find.byType(RunningSweepStatusDot),
+            matching: find.byType(Transform),
+          ),
+          matching: find.byType(DecoratedBox),
+        ),
+      );
+      var fillDecoration = fill.decoration as BoxDecoration;
+      expect(transform.transform.storage[0], greaterThan(0.95));
+      expect(transform.transform.storage[5], greaterThan(0.95));
+      expect(fillDecoration.color!.a, greaterThan(0.96));
+
+      await pumpSweepDot(0.5);
+      transform = tester.widget<Transform>(
+        find.descendant(
+          of: find.byType(RunningSweepStatusDot),
+          matching: find.byType(Transform),
+        ),
+      );
+      fill = tester.widget<DecoratedBox>(
+        find.descendant(
+          of: find.descendant(
+            of: find.byType(RunningSweepStatusDot),
+            matching: find.byType(Transform),
+          ),
+          matching: find.byType(DecoratedBox),
+        ),
+      );
+      fillDecoration = fill.decoration as BoxDecoration;
+      expect(transform.transform.storage[0], lessThan(0.78));
+      expect(transform.transform.storage[5], lessThan(0.78));
+      expect(fillDecoration.color!.a, closeTo(0.6, 0.03));
+
+      await pumpSweepDot(1.0);
+      transform = tester.widget<Transform>(
+        find.descendant(
+          of: find.byType(RunningSweepStatusDot),
+          matching: find.byType(Transform),
+        ),
+      );
+      fill = tester.widget<DecoratedBox>(
+        find.descendant(
+          of: find.descendant(
+            of: find.byType(RunningSweepStatusDot),
+            matching: find.byType(Transform),
+          ),
+          matching: find.byType(DecoratedBox),
+        ),
+      );
+      fillDecoration = fill.decoration as BoxDecoration;
+      expect(transform.transform.storage[0], greaterThan(0.95));
+      expect(transform.transform.storage[5], greaterThan(0.95));
+      expect(fillDecoration.color!.a, greaterThan(0.96));
     });
 
     testWidgets('markdown typography follows hybrid reader rhythm', (
@@ -370,7 +488,8 @@ $$
     });
 
     testWidgets(
-        'streaming final response renders Markdown body without inline cursor', (
+        'streaming final response renders Markdown body without inline cursor',
+        (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -580,6 +699,19 @@ $$
       expect(find.text('正在读取网页内容'), findsOneWidget);
       expect(find.text('命中 4 条历史消息'), findsOneWidget);
       expect(find.byType(ToolInlineStepRow), findsOneWidget);
+
+      final sweeps = tester.widgetList<RunningSweepSurface>(
+        find.byType(RunningSweepSurface),
+      );
+      final runningSweep = sweeps.firstWhere((sweep) => sweep.isRunning);
+      expect(runningSweep.usePreciseChildExtent, isTrue);
+      expect(runningSweep.widthFactor, 0.56);
+      expect(runningSweep.duration, const Duration(milliseconds: 2600));
+      expect(runningSweep.sweepAngle, closeTo(-0.24, 0.0001));
+      expect(runningSweep.sweepColor, const Color(0xFFF6F6F2));
+      expect(runningSweep.activeSweepFraction, 1.0);
+      expect(runningSweep.sweepOpacity, 1.08);
+      expect(runningSweep.showBorder, isFalse);
     });
 
     testWidgets('workflow confirmation step no longer renders action buttons', (

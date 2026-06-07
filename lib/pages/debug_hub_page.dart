@@ -22,6 +22,19 @@ class DebugHubPage extends StatelessWidget {
         padding: EdgeInsets.all(spacing.lg),
         children: [
           _DebugFeatureCard(
+            icon: Icons.animation_outlined,
+            title: '组件与动效调试',
+            description: '直接查看运行态组件、状态文本刀光与 artifact loading 效果',
+            colors: colors,
+            spacing: spacing,
+            radius: radius,
+            onTap: () => Navigator.pushNamed(
+              context,
+              RouteConstant.componentMotionDebugPage,
+            ),
+          ),
+          SizedBox(height: spacing.md),
+          _DebugFeatureCard(
             icon: Icons.article_outlined,
             title: '文档排版调试',
             description: '测试 Markdown 渲染效果，验证文档排版的稳定性',

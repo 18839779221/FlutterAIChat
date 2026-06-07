@@ -74,7 +74,15 @@ class ToolWorkflowCard extends StatelessWidget {
                     ? ToolInlineStepRow(model: presentation)
                     : RunningSweepSurface(
                         isRunning: step.status == ToolWorkflowStepStatus.running,
+                        duration: kRunningCardSweepDuration,
+                        showBorder: false,
+                        sweepOpacity: kRunningCardSweepOpacity,
+                        sweepAngle: kRunningCardSweepAngle,
+                        sweepColor: kRunningCardSweepColor,
+                        activeSweepFraction: 1.0,
                         borderRadius: BorderRadius.circular(radius.md),
+                        usePreciseChildExtent: true,
+                        widthFactor: kRunningCardSweepWidthFactor,
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 180),
                           curve: Curves.easeOut,

@@ -1,6 +1,8 @@
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/theme/app_theme.dart';
+import 'package:ai_chat/widgets/tool_renderers/research_tool_card_shell.dart';
+import 'package:ai_chat/widgets/tool_renderers/tool_running_effects.dart';
 import 'package:ai_chat/widgets/tool_renderers/web_search_tool_result_card.dart';
 import 'package:ai_chat/widgets/tool_renderers/web_search_tool_workflow_card.dart';
 import 'package:flutter/material.dart';
@@ -39,6 +41,22 @@ void main() {
       expect(find.text('联网搜索'), findsOneWidget);
       expect(find.text('OpenAI latest'), findsOneWidget);
       expect(find.textContaining('最多'), findsNothing);
+
+      final shell = tester.widget<ResearchToolCardShell>(
+        find.byType(ResearchToolCardShell),
+      );
+      expect(shell.usePreciseSweepBounds, isTrue);
+
+      final sweep = tester.widget<RunningSweepSurface>(
+        find.byType(RunningSweepSurface),
+      );
+      expect(sweep.usePreciseChildExtent, isTrue);
+      expect(sweep.widthFactor, 0.56);
+      expect(sweep.duration, const Duration(milliseconds: 2600));
+      expect(sweep.sweepAngle, closeTo(-0.24, 0.0001));
+      expect(sweep.sweepColor, const Color(0xFFF6F6F2));
+      expect(sweep.activeSweepFraction, 1.0);
+      expect(sweep.sweepOpacity, 1.08);
     });
 
     testWidgets('result card shows overview first and sources after expand', (

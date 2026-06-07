@@ -1,4 +1,5 @@
 import 'package:ai_chat/widgets/chat_blocks/artifact_preview_surface.dart';
+import 'package:ai_chat/widgets/tool_renderers/tool_running_effects.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -23,7 +24,8 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('does not expose raw source text before preview controller is ready',
+  testWidgets(
+      'does not expose raw source text before preview controller is ready',
       (WidgetTester tester) async {
     await tester.pumpWidget(
       const MaterialApp(
@@ -42,7 +44,8 @@ void main() {
     expect(find.textContaining('Hello artifact'), findsNothing);
   });
 
-  testWidgets('waiting runtime preview uses sweep shell instead of legacy text label',
+  testWidgets(
+      'waiting runtime preview uses sweep shell instead of legacy text label',
       (WidgetTester tester) async {
     await tester.pumpWidget(
       const MaterialApp(
@@ -59,8 +62,69 @@ void main() {
 
     await tester.pump();
 
-    expect(find.byKey(const Key('artifact-preview-sweep-shell')), findsOneWidget);
+    expect(
+        find.byKey(const Key('artifact-preview-sweep-shell')), findsOneWidget);
     expect(find.textContaining('正在准备预览'), findsNothing);
+  });
+
+  testWidgets('waiting runtime preview uses the configured shimmer sweep',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: ArtifactPreviewSurface(
+            artifactId: 'artifact-1',
+            source: null,
+            sourcePath: 'runtime://artifact',
+            isRuntimePreview: true,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+
+    final sweep = tester.widget<RunningSweepSurface>(
+      find.byType(RunningSweepSurface).first,
+    );
+
+    expect(sweep.sweepColor, const Color(0xFFF6F6F2));
+    expect(sweep.duration, const Duration(milliseconds: 2600));
+    expect(sweep.sweepAngle, closeTo(-0.24, 0.0001));
+    expect(sweep.travelDirection, AxisDirection.right);
+    expect(sweep.activeSweepFraction, 1.0);
+    expect(sweep.showBorder, isFalse);
+    expect(sweep.usePreciseChildExtent, isTrue);
+    expect(sweep.widthFactor, 0.56);
+    expect(sweep.sweepOpacity, 1.08);
+  });
+
+  testWidgets(
+      'waiting runtime preview shell uses a solid neutral surface instead of a diagonal gradient',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: ArtifactPreviewSurface(
+            artifactId: 'artifact-1',
+            source: null,
+            sourcePath: 'runtime://artifact',
+            isRuntimePreview: true,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+
+    final previewShell = tester.widget<Container>(
+      find.byKey(const Key('artifact-preview-sweep-shell')),
+    );
+    final decoration = previewShell.decoration as BoxDecoration;
+
+    expect(decoration.gradient, isNull);
+    expect(decoration.color, isNotNull);
+    expect(decoration.color, isNot(const Color(0xFFFFFFFF)));
   });
 
   test('wraps fragment source into constrained host document', () {
@@ -115,8 +179,10 @@ void main() {
     expect(document, contains('JSON.stringify'));
   });
 
-  test('does not inline artifact source into the host document script context', () {
-    const source = '<div>before</div><script>console.log("x")</script><div>after</div>';
+  test('does not inline artifact source into the host document script context',
+      () {
+    const source =
+        '<div>before</div><script>console.log("x")</script><div>after</div>';
 
     final document = buildArtifactPreviewDocument();
 
@@ -132,7 +198,8 @@ void main() {
     expect(document, isNot(contains('original.replaceWith')));
   });
 
-  test('final preview document loads the complete source with host injection', () {
+  test('final preview document loads the complete source with host injection',
+      () {
     const source = '''
 <!DOCTYPE html>
 <html>
