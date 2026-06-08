@@ -213,7 +213,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final textController = ref.read(textControllerProvider);
     final focusNode = ref.read(focusNodeProvider);
-    final topPinnedTargetInset = _ghostHeaderHeight + spacing.xs;
+    final topPinnedTargetInset =
+        _ghostHeaderHeight + spacing.xxs + MediaQuery.of(context).padding.top;
     final minBottomInset = bottomOverlayHeight > 0
         ? bottomOverlayHeight + spacing.lg
         : spacing.xl * 4.2;
@@ -649,7 +650,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
                   'id': block.id,
                   'logicalId': block.logicalId,
                   'turnId': block.turnId,
-                  'isRuntimePreview': block.payload?['isRuntimePreview'] == true,
+                  'isRuntimePreview':
+                      block.payload?['isRuntimePreview'] == true,
                   'previewMessageId': block.payload?['previewMessageId'],
                   'responseId': block.payload?['responseId'],
                   'reasoningScope': block.payload?['reasoningScope'],
@@ -801,9 +803,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     ChatMessage? sourceMessage,
   ) {
     final logicalId = block.logicalId?.trim();
-    final key = logicalId != null && logicalId.isNotEmpty
-        ? logicalId
-        : block.id;
+    final key =
+        logicalId != null && logicalId.isNotEmpty ? logicalId : block.id;
     Logger.temp(
       'ChatMessageList',
       'stableKey generated',
@@ -993,8 +994,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
         (ref.read(chatBottomOverlayHeightProvider) > 0
             ? ref.read(chatBottomOverlayHeightProvider) + spacing.lg
             : spacing.xl * 4.2);
-    final resolvedTopTargetInset =
-        topTargetInset ?? (_ghostHeaderHeight + spacing.xs);
+    final resolvedTopTargetInset = topTargetInset ??
+        (_ghostHeaderHeight + spacing.xxs + MediaQuery.of(context).padding.top);
     final resolvedSendPhase = sendPhase ?? ref.read(sendPhaseProvider);
 
     if (latestUserStableKey != null &&
