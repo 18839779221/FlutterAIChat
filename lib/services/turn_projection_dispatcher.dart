@@ -14,8 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 ///
 /// This dispatcher keeps preview clear/final append ordering deterministic:
 /// - preview deltas are published in arrival order
-/// - `finalAnswer` clears runtime preview first
-/// - late preview events for the finalized preview message are dropped
+/// - truth events are applied in arrival order
 class TurnProjectionDispatcher {
   TurnProjectionDispatcher(this._ref);
 
@@ -23,19 +22,10 @@ class TurnProjectionDispatcher {
 
   final Ref _ref;
   Future<void> _tail = Future<void>.value();
-  String? _activePreviewMessageId;
-  final Set<String> _finalizedPreviewMessageIds = <String>{};
 
   Future<void> dispatchPreviewEvent(StreamingMessageEvent event) {
     return _enqueue(() {
       final messageId = event.messageId;
-      if (_finalizedPreviewMessageIds.contains(messageId)) {
-        Logger.i(
-          _tag,
-          'drop late preview event for finalized messageId=$messageId type=${event.runtimeType}',
-        );
-        return;
-      }
       final traceId = _readRuntimeMetadataValue(
         event.runtimeMetadata,
         key: 'streamTraceId',
@@ -56,7 +46,6 @@ class TurnProjectionDispatcher {
           },
         );
       }
-      _activePreviewMessageId = messageId;
       _ref.read(runtimeStreamingPreviewStateProvider.notifier).publish(event);
     });
   }
@@ -68,12 +57,7 @@ class TurnProjectionDispatcher {
     return _enqueue(() async {
       _recordTruthStage(event);
       if (event.eventType == ChatEventType.finalAnswer) {
-        final finalizedMessageId =
-            _resolvePreviewMessageIdForFinalAnswer(event) ?? _activePreviewMessageId;
         final finalizedTraceId = streamingTraceIdForTurn(event.turnId);
-        if (finalizedMessageId != null) {
-          _finalizedPreviewMessageIds.add(finalizedMessageId);
-        }
         // Per-entity preview takeover (see ChatTimelineProjectionService
         // `_dropPreviewBlocksSupersededByTruth`): once the truth-side block
         // lands carrying the same `logicalId`, the projection hides the
@@ -82,7 +66,6 @@ class TurnProjectionDispatcher {
         // re-introduce the takeover flash this refactor removes.
         // Disposal-time cleanup in `AgentEventProcessor.dispose()` is kept as
         // a safety net for end-of-turn.
-        _activePreviewMessageId = null;
         if (finalizedTraceId.isNotEmpty) {
           _ref.read(streamingTraceRecorderProvider.notifier).recordStage(
             traceId: finalizedTraceId,
@@ -92,8 +75,6 @@ class TurnProjectionDispatcher {
             details: {
               'eventType': event.eventType.name,
               'previewText': event.content ?? '',
-              if (finalizedMessageId != null)
-                'previewMessageId': finalizedMessageId,
             },
           );
           _ref.read(streamingTraceRecorderProvider.notifier).markCompleted(
@@ -184,18 +165,8 @@ class TurnProjectionDispatcher {
               traceId: snapshot.traceId,
             );
       }
-      _activePreviewMessageId = null;
       _ref.read(runtimeStreamingPreviewStateProvider.notifier).clear();
     });
-  }
-
-  String? _resolvePreviewMessageIdForFinalAnswer(ChatEvent event) {
-    final payload = event.payloadJson;
-    final value = payload?['previewMessageId'];
-    if (value is String && value.trim().isNotEmpty) {
-      return value.trim();
-    }
-    return null;
   }
 
   String? _readToolName(Map<String, dynamic>? payload) {

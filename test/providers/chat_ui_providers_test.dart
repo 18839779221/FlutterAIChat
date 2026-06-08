@@ -187,7 +187,7 @@ void main() {
       notifier.publish(
         const StreamingContentBlockStartEvent(
           messageId: 'preview_1',
-          contentBlockId: 'preview_1:tool:0',
+          contentBlockId: 'preview_1:tool:call_1',
           blockType: StreamingContentBlockType.toolUse,
           toolUseId: 'call_1',
           toolName: 'create_artifact',
@@ -196,7 +196,7 @@ void main() {
       notifier.publish(
         const StreamingContentBlockDeltaEvent(
           messageId: 'preview_1',
-          contentBlockId: 'preview_1:tool:0',
+          contentBlockId: 'preview_1:tool:call_1',
           deltaType: StreamingContentDeltaType.inputJson,
           value:
               '{"id":"demo","type":"html","title":"Demo","source":"<div>Hello</div>"}',
@@ -292,7 +292,7 @@ void main() {
       notifier.publish(
         const StreamingContentBlockStartEvent(
           messageId: 'preview_2',
-          contentBlockId: 'preview_2:tool:0',
+          contentBlockId: 'preview_2:tool:call_2',
           blockType: StreamingContentBlockType.toolUse,
           toolUseId: 'call_2',
           toolName: 'create_artifact',
@@ -301,7 +301,7 @@ void main() {
       notifier.publish(
         const StreamingContentBlockDeltaEvent(
           messageId: 'preview_2',
-          contentBlockId: 'preview_2:tool:0',
+          contentBlockId: 'preview_2:tool:call_2',
           deltaType: StreamingContentDeltaType.inputJson,
           value: '{"source":"<div>Hello',
         ),
@@ -312,7 +312,7 @@ void main() {
       notifier.publish(
         const StreamingContentBlockDeltaEvent(
           messageId: 'preview_2',
-          contentBlockId: 'preview_2:tool:0',
+          contentBlockId: 'preview_2:tool:call_2',
           deltaType: StreamingContentDeltaType.inputJson,
           value: ' world</div>"}',
         ),
@@ -349,7 +349,7 @@ void main() {
       notifier.publish(
         const StreamingContentBlockStartEvent(
           messageId: 'preview_tool_trace_1',
-          contentBlockId: 'preview_tool_trace_1:tool:0',
+          contentBlockId: 'preview_tool_trace_1:tool:call_tool_1',
           blockType: StreamingContentBlockType.toolUse,
           toolUseId: 'call_tool_1',
           toolName: 'create_artifact',
@@ -362,7 +362,7 @@ void main() {
       notifier.publish(
         const StreamingContentBlockDeltaEvent(
           messageId: 'preview_tool_trace_1',
-          contentBlockId: 'preview_tool_trace_1:tool:0',
+          contentBlockId: 'preview_tool_trace_1:tool:call_tool_1',
           deltaType: StreamingContentDeltaType.inputJson,
           value: '{"source":"<div>Hello</div>"}',
           runtimeMetadata: {
@@ -375,7 +375,7 @@ void main() {
       notifier.publish(
         const StreamingContentBlockStopEvent(
           messageId: 'preview_tool_trace_1',
-          contentBlockId: 'preview_tool_trace_1:tool:0',
+          contentBlockId: 'preview_tool_trace_1:tool:call_tool_1',
           runtimeMetadata: {
             'streamTraceId': 'trace_tool_1',
             'streamTurnId': 'turn_tool_1',

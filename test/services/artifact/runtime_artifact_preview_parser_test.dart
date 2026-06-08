@@ -17,7 +17,7 @@ void main() {
           blocks: const [],
         ),
         block: RuntimeStreamingPreviewBlock(
-          contentBlockId: 'message_1:tool:0',
+          contentBlockId: 'message_1:tool:call_1',
           blockType: StreamingContentBlockType.toolUse,
           toolUseId: 'call_1',
           toolName: 'create_artifact',
@@ -45,7 +45,7 @@ void main() {
           blocks: const [],
         ),
         block: RuntimeStreamingPreviewBlock(
-          contentBlockId: 'message_1:tool:0',
+          contentBlockId: 'message_1:tool:call_1',
           blockType: StreamingContentBlockType.toolUse,
           toolUseId: 'call_1',
           toolName: 'Write',

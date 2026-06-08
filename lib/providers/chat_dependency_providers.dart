@@ -14,6 +14,7 @@ import 'package:ai_chat/services/artifact/artifact_turn_resolver.dart';
 import 'package:ai_chat/services/active_turn_status_resolver.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_timeline_projection_service.dart';
+import 'package:ai_chat/services/chat_timeline_order_anchor_store.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/latest_message_running_status_resolver.dart';
 import 'package:ai_chat/services/model_budget_registry.dart';
@@ -174,8 +175,14 @@ final chatTimelineProjectionServiceProvider =
     toolBlockProjector: ToolPresentationBlockProjector(
       registry: ref.watch(toolUiRendererRegistryProvider),
     ),
+    orderAnchorStore: ref.watch(chatTimelineOrderAnchorStoreProvider),
   );
 });
+
+final chatTimelineOrderAnchorStoreProvider =
+    Provider<ChatTimelineOrderAnchorStore>(
+  (ref) => ChatTimelineOrderAnchorStore(),
+);
 
 final artifactFileStorageServiceProvider =
     Provider<ArtifactFileStorageService?>((ref) => null);

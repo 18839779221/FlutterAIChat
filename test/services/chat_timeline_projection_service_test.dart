@@ -266,6 +266,67 @@ void main() {
       );
     });
 
+    test(
+        'runtime reasoning draft supersedes same-message preview reasoning via shared logicalId',
+        () {
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我回答',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+        ],
+        runtimeDraft: RuntimeAssistantDraft(
+          turnId: '7_30',
+          draftId: '7_30-reasoning-draft',
+          blockType: AssistantTurnBlockType.analysis,
+          createdAt: DateTime(2026, 4, 30, 10, 0, 2),
+          updatedAt: DateTime(2026, 4, 30, 10, 0, 3),
+          reasoningText: '用户想要我用 HTML 可视化介绍 iOS 架构。',
+          payload: const {
+            'draftStage': 'reasoning',
+            'logicalId': 'finalReasoning:7_30',
+          },
+        ),
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'message_reasoning_1',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_reasoning_1:thinking',
+                  blockType: StreamingContentBlockType.thinking,
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  text: '用户想要我用 HTML 可视化介绍 iOS 架构。',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final analysisBlocks = projection.assistantBlocks
+          .where((block) => block.type == AssistantTurnBlockType.analysis)
+          .toList(growable: false);
+
+      expect(analysisBlocks, hasLength(1));
+      expect(analysisBlocks.single.payload?['isRuntimePreview'], isNot(true));
+      expect(
+        analysisBlocks.single.logicalId,
+        'finalReasoning:7_30',
+      );
+      expect(
+        analysisBlocks.single.reasoningText,
+        '用户想要我用 HTML 可视化介绍 iOS 架构。',
+      );
+    });
+
     test('projects runtime text preview into final response block', () {
       final projection = service.build(
         groupId: 7,
@@ -445,7 +506,7 @@ void main() {
               updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
               blocks: [
                 RuntimeStreamingPreviewBlock(
-                  contentBlockId: 'message_tool_1:tool:0',
+                  contentBlockId: 'message_tool_1:tool:call_weather_1',
                   blockType: StreamingContentBlockType.toolUse,
                   toolUseId: 'call_weather_1',
                   toolName: 'fetch_weather',
@@ -485,7 +546,10 @@ void main() {
             text: '这是最终回答',
             role: MessageRole.assistant,
             timestamp: DateTime(2026, 4, 30, 10, 0, 3),
-            payloadJson: const {'isFinalAnswer': true},
+            payloadJson: const {
+              'isFinalAnswer': true,
+              'logicalId': 'final:7_30',
+            },
           ),
         ],
         runtimePreviewState: RuntimeStreamingPreviewState(
@@ -515,6 +579,207 @@ void main() {
       expect(finalBlocks.single.text, '这是最终回答');
       expect(finalBlocks.single.payload?['isRuntimePreview'], isNot(true));
       expect(finalBlocks.single.logicalId, 'final:7_30');
+    });
+
+    test(
+        'runtime thinking preview carries reasoning logicalId independent from persisted final response',
+        () {
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我回答',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 31,
+            text: '这是最终回答',
+            role: MessageRole.assistant,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 3),
+            payloadJson: const {
+              'isFinalAnswer': true,
+              'logicalId': 'final:7_30',
+            },
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'message_thinking_1',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_thinking_1:thinking',
+                  blockType: StreamingContentBlockType.thinking,
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  text: '先整理回答结构',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final previewAnalysisBlock = projection.assistantBlocks
+          .where((block) => block.payload?['isRuntimePreview'] == true)
+          .single;
+      final truthFinalBlock = projection.assistantBlocks
+          .where((block) =>
+              block.type == AssistantTurnBlockType.finalResponse &&
+              block.payload?['isRuntimePreview'] != true)
+          .single;
+
+      expect(previewAnalysisBlock.type, AssistantTurnBlockType.analysis);
+      expect(previewAnalysisBlock.logicalId, 'finalReasoning:7_30');
+      expect(truthFinalBlock.logicalId, 'final:7_30');
+    });
+
+    test(
+        'tool-decision reasoning preview uses response-scoped logicalId even when toolUse is in a sibling preview message',
+        () {
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我用HTML可视化iOS架构',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 31,
+            text: '',
+            role: MessageRole.assistant,
+            reasoningContent: '先规划一个结构，再调用工具生成产物。',
+            timestamp: DateTime(2026, 4, 30, 10, 0, 3),
+            payloadJson: const {
+              'logicalId': 'toolReasoning:resp_tool_1',
+              'responseId': 'resp_tool_1',
+              'reasoningScope': 'tool_use',
+            },
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'resp_tool_1',
+              responseId: 'resp_tool_1',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'resp_tool_1:thinking',
+                  blockType: StreamingContentBlockType.thinking,
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  text: '先规划一个结构，再调用工具生成产物。',
+                ),
+              ],
+            ),
+            RuntimeStreamingPreviewMessage(
+              messageId: 'resp_tool_1:tool',
+              responseId: 'resp_tool_1',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 2),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'resp_tool_1:tool:call_1',
+                  blockType: StreamingContentBlockType.toolUse,
+                  toolUseId: 'call_1',
+                  toolName: 'create_artifact',
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  text: '{"artifact_id":"ios-architecture"}',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final analysisBlocks = projection.assistantBlocks
+          .where((block) => block.type == AssistantTurnBlockType.analysis)
+          .toList(growable: false);
+
+      expect(analysisBlocks, hasLength(1));
+      expect(analysisBlocks.single.payload?['isRuntimePreview'], isNot(true));
+      expect(analysisBlocks.single.logicalId, 'toolReasoning:resp_tool_1');
+    });
+
+    test(
+        'persisted final response does not suppress preview reasoning by itself',
+        () {
+      final projection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我回答',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 31,
+            text: '这是最终回答',
+            role: MessageRole.assistant,
+            reasoningContent: '先整理答案结构',
+            timestamp: DateTime(2026, 4, 30, 10, 0, 3),
+            payloadJson: const {
+              'isFinalAnswer': true,
+              'logicalId': 'final:7_30',
+            },
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'message_text_same',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_text_same:thinking',
+                  blockType: StreamingContentBlockType.thinking,
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  text: '先整理答案结构',
+                ),
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'message_text_same:text',
+                  blockType: StreamingContentBlockType.text,
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 1),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  text: '这是运行中的正文',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final blocks = projection.assistantBlocks;
+      expect(
+        blocks.where((block) => block.payload?['isRuntimePreview'] == true),
+        hasLength(1),
+      );
+      expect(
+        blocks
+            .where((block) => block.type == AssistantTurnBlockType.finalResponse)
+            .single
+            .reasoningText,
+        '先整理答案结构',
+      );
+      expect(
+        blocks
+            .where((block) => block.payload?['isRuntimePreview'] == true)
+            .single
+            .logicalId,
+        'finalReasoning:7_30',
+      );
     });
 
     test(
@@ -622,7 +887,7 @@ void main() {
               updatedAt: DateTime(2026, 4, 30, 10, 0, 2),
               blocks: [
                 RuntimeStreamingPreviewBlock(
-                  contentBlockId: 'message_tool_1:tool:0',
+                  contentBlockId: 'message_tool_1:tool:call_weather_1',
                   blockType: StreamingContentBlockType.toolUse,
                   toolUseId: 'call_weather_1',
                   toolName: 'fetch_weather',
@@ -723,7 +988,7 @@ void main() {
               updatedAt: DateTime(2026, 4, 30, 10, 0, 1),
               blocks: [
                 RuntimeStreamingPreviewBlock(
-                  contentBlockId: 'message_1:tool:0',
+                  contentBlockId: 'message_1:tool:call_artifact_1',
                   blockType: StreamingContentBlockType.toolUse,
                   toolUseId: 'call_artifact_1',
                   toolName: 'create_artifact',
@@ -785,7 +1050,7 @@ void main() {
                   text: '先给你正文说明',
                 ),
                 RuntimeStreamingPreviewBlock(
-                  contentBlockId: 'message_1:tool:0',
+                  contentBlockId: 'message_1:tool:call_artifact_1',
                   blockType: StreamingContentBlockType.toolUse,
                   toolUseId: 'call_artifact_1',
                   toolName: 'create_artifact',
@@ -876,7 +1141,7 @@ void main() {
               updatedAt: DateTime(2026, 4, 30, 10, 0, 1),
               blocks: [
                 RuntimeStreamingPreviewBlock(
-                  contentBlockId: 'message_1:tool:0',
+                  contentBlockId: 'message_1:tool:call_artifact_1',
                   blockType: StreamingContentBlockType.toolUse,
                   toolUseId: 'call_artifact_1',
                   toolName: 'create_artifact',
@@ -977,7 +1242,7 @@ void main() {
                   text: '先规划结构',
                 ),
                 RuntimeStreamingPreviewBlock(
-                  contentBlockId: 'message_1:tool:0',
+                  contentBlockId: 'message_1:tool:call_artifact_1',
                   blockType: StreamingContentBlockType.toolUse,
                   toolUseId: 'call_artifact_1',
                   toolName: 'create_artifact',
@@ -1068,7 +1333,7 @@ void main() {
                   text: '先规划结构',
                 ),
                 RuntimeStreamingPreviewBlock(
-                  contentBlockId: 'message_1:tool:0',
+                  contentBlockId: 'message_1:tool:call_artifact_1',
                   blockType: StreamingContentBlockType.toolUse,
                   toolUseId: 'call_artifact_1',
                   toolName: 'create_artifact',
@@ -1115,6 +1380,165 @@ void main() {
             .artifactProjection
             ?.source,
         '<div>最终落盘内容</div>',
+      );
+
+      await tempDirectory.delete(recursive: true);
+    });
+
+    test(
+        'keeps logical block order stable after runtime preview state is cleared',
+        () async {
+      final tempDirectory = await Directory.systemTemp.createTemp(
+        'timeline-artifact-order-cleared-',
+      );
+      final fileStorageService =
+          ArtifactFileStorageService(rootDirectory: tempDirectory);
+      await fileStorageService.saveArtifactSource(
+        groupId: 7,
+        artifactId: 'ios-architecture-diagram',
+        title: 'iOS 架构层次图',
+        type: ArtifactType.svg,
+        source: '<svg>final</svg>',
+      );
+      final service = ChatTimelineProjectionService(
+        artifactTurnResolver: ArtifactTurnResolver(
+          fileStorageService: fileStorageService,
+        ),
+        toolBlockProjector: const ToolPresentationBlockProjector(
+          registry: ToolUiRendererRegistry(
+            renderers: [CreateArtifactToolUiRenderer()],
+          ),
+        ),
+      );
+
+      service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我用HTML可视化iOS架构',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 301,
+            text: '第一次工具结果',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolResult,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 1, 500),
+            payloadJson: const {
+              'toolName': 'search_chat_history',
+              'status': 'success',
+              'summary': '第一次工具结果',
+              'providerCallId': 'call_search_1',
+              'data': {'items': []},
+            },
+          ),
+          ChatMessage(
+            id: 302,
+            text: '',
+            role: MessageRole.assistant,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 2, 100),
+            reasoningContent: '补充 SVG 结构细节。',
+            payloadJson: const {
+              'logicalId': 'toolReasoning:resp_tool_2',
+              'responseId': 'resp_tool_2',
+              'reasoningScope': 'tool_use',
+            },
+          ),
+        ],
+        runtimePreviewState: RuntimeStreamingPreviewState(
+          messages: [
+            RuntimeStreamingPreviewMessage(
+              messageId: 'resp_tool_2',
+              responseId: 'resp_tool_2',
+              createdAt: DateTime(2026, 4, 30, 10, 0, 2),
+              updatedAt: DateTime(2026, 4, 30, 10, 0, 4),
+              blocks: [
+                RuntimeStreamingPreviewBlock(
+                  contentBlockId: 'resp_tool_2:tool:call_artifact_1',
+                  blockType: StreamingContentBlockType.toolUse,
+                  toolUseId: 'call_artifact_1',
+                  toolName: 'create_artifact',
+                  createdAt: DateTime(2026, 4, 30, 10, 0, 2),
+                  updatedAt: DateTime(2026, 4, 30, 10, 0, 4),
+                  text:
+                      '{"id":"ios-architecture-diagram","type":"svg","title":"iOS 架构层次图","source":"<svg>preview</svg>"}',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final settledProjection = service.build(
+        groupId: 7,
+        messages: [
+          ChatMessage(
+            id: 30,
+            text: '帮我用HTML可视化iOS架构',
+            role: MessageRole.user,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
+          ),
+          ChatMessage(
+            id: 301,
+            text: '第一次工具结果',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolResult,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 1, 500),
+            payloadJson: const {
+              'toolName': 'search_chat_history',
+              'status': 'success',
+              'summary': '第一次工具结果',
+              'providerCallId': 'call_search_1',
+              'data': {'items': []},
+            },
+          ),
+          ChatMessage(
+            id: 302,
+            text: '',
+            role: MessageRole.assistant,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 2, 100),
+            reasoningContent: '补充 SVG 结构细节。',
+            payloadJson: const {
+              'logicalId': 'toolReasoning:resp_tool_2',
+              'responseId': 'resp_tool_2',
+              'reasoningScope': 'tool_use',
+            },
+          ),
+          ChatMessage(
+            id: 31,
+            text: '已创建 artifact：ios-architecture-diagram',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.toolResult,
+            timestamp: DateTime(2026, 4, 30, 10, 0, 5),
+            payloadJson: const {
+              'toolName': 'create_artifact',
+              'status': 'success',
+              'summary': '已创建 artifact：ios-architecture-diagram',
+              'providerCallId': 'call_artifact_1',
+              'data': {
+                'artifactId': 'ios-architecture-diagram',
+                'title': 'iOS 架构层次图',
+                'type': 'svg',
+                'sourcePath':
+                    '/workspaces/.default/artifacts/ios-architecture-diagram.svg',
+              },
+            },
+          ),
+        ],
+        runtimePreviewState: const RuntimeStreamingPreviewState(),
+      );
+
+      expect(
+        settledProjection.assistantBlocks
+            .map((block) => block.type)
+            .toList(growable: false),
+        [
+          AssistantTurnBlockType.toolResultSummary,
+          AssistantTurnBlockType.artifact,
+          AssistantTurnBlockType.analysis,
+        ],
       );
 
       await tempDirectory.delete(recursive: true);

@@ -638,6 +638,23 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       data: {
         'blockCount': blocks.length,
         'blockTypes': blocks.map((b) => b.type.name).join(','),
+        'takeoverFocusBlocks': blocks
+            .where(
+              (block) =>
+                  block.type == AssistantTurnBlockType.analysis ||
+                  block.type == AssistantTurnBlockType.finalResponse,
+            )
+            .map((block) => {
+                  'type': block.type.name,
+                  'id': block.id,
+                  'logicalId': block.logicalId,
+                  'turnId': block.turnId,
+                  'isRuntimePreview': block.payload?['isRuntimePreview'] == true,
+                  'previewMessageId': block.payload?['previewMessageId'],
+                  'responseId': block.payload?['responseId'],
+                  'reasoningScope': block.payload?['reasoningScope'],
+                })
+            .toList(growable: false),
       },
     );
     final items = <ChatTimelineItem>[];
@@ -784,9 +801,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     ChatMessage? sourceMessage,
   ) {
     final logicalId = block.logicalId?.trim();
-    final key = block.type == AssistantTurnBlockType.artifact &&
-            logicalId != null &&
-            logicalId.isNotEmpty
+    final key = logicalId != null && logicalId.isNotEmpty
         ? logicalId
         : block.id;
     Logger.temp(

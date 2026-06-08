@@ -1,5 +1,7 @@
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
+import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat_event.dart';
+import 'package:ai_chat/models/debug/streaming_trace_snapshot.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
@@ -25,6 +27,52 @@ class ChatSendLiveStateSnapshot {
   });
 
   ChatTurn? get latestTurn => turns.isEmpty ? null : turns.last;
+}
+
+class ChatSendLiveProjectionBlockSnapshot {
+  const ChatSendLiveProjectionBlockSnapshot({
+    required this.id,
+    required this.type,
+    required this.logicalId,
+    required this.isRuntimePreview,
+    required this.previewMessageId,
+    required this.previewAggregateKind,
+    required this.hasReasoning,
+  });
+
+  final String id;
+  final AssistantTurnBlockType type;
+  final String? logicalId;
+  final bool isRuntimePreview;
+  final String? previewMessageId;
+  final String? previewAggregateKind;
+  final bool hasReasoning;
+}
+
+class ChatSendLiveProjectionSample {
+  const ChatSendLiveProjectionSample({
+    required this.runtimePreviewMessageCount,
+    required this.assistantBlocks,
+    required this.traceStage,
+    required this.traceStatus,
+    required this.traceTakeoverAt,
+  });
+
+  final int runtimePreviewMessageCount;
+  final List<ChatSendLiveProjectionBlockSnapshot> assistantBlocks;
+  final StreamingTraceStage? traceStage;
+  final StreamingTraceLifecycleStatus? traceStatus;
+  final DateTime? traceTakeoverAt;
+}
+
+class ChatSendLiveDiagnosticRunResult {
+  const ChatSendLiveDiagnosticRunResult({
+    required this.state,
+    required this.samples,
+  });
+
+  final ChatSendLiveStateSnapshot state;
+  final List<ChatSendLiveProjectionSample> samples;
 }
 
 void expectTurnState(
@@ -229,6 +277,7 @@ bool expectOptionalStructuredAskUserFlow(
   if (supportsStructuredInteraction || waitingState != null) {
     return true;
   }
+
   expectNoPlannerRequestFailure(finalState);
   expectTurnState(
     finalState,
@@ -242,6 +291,78 @@ bool expectOptionalStructuredAskUserFlow(
     ],
   );
   return false;
+}
+
+void expectTruthTakeoverSupersedesPreview(
+  ChatSendLiveDiagnosticRunResult result,
+) {
+  expect(
+    result.samples,
+    isNotEmpty,
+    reason: 'Expected runtime diagnostic sampling during live run.',
+  );
+  final preTakeoverWithPreview = result.samples.where((sample) {
+    return sample.assistantBlocks.any((block) => block.isRuntimePreview);
+  });
+  expect(
+    preTakeoverWithPreview,
+    isNotEmpty,
+    reason: 'Expected at least one runtime preview sample before truth takeover.',
+  );
+
+  final postTakeoverSamples = result.samples.where((sample) {
+    return sample.traceStage == StreamingTraceStage.finalTakeover ||
+        sample.traceTakeoverAt != null ||
+        sample.traceStatus == StreamingTraceLifecycleStatus.completed;
+  }).toList(growable: false);
+  expect(
+    postTakeoverSamples,
+    isNotEmpty,
+    reason: 'Expected at least one sampled frame after final takeover.',
+  );
+
+  for (final sample in postTakeoverSamples) {
+    final truthLogicalIds = sample.assistantBlocks
+        .where((block) => !block.isRuntimePreview)
+        .map((block) => block.logicalId?.trim())
+        .whereType<String>()
+        .where((logicalId) => logicalId.isNotEmpty)
+        .toSet();
+    final truthPreviewMessageIdsWithReasoning = sample.assistantBlocks
+        .where(
+          (block) =>
+              !block.isRuntimePreview &&
+              block.hasReasoning &&
+              (block.previewMessageId?.trim().isNotEmpty ?? false),
+        )
+        .map((block) => block.previewMessageId!.trim())
+        .toSet();
+
+    final overlappingPreviewBlocks = sample.assistantBlocks.where((block) {
+      if (!block.isRuntimePreview) {
+        return false;
+      }
+      final logicalId = block.logicalId?.trim();
+      if (logicalId != null &&
+          logicalId.isNotEmpty &&
+          truthLogicalIds.contains(logicalId)) {
+        return true;
+      }
+      return block.previewAggregateKind == 'reasoning' &&
+          (block.previewMessageId?.trim().isNotEmpty ?? false) &&
+          truthPreviewMessageIdsWithReasoning.contains(
+            block.previewMessageId!.trim(),
+          );
+    }).toList(growable: false);
+
+    expect(
+      overlappingPreviewBlocks,
+      isEmpty,
+      reason:
+          'Expected truth takeover to supersede overlapping preview entities, '
+          'but found preview blocks: ${overlappingPreviewBlocks.map((b) => '${b.type.name}:${b.logicalId ?? b.id}:${b.previewMessageId ?? 'no-preview-message'}').join(', ')}',
+    );
+  }
 }
 
 bool expectOptionalStructuredToolConfirmationFlow(

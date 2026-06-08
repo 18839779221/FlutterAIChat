@@ -112,10 +112,6 @@ class AgentEventProcessor {
 
   Future<void> _handleTruthEvent(ChatEvent event) async {
     final dbHelper = _ref.read(databaseProvider);
-    if (event.eventType != ChatEventType.assistantReasoningDelta) {
-      _toolUseReasoningMessageId = null;
-      _toolUseReasoningMessage = null;
-    }
     switch (event.eventType) {
       case ChatEventType.userMessage:
       case ChatEventType.assistantTextFinal:
@@ -400,6 +396,7 @@ class AgentEventProcessor {
         dbHelper: dbHelper,
         content: content,
         reasoningScope: reasoningScope!,
+        payloadJson: event.payloadJson,
       );
       return;
     }
@@ -411,6 +408,15 @@ class AgentEventProcessor {
     final nextPayload = _withIdentity({
       'draftStage': 'reasoning',
       if (reasoningScope != null) 'reasoningScope': reasoningScope,
+      if ((event.payloadJson?['logicalId'] ?? '').toString().trim().isNotEmpty)
+        'logicalId': event.payloadJson!['logicalId'],
+      if ((event.payloadJson?['previewMessageId'] ?? '').toString().trim().isNotEmpty)
+        'previewMessageId': event.payloadJson!['previewMessageId'],
+      if ((event.payloadJson?['previewContentBlockId'] ?? '')
+          .toString()
+          .trim()
+          .isNotEmpty)
+        'previewContentBlockId': event.payloadJson!['previewContentBlockId'],
     });
     if (draft == null || draft.turnId != _runtimeTurnId()) {
       _ref.read(runtimeAssistantDraftProvider.notifier).state =
@@ -452,7 +458,18 @@ class AgentEventProcessor {
       // messages. `ChatBlockBuilder` reads this to scope the `logicalId`
       // dedup contract so a mid-turn planner message cannot block the
       // streaming preview of a later iteration's final answer.
-      payloadJson: const {'isFinalAnswer': true},
+      payloadJson: _withIdentity({
+        'isFinalAnswer': true,
+        if ((event.payloadJson?['logicalId'] ?? '').toString().trim().isNotEmpty)
+          'logicalId': event.payloadJson!['logicalId'],
+        if ((event.payloadJson?['previewMessageId'] ?? '').toString().trim().isNotEmpty)
+          'previewMessageId': event.payloadJson!['previewMessageId'],
+        if ((event.payloadJson?['previewContentBlockId'] ?? '')
+            .toString()
+            .trim()
+            .isNotEmpty)
+          'previewContentBlockId': event.payloadJson!['previewContentBlockId'],
+      }),
     );
     final insertedId = await dbHelper.insertMessage(message, _groupId);
     message.id = insertedId;
@@ -527,8 +544,14 @@ class AgentEventProcessor {
     required ChatStorage dbHelper,
     required String content,
     required String reasoningScope,
+    Map<String, dynamic>? payloadJson,
   }) async {
-    if (_toolUseReasoningMessageId != null && _toolUseReasoningMessage != null) {
+    if (_toolUseReasoningMessageId != null &&
+        _toolUseReasoningMessage != null &&
+        _sameToolUseReasoningThread(
+          left: _toolUseReasoningMessage!.payloadJson,
+          right: payloadJson,
+        )) {
       final message = _toolUseReasoningMessage!;
       _ref
           .read(messagesProvider.notifier)
@@ -547,6 +570,10 @@ class AgentEventProcessor {
       reasoningContent: content,
       payloadJson: _withIdentity({
         'reasoningScope': reasoningScope,
+        if ((payloadJson?['logicalId'] ?? '').toString().trim().isNotEmpty)
+          'logicalId': payloadJson!['logicalId'],
+        if ((payloadJson?['responseId'] ?? '').toString().trim().isNotEmpty)
+          'responseId': payloadJson!['responseId'],
       }),
     );
     final id = await dbHelper.insertMessage(message, _groupId);
@@ -554,6 +581,36 @@ class AgentEventProcessor {
     _toolUseReasoningMessageId = id;
     _toolUseReasoningMessage = message;
     _ref.read(messagesProvider.notifier).addMessage(message);
+  }
+
+  bool _sameToolUseReasoningThread({
+    required Map<String, dynamic>? left,
+    required Map<String, dynamic>? right,
+  }) {
+    final leftLogicalId = _trimmedPayloadValue(left, 'logicalId');
+    final rightLogicalId = _trimmedPayloadValue(right, 'logicalId');
+    if (leftLogicalId != null || rightLogicalId != null) {
+      return leftLogicalId != null &&
+          rightLogicalId != null &&
+          leftLogicalId == rightLogicalId;
+    }
+    final leftResponseId = _trimmedPayloadValue(left, 'responseId');
+    final rightResponseId = _trimmedPayloadValue(right, 'responseId');
+    if (leftResponseId != null || rightResponseId != null) {
+      return leftResponseId != null &&
+          rightResponseId != null &&
+          leftResponseId == rightResponseId;
+    }
+    return false;
+  }
+
+  String? _trimmedPayloadValue(Map<String, dynamic>? payload, String key) {
+    final value = payload?[key];
+    if (value is! String) {
+      return null;
+    }
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 
   String? _resolvedFinalAnswerReasoning(RuntimeAssistantDraft? runtimeDraft) {

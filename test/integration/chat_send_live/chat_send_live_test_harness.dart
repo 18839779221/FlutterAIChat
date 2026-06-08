@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat/assistant_turn_block.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/debug/debug_cache_panel_projection.dart';
@@ -13,6 +15,7 @@ import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
 import 'package:ai_chat/models/llm/llm_factory.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
+import 'package:ai_chat/providers/streaming_trace_providers.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
@@ -368,6 +371,20 @@ class ChatSendLiveTestHarness {
     );
   }
 
+  ChatSendLiveProjectionSample snapshotProjectionSample() {
+    final projection = container.read(chatTimelineProjectionProvider);
+    final trace = container.read(streamingTraceSnapshotProvider);
+    return ChatSendLiveProjectionSample(
+      runtimePreviewMessageCount: projection.runtimePreviewState.messages.length,
+      assistantBlocks: projection.assistantBlocks
+          .map(_toProjectionBlockSnapshot)
+          .toList(growable: false),
+      traceStage: trace?.currentStage,
+      traceStatus: trace?.status,
+      traceTakeoverAt: trace?.takeoverAt,
+    );
+  }
+
   Future<Directory> prepareWorkspaceFixture({
     required String scenarioId,
     Map<String, String> files = const {},
@@ -392,6 +409,67 @@ class ChatSendLiveTestHarness {
     return autoContinueCurrentTurn(
       maxContinuations: maxContinuations,
       autoConfirmTools: autoConfirmTools,
+    );
+  }
+
+  Future<ChatSendLiveDiagnosticRunResult> runScenarioWithTakeoverDiagnostics(
+    ScenarioCase scenario, {
+    int maxContinuations = 4,
+    bool autoConfirmTools = true,
+    Duration sampleInterval = const Duration(milliseconds: 120),
+    Duration idleCompletionGrace = const Duration(milliseconds: 400),
+    Duration timeout = const Duration(minutes: 2),
+  }) async {
+    final samples = <ChatSendLiveProjectionSample>[];
+    var stopRequested = false;
+    final samplingDone = Completer<void>();
+
+    Future<void> sampleLoop() async {
+      final startedAt = DateTime.now();
+      DateTime? completedAt;
+      while (!stopRequested) {
+        samples.add(snapshotProjectionSample());
+        final latestTurn = (await snapshotState()).latestTurn;
+        final status = latestTurn?.status;
+        final isTerminal = status == null ||
+            status == ChatTurnStatus.completed ||
+            status == ChatTurnStatus.failed ||
+            status == ChatTurnStatus.cancelled ||
+            status == ChatTurnStatus.maxIterationsReached;
+        if (isTerminal) {
+          completedAt ??= DateTime.now();
+          if (DateTime.now().difference(completedAt) >= idleCompletionGrace) {
+            break;
+          }
+        } else {
+          completedAt = null;
+        }
+        if (DateTime.now().difference(startedAt) >= timeout) {
+          break;
+        }
+        await Future<void>.delayed(sampleInterval);
+      }
+      if (!samplingDone.isCompleted) {
+        samplingDone.complete();
+      }
+    }
+
+    final loopFuture = sampleLoop();
+    try {
+      await runScenarioWithAutoContinuation(
+        scenario,
+        maxContinuations: maxContinuations,
+        autoConfirmTools: autoConfirmTools,
+      );
+    } finally {
+      stopRequested = true;
+      await samplingDone.future;
+      await loopFuture;
+    }
+
+    return ChatSendLiveDiagnosticRunResult(
+      state: await snapshotState(),
+      samples: samples,
     );
   }
 
@@ -517,6 +595,21 @@ class ChatSendLiveTestHarness {
       return '';
     }
     return file.readAsString();
+  }
+
+  ChatSendLiveProjectionBlockSnapshot _toProjectionBlockSnapshot(
+    AssistantTurnBlock block,
+  ) {
+    final payload = block.payload ?? const <String, dynamic>{};
+    return ChatSendLiveProjectionBlockSnapshot(
+      id: block.id,
+      type: block.type,
+      logicalId: block.logicalId,
+      isRuntimePreview: payload['isRuntimePreview'] == true,
+      previewMessageId: payload['previewMessageId']?.toString(),
+      previewAggregateKind: payload['previewAggregateKind']?.toString(),
+      hasReasoning: (block.reasoningText ?? '').trim().isNotEmpty,
+    );
   }
 
   Future<void> dispose() async {

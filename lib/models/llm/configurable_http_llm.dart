@@ -557,14 +557,17 @@ class ConfigurableHttpLLM
     final adapter = _adapterFor(apiStyle);
     final builtDecision = accumulator.buildDecision();
     // Capture provider raw assistant message for round-trip replay.
-    final rawAssistantMessage = builtDecision == null
-        ? null
-        : adapter.assembleRawFromStreamingSnapshot(accumulator.currentSnapshot());
+    final snapshot = accumulator.currentSnapshot();
+    final rawAssistantMessage =
+        builtDecision == null ? null : adapter.assembleRawFromStreamingSnapshot(snapshot);
     final decisionWithRaw = (builtDecision == null || rawAssistantMessage == null)
         ? builtDecision
         : builtDecision.copyWith(
             providerState: {
               ...builtDecision.providerState,
+              'streaming_preview_identity': _buildStreamingPreviewIdentity(
+                snapshot,
+              ),
               'raw_assistant_message': rawAssistantMessage,
             },
           );
@@ -1164,6 +1167,34 @@ class ConfigurableHttpLLM
       case AnthropicMessagesRequestSpec(:final request):
         return request.toJson();
     }
+  }
+
+  Map<String, dynamic>? _buildStreamingPreviewIdentity(
+    StreamingDecisionAccumulatorSnapshot snapshot,
+  ) {
+    final messageId = snapshot.messageId?.trim();
+    if (messageId == null || messageId.isEmpty) {
+      return null;
+    }
+    String? reasoningBlockId;
+    String? textBlockId;
+    for (final block in snapshot.blocks) {
+      if (block.type == StreamingContentBlockType.thinking &&
+          block.text.trim().isNotEmpty) {
+        reasoningBlockId ??= block.contentBlockId;
+      } else if (block.type == StreamingContentBlockType.text &&
+          block.text.trim().isNotEmpty) {
+        textBlockId ??= block.contentBlockId;
+      }
+    }
+    if (reasoningBlockId == null && textBlockId == null) {
+      return null;
+    }
+    return {
+      'messageId': messageId,
+      if (reasoningBlockId != null) 'reasoningBlockId': reasoningBlockId,
+      if (textBlockId != null) 'textBlockId': textBlockId,
+    };
   }
 }
 

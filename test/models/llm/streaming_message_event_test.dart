@@ -20,7 +20,7 @@ void main() {
   test('tool-use block start preserves provider tool metadata', () {
     const event = StreamingContentBlockStartEvent(
       messageId: 'resp_2',
-      contentBlockId: 'resp_2:tool:0',
+      contentBlockId: 'resp_2:tool:call_1',
       blockType: StreamingContentBlockType.toolUse,
       toolUseId: 'call_1',
       toolName: 'create_artifact',
@@ -28,7 +28,7 @@ void main() {
     );
 
     expect(event.messageId, 'resp_2');
-    expect(event.contentBlockId, 'resp_2:tool:0');
+    expect(event.contentBlockId, 'resp_2:tool:call_1');
     expect(event.blockType, StreamingContentBlockType.toolUse);
     expect(event.toolUseId, 'call_1');
     expect(event.toolName, 'create_artifact');

@@ -1081,8 +1081,15 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
     required int turnId,
     required int groupId,
     required String content,
+    Map<String, dynamic>? payloadJson,
   }) async {
-    return _append(turnId, groupId, ChatEventType.assistantTextFinal, content);
+    return _append(
+      turnId,
+      groupId,
+      ChatEventType.assistantTextFinal,
+      content,
+      payloadJson: payloadJson,
+    );
   }
 
   @override
@@ -1090,8 +1097,15 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
     required int turnId,
     required int groupId,
     required String content,
+    Map<String, dynamic>? payloadJson,
   }) async {
-    return _append(turnId, groupId, ChatEventType.finalAnswer, content);
+    return _append(
+      turnId,
+      groupId,
+      ChatEventType.finalAnswer,
+      content,
+      payloadJson: payloadJson,
+    );
   }
 
   @override

@@ -14,6 +14,7 @@ import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/services/artifact/runtime_artifact_preview_parser.dart';
 import 'package:ai_chat/services/artifact/artifact_turn_resolver.dart';
 import 'package:ai_chat/services/chat_block_builder.dart';
+import 'package:ai_chat/services/chat_timeline_order_anchor_store.dart';
 import 'package:ai_chat/services/tool_presentation_block_projector.dart';
 
 /// Builds one consistent projection snapshot for timeline rendering and
@@ -23,16 +24,19 @@ class ChatTimelineProjectionService {
     ChatBlockBuilder? blockBuilder,
     ArtifactTurnResolver? artifactTurnResolver,
     ToolPresentationBlockProjector? toolBlockProjector,
+    ChatTimelineOrderAnchorStore? orderAnchorStore,
   })  : _blockBuilder = blockBuilder ?? ChatBlockBuilder(),
         _artifactTurnResolver = artifactTurnResolver,
         _runtimeArtifactPreviewParser = const RuntimeArtifactPreviewParser(),
         _toolBlockProjector =
-            toolBlockProjector ?? const ToolPresentationBlockProjector();
+            toolBlockProjector ?? const ToolPresentationBlockProjector(),
+        _orderAnchorStore = orderAnchorStore ?? ChatTimelineOrderAnchorStore();
 
   final ChatBlockBuilder _blockBuilder;
   final ArtifactTurnResolver? _artifactTurnResolver;
   final RuntimeArtifactPreviewParser _runtimeArtifactPreviewParser;
   final ToolPresentationBlockProjector _toolBlockProjector;
+  final ChatTimelineOrderAnchorStore _orderAnchorStore;
 
   ChatTimelineProjection build({
     required List<ChatMessage> messages,
@@ -106,6 +110,7 @@ class ChatTimelineProjectionService {
         ...runtimeArtifactBlocks,
       ],
     );
+    _rememberOrderAnchors(mergedBlocks);
     Logger.temp(
       'ChatTimelineProjectionService',
       'build completed',
@@ -118,6 +123,7 @@ class ChatTimelineProjectionService {
         'finalMergedBlockTypes': mergedBlocks.map((b) => b.type.name).join(','),
         'finalMergedTurnIds':
             mergedBlocks.map((b) => '${b.type.name}:${b.turnId}').join(' | '),
+        'takeoverFocusBlocks': _describeTakeoverFocusBlocks(mergedBlocks),
       },
     );
     return ChatTimelineProjection(
@@ -347,24 +353,131 @@ class ChatTimelineProjectionService {
     final runtimePreviewBlocks = <AssistantTurnBlock>[];
     for (final message in runtimePreviewState.messages) {
       var sequence = 90000;
-      for (final block in message.blocks) {
-        final targetTurnId = _resolveProjectedRuntimeTurnId(
-          entryTurnId: 'preview:${message.messageId}',
-          fallbackTurnId: resolvedTurnId,
-        );
-        final projected = _buildRuntimePreviewBlock(
+      final targetTurnId = _resolveProjectedRuntimeTurnId(
+        entryTurnId: 'preview:${message.messageId}',
+        fallbackTurnId: resolvedTurnId,
+      );
+      final aggregates = _buildRuntimePreviewMessageBlocks(
+        message: message,
+        responseScopedMessages: _runtimePreviewMessagesForResponse(
+          stateMessages: runtimePreviewState.messages,
           message: message,
-          block: block,
-          turnId: targetTurnId,
-          sequence: sequence,
-        );
-        if (projected != null) {
-          runtimePreviewBlocks.add(projected);
-          sequence += 1;
-        }
+        ),
+        turnId: targetTurnId,
+        startSequence: sequence,
+      );
+      if (aggregates.isNotEmpty) {
+        runtimePreviewBlocks.addAll(aggregates);
+        sequence += aggregates.length;
       }
     }
     return runtimePreviewBlocks;
+  }
+
+  List<AssistantTurnBlock> _buildRuntimePreviewMessageBlocks({
+    required RuntimeStreamingPreviewMessage message,
+    required List<RuntimeStreamingPreviewMessage> responseScopedMessages,
+    required String turnId,
+    required int startSequence,
+  }) {
+    final blocks = <AssistantTurnBlock>[];
+    StringBuffer? reasoningBuffer;
+    RuntimeStreamingPreviewBlock? reasoningAnchor;
+    StringBuffer? textContentBuffer;
+    StringBuffer? textReasoningBuffer;
+    RuntimeStreamingPreviewBlock? textAnchor;
+
+    for (final block in message.blocks) {
+      if (block.blockType == StreamingContentBlockType.thinking) {
+        if (block.text.trim().isEmpty) {
+          continue;
+        }
+        reasoningBuffer ??= StringBuffer();
+        reasoningBuffer.write(block.text);
+        reasoningAnchor ??= block;
+        continue;
+      }
+      if (block.blockType != StreamingContentBlockType.text) {
+        continue;
+      }
+      final extraction = extractThinkTaggedText(block.text);
+      final content = extraction.content;
+      final reasoning = extraction.reasoning;
+      if ((content ?? '').isEmpty && (reasoning ?? '').isEmpty) {
+        continue;
+      }
+      textAnchor ??= block;
+      if ((content ?? '').isNotEmpty) {
+        textContentBuffer ??= StringBuffer();
+        textContentBuffer.write(content);
+      }
+      if ((reasoning ?? '').isNotEmpty) {
+        textReasoningBuffer ??= StringBuffer();
+        textReasoningBuffer.write(reasoning);
+      }
+    }
+
+    var sequence = startSequence;
+    if (reasoningBuffer != null && reasoningAnchor != null) {
+      final reasoningLogicalId = _runtimePreviewAggregateLogicalId(
+        message: message,
+        responseScopedMessages: responseScopedMessages,
+        turnId: turnId,
+        blockKind: 'reasoning',
+      );
+      blocks.add(
+        AssistantTurnBlock(
+          id: '${message.messageId}:reasoning',
+          turnId: turnId,
+          type: AssistantTurnBlockType.analysis,
+          sequence: sequence,
+          createdAt: reasoningAnchor.createdAt,
+          updatedAt: reasoningAnchor.updatedAt,
+          logicalId: reasoningLogicalId,
+          reasoningText: reasoningBuffer.toString(),
+          payload: _runtimePreviewAggregatePayload(
+            message: message,
+            blockKind: 'reasoning',
+            anchorBlock: reasoningAnchor,
+            logicalId: reasoningLogicalId,
+          ),
+        ),
+      );
+      sequence += 1;
+    }
+
+    final finalText = textContentBuffer?.toString();
+    final finalReasoning = textReasoningBuffer?.toString();
+    if (((finalText ?? '').isNotEmpty || (finalReasoning ?? '').isNotEmpty) &&
+        textAnchor != null) {
+      final textLogicalId = _runtimePreviewAggregateLogicalId(
+        message: message,
+        responseScopedMessages: responseScopedMessages,
+        turnId: turnId,
+        blockKind: 'text',
+      );
+      blocks.add(
+        AssistantTurnBlock(
+          id: '${message.messageId}:text',
+          turnId: turnId,
+          type: AssistantTurnBlockType.finalResponse,
+          sequence: sequence,
+          createdAt: textAnchor.createdAt,
+          updatedAt: textAnchor.updatedAt,
+          logicalId: textLogicalId,
+          text: finalText,
+          reasoningText: finalReasoning,
+          payload: _runtimePreviewAggregatePayload(
+            message: message,
+            blockKind: 'text',
+            anchorBlock: textAnchor,
+            logicalId: textLogicalId,
+          ),
+        ),
+      );
+    }
+
+    return blocks;
   }
 
   List<AssistantTurnBlock> _buildRuntimeArtifactBlocks({
@@ -609,6 +722,23 @@ class ChatTimelineProjectionService {
     };
   }
 
+  Map<String, dynamic> _runtimePreviewAggregatePayload({
+    required RuntimeStreamingPreviewMessage message,
+    required String blockKind,
+    required RuntimeStreamingPreviewBlock anchorBlock,
+    required String? logicalId,
+  }) {
+    return {
+      ..._runtimePreviewPayload(
+        message: message,
+        messageId: message.messageId,
+        block: anchorBlock,
+      ),
+      'previewAggregateKind': blockKind,
+      if (logicalId != null) 'logicalId': logicalId,
+    };
+  }
+
   String? _resolveActiveRuntimeTurnId({
     required List<ChatMessage> messages,
     required int? groupId,
@@ -720,6 +850,23 @@ class ChatTimelineProjectionService {
     return merged;
   }
 
+  void _rememberOrderAnchors(List<AssistantTurnBlock> blocks) {
+    final liveLogicalIds = <String>{};
+    for (final block in blocks) {
+      final logicalId = block.logicalId?.trim();
+      if (logicalId == null || logicalId.isEmpty) {
+        continue;
+      }
+      liveLogicalIds.add(logicalId);
+      _orderAnchorStore.remember(
+        logicalId: logicalId,
+        anchorMicros: block.createdAt.microsecondsSinceEpoch,
+        sequence: block.sequence,
+      );
+    }
+    _orderAnchorStore.retainLogicalIds(liveLogicalIds);
+  }
+
   /// Drops preview-origin blocks whose [AssistantTurnBlock.logicalId] is
   /// already represented by a truth-origin block.
   ///
@@ -738,10 +885,9 @@ class ChatTimelineProjectionService {
         continue;
       }
       final logicalId = block.logicalId?.trim();
-      if (logicalId == null || logicalId.isEmpty) {
-        continue;
+      if (logicalId != null && logicalId.isNotEmpty) {
+        truthLogicalIds.add(logicalId);
       }
-      truthLogicalIds.add(logicalId);
     }
     if (truthLogicalIds.isEmpty) {
       return blocks;
@@ -775,6 +921,7 @@ class ChatTimelineProjectionService {
     if (draft == null) {
       return null;
     }
+    final logicalId = _runtimeDraftLogicalId(draft);
     return AssistantTurnBlock(
       id: draft.draftId,
       turnId: draft.turnId,
@@ -782,22 +929,85 @@ class ChatTimelineProjectionService {
       sequence: 99999,
       createdAt: draft.createdAt,
       updatedAt: draft.updatedAt,
+      logicalId: logicalId,
       text: draft.text,
       reasoningText: draft.reasoningText,
       payload: draft.payload,
     );
   }
 
+  String? _runtimeDraftLogicalId(RuntimeAssistantDraft draft) {
+    final raw = draft.payload?['logicalId'];
+    if (raw is String) {
+      final trimmed = raw.trim();
+      if (trimmed.isNotEmpty) {
+        return trimmed;
+      }
+    }
+    return null;
+  }
+
+  String? _runtimePreviewAggregateLogicalId({
+    required RuntimeStreamingPreviewMessage message,
+    required List<RuntimeStreamingPreviewMessage> responseScopedMessages,
+    required String turnId,
+    required String blockKind,
+  }) {
+    final responseId = message.responseId?.trim();
+    final hasToolUseInResponse = responseScopedMessages.any(
+      (candidate) => candidate.blocks.any(
+        (block) => block.blockType == StreamingContentBlockType.toolUse,
+      ),
+    );
+    if (hasToolUseInResponse && responseId != null && responseId.isNotEmpty) {
+      return switch (blockKind) {
+        'reasoning' => 'toolReasoning:$responseId',
+        'text' => 'toolText:$responseId',
+        _ => null,
+      };
+    }
+    final finalTurnId = message.streamTurnId?.trim().isNotEmpty == true
+        ? message.streamTurnId!.trim()
+        : turnId;
+    if (finalTurnId.isNotEmpty) {
+      return switch (blockKind) {
+        'reasoning' => 'finalReasoning:$finalTurnId',
+        'text' => 'final:$finalTurnId',
+        _ => null,
+      };
+    }
+    return null;
+  }
+
+  List<RuntimeStreamingPreviewMessage> _runtimePreviewMessagesForResponse({
+    required List<RuntimeStreamingPreviewMessage> stateMessages,
+    required RuntimeStreamingPreviewMessage message,
+  }) {
+    final responseId = message.responseId?.trim();
+    if (responseId == null || responseId.isEmpty) {
+      return [message];
+    }
+    final matches = stateMessages
+        .where((candidate) => candidate.responseId?.trim() == responseId)
+        .toList(growable: false);
+    if (matches.isNotEmpty) {
+      return matches;
+    }
+    return [message];
+  }
+
   int _compareTurnBlocks(
     AssistantTurnBlock left,
     AssistantTurnBlock right,
   ) {
-    final timeOrder = left.createdAt.compareTo(right.createdAt);
+    final leftAnchor = _orderAnchorForBlock(left);
+    final rightAnchor = _orderAnchorForBlock(right);
+    final timeOrder = leftAnchor.anchorMicros.compareTo(rightAnchor.anchorMicros);
     if (timeOrder != 0) {
       return timeOrder;
     }
 
-    final sequenceOrder = left.sequence.compareTo(right.sequence);
+    final sequenceOrder = leftAnchor.sequence.compareTo(rightAnchor.sequence);
     if (sequenceOrder != 0) {
       return sequenceOrder;
     }
@@ -809,6 +1019,61 @@ class ChatTimelineProjectionService {
     }
 
     return left.id.compareTo(right.id);
+  }
+
+  _ResolvedOrderAnchor _orderAnchorForBlock(AssistantTurnBlock block) {
+    final logicalId = block.logicalId?.trim();
+    if (logicalId == null || logicalId.isEmpty) {
+      return _ResolvedOrderAnchor(
+        anchorMicros: block.createdAt.microsecondsSinceEpoch,
+        sequence: block.sequence,
+      );
+    }
+    final remembered = _orderAnchorStore.remember(
+      logicalId: logicalId,
+      anchorMicros: block.createdAt.microsecondsSinceEpoch,
+      sequence: block.sequence,
+    );
+    return _ResolvedOrderAnchor(
+      anchorMicros: remembered.anchorMicros,
+      sequence: remembered.sequence,
+    );
+  }
+
+  List<Map<String, dynamic>> _describeTakeoverFocusBlocks(
+    List<AssistantTurnBlock> blocks,
+  ) {
+    return blocks
+        .where(
+          (block) =>
+              block.type == AssistantTurnBlockType.analysis ||
+              block.type == AssistantTurnBlockType.finalResponse,
+        )
+        .map((block) {
+          final reasoningText = (block.reasoningText ?? '').trim();
+          final text = (block.text ?? '').trim();
+          return <String, dynamic>{
+            'type': block.type.name,
+            'id': block.id,
+            'logicalId': block.logicalId,
+            'turnId': block.turnId,
+            'isRuntimePreview': block.payload?['isRuntimePreview'] == true,
+            'previewMessageId': block.payload?['previewMessageId'],
+            'responseId': block.payload?['responseId'],
+            'reasoningScope': block.payload?['reasoningScope'],
+            'textPreview': text.isEmpty ? '' : _truncateForLog(text),
+            'reasoningPreview':
+                reasoningText.isEmpty ? '' : _truncateForLog(reasoningText),
+          };
+        })
+        .toList(growable: false);
+  }
+
+  String _truncateForLog(String value) {
+    if (value.length <= 80) {
+      return value;
+    }
+    return '${value.substring(0, 80)}...';
   }
 
   int _turnBlockTypePriority(AssistantTurnBlockType type) {
@@ -946,5 +1211,15 @@ class _ArtifactOrderAnchor {
   });
 
   final DateTime createdAt;
+  final int sequence;
+}
+
+class _ResolvedOrderAnchor {
+  const _ResolvedOrderAnchor({
+    required this.anchorMicros,
+    required this.sequence,
+  });
+
+  final int anchorMicros;
   final int sequence;
 }

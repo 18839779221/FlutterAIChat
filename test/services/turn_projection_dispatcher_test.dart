@@ -77,7 +77,7 @@ void main() {
       );
     });
 
-    test('drops late preview events for finalized message', () async {
+    test('keeps late preview events until projection-level logicalId takeover', () async {
       final container = ProviderContainer();
       addTearDown(container.dispose);
       final dispatcher = container.read(turnProjectionDispatcherProvider);
@@ -107,11 +107,84 @@ void main() {
       );
       await Future<void>.delayed(const Duration(milliseconds: 140));
 
-      // The pre-finalize Start event is preserved, but the late delta after
-      // finalize is filtered out.
+      // Dispatcher no longer drops late preview deltas. Cleanup happens only
+      // through projection-level logicalId takeover or end-of-turn disposal.
       final state = container.read(runtimeStreamingPreviewStateProvider);
       expect(state.messages, hasLength(1));
-      expect(state.messages.single.blocks, isEmpty);
+      expect(state.messages.single.blocks.single.text, 'late');
+    });
+
+    test('keeps previous preview message when same turn starts a new provider message', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final dispatcher = container.read(turnProjectionDispatcherProvider);
+      const metadata = {
+        'streamTurnId': 'turn-1',
+        'streamTraceId': 'trace-1',
+      };
+
+      await dispatcher.dispatchPreviewEvent(
+        const StreamingMessageStartEvent(
+          messageId: 'm1',
+          runtimeMetadata: metadata,
+        ),
+      );
+      await dispatcher.dispatchPreviewEvent(
+        const StreamingContentBlockStartEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:thinking',
+          blockType: StreamingContentBlockType.thinking,
+          runtimeMetadata: metadata,
+        ),
+      );
+      await dispatcher.dispatchPreviewEvent(
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm1',
+          contentBlockId: 'm1:thinking',
+          deltaType: StreamingContentDeltaType.thinking,
+          value: 'old reasoning',
+          runtimeMetadata: metadata,
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 140));
+      expect(
+        container.read(runtimeStreamingPreviewStateProvider).messages,
+        hasLength(1),
+      );
+
+      await dispatcher.dispatchPreviewEvent(
+        const StreamingMessageStartEvent(
+          messageId: 'm2',
+          runtimeMetadata: metadata,
+        ),
+      );
+      await dispatcher.dispatchPreviewEvent(
+        const StreamingContentBlockStartEvent(
+          messageId: 'm2',
+          contentBlockId: 'm2:text',
+          blockType: StreamingContentBlockType.text,
+          runtimeMetadata: metadata,
+        ),
+      );
+      await dispatcher.dispatchPreviewEvent(
+        const StreamingContentBlockDeltaEvent(
+          messageId: 'm2',
+          contentBlockId: 'm2:text',
+          deltaType: StreamingContentDeltaType.text,
+          value: 'new text',
+          runtimeMetadata: metadata,
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 140));
+
+      final state = container.read(runtimeStreamingPreviewStateProvider);
+      expect(state.messages, hasLength(2));
+      expect(
+        state.messages.map((message) => message.messageId).toList(),
+        ['m1', 'm2'],
+      );
+      expect(state.messages.first.blocks.single.text, 'old reasoning');
+      expect(state.messages.last.blocks.single.text, 'new text');
     });
 
     test(
@@ -165,7 +238,9 @@ void main() {
           eventType: ChatEventType.finalAnswer,
           role: MessageRole.assistant,
           content: 'hello',
-          payloadJson: const {'previewMessageId': 'm1'},
+          payloadJson: const {
+            'logicalId': 'final:1_10',
+          },
         ),
         (_) async {
           container.read(messagesProvider.notifier).addMessage(
@@ -174,7 +249,10 @@ void main() {
                   text: 'hello',
                   role: MessageRole.assistant,
                   status: MessageStatus.completed,
-                  payloadJson: const {'isFinalAnswer': true},
+                  payloadJson: const {
+                    'isFinalAnswer': true,
+                    'logicalId': 'final:1_10',
+                  },
                 ),
               );
         },

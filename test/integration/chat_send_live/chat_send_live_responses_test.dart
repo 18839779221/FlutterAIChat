@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'chat_send_live_assertions.dart';
 import 'chat_send_live_test_harness.dart';
 import 'scenarios/ask_user_resume_scenario.dart';
+import 'scenarios/create_artifact_takeover_scenario.dart';
 import 'scenarios/file_ops_real_workspace_scenario.dart';
 import 'scenarios/mixed_success_failure_scenario.dart';
 import 'scenarios/news_multi_tool_scenario.dart';
@@ -211,6 +212,33 @@ void main() {
         contains('TODO'),
       );
       expectCompletedAssistantAnswerPersisted(resumedState);
+      await harness.dispose();
+    },
+    tags: const ['live-headless-agent'],
+  );
+
+  test(
+    'responses create artifact scenario keeps truth takeover free of overlapping preview entities',
+    () async {
+      final harness = await ChatSendLiveTestHarness.bootstrap(
+        providerStyle: ChatTurnProviderStyle.openaiResponses,
+      );
+      final diagnostic = await harness.runScenarioWithTakeoverDiagnostics(
+        buildCreateArtifactTakeoverScenario(),
+      );
+      expectNoPlannerRequestFailure(diagnostic.state);
+      expectTurnState(
+        diagnostic.state,
+        expectedStatus: ChatTurnStatus.completed,
+      );
+      expectEventTypes(
+        diagnostic.state,
+        includes: const [
+          ChatEventType.toolResult,
+          ChatEventType.finalAnswer,
+        ],
+      );
+      expectTruthTakeoverSupersedesPreview(diagnostic);
       await harness.dispose();
     },
     tags: const ['live-headless-agent'],

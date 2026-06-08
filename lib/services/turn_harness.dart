@@ -461,6 +461,8 @@ class TurnHarness {
           payloadJson: {
             'diagnosticCode': decision.diagnosticCode,
             'isTerminal': decision.isTerminal,
+            if (_logicalIdForPlannerMessage(decision) != null)
+              'logicalId': _logicalIdForPlannerMessage(decision),
             if ((decision.providerState['response_id'] ?? '')
                 .toString()
                 .trim()
@@ -579,6 +581,10 @@ class TurnHarness {
             turnId: turnId,
             groupId: runtimeTurn.groupId,
             content: decision.assistantMessage ?? '规划请求失败',
+            payloadJson: _buildFinalAnswerPayload(
+              turnId: turnId,
+              decision: decision,
+            ),
           );
           await _turnRepository.markFailed(
             turnId,
@@ -621,6 +627,10 @@ class TurnHarness {
             turnId: turnId,
             groupId: runtimeTurn.groupId,
             content: latestAssistantText,
+            payloadJson: _buildFinalAnswerPayload(
+              turnId: turnId,
+              decision: decision,
+            ),
           );
           await _turnRepository.markCompleted(
             turnId,
@@ -724,7 +734,95 @@ class TurnHarness {
       groupId: groupId,
       content: visibleReasoning,
       scope: scope,
+      payloadJson: _buildReasoningPayload(
+        turnId: turnId,
+        decision: decision,
+      ),
     );
+  }
+
+  Map<String, dynamic>? _buildReasoningPayload({
+    required int turnId,
+    required ModelTurnDecision decision,
+  }) {
+    final identity = _readStreamingPreviewIdentity(decision);
+    final messageId = identity?['messageId']?.toString().trim();
+    final blockId = identity?['reasoningBlockId']?.toString().trim();
+    final logicalId = _logicalIdForReasoningDecision(
+      turnId: turnId,
+      decision: decision,
+    );
+    if ((messageId == null || messageId.isEmpty || blockId == null || blockId.isEmpty) &&
+        logicalId == null) {
+      return null;
+    }
+    return {
+      if (messageId != null && messageId.isNotEmpty) 'previewMessageId': messageId,
+      if (blockId != null && blockId.isNotEmpty)
+        'previewContentBlockId': blockId,
+      if (logicalId != null) 'logicalId': logicalId,
+      if (_resolveDecisionResponseId(decision) != null)
+        'responseId': _resolveDecisionResponseId(decision),
+    };
+  }
+
+  Map<String, dynamic>? _buildFinalAnswerPayload({
+    required int turnId,
+    required ModelTurnDecision decision,
+  }) {
+    final identity = _readStreamingPreviewIdentity(decision);
+    final messageId = identity?['messageId']?.toString().trim();
+    final blockId = identity?['textBlockId']?.toString().trim();
+    final payload = <String, dynamic>{
+      'isFinalAnswer': true,
+      'logicalId': 'final:$turnId',
+      if (_resolveDecisionResponseId(decision) != null)
+        'responseId': _resolveDecisionResponseId(decision),
+    };
+    if (messageId != null &&
+        messageId.isNotEmpty &&
+        blockId != null &&
+        blockId.isNotEmpty) {
+      payload['previewMessageId'] = messageId;
+      payload['previewContentBlockId'] = blockId;
+    }
+    return payload;
+  }
+
+  String? _logicalIdForReasoningDecision({
+    required int turnId,
+    required ModelTurnDecision decision,
+  }) {
+    final responseId = _resolveDecisionResponseId(decision);
+    if (decision.toolCalls.isNotEmpty) {
+      if (responseId == null || responseId.isEmpty) {
+        return null;
+      }
+      return 'toolReasoning:$responseId';
+    }
+    return 'finalReasoning:$turnId';
+  }
+
+  String? _logicalIdForPlannerMessage(ModelTurnDecision decision) {
+    if (decision.toolCalls.isEmpty) {
+      return null;
+    }
+    final responseId = _resolveDecisionResponseId(decision);
+    if (responseId == null || responseId.isEmpty) {
+      return null;
+    }
+    return 'toolText:$responseId';
+  }
+
+  Map<String, dynamic>? _readStreamingPreviewIdentity(ModelTurnDecision decision) {
+    final identity = decision.providerState['streaming_preview_identity'];
+    if (identity is Map<String, dynamic>) {
+      return identity;
+    }
+    if (identity is Map) {
+      return identity.cast<String, dynamic>();
+    }
+    return null;
   }
 
   Stream<ChatEvent> _handleToolExecution({

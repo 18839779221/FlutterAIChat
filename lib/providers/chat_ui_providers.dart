@@ -463,6 +463,22 @@ class RuntimeStreamingPreviewController
     }
   }
 
+  void removeMessage(String messageId) {
+    _flushTimer?.cancel();
+    _flushTimer = null;
+    _projector.removeMessage(messageId);
+    _pendingPublishedEventCount = 0;
+    _lastPublishedAt = DateTime.now();
+    if (!mounted) {
+      return;
+    }
+    final newState = _projector.currentState();
+    if (identical(state, newState)) {
+      return;
+    }
+    state = newState;
+  }
+
   void _publishState(DateTime now) {
     _flushTimer?.cancel();
     _flushTimer = null;

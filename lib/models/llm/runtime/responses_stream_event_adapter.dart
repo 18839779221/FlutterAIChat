@@ -256,8 +256,8 @@ class ResponsesStreamEventAdapter {
   }) {
     final stableId = _normalizeText(callId) ??
         _normalizeText(itemId) ??
-        outputIndex?.toString() ??
+        (outputIndex == null ? null : 'index_$outputIndex') ??
         'tool';
-    return '$currentMessageId:item:$stableId';
+    return '$currentMessageId:tool:$stableId';
   }
 }

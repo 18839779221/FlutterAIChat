@@ -4261,6 +4261,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
     required int groupId,
     required String content,
     required String scope,
+    Map<String, dynamic>? payloadJson,
   }) async {
     return _append(
       turnId: turnId,
@@ -4268,7 +4269,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
       eventType: ChatEventType.assistantReasoningDelta,
       role: MessageRole.assistant,
       content: content,
-      payloadJson: {'scope': scope},
+      payloadJson: {'scope': scope, ...?payloadJson},
     );
   }
 
@@ -4294,6 +4295,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
     required int turnId,
     required int groupId,
     required String content,
+    Map<String, dynamic>? payloadJson,
   }) async {
     return _append(
       turnId: turnId,
@@ -4301,6 +4303,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
       eventType: ChatEventType.assistantTextFinal,
       role: MessageRole.assistant,
       content: content,
+      payloadJson: payloadJson,
     );
   }
 
@@ -4309,6 +4312,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
     required int turnId,
     required int groupId,
     required String content,
+    Map<String, dynamic>? payloadJson,
   }) async {
     return _append(
       turnId: turnId,
@@ -4316,6 +4320,7 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
       eventType: ChatEventType.finalAnswer,
       role: MessageRole.assistant,
       content: content,
+      payloadJson: payloadJson,
     );
   }
 

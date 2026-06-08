@@ -93,7 +93,7 @@ void main() {
             updatedAt: DateTime(2026, 5, 5, 18, 0, 1),
             blocks: [
               RuntimeStreamingPreviewBlock(
-                contentBlockId: 'message_1:tool:0',
+                contentBlockId: 'message_1:tool:call_artifact_1',
                 blockType: StreamingContentBlockType.toolUse,
                 toolUseId: 'call_artifact_1',
                 toolName: 'create_artifact',

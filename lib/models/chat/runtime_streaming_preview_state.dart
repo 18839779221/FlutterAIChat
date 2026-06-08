@@ -28,6 +28,7 @@ class RuntimeStreamingPreviewMessage {
     required this.messageId,
     required this.createdAt,
     required this.updatedAt,
+    this.responseId,
     this.streamTraceId,
     this.streamTurnId,
     this.isCompleted = false,
@@ -37,6 +38,9 @@ class RuntimeStreamingPreviewMessage {
   final String messageId;
   final DateTime createdAt;
   final DateTime updatedAt;
+  /// Stable provider response id for one planner decision stream when exposed
+  /// by the provider/runtime. Falls back to message-scoped identity upstream.
+  final String? responseId;
   /// Runtime-only trace id for observability/debug overlay correlation.
   final String? streamTraceId;
   /// Runtime-only turn id paired with the active streaming trace.
@@ -48,6 +52,7 @@ class RuntimeStreamingPreviewMessage {
     String? messageId,
     DateTime? createdAt,
     DateTime? updatedAt,
+    String? responseId,
     String? streamTraceId,
     String? streamTurnId,
     bool? isCompleted,
@@ -57,6 +62,7 @@ class RuntimeStreamingPreviewMessage {
       messageId: messageId ?? this.messageId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      responseId: responseId ?? this.responseId,
       streamTraceId: streamTraceId ?? this.streamTraceId,
       streamTurnId: streamTurnId ?? this.streamTurnId,
       isCompleted: isCompleted ?? this.isCompleted,

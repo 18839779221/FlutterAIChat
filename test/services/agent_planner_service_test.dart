@@ -2139,7 +2139,7 @@ void main() {
         runtimeEvents: const [
           StreamingContentBlockStartEvent(
             messageId: 'runtime_turn',
-            contentBlockId: 'runtime_turn:tool:0',
+            contentBlockId: 'runtime_turn:tool:call_1',
             blockType: StreamingContentBlockType.toolUse,
             toolUseId: 'call_1',
             toolName: 'create_artifact',

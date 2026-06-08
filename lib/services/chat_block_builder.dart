@@ -62,9 +62,13 @@ class ChatBlockBuilder {
       // earlier planner message would block the streaming preview of a
       // later iteration's final answer.
       final isTerminalFinal = current.payload?['isFinalAnswer'] == true;
+      final hasVisibleText = (current.text ?? '').trim().isNotEmpty;
       blocks[index] = current.copyWith(
-        type: AssistantTurnBlockType.finalResponse,
-        logicalId: isTerminalFinal ? 'final:$turnId' : null,
+        type: hasVisibleText
+            ? AssistantTurnBlockType.finalResponse
+            : AssistantTurnBlockType.analysis,
+        logicalId:
+            isTerminalFinal ? _logicalIdForBlock(current, turnId) : current.logicalId,
       );
     }
 
@@ -86,6 +90,7 @@ class ChatBlockBuilder {
           createdAt: message.timestamp,
           updatedAt: message.timestamp,
           text: '',
+          logicalId: _payloadLogicalId(message.payloadJson),
           payload: message.payloadJson,
         );
       case MessageContentType.askUserQuestionPrompt:
@@ -100,6 +105,7 @@ class ChatBlockBuilder {
           title: 'Question',
           text: message.text,
           reasoningText: message.reasoningContent,
+          logicalId: _payloadLogicalId(message.payloadJson),
           payload: message.payloadJson,
           askUserQuestionRequest: request,
         );
@@ -115,6 +121,7 @@ class ChatBlockBuilder {
           title: 'Answer',
           text: message.text,
           reasoningText: message.reasoningContent,
+          logicalId: _payloadLogicalId(message.payloadJson),
           payload: message.payloadJson,
           askUserQuestionResponse: response,
         );
@@ -129,6 +136,7 @@ class ChatBlockBuilder {
           updatedAt: message.timestamp,
           text: message.text,
           reasoningText: message.reasoningContent,
+          logicalId: _payloadLogicalId(message.payloadJson),
           payload: message.payloadJson,
         );
       case MessageContentType.toolResult:
@@ -141,6 +149,7 @@ class ChatBlockBuilder {
           updatedAt: message.timestamp,
           text: message.text,
           reasoningText: message.reasoningContent,
+          logicalId: _payloadLogicalId(message.payloadJson),
           payload: message.payloadJson,
         );
       case MessageContentType.plainText:
@@ -153,6 +162,7 @@ class ChatBlockBuilder {
           updatedAt: message.timestamp,
           text: message.text,
           reasoningText: message.reasoningContent,
+          logicalId: _payloadLogicalId(message.payloadJson),
           payload: message.payloadJson,
         );
     }
@@ -170,6 +180,23 @@ class ChatBlockBuilder {
     return block.payload?['reasoningScope'] == 'tool_use' &&
         (block.reasoningText ?? '').trim().isNotEmpty &&
         (block.text ?? '').trim().isEmpty;
+  }
+
+  String _logicalIdForBlock(AssistantTurnBlock block, String turnId) {
+    final payloadLogicalId = _payloadLogicalId(block.payload);
+    if (payloadLogicalId != null) {
+      return payloadLogicalId;
+    }
+    return 'final:$turnId';
+  }
+
+  String? _payloadLogicalId(Map<String, dynamic>? payload) {
+    final raw = payload?['logicalId'];
+    if (raw is! String) {
+      return null;
+    }
+    final trimmed = raw.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 
   AskUserQuestionRequest? _readAskUserQuestionRequest(

@@ -45,7 +45,7 @@ void main() {
       events.whereType<StreamingContentBlockStartEvent>().any(
             (event) =>
                 event.blockType == StreamingContentBlockType.toolUse &&
-                event.contentBlockId == 'chatcmpl_1:tool:0' &&
+                event.contentBlockId == 'chatcmpl_1:tool:call_1' &&
                 event.toolUseId == 'call_1' &&
                 event.toolName == 'create_artifact',
           ),

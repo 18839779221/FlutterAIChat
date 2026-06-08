@@ -224,6 +224,7 @@ class ChatEventRepository {
     required int groupId,
     required String content,
     required String scope,
+    Map<String, dynamic>? payloadJson,
   }) {
     return _appendEvent(
       turnId: turnId,
@@ -231,7 +232,10 @@ class ChatEventRepository {
       eventType: ChatEventType.assistantReasoningDelta,
       role: MessageRole.assistant,
       content: content,
-      payloadJson: {'scope': scope},
+      payloadJson: {
+        'scope': scope,
+        ...?payloadJson,
+      },
     );
   }
 
@@ -255,6 +259,7 @@ class ChatEventRepository {
     required int turnId,
     required int groupId,
     required String content,
+    Map<String, dynamic>? payloadJson,
   }) {
     return _appendEvent(
       turnId: turnId,
@@ -262,6 +267,7 @@ class ChatEventRepository {
       eventType: ChatEventType.assistantTextFinal,
       role: MessageRole.assistant,
       content: content,
+      payloadJson: payloadJson,
     );
   }
 
@@ -292,6 +298,7 @@ class ChatEventRepository {
     required int turnId,
     required int groupId,
     required String content,
+    Map<String, dynamic>? payloadJson,
   }) {
     return _appendEvent(
       turnId: turnId,
@@ -299,6 +306,7 @@ class ChatEventRepository {
       eventType: ChatEventType.finalAnswer,
       role: MessageRole.assistant,
       content: content,
+      payloadJson: payloadJson,
     );
   }
 

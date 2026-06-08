@@ -108,26 +108,26 @@ void main() {
         const StreamingMessageStartEvent(messageId: 'm1'),
         const StreamingContentBlockStartEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
           blockType: StreamingContentBlockType.toolUse,
           toolUseId: 'call_1',
           toolName: 'write_file',
         ),
         const StreamingContentBlockDeltaEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
           deltaType: StreamingContentDeltaType.inputJson,
           value: '{"path":"a.txt",',
         ),
         const StreamingContentBlockDeltaEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
           deltaType: StreamingContentDeltaType.inputJson,
           value: '"content":"hello"}',
         ),
         const StreamingContentBlockStopEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
         ),
         const StreamingMessageStopEvent(messageId: 'm1'),
       ]);
@@ -152,14 +152,14 @@ void main() {
         const StreamingMessageStartEvent(messageId: 'm1'),
         const StreamingContentBlockStartEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
           blockType: StreamingContentBlockType.toolUse,
           toolUseId: 'call_artifact_1',
           toolName: 'create_artifact',
         ),
         const StreamingContentBlockDeltaEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
           deltaType: StreamingContentDeltaType.inputJson,
           value: '{"source":"<div>Hello',
         ),
@@ -184,14 +184,14 @@ void main() {
         const StreamingMessageStartEvent(messageId: 'm1'),
         const StreamingContentBlockStartEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
           blockType: StreamingContentBlockType.toolUse,
           toolUseId: 'call_artifact_2',
           toolName: 'create_artifact',
         ),
         const StreamingContentBlockDeltaEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
           deltaType: StreamingContentDeltaType.inputJson,
           value:
               '{"id":"demo","type":"html","title":"Demo","source":"<div>Hello</div>"}',
@@ -230,20 +230,20 @@ void main() {
         ),
         const StreamingContentBlockStartEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
           blockType: StreamingContentBlockType.toolUse,
           toolUseId: 'call_invalid_1',
           toolName: 'write_file',
         ),
         const StreamingContentBlockDeltaEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
           deltaType: StreamingContentDeltaType.inputJson,
           value: '{"path":',
         ),
         const StreamingContentBlockStopEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
         ),
         const StreamingMessageStopEvent(messageId: 'm1'),
       ]);
@@ -284,27 +284,27 @@ void main() {
         ),
         const StreamingContentBlockStartEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
           blockType: StreamingContentBlockType.toolUse,
           toolUseId: 'call_artifact_bad_1',
           toolName: 'create_artifact',
         ),
         const StreamingContentBlockDeltaEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
           deltaType: StreamingContentDeltaType.inputJson,
           value:
               '{"id":"china-food-ranking","type":"html","title":"中国美食排行","source":"<div>ok</div>"}',
         ),
         const StreamingContentBlockDeltaEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
           deltaType: StreamingContentDeltaType.inputJson,
           value: '\n<unexpected-tail>',
         ),
         const StreamingContentBlockStopEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
         ),
         const StreamingMessageStopEvent(messageId: 'm1'),
       ]);
@@ -332,14 +332,14 @@ void main() {
         const StreamingMessageStartEvent(messageId: 'm1'),
         const StreamingContentBlockStartEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
           blockType: StreamingContentBlockType.toolUse,
           toolUseId: 'call_search_1',
           toolName: 'search_chat_history',
         ),
         const StreamingContentBlockDeltaEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
           deltaType: StreamingContentDeltaType.inputJson,
           value: '{"query":"数据库版本"}',
         ),
@@ -385,20 +385,20 @@ void main() {
         ),
         const StreamingContentBlockStartEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
           blockType: StreamingContentBlockType.toolUse,
           toolUseId: 'call_read_1',
           toolName: 'read_file',
         ),
         const StreamingContentBlockDeltaEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
           deltaType: StreamingContentDeltaType.inputJson,
           value: '{"path":"README.md"}',
         ),
         const StreamingContentBlockStopEvent(
           messageId: 'm1',
-          contentBlockId: 'm1:tool:0',
+          contentBlockId: 'm1:tool:call_1',
         ),
         const StreamingMessageStopEvent(messageId: 'm1'),
       ]);

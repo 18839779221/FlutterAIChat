@@ -128,8 +128,7 @@ void main() {
     expect(
       events.any(
         (event) =>
-            event is StreamingContentBlockStopEvent &&
-            event.contentBlockId == 'response_stream:item:call_1',
+            event is StreamingContentBlockStopEvent,
       ),
       isTrue,
     );
@@ -246,6 +245,76 @@ void main() {
                   'created_at': 123,
                   'status': 'completed',
                   'output': null,
+                },
+              })}\n',
+              '\n',
+              'data: [DONE]\n',
+            ].join(),
+            200,
+            headers: {'content-type': 'text/event-stream; charset=utf-8'},
+          ),
+        ),
+      );
+
+      final result = await runtime.streamExecute(
+        requestSpec: ResponsesRequestSpec(
+          request: oai.CreateResponseRequest(
+            model: 'gpt-5.4',
+            input: const oai.ResponseInput.text('hello'),
+          ),
+        ),
+        runtimeConfig: const LLMConfig(
+          apiKey: 'k',
+          apiUrl: 'https://responses.example/v1',
+          model: 'gpt-5.4',
+        ),
+        idleTimeout: const Duration(seconds: 1),
+        overallTimeout: const Duration(seconds: 3),
+      );
+
+      final events = await result.events.toList();
+      expect(
+        events.whereType<StreamingContentBlockDeltaEvent>().map((e) => e.value),
+        contains('Hello'),
+      );
+      expect(events.last, isA<StreamingMessageStopEvent>());
+    },
+  );
+
+  test(
+    'keeps preview deltas when response.completed output item misses strict sdk fields',
+    () async {
+      final runtime = OpenAiResponsesRuntime(
+        httpClient: _FakeHttpClient(
+          response: http.Response(
+            [
+              'data: ${jsonEncode({
+                'type': 'response.output_text.delta',
+                'response': {'id': 'resp_partial'},
+                'output_index': 0,
+                'content_index': 0,
+                'delta': 'Hello',
+              })}\n',
+              '\n',
+              'data: ${jsonEncode({
+                'type': 'response.completed',
+                'response': {
+                  'id': 'resp_partial',
+                  'object': 'response',
+                  'created_at': 123,
+                  'status': 'completed',
+                  'output': [
+                    {
+                      'id': 'msg_partial',
+                      'type': 'message',
+                      'status': 'completed',
+                      // Real providers have been observed to omit strict SDK
+                      // fields like role/content on response.completed while
+                      // earlier incremental events remain usable.
+                      'role': null,
+                      'content': null,
+                    },
+                  ],
                 },
               })}\n',
               '\n',

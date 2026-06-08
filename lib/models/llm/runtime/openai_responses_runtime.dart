@@ -355,7 +355,14 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
     if (response is! Map<String, dynamic>) {
       return false;
     }
-    return response['output'] == null;
+    // Provider-specific final summary payloads are not on the critical path for
+    // streaming preview adaptation. We already capture usage from raw
+    // `response.done` and adapt visible preview from incremental stream events
+    // plus `response.output_item.done`. Some providers emit a `response`
+    // summary whose nested `output` items are incomplete for the strict SDK
+    // model (for example missing `role`, `content`, or even `output` itself),
+    // which should not abort an otherwise healthy stream.
+    return true;
   }
 
   Map<String, dynamic> _normalizeStreamingEventJson(

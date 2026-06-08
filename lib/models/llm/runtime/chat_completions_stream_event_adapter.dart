@@ -92,8 +92,9 @@ class ChatCompletionsStreamEventAdapter {
         }
         final function = toolCall['function'];
         final index = _normalizeInt(toolCall['index']) ?? i;
-        final blockId = '$currentMessageId:tool:$index';
         final toolUseId = _normalizeText(toolCall['id']);
+        final stableToolAnchor = toolUseId ?? 'index_$index';
+        final blockId = '$currentMessageId:tool:$stableToolAnchor';
         final toolName =
             function is Map ? _normalizeText(function['name']) : null;
         if (startedToolBlocks.add(blockId)) {

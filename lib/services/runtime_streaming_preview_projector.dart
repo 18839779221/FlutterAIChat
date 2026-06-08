@@ -28,11 +28,22 @@ class RuntimeStreamingPreviewProjector {
     _state = const RuntimeStreamingPreviewState();
   }
 
+  void removeMessage(String messageId) {
+    final messages = _state.messages
+        .where((message) => message.messageId != messageId)
+        .toList(growable: false);
+    if (messages.length == _state.messages.length) {
+      return;
+    }
+    _state = _state.copyWith(messages: messages);
+  }
+
   void consume(
     StreamingMessageEvent event, {
     DateTime? now,
   }) {
     final timestamp = now ?? DateTime.now();
+    final responseId = _resolvePreviewResponseId(event);
     final traceId = _readRuntimeMetadataValue(
       event.runtimeMetadata,
       key: 'streamTraceId',
@@ -48,6 +59,7 @@ class RuntimeStreamingPreviewProjector {
           messageId: event.messageId,
           createdAt: current?.createdAt ?? timestamp,
           updatedAt: timestamp,
+          responseId: responseId ?? current?.responseId,
           streamTraceId: traceId ?? current?.streamTraceId,
           streamTurnId: turnId ?? current?.streamTurnId,
           isCompleted: false,
@@ -65,13 +77,14 @@ class RuntimeStreamingPreviewProjector {
       _upsertMessage(
         event.messageId,
         (current) => (current ??
-                RuntimeStreamingPreviewMessage(
+            RuntimeStreamingPreviewMessage(
                   messageId: event.messageId,
                   createdAt: timestamp,
                   updatedAt: timestamp,
                 ))
             .copyWith(
           updatedAt: timestamp,
+          responseId: responseId ?? current?.responseId,
           streamTraceId: traceId ?? current?.streamTraceId,
           streamTurnId: turnId ?? current?.streamTurnId,
           isCompleted: true,
@@ -115,6 +128,7 @@ class RuntimeStreamingPreviewProjector {
         }
         return base.copyWith(
           updatedAt: timestamp,
+          responseId: responseId ?? base.responseId,
           streamTraceId: traceId ?? base.streamTraceId,
           streamTurnId: turnId ?? base.streamTurnId,
           isCompleted: false,
@@ -139,6 +153,29 @@ class RuntimeStreamingPreviewProjector {
           'valueLength': event.value.length,
         },
       );
+      if (event.deltaType == StreamingContentDeltaType.signature) {
+        _upsertMessage(event.messageId, (current) {
+          final base = current ??
+              RuntimeStreamingPreviewMessage(
+                messageId: event.messageId,
+                createdAt: timestamp,
+                updatedAt: timestamp,
+              );
+          return base.copyWith(
+            updatedAt: timestamp,
+            responseId: responseId ?? base.responseId,
+            streamTraceId: traceId ?? base.streamTraceId,
+            streamTurnId: turnId ?? base.streamTurnId,
+            isCompleted: false,
+          );
+        });
+        _emitConsumedEvent(
+          messageId: event.messageId,
+          event: event,
+          timestamp: timestamp,
+        );
+        return;
+      }
       _upsertMessage(event.messageId, (current) {
         final base = current ??
             RuntimeStreamingPreviewMessage(
@@ -170,6 +207,7 @@ class RuntimeStreamingPreviewProjector {
         }
         return base.copyWith(
           updatedAt: timestamp,
+          responseId: responseId ?? base.responseId,
           streamTraceId: traceId ?? base.streamTraceId,
           streamTurnId: turnId ?? base.streamTurnId,
           isCompleted: false,
@@ -213,6 +251,7 @@ class RuntimeStreamingPreviewProjector {
         }
         return base.copyWith(
           updatedAt: timestamp,
+          responseId: responseId ?? base.responseId,
           streamTraceId: traceId ?? base.streamTraceId,
           streamTurnId: turnId ?? base.streamTurnId,
           blocks: blocks,
@@ -248,6 +287,27 @@ class RuntimeStreamingPreviewProjector {
       case StreamingContentDeltaType.signature:
         return StreamingContentBlockType.toolUse;
     }
+  }
+
+  String? _readProviderResponseId(StreamingMessageEvent event) {
+    final value =
+        event.providerMetadata?['response_id'] ??
+        event.providerMetadata?['message_id'] ??
+        event.providerMetadata?['id'];
+    if (value is! String) {
+      return null;
+    }
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  String? _resolvePreviewResponseId(StreamingMessageEvent event) {
+    final providerResponseId = _readProviderResponseId(event);
+    if (providerResponseId != null && providerResponseId.isNotEmpty) {
+      return providerResponseId;
+    }
+    final messageId = event.messageId.trim();
+    return messageId.isEmpty ? null : messageId;
   }
 
   void _upsertMessage(

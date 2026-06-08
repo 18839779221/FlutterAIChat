@@ -46,7 +46,9 @@ class AnthropicStreamEventAdapter {
             : block is anthropic.ThinkingBlock
                 ? StreamingContentBlockType.thinking
                 : StreamingContentBlockType.text;
-        final blockId = '$currentMessageId:block:${event.index}:${blockType.name}';
+        final blockId = block is anthropic.ToolUseBlock
+            ? '$currentMessageId:tool:${block.id}'
+            : '$currentMessageId:block:${event.index}:${blockType.name}';
         blockIdsByKey[blockKey(event.index, blockType)] = blockId;
         if (block is anthropic.ToolUseBlock) {
           yield StreamingContentBlockStartEvent(
@@ -89,7 +91,9 @@ class AnthropicStreamEventAdapter {
         }
         var blockId = blockIdsByKey[blockKey(event.index, inferredType)];
         if (blockId == null) {
-          blockId = '$currentMessageId:auto:${event.index}:${inferredType.name}';
+          blockId = inferredType == StreamingContentBlockType.toolUse
+              ? '$currentMessageId:tool:index_${event.index}'
+              : '$currentMessageId:auto:${event.index}:${inferredType.name}';
           blockIdsByKey[blockKey(event.index, inferredType)] = blockId;
           yield StreamingContentBlockStartEvent(
             messageId: currentMessageId,

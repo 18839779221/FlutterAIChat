@@ -319,6 +319,114 @@ void main() {
     });
 
     testWidgets(
+        'persisted final response takes over runtime preview final row with the same stable key',
+        (tester) async {
+      final container = ProviderContainer(
+        overrides: [
+          hasMoreMessagesProvider.overrideWith((ref) => false),
+          chatSendStateProvider.overrideWith(
+            (ref) => ChatSendStateNotifier()
+              ..update(
+                phase: ChatSendPhase.streamingResponse,
+                isGenerating: true,
+              ),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        container.dispose();
+      });
+
+      container.read(messagesProvider.notifier).setMessages([
+        ChatMessage(
+          id: 30,
+          text: '帮我回答',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+          timestamp: DateTime(2026, 5, 5, 10, 0, 0),
+        ),
+      ]);
+      container.read(runtimeStreamingPreviewStateProvider.notifier).state =
+          RuntimeStreamingPreviewState(
+        messages: [
+          RuntimeStreamingPreviewMessage(
+            messageId: 'preview_message_takeover',
+            createdAt: DateTime(2026, 5, 5, 10, 0, 1),
+            updatedAt: DateTime(2026, 5, 5, 10, 0, 2),
+            blocks: [
+              RuntimeStreamingPreviewBlock(
+                contentBlockId: 'preview_message_takeover:text',
+                blockType: StreamingContentBlockType.text,
+                createdAt: DateTime(2026, 5, 5, 10, 0, 1),
+                updatedAt: DateTime(2026, 5, 5, 10, 0, 2),
+                text: '这是运行中的正文',
+              ),
+            ],
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const Scaffold(
+              body: ChatMessageList(),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final previewFinder = find.byKey(
+        const ValueKey('timeline-block-preview:preview_message_takeover:text'),
+      );
+      expect(previewFinder, findsOneWidget);
+      final previewElement = tester.element(previewFinder);
+
+      container.read(messagesProvider.notifier).setMessages([
+        ChatMessage(
+          id: 30,
+          text: '帮我回答',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+          timestamp: DateTime(2026, 5, 5, 10, 0, 0),
+        ),
+        ChatMessage(
+          id: 31,
+          text: '这是最终回答',
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+          timestamp: DateTime(2026, 5, 5, 10, 0, 3),
+          payloadJson: const {
+            'isFinalAnswer': true,
+            'previewMessageId': 'preview_message_takeover',
+            'previewContentBlockId': 'preview_message_takeover:text',
+          },
+        ),
+      ]);
+      container.read(runtimeStreamingPreviewStateProvider.notifier).state =
+          const RuntimeStreamingPreviewState();
+      container.read(chatSendStateProvider.notifier).update(
+            phase: ChatSendPhase.idle,
+            isGenerating: false,
+          );
+      await tester.pump();
+
+      final finalFinder = find.byKey(
+        const ValueKey('timeline-block-preview:preview_message_takeover:text'),
+      );
+      expect(finalFinder, findsOneWidget);
+      expect(find.text('这是最终回答'), findsOneWidget);
+      expect(identical(previewElement, tester.element(finalFinder)), isTrue);
+    });
+
+    testWidgets(
         'runtime create_artifact debug stream stays out of the normal timeline',
         (tester) async {
       await _pumpMessageList(
@@ -340,7 +448,7 @@ void main() {
               updatedAt: DateTime(2026, 5, 5, 10, 0, 1),
               blocks: [
                 RuntimeStreamingPreviewBlock(
-                  contentBlockId: 'planner_runtime:tool:0',
+                  contentBlockId: 'planner_runtime:tool:call_artifact_1',
                   blockType: StreamingContentBlockType.toolUse,
                   toolUseId: 'call_artifact_1',
                   toolName: 'create_artifact',
@@ -356,6 +464,113 @@ void main() {
 
       expect(find.text('Analysis'), findsNothing);
       expect(find.textContaining('调试流内容'), findsNothing);
+    });
+
+    testWidgets(
+        'runtime reasoning preview reuses the same row element after truth takeover',
+        (tester) async {
+      final container = ProviderContainer(
+        overrides: [
+          hasMoreMessagesProvider.overrideWith((ref) => false),
+          runtimeStreamingPreviewStateProvider.overrideWith(
+            (ref) => RuntimeStreamingPreviewController(ref),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        container.dispose();
+      });
+
+      container.read(messagesProvider.notifier).setMessages([
+        ChatMessage(
+          id: 30,
+          text: '帮我用 HTML 可视化 iOS 架构',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+          timestamp: DateTime(2026, 6, 8, 12, 0, 0),
+        ),
+      ]);
+      container.read(runtimeStreamingPreviewStateProvider.notifier).state =
+          RuntimeStreamingPreviewState(
+        messages: [
+          RuntimeStreamingPreviewMessage(
+            messageId: 'preview_reasoning_takeover',
+            streamTurnId: '0_30',
+            createdAt: DateTime(2026, 6, 8, 12, 0, 1),
+            updatedAt: DateTime(2026, 6, 8, 12, 0, 2),
+            blocks: [
+              RuntimeStreamingPreviewBlock(
+                contentBlockId: 'preview_reasoning_takeover:thinking',
+                blockType: StreamingContentBlockType.thinking,
+                createdAt: DateTime(2026, 6, 8, 12, 0, 1),
+                updatedAt: DateTime(2026, 6, 8, 12, 0, 2),
+                text: '用户想要我用 HTML 可视化介绍 iOS 架构。',
+              ),
+            ],
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const Scaffold(
+              body: ChatMessageList(),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final previewFinder = find.byKey(
+        const ValueKey('timeline-block-finalReasoning:0_30'),
+      );
+      expect(previewFinder, findsOneWidget);
+      final previewElement = tester.element(previewFinder);
+
+      container.read(messagesProvider.notifier).setMessages([
+        ChatMessage(
+          id: 30,
+          text: '帮我用 HTML 可视化 iOS 架构',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+          timestamp: DateTime(2026, 6, 8, 12, 0, 0),
+        ),
+        ChatMessage(
+          id: 31,
+          text: '',
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          contentType: MessageContentType.plainText,
+          reasoningContent: '用户想要我用 HTML 可视化介绍 iOS 架构。',
+          timestamp: DateTime(2026, 6, 8, 12, 0, 3),
+          payloadJson: const {
+            'logicalId': 'finalReasoning:0_30',
+            'reasoningScope': 'final_answer',
+          },
+        ),
+      ]);
+      container.read(runtimeStreamingPreviewStateProvider.notifier).state =
+          const RuntimeStreamingPreviewState();
+      await tester.pump();
+
+      final truthFinder = find.byKey(
+        const ValueKey('timeline-block-finalReasoning:0_30'),
+      );
+      expect(truthFinder, findsOneWidget);
+      expect(
+        identical(previewElement, tester.element(truthFinder)),
+        isTrue,
+      );
+      expect(
+        find.text('用户想要我用 HTML 可视化介绍 iOS 架构。'),
+        findsOneWidget,
+      );
     });
 
     testWidgets(
@@ -387,7 +602,7 @@ void main() {
                   text: '先给你正文说明',
                 ),
                 RuntimeStreamingPreviewBlock(
-                  contentBlockId: 'planner_runtime:tool:0',
+                  contentBlockId: 'planner_runtime:tool:call_artifact_1',
                   blockType: StreamingContentBlockType.toolUse,
                   toolUseId: 'call_artifact_1',
                   toolName: 'create_artifact',
@@ -1006,7 +1221,7 @@ void main() {
     testWidgets(
         'runtime preview block keeps the same timeline row key when updatedAt changes',
         (tester) async {
-      const previewBlockId = 'preview_message:block:0:toolUse';
+      const previewBlockId = 'preview_message:tool:call_preview_1';
       final initialPreviewState = RuntimeStreamingPreviewState(
         messages: [
           RuntimeStreamingPreviewMessage(
@@ -1105,7 +1320,7 @@ void main() {
               updatedAt: DateTime(2026, 5, 29, 14, 0, 0),
               blocks: [
                 RuntimeStreamingPreviewBlock(
-                  contentBlockId: 'preview_message:block:0:toolUse',
+                  contentBlockId: 'preview_message:tool:call_preview_1',
                   blockType: StreamingContentBlockType.toolUse,
                   createdAt: DateTime(2026, 5, 29, 14, 0, 0),
                   updatedAt: DateTime(2026, 5, 29, 14, 0, 0),
@@ -1165,7 +1380,7 @@ void main() {
             updatedAt: DateTime(2026, 5, 29, 14, 0, 1),
             blocks: [
               RuntimeStreamingPreviewBlock(
-                contentBlockId: 'preview_message:block:0:toolUse',
+                contentBlockId: 'preview_message:tool:call_preview_1',
                 blockType: StreamingContentBlockType.toolUse,
                 createdAt: DateTime(2026, 5, 29, 14, 0, 0),
                 updatedAt: DateTime(2026, 5, 29, 14, 0, 1),
@@ -1204,7 +1419,7 @@ void main() {
             updatedAt: DateTime(2026, 5, 29, 14, 0, 2),
             blocks: [
               RuntimeStreamingPreviewBlock(
-                contentBlockId: 'preview_message:block:0:toolUse',
+                contentBlockId: 'preview_message:tool:call_preview_1',
                 blockType: StreamingContentBlockType.toolUse,
                 createdAt: DateTime(2026, 5, 29, 14, 0, 0),
                 updatedAt: DateTime(2026, 5, 29, 14, 0, 1),
