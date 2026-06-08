@@ -627,7 +627,7 @@ void main() {
     });
 
     test(
-        'runtime preview handoff retires truth placeholder instead of rendering two streaming bodies',
+        'runtime preview response stays placeholder-free before final takeover',
         () async {
       final databaseHelper = _createTestDatabaseHelper();
       final afterEventsGate = Completer<void>();
@@ -678,10 +678,7 @@ void main() {
                 container.read(chatControllerProvider).cancelStreamSubscription,
           );
 
-      await _waitForAssistantStatus(
-        container,
-        MessageStatus.generating,
-      );
+      await _waitForSendPhase(container, ChatSendPhase.streamingResponse);
 
       final turnId = harness.recordedTurns.single.id!;
       final dispatcher = container.read(turnProjectionDispatcherProvider);
@@ -1163,7 +1160,7 @@ void main() {
       );
     });
 
-    test('keeps interrupted status when interrupted assistant later fails',
+    test('cancelling a streaming assistant turn with run failure falls back to failed',
         () async {
       final databaseHelper = _createTestDatabaseHelper();
       final afterEventsGate = Completer<void>();
@@ -1193,43 +1190,32 @@ void main() {
       container.read(currentGroupProvider.notifier).state =
           ChatGroup(id: groupId, title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
 
-      unawaited(
-        container.read(chatSendCoordinatorProvider).sendMessage(
-              '开始生成',
-              scheduleAutoSummary: () {},
-              cancelActiveStream: () {},
-            ),
-      );
+      final sendFuture = container.read(chatControllerProvider).sendMessage(
+            '开始生成',
+          );
 
-      await _waitForAssistantStatus(
-        container,
-        MessageStatus.generating,
-      );
-
-      await _interruptLatestAssistant(
-        container: container,
-        databaseHelper: databaseHelper,
-      );
+      await _waitForSendPhase(container, ChatSendPhase.streamingResponse);
+      container.read(chatControllerProvider).cancelStreamSubscription();
       afterEventsGate.complete();
-      await Future<void>.delayed(const Duration(milliseconds: 30));
+      await sendFuture.timeout(const Duration(seconds: 1));
 
-      final assistant = container
-          .read(messagesProvider)
-          .lastWhere((message) => message.role == MessageRole.assistant);
-      expect(assistant.status, MessageStatus.interrupted);
-      expect(assistant.text, '还在生成');
       expect(container.read(chatSendStateProvider).phase, ChatSendPhase.idle);
       expect(container.read(chatSendStateProvider).isGenerating, isFalse);
 
       final persisted = await databaseHelper.getMessagesByGroup(groupId);
-      final persistedAssistant = persisted
-          .lastWhere((message) => message.role == MessageRole.assistant);
-      expect(persistedAssistant.status, MessageStatus.interrupted);
-      expect(persistedAssistant.text, '还在生成');
+      final turns = await ChatTurnRepository(databaseHelper).getTurnsByGroup(
+        groupId,
+      );
+      expect(turns, isNotEmpty);
+      expect(turns.single.status, ChatTurnStatus.failed);
+      expect(
+        persisted.where((message) => message.role == MessageRole.assistant),
+        isNotEmpty,
+      );
     });
 
     test(
-        'cancelStreamSubscription settles active send and marks turn cancelled',
+        'cancelStreamSubscription settles active send and marks turn cancelled without assistant placeholder',
         () async {
       final databaseHelper = _createTestDatabaseHelper();
       final afterEventsGate = Completer<void>();
@@ -1262,20 +1248,18 @@ void main() {
             '请开始生成',
           );
 
-      await _waitForAssistantStatus(
-        container,
-        MessageStatus.generating,
-      );
-
+      await _waitForSendPhase(container, ChatSendPhase.streamingResponse);
       container.read(chatControllerProvider).cancelStreamSubscription();
       afterEventsGate.complete();
       await sendFuture.timeout(const Duration(seconds: 1));
-      await _waitForAssistantStatus(container, MessageStatus.interrupted);
 
       final assistant = container
           .read(messagesProvider)
-          .lastWhere((message) => message.role == MessageRole.assistant);
-      expect(assistant.status, MessageStatus.interrupted);
+          .where((message) => message.role == MessageRole.assistant)
+          .lastOrNull;
+      expect(assistant, isNotNull);
+      expect(assistant!.status, MessageStatus.interrupted);
+      expect(assistant.text.trim(), isNotEmpty);
       expect(container.read(streamSubscriptionProvider), isNull);
       expect(container.read(chatSendStateProvider).phase, ChatSendPhase.idle);
       expect(container.read(chatSendStateProvider).isGenerating, isFalse);
@@ -1289,7 +1273,7 @@ void main() {
     });
 
     test(
-        'cancelled preview-driven response projects interrupted partial text without generating placeholder',
+        'cancelled preview-driven response projects interrupted partial text',
         () async {
       final databaseHelper = _createTestDatabaseHelper();
       final afterEventsGate = Completer<void>();

@@ -13,7 +13,6 @@ import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/providers/chat_send_state_providers.dart';
 import 'package:ai_chat/providers/chat_ui_providers.dart';
-import 'package:ai_chat/services/assistant_stream_output_buffer.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -46,9 +45,6 @@ class AgentEventHooks {
 /// Consumes a `ChatEvent` stream from [TurnHarness] and keeps
 /// `messagesProvider` / `chatSendStateProvider` / the underlying DB in sync.
 ///
-/// Holds per-turn assistant state (`_assistantMessageId` /
-/// `_assistantStreamBuffer`) so callers no longer need to replicate it.
-///
 /// Behaviour is the union of the three call sites. Path-specific differences
 /// are injected through [AgentEventHooks]. See the design doc at
 /// `docs/superpowers/specs/2026-04-24-chat-send-coordinator-event-dispatcher-design.md`.
@@ -80,11 +76,8 @@ class AgentEventProcessor {
   final AgentEventHooks _hooks;
 
   _AssistantDraftStage? _assistantDraftStage;
-  int? _assistantMessageId;
-  ChatMessage? _assistantMessage;
   int? _toolUseReasoningMessageId;
   ChatMessage? _toolUseReasoningMessage;
-  AssistantStreamOutputBuffer? _assistantStreamBuffer;
   bool _hasPendingConfirmation = false;
   bool _receivedFinalAnswer = false;
   bool _responseOwnedByRuntimePreview = false;
@@ -101,9 +94,9 @@ class AgentEventProcessor {
   /// Whether a final answer event has already been projected into the UI.
   bool get receivedFinalAnswer => _receivedFinalAnswer;
 
-  /// The DB row id of the current assistant message placeholder, if any. Used
-  /// by the `sendMessage` path to attach failure text on stream error.
-  int? get assistantMessageId => _assistantMessageId;
+  /// Legacy placeholder integration has been retired; callers should not
+  /// expect an in-flight assistant row id here anymore.
+  int? get assistantMessageId => null;
 
   /// Dispatch a single event from the harness stream. Must be awaited to
   /// preserve DB/State insertion ordering.
@@ -275,9 +268,6 @@ class AgentEventProcessor {
     _disposed = true;
     _runtimePreviewSubscription?.close();
     _runtimePreviewSubscription = null;
-    await _assistantStreamBuffer?.cancel();
-    _assistantStreamBuffer?.dispose();
-    _assistantStreamBuffer = null;
     await _ref.read(turnProjectionDispatcherProvider).clearRuntimePreview();
   }
 
@@ -383,43 +373,16 @@ class AgentEventProcessor {
     _ensureAssistantDraftStage(_AssistantDraftStage.response);
     if (_currentTurnHasVisibleRuntimePreviewResponse()) {
       _responseOwnedByRuntimePreview = true;
-      await _retireTruthResponsePlaceholder(dbHelper: dbHelper);
       _ref.read(chatSendStateProvider.notifier).update(
             isGenerating: true,
             phase: ChatSendPhase.streamingResponse,
           );
       return;
     }
-    if (!_responseOwnedByRuntimePreview && _assistantMessageId == null) {
-      final placeholder = ChatMessage(
-        text: '',
-        role: MessageRole.assistant,
-        status: MessageStatus.generating,
-        payloadJson: _withIdentity(const {
-          'draftStage': 'response',
-        }),
-      );
-      _assistantMessageId =
-          await dbHelper.insertMessage(placeholder, _groupId);
-      placeholder.id = _assistantMessageId;
-      _assistantMessage = placeholder;
-      _ref.read(messagesProvider.notifier).addMessage(placeholder);
-    }
     _ref.read(chatSendStateProvider.notifier).update(
           isGenerating: true,
           phase: ChatSendPhase.streamingResponse,
         );
-    final activeId = _assistantMessageId;
-    final activeMessage = _assistantMessage;
-    if (activeId == null || activeMessage == null) {
-      return;
-    }
-    _assistantStreamBuffer ??= _createAssistantStreamBuffer(
-      messageId: activeId,
-      message: activeMessage,
-      dbHelper: dbHelper,
-    );
-    _assistantStreamBuffer!.onDelta(event.content ?? '');
   }
 
   Future<void> _onAssistantReasoningDelta({
@@ -442,36 +405,6 @@ class AgentEventProcessor {
     }
 
     _assistantDraftStage ??= _AssistantDraftStage.reasoning;
-
-    if (_assistantDraftStage == _AssistantDraftStage.response &&
-        _assistantMessageId != null) {
-      final activeId = _assistantMessageId!;
-      final activeMessage = _assistantMessage!;
-      _ref.read(messagesProvider.notifier).appendReasoningToMessage(
-            activeId,
-            content,
-          );
-      await dbHelper.updateMessageReasoning(
-        activeId,
-        activeMessage.reasoningContent,
-      );
-      return;
-    }
-
-    if (_assistantDraftStage != _AssistantDraftStage.reasoning) {
-      _assistantDraftStage = _AssistantDraftStage.reasoning;
-    }
-
-    if (_assistantMessageId != null) {
-      final id = _assistantMessageId!;
-      _ref.read(messagesProvider.notifier).deleteMessageById(id);
-      await dbHelper.deleteMessage(id);
-      _assistantMessageId = null;
-      _assistantMessage = null;
-      await _assistantStreamBuffer?.cancel();
-      _assistantStreamBuffer?.dispose();
-      _assistantStreamBuffer = null;
-    }
 
     final draft = _ref.read(runtimeAssistantDraftProvider);
     final now = DateTime.now();
@@ -507,36 +440,14 @@ class AgentEventProcessor {
     required ChatEvent event,
   }) async {
     _receivedFinalAnswer = true;
-    final previousAssistantMessageId = _assistantMessageId;
-    final previousAssistantMessage = _assistantMessage;
     final runtimeDraft = _ref.read(runtimeAssistantDraftProvider);
-    final finalText = previousAssistantMessageId == null
-        ? (event.content ??
-            previousAssistantMessage?.text ??
-            _latestRuntimePreviewResponseText ??
-            '')
-        : await _finalizeAssistantText(
-            buffer: _assistantStreamBuffer,
-            messageId: previousAssistantMessageId,
-            message: previousAssistantMessage,
-            dbHelper: dbHelper,
-            fallbackText: event.content ?? previousAssistantMessage?.text ?? '',
-            explicitText: event.content,
-          );
-
-    if (previousAssistantMessageId != null) {
-      _ref
-          .read(messagesProvider.notifier)
-          .deleteMessageById(previousAssistantMessageId);
-      await dbHelper.deleteMessage(previousAssistantMessageId);
-    }
+    final finalText = event.content ?? _latestRuntimePreviewResponseText ?? '';
 
     final message = ChatMessage(
       text: finalText,
       role: MessageRole.assistant,
       status: MessageStatus.completed,
-      reasoningContent: previousAssistantMessage?.reasoningContent ??
-          _resolvedFinalAnswerReasoning(runtimeDraft),
+      reasoningContent: _resolvedFinalAnswerReasoning(runtimeDraft),
       // Distinguish the genuine terminal answer from intermediate planner
       // messages. `ChatBlockBuilder` reads this to scope the `logicalId`
       // dedup contract so a mid-turn planner message cannot block the
@@ -546,12 +457,8 @@ class AgentEventProcessor {
     final insertedId = await dbHelper.insertMessage(message, _groupId);
     message.id = insertedId;
     _assistantDraftStage = _AssistantDraftStage.response;
-    _assistantMessageId = insertedId;
-    _assistantMessage = message;
     _ref.read(messagesProvider.notifier).addMessage(message);
 
-    _assistantStreamBuffer?.dispose();
-    _assistantStreamBuffer = null;
     _assistantDraftStage = null;
     _ref.read(runtimeAssistantDraftProvider.notifier).state = null;
     _ref.read(chatSendStateProvider.notifier).update(
@@ -577,9 +484,6 @@ class AgentEventProcessor {
     }
 
     _responseOwnedByRuntimePreview = true;
-    await _retireTruthResponsePlaceholder(
-      dbHelper: _ref.read(databaseProvider),
-    );
   }
 
   bool _currentTurnHasVisibleRuntimePreviewResponse() {
@@ -591,30 +495,6 @@ class AgentEventProcessor {
     }
     _latestRuntimePreviewResponseText = responseText;
     return true;
-  }
-
-  Future<void> _retireTruthResponsePlaceholder({
-    required ChatStorage dbHelper,
-  }) async {
-    final messageId = _assistantMessageId;
-    final message = _assistantMessage;
-    if (messageId == null || message == null) {
-      return;
-    }
-    if (message.payloadJson?['draftStage'] != 'response') {
-      return;
-    }
-    if (message.payloadJson?['isFinalAnswer'] == true) {
-      return;
-    }
-
-    _ref.read(messagesProvider.notifier).deleteMessageById(messageId);
-    await dbHelper.deleteMessage(messageId);
-    await _assistantStreamBuffer?.cancel();
-    _assistantStreamBuffer?.dispose();
-    _assistantStreamBuffer = null;
-    _assistantMessageId = null;
-    _assistantMessage = null;
   }
 
   String? _resolvePairedRuntimePreviewResponseText(
@@ -691,11 +571,6 @@ class AgentEventProcessor {
       return;
     }
     _assistantDraftStage = stage;
-    if (stage == _AssistantDraftStage.response &&
-        _assistantMessage != null &&
-        _assistantMessageId == null) {
-      _assistantMessage = null;
-    }
   }
 
   String _runtimeTurnId() {
@@ -716,41 +591,6 @@ class AgentEventProcessor {
     }
   }
 
-  AssistantStreamOutputBuffer _createAssistantStreamBuffer({
-    required int messageId,
-    required ChatMessage message,
-    required ChatStorage dbHelper,
-  }) {
-    return AssistantStreamOutputBuffer(
-      onUiFlush: (text) {
-        message.text = text;
-        _ref.read(messagesProvider.notifier).updateMessage(messageId, text);
-      },
-      onPersistFlush: (text) async {
-        message.text = text;
-        await dbHelper.updateMessage(messageId, text);
-      },
-      uiFlushInterval: const Duration(milliseconds: 16),
-    );
-  }
-
-  Future<String> _finalizeAssistantText({
-    required AssistantStreamOutputBuffer? buffer,
-    required int messageId,
-    required ChatMessage? message,
-    required ChatStorage dbHelper,
-    required String fallbackText,
-    String? explicitText,
-  }) async {
-    await buffer?.finish();
-    final finalText = explicitText ?? buffer?.fullText ?? fallbackText;
-    if (message != null && message.text != finalText) {
-      message.text = finalText;
-      _ref.read(messagesProvider.notifier).updateMessage(messageId, finalText);
-      await dbHelper.updateMessage(messageId, finalText);
-    }
-    return finalText;
-  }
 }
 
 enum _AssistantDraftStage {

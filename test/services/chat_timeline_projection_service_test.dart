@@ -518,63 +518,6 @@ void main() {
     });
 
     test(
-        'streaming projection reflects both bodies when ownership handoff has not retired truth placeholder',
-        () {
-      final projection = service.build(
-        groupId: 7,
-        messages: [
-          ChatMessage(
-            id: 30,
-            text: '帮我回答',
-            role: MessageRole.user,
-            timestamp: DateTime(2026, 4, 30, 10, 0, 0),
-          ),
-          ChatMessage(
-            id: 31,
-            text: '这是运行中的正文',
-            role: MessageRole.assistant,
-            status: MessageStatus.generating,
-            timestamp: DateTime(2026, 4, 30, 10, 0, 1),
-            payloadJson: const {
-              'draftStage': 'response',
-            },
-          ),
-        ],
-        runtimePreviewState: RuntimeStreamingPreviewState(
-          messages: [
-            RuntimeStreamingPreviewMessage(
-              messageId: 'message_text_1',
-              createdAt: DateTime(2026, 4, 30, 10, 0, 2),
-              updatedAt: DateTime(2026, 4, 30, 10, 0, 3),
-              blocks: [
-                RuntimeStreamingPreviewBlock(
-                  contentBlockId: 'message_text_1:text',
-                  blockType: StreamingContentBlockType.text,
-                  createdAt: DateTime(2026, 4, 30, 10, 0, 2),
-                  updatedAt: DateTime(2026, 4, 30, 10, 0, 3),
-                  text: '这是运行中的正文',
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
-
-      final finalBlocks = projection.assistantBlocks
-          .where((block) => block.type == AssistantTurnBlockType.finalResponse)
-          .toList(growable: false);
-      expect(finalBlocks, hasLength(2));
-      expect(
-        finalBlocks.where((block) => block.payload?['isRuntimePreview'] == true),
-        hasLength(1),
-      );
-      expect(
-        finalBlocks.where((block) => block.payload?['isRuntimePreview'] != true),
-        hasLength(1),
-      );
-    });
-
-    test(
         'lets iteration-2 streaming text through when only intermediate planner message exists',
         () {
       // Regression: an intermediate planner message between tool iterations
