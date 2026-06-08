@@ -80,6 +80,27 @@ class ArtifactHostViewportMetrics {
   final double? gapFromClampedHeightPx;
 }
 
+@visibleForTesting
+bool shouldPrepareFinalArtifactTakeover({
+  required String source,
+  required String? lastRenderedSource,
+  required String? pendingFinalSource,
+  required bool hasPendingFinalController,
+  required bool isRuntimePreview,
+  required bool previousWasRuntimePreview,
+}) {
+  if (isRuntimePreview) {
+    return false;
+  }
+  if (pendingFinalSource == source && hasPendingFinalController) {
+    return false;
+  }
+  if (previousWasRuntimePreview) {
+    return true;
+  }
+  return lastRenderedSource != source || hasPendingFinalController;
+}
+
 enum ArtifactHostViewportProbeStatus {
   ok,
   noContext,
@@ -695,6 +716,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   bool _hasRenderedVisibleContent = false;
   int _lastObservedSourceLength = 0;
   int _controllerOrdinal = 0;
+  bool _previousWidgetWasRuntimePreview = false;
 
   @override
   void initState() {
@@ -734,6 +756,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   @override
   void didUpdateWidget(covariant ArtifactPreviewSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _previousWidgetWasRuntimePreview = oldWidget.isRuntimePreview;
     _recordSurfaceLifecycle(
       'didUpdateWidget',
       data: <String, dynamic>{
@@ -855,12 +878,14 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   }
 
   void _loadFinalSource(String source) {
-    if (_lastRenderedSource == source &&
-        _pendingFinalController == null &&
-        !widget.isRuntimePreview) {
-      return;
-    }
-    if (_pendingFinalSource == source && _pendingFinalController != null) {
+    if (!shouldPrepareFinalArtifactTakeover(
+      source: source,
+      lastRenderedSource: _lastRenderedSource,
+      pendingFinalSource: _pendingFinalSource,
+      hasPendingFinalController: _pendingFinalController != null,
+      isRuntimePreview: widget.isRuntimePreview,
+      previousWasRuntimePreview: _previousWidgetWasRuntimePreview,
+    )) {
       return;
     }
     final controller = _createFinalController(source);

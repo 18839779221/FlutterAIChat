@@ -236,6 +236,36 @@ void main() {
     expect(document, isNot(contains("overflow = 'hidden'")));
   });
 
+  test(
+      'final takeover is still required when runtime preview already rendered identical source',
+      () {
+    expect(
+      shouldPrepareFinalArtifactTakeover(
+        source: '<div>same</div>',
+        lastRenderedSource: '<div>same</div>',
+        pendingFinalSource: null,
+        hasPendingFinalController: false,
+        isRuntimePreview: false,
+        previousWasRuntimePreview: true,
+      ),
+      isTrue,
+    );
+  });
+
+  test('final takeover is skipped when final source is already active', () {
+    expect(
+      shouldPrepareFinalArtifactTakeover(
+        source: '<div>same</div>',
+        lastRenderedSource: '<div>same</div>',
+        pendingFinalSource: null,
+        hasPendingFinalController: false,
+        isRuntimePreview: false,
+        previousWasRuntimePreview: false,
+      ),
+      isFalse,
+    );
+  });
+
   test('clamps reported preview height into three-screen bounds', () {
     expect(clampArtifactPreviewHeight(80, viewportHeight: 800), 180);
     expect(clampArtifactPreviewHeight(320, viewportHeight: 800), 320);
