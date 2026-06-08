@@ -515,6 +515,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         providerId: result.providerId,
         modelId: result.modelId,
       );
+      await ref.read(chatSessionCoordinatorProvider).syncDraftGroupProviderStyle();
       await _refreshModelChipLabel(repository);
     }
 

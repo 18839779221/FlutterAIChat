@@ -7,6 +7,7 @@ import 'package:ai_chat/models/chat/chat_attachment.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat/send_message_request.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/models/llm/llm_provider_model.dart';
@@ -609,6 +610,147 @@ void main() {
     expect(find.text('OpenAI'), findsOneWidget);
     expect(find.text('gpt-4.1'), findsNWidgets(2));
     expect(find.text('gpt-4o-mini'), findsNothing);
+  });
+
+  testWidgets(
+      'chat input syncs draft session provider style after switching model provider',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final settingsRepository = AppSettingsRepository(
+      preferences,
+      localDefaultsLoader: () async => const LlmLocalDefaults(
+        defaultProviderId: 'claude',
+        defaultModelId: 'claude-sonnet',
+        providers: [
+          LlmProviderConfig(
+            id: 'claude',
+            name: 'Claude',
+            apiKey: 'key',
+            baseUrl: 'https://example.com/v1/messages',
+            models: [
+              LlmProviderModel(id: 'claude-sonnet', name: ''),
+            ],
+          ),
+          LlmProviderConfig(
+            id: 'openai',
+            name: 'OpenAI',
+            apiKey: 'key',
+            baseUrl: 'https://api.openai.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-4.1', name: ''),
+            ],
+          ),
+        ],
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
+      ],
+    );
+    addTearDown(container.dispose);
+    container.read(currentGroupProvider.notifier).state = ChatGroup(
+      title: '新对话 1',
+      lockedProviderStyle: ChatTurnProviderStyle.anthropicMessages,
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('chat-input-model-chip')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Claude'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OpenAI'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('gpt-4.1').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      container.read(currentGroupProvider)?.lockedProviderStyle,
+      ChatTurnProviderStyle.openaiResponses,
+    );
+  });
+
+  testWidgets(
+      'chat input does not sync persisted session provider style after switching model provider',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final settingsRepository = AppSettingsRepository(
+      preferences,
+      localDefaultsLoader: () async => const LlmLocalDefaults(
+        defaultProviderId: 'claude',
+        defaultModelId: 'claude-sonnet',
+        providers: [
+          LlmProviderConfig(
+            id: 'claude',
+            name: 'Claude',
+            apiKey: 'key',
+            baseUrl: 'https://example.com/v1/messages',
+            models: [
+              LlmProviderModel(id: 'claude-sonnet', name: ''),
+            ],
+          ),
+          LlmProviderConfig(
+            id: 'openai',
+            name: 'OpenAI',
+            apiKey: 'key',
+            baseUrl: 'https://api.openai.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-4.1', name: ''),
+            ],
+          ),
+        ],
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
+      ],
+    );
+    addTearDown(container.dispose);
+    container.read(currentGroupProvider.notifier).state = ChatGroup(
+      id: 1,
+      title: '已有对话',
+      lockedProviderStyle: ChatTurnProviderStyle.anthropicMessages,
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('chat-input-model-chip')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Claude'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OpenAI'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('gpt-4.1').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      container.read(currentGroupProvider)?.lockedProviderStyle,
+      ChatTurnProviderStyle.anthropicMessages,
+    );
   });
 
   testWidgets(
@@ -1431,6 +1573,9 @@ class _NoopChatSessionCoordinator implements ChatSessionCoordinator {
 
   @override
   Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {}
+
+  @override
+  Future<void> syncDraftGroupProviderStyle() async {}
 }
 
 class _NoopChatSummaryController implements ChatSummaryController {

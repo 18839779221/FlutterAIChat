@@ -23,6 +23,8 @@ abstract class ChatSessionCoordinator {
   Future<void> selectGroup(ChatGroup group);
 
   Future<void> updateCurrentGroupWorkspace(String? workspaceId);
+
+  Future<void> syncDraftGroupProviderStyle();
 }
 
 class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
@@ -238,5 +240,22 @@ class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
           .read(databaseProvider)
           .updateGroupWorkspaceId(currentGroup.id!, normalizedWorkspaceId);
     }
+  }
+
+  @override
+  Future<void> syncDraftGroupProviderStyle() async {
+    final currentGroup = _ref.read(currentGroupProvider);
+    if (currentGroup == null || currentGroup.id != null) {
+      return;
+    }
+
+    final lockedProviderStyle = await _resolveCurrentProviderStyle();
+    if (currentGroup.lockedProviderStyle == lockedProviderStyle) {
+      return;
+    }
+
+    _ref.read(currentGroupProvider.notifier).state = currentGroup.copyWith(
+      lockedProviderStyle: lockedProviderStyle,
+    );
   }
 }

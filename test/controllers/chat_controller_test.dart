@@ -227,6 +227,60 @@ void main() {
     );
   });
 
+  test('syncDraftGroupProviderStyle updates only draft groups', () async {
+    SharedPreferences.setMockInitialValues({});
+    final settingsRepository = AppSettingsRepository(
+      await SharedPreferences.getInstance(),
+      localDefaultsLoader: () async => const LlmLocalDefaults(
+        defaultProviderId: 'openai',
+        defaultModelId: 'gpt-4.1',
+        providers: [
+          LlmProviderConfig(
+            id: 'openai',
+            name: 'OpenAI',
+            apiKey: 'test-key',
+            baseUrl: 'https://api.openai.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-4.1', name: 'GPT-4.1'),
+            ],
+          ),
+        ],
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
+        databaseProvider.overrideWithValue(_FakeChatStorage()),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.read(currentGroupProvider.notifier).state = ChatGroup(
+      title: 'draft',
+      lockedProviderStyle: ChatTurnProviderStyle.anthropicMessages,
+    );
+    await container
+        .read(chatSessionCoordinatorProvider)
+        .syncDraftGroupProviderStyle();
+    expect(
+      container.read(currentGroupProvider)?.lockedProviderStyle,
+      ChatTurnProviderStyle.openaiResponses,
+    );
+
+    container.read(currentGroupProvider.notifier).state = ChatGroup(
+      id: 1,
+      title: 'persisted',
+      lockedProviderStyle: ChatTurnProviderStyle.anthropicMessages,
+    );
+    await container
+        .read(chatSessionCoordinatorProvider)
+        .syncDraftGroupProviderStyle();
+    expect(
+      container.read(currentGroupProvider)?.lockedProviderStyle,
+      ChatTurnProviderStyle.anthropicMessages,
+    );
+  });
+
   test('loadMoreMessages prepends older page and clears exhausted pagination',
       () async {
     final storage = _FakeChatStorage(
@@ -563,6 +617,9 @@ class _NoopChatSessionCoordinator implements ChatSessionCoordinator {
 
   @override
   Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {}
+
+  @override
+  Future<void> syncDraftGroupProviderStyle() async {}
 }
 
 class _RecordingChatSessionCoordinator extends _NoopChatSessionCoordinator {
