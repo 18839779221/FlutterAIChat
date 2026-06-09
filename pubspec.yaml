@@ -90,6 +90,7 @@ flutter:
   assets:
     - config/
     - assets/debug/test_cases.json
+    - assets/guidelines/claude_visualizer_read_me.md
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

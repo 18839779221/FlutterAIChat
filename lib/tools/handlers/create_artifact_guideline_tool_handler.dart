@@ -6,16 +6,23 @@ import '../../theme/app_theme_spec.dart';
 import '../core/tool_argument_resolution.dart';
 import '../core/tool_execution_context.dart';
 import '../core/tool_handler.dart';
+import 'package:flutter/services.dart';
 
 class CreateArtifactGuidelineToolHandler extends ToolHandler {
   CreateArtifactGuidelineToolHandler({
     required AppThemeSpec Function() activeThemeSpecProvider,
     ArtifactGuidelineContractBuilder? contractBuilder,
+    AssetBundle? assetBundle,
   })  : _activeThemeSpecProvider = activeThemeSpecProvider,
-        _contractBuilder = contractBuilder ?? const ArtifactGuidelineContractBuilder();
+        _contractBuilder = contractBuilder ?? const ArtifactGuidelineContractBuilder(),
+        _assetBundle = assetBundle ?? rootBundle;
 
   final AppThemeSpec Function() _activeThemeSpecProvider;
   final ArtifactGuidelineContractBuilder _contractBuilder;
+  final AssetBundle _assetBundle;
+
+  static const String _claudeGuidelineAssetPath =
+      'assets/guidelines/claude_visualizer_read_me.md';
 
   @override
   ToolDefinition get definition => const ToolDefinition(
@@ -47,11 +54,24 @@ class CreateArtifactGuidelineToolHandler extends ToolHandler {
     final contract = _contractBuilder.build(
       spec: _activeThemeSpecProvider(),
     );
+    String? rawGuidelineMarkdown;
+    try {
+      rawGuidelineMarkdown = await _assetBundle.loadString(
+        _claudeGuidelineAssetPath,
+      );
+    } catch (_) {
+      rawGuidelineMarkdown = null;
+    }
+    final data = <String, dynamic>{
+      ...contract.toJson(),
+      if ((rawGuidelineMarkdown ?? '').isNotEmpty)
+        'raw_guideline_markdown': rawGuidelineMarkdown,
+    };
     return ToolResult(
       toolName: 'create_artifact__guideline',
       status: ToolExecutionStatus.success,
       summary: '已返回 artifact guideline',
-      data: contract.toJson(),
+      data: data,
     );
   }
 }

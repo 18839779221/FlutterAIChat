@@ -2,6 +2,7 @@ import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/tools/core/tool_execution_context.dart';
 import 'package:ai_chat/tools/handlers/create_artifact_guideline_tool_handler.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -9,6 +10,9 @@ void main() {
     test('guideline tool description enforces next-call contract and root scope', () {
       final handler = CreateArtifactGuidelineToolHandler(
         activeThemeSpecProvider: () => AppThemeSpec.claude(),
+        assetBundle: _FakeAssetBundle(
+          '# Imagine -- Visual Creation Suite\n\nRaw guideline body.',
+        ),
       );
 
       expect(handler.definition.name, 'create_artifact__guideline');
@@ -29,6 +33,9 @@ void main() {
     test('returns host markup contract and rendering guidance', () async {
       final handler = CreateArtifactGuidelineToolHandler(
         activeThemeSpecProvider: () => AppThemeSpec.claude(),
+        assetBundle: _FakeAssetBundle(
+          '# Imagine -- Visual Creation Suite\n\nRaw guideline body.',
+        ),
       );
 
       final result = await handler.execute(
@@ -56,6 +63,26 @@ void main() {
       expect(result.data['host_markup_contract'], contains('#artifact-root'));
       expect(result.data['layout_constraints'], isA<List<dynamic>>());
       expect(result.data['rendering_rules'], isA<List<dynamic>>());
+      expect(result.data['raw_guideline_markdown'], isA<String>());
+      expect(
+        result.data['raw_guideline_markdown'],
+        contains('# Imagine -- Visual Creation Suite'),
+      );
     });
   });
+}
+
+class _FakeAssetBundle extends CachingAssetBundle {
+  _FakeAssetBundle(this._content);
+
+  final String _content;
+
+  @override
+  Future<ByteData> load(String key) async {
+    final bytes = Uint8List.fromList(_content.codeUnits);
+    return ByteData.sublistView(bytes);
+  }
+
+  @override
+  Future<String> loadString(String key, {bool cache = true}) async => _content;
 }
