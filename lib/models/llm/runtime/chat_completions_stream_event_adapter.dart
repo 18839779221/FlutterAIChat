@@ -12,6 +12,7 @@ class ChatCompletionsStreamEventAdapter {
     var startedText = false;
     var startedThinking = false;
     final startedToolBlocks = <String>{};
+    final toolBlockIdsByIndex = <int, String>{};
 
     await for (final chunk in chunks) {
       final currentMessageId = _normalizeText(chunk['id']) ?? messageId ?? 'chatcmpl';
@@ -93,8 +94,10 @@ class ChatCompletionsStreamEventAdapter {
         final function = toolCall['function'];
         final index = _normalizeInt(toolCall['index']) ?? i;
         final toolUseId = _normalizeText(toolCall['id']);
-        final stableToolAnchor = toolUseId ?? 'index_$index';
-        final blockId = '$currentMessageId:tool:$stableToolAnchor';
+        final blockId = switch (toolUseId) {
+          final String id => toolBlockIdsByIndex[index] = '$currentMessageId:tool:$id',
+          null => toolBlockIdsByIndex[index] ?? '$currentMessageId:tool:index_$index',
+        };
         final toolName =
             function is Map ? _normalizeText(function['name']) : null;
         if (startedToolBlocks.add(blockId)) {

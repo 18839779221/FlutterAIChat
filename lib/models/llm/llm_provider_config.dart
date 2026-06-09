@@ -1,3 +1,4 @@
+import 'api_protocol_resolver.dart';
 import 'llm_provider_model.dart';
 
 class LlmProviderConfig {
@@ -13,6 +14,9 @@ class LlmProviderConfig {
   /// Base URL for this provider's OpenAI-compatible endpoint.
   final String baseUrl;
 
+  /// Explicit protocol style when the base URL itself is ambiguous.
+  final ApiStyle? apiStyle;
+
   /// Models currently exposed by this provider configuration.
   final List<LlmProviderModel> models;
 
@@ -21,6 +25,7 @@ class LlmProviderConfig {
     required this.name,
     required this.apiKey,
     required this.baseUrl,
+    this.apiStyle,
     required this.models,
   });
 
@@ -29,7 +34,8 @@ class LlmProviderConfig {
     final models = rawModels is List
         ? rawModels
             .whereType<Map>()
-            .map((item) => LlmProviderModel.fromJson(Map<String, dynamic>.from(item)))
+            .map((item) =>
+                LlmProviderModel.fromJson(Map<String, dynamic>.from(item)))
             .where((item) => item.id.isNotEmpty)
             .toList(growable: false)
         : const <LlmProviderModel>[];
@@ -37,9 +43,11 @@ class LlmProviderConfig {
     return LlmProviderConfig(
       id: (json['id'] as String? ?? '').trim(),
       name: (json['name'] as String? ?? '').trim(),
-      apiKey: (json['apiKey'] as String? ?? json['api_key'] as String? ?? '').trim(),
-      baseUrl:
-          (json['baseUrl'] as String? ?? json['base_url'] as String? ?? '').trim(),
+      apiKey: (json['apiKey'] as String? ?? json['api_key'] as String? ?? '')
+          .trim(),
+      baseUrl: (json['baseUrl'] as String? ?? json['base_url'] as String? ?? '')
+          .trim(),
+      apiStyle: _readApiStyle(json['apiStyle'] ?? json['api_style']),
       models: models,
     );
   }
@@ -50,7 +58,21 @@ class LlmProviderConfig {
       'name': name,
       'apiKey': apiKey,
       'baseUrl': baseUrl,
+      if (apiStyle != null) 'apiStyle': apiStyle!.name,
       'models': models.map((item) => item.toJson()).toList(growable: false),
     };
+  }
+
+  static ApiStyle? _readApiStyle(dynamic rawValue) {
+    if (rawValue is! String) {
+      return null;
+    }
+    final normalized = rawValue.trim();
+    for (final style in ApiStyle.values) {
+      if (style.name == normalized) {
+        return style;
+      }
+    }
+    return null;
   }
 }

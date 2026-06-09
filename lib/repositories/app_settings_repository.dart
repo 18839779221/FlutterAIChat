@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/llm/llm_config.dart';
+import '../models/llm/api_protocol_resolver.dart';
 import '../models/llm/llm_provider_config.dart';
 import '../models/llm/llm_provider_model.dart';
 import '../models/llm/llm_selection_state.dart';
@@ -19,7 +20,8 @@ class AppSettingsRepository {
   static const String _blockedToolNamesKey = 'tool.blocked_names';
   static const String _disabledSkillIdsKey = 'skills.disabled_ids';
   static const String _latestSkillInstallUrlKey = 'skills.latest_install_url';
-  static const String _chatCompletionsAdapterKey = 'llm.chat_completions_adapter';
+  static const String _chatCompletionsAdapterKey =
+      'llm.chat_completions_adapter';
   static const String _duplicateSkillInvocationModeKey =
       'skills.duplicate_invocation_mode';
   static const String _themeIdKey = 'appearance.theme_id';
@@ -47,8 +49,10 @@ class AppSettingsRepository {
   }
 
   Future<void> ensureSeededProviders() async {
+    final existingProviders = _readProvidersFromPreferences();
     if (_preferences.getBool(_providersSeededKey) == true &&
-        _readProvidersFromPreferences().isNotEmpty) {
+        existingProviders.isNotEmpty) {
+      await _backfillProviderApiStyles(existingProviders);
       return;
     }
 
@@ -60,7 +64,9 @@ class AppSettingsRepository {
     await _writeProviders(defaults.providers);
     final defaultProvider = defaults.providers.first;
     final seededDefaultModelId = defaults.defaultModelId ??
-        (defaultProvider.models.isEmpty ? null : defaultProvider.models.first.id);
+        (defaultProvider.models.isEmpty
+            ? null
+            : defaultProvider.models.first.id);
     await _writeSelection(
       LlmSelectionState(
         selectedProviderId: defaults.defaultProviderId ?? defaultProvider.id,
@@ -90,7 +96,8 @@ class AppSettingsRepository {
 
     return decoded
         .whereType<Map>()
-        .map((item) => LlmProviderConfig.fromJson(Map<String, dynamic>.from(item)))
+        .map((item) =>
+            LlmProviderConfig.fromJson(Map<String, dynamic>.from(item)))
         .where(
           (item) =>
               item.id.isNotEmpty &&
@@ -308,15 +315,19 @@ class AppSettingsRepository {
     final additionalConfig = <String, dynamic>{
       ...?localDefaults?.additionalConfig,
     };
+    final resolvedApiStyle = resolvedProvider.apiStyle ??
+        const ApiProtocolResolver().resolveStyle(resolvedProvider.baseUrl);
 
     return LLMConfig(
       apiKey: resolvedProvider.apiKey,
       apiUrl: resolvedProvider.baseUrl,
       model: resolvedModel.id,
+      apiStyle: resolvedApiStyle,
       additionalConfig: {
         ...additionalConfig,
         'llm.selected_provider_id': resolvedProvider.id,
         'llm.selected_model_id': resolvedModel.id,
+        'llm.selected_api_style': resolvedApiStyle.name,
         'llm.selected_model_supports_image_input':
             resolvedModel.supportsImageInput,
         'llm.runtime_selected_model_supports_image_input':
@@ -378,7 +389,8 @@ class AppSettingsRepository {
     await saveSelectionState(
       selection.copyWith(
         selectedProviderId: updatedProvider.id,
-        selectedModelId: trimmedModel.isEmpty ? _defaultModelName : trimmedModel,
+        selectedModelId:
+            trimmedModel.isEmpty ? _defaultModelName : trimmedModel,
         defaultProviderId: selection.defaultProviderId ?? updatedProvider.id,
         defaultModelId: selection.defaultModelId ?? trimmedModel,
       ),
@@ -403,7 +415,10 @@ class AppSettingsRepository {
 
   Future<Set<String>> getTrustedToolNames() async {
     final values = _preferences.getStringList(_trustedToolNamesKey) ?? const [];
-    return values.map((item) => item.trim()).where((item) => item.isNotEmpty).toSet();
+    return values
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toSet();
   }
 
   Future<void> addTrustedToolName(String toolName) async {
@@ -426,7 +441,10 @@ class AppSettingsRepository {
 
   Future<Set<String>> getBlockedToolNames() async {
     final values = _preferences.getStringList(_blockedToolNamesKey) ?? const [];
-    return values.map((item) => item.trim()).where((item) => item.isNotEmpty).toSet();
+    return values
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toSet();
   }
 
   Future<void> addBlockedToolName(String toolName) async {
@@ -502,7 +520,8 @@ class AppSettingsRepository {
   }
 
   Future<DuplicateSkillInvocationMode> getDuplicateSkillInvocationMode() async {
-    final raw = _preferences.getString(_duplicateSkillInvocationModeKey)?.trim();
+    final raw =
+        _preferences.getString(_duplicateSkillInvocationModeKey)?.trim();
     if (raw == null || raw.isEmpty) {
       return DuplicateSkillInvocationMode.reuse;
     }
@@ -523,12 +542,48 @@ class AppSettingsRepository {
   Future<void> _writeProviders(List<LlmProviderConfig> providers) async {
     await _preferences.setString(
       _providersJsonKey,
-      jsonEncode(providers.map((item) => item.toJson()).toList(growable: false)),
+      jsonEncode(
+          providers.map((item) => item.toJson()).toList(growable: false)),
     );
   }
 
   Future<void> _writeSelection(LlmSelectionState selection) async {
-    await _preferences.setString(_selectionJsonKey, jsonEncode(selection.toJson()));
+    await _preferences.setString(
+        _selectionJsonKey, jsonEncode(selection.toJson()));
+  }
+
+  Future<void> _backfillProviderApiStyles(
+    List<LlmProviderConfig> storedProviders,
+  ) async {
+    final defaults = await _getLocalDefaults();
+    if (defaults == null || defaults.providers.isEmpty) {
+      return;
+    }
+    final defaultsById = {
+      for (final provider in defaults.providers) provider.id: provider,
+    };
+    var changed = false;
+    final normalizedProviders = storedProviders.map((provider) {
+      if (provider.apiStyle != null) {
+        return provider;
+      }
+      final defaultProvider = defaultsById[provider.id];
+      if (defaultProvider?.apiStyle == null) {
+        return provider;
+      }
+      changed = true;
+      return LlmProviderConfig(
+        id: provider.id,
+        name: provider.name,
+        apiKey: provider.apiKey,
+        baseUrl: provider.baseUrl,
+        apiStyle: defaultProvider!.apiStyle,
+        models: provider.models,
+      );
+    }).toList(growable: false);
+    if (changed) {
+      await _writeProviders(normalizedProviders);
+    }
   }
 
   Future<LlmSelectionState> _normalizeSelection(
@@ -560,7 +615,7 @@ class AppSettingsRepository {
       selectedProvider,
       selection.selectedModelId,
       fallbackModelId:
-              selectedProvider.id == defaultProvider.id ? defaultModel?.id : null,
+          selectedProvider.id == defaultProvider.id ? defaultModel?.id : null,
     );
 
     return LlmSelectionState(

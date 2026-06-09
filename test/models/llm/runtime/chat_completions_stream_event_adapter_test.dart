@@ -85,4 +85,68 @@ void main() {
     expect(reasoningDelta.contentBlockId, 'chatcmpl_2:thinking');
     expect(reasoningDelta.value, '先分析');
   });
+
+  test(
+      'continues the same tool block when later chunks omit tool id and name',
+      () async {
+    const adapter = ChatCompletionsStreamEventAdapter();
+    final events = await adapter.adapt(
+      Stream<Map<String, dynamic>>.fromIterable([
+        {
+          'id': 'chatcmpl_3',
+          'choices': [
+            {
+              'delta': {
+                'tool_calls': [
+                  {
+                    'index': 0,
+                    'id': 'call_1',
+                    'type': 'function',
+                    'function': {
+                      'name': 'create_artifact__guideline',
+                      'arguments': '',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          'id': 'chatcmpl_3',
+          'choices': [
+            {
+              'delta': {
+                'tool_calls': [
+                  {
+                    'index': 0,
+                    'function': {
+                      'arguments': '{}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ]),
+    ).toList();
+
+    final toolStarts = events
+        .whereType<StreamingContentBlockStartEvent>()
+        .where((event) => event.blockType == StreamingContentBlockType.toolUse)
+        .toList();
+    expect(toolStarts, hasLength(1));
+    expect(toolStarts.single.contentBlockId, 'chatcmpl_3:tool:call_1');
+    expect(toolStarts.single.toolUseId, 'call_1');
+    expect(toolStarts.single.toolName, 'create_artifact__guideline');
+
+    final toolDeltas = events
+        .whereType<StreamingContentBlockDeltaEvent>()
+        .where((event) => event.deltaType == StreamingContentDeltaType.inputJson)
+        .toList();
+    expect(toolDeltas, hasLength(1));
+    expect(toolDeltas.single.contentBlockId, 'chatcmpl_3:tool:call_1');
+    expect(toolDeltas.single.value, '{}');
+  });
 }

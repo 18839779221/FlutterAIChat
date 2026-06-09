@@ -227,6 +227,7 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
       name: _nameController.text.trim(),
       apiKey: _currentApiKeyValue(),
       baseUrl: _normalizedBaseUrlForSelectedStyle(),
+      apiStyle: _selectedApiStyle,
       models: models,
     );
   }

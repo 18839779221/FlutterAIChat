@@ -191,8 +191,8 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       try {
         final config =
             await _ref.read(appSettingsRepositoryProvider).getLlmConfig();
-        lockedProviderStyle = const ApiProtocolResolver()
-            .resolveStyle(config.apiUrl)
+        lockedProviderStyle = (config.apiStyle ??
+                const ApiProtocolResolver().resolveStyle(config.apiUrl))
             .toChatTurnProviderStyle();
       } catch (error) {
         Logger.w(
@@ -1546,7 +1546,8 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
   }
 
   Future<String> _resolvePersistentTraceTurnId(int agentTurnId) async {
-    final turn = await _ref.read(chatTurnRepositoryProvider).getTurn(agentTurnId);
+    final turn =
+        await _ref.read(chatTurnRepositoryProvider).getTurn(agentTurnId);
     return _readTraceTurnIdFromTurn(turn) ?? 'turn_$agentTurnId';
   }
 

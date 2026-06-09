@@ -102,7 +102,8 @@ class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
     try {
       final config =
           await _ref.read(appSettingsRepositoryProvider).getLlmConfig();
-      final apiStyle = const ApiProtocolResolver().resolveStyle(config.apiUrl);
+      final apiStyle = config.apiStyle ??
+          const ApiProtocolResolver().resolveStyle(config.apiUrl);
       return apiStyle.toChatTurnProviderStyle();
     } catch (e) {
       Logger.w(
