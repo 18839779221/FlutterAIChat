@@ -14,6 +14,7 @@ import 'package:ai_chat/providers/streaming_trace_providers.dart';
 import 'package:ai_chat/services/debug_test_case_loader.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/theme/app_theme.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/widgets/chat_message_list.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_card.dart';
 import 'package:ai_chat/widgets/tool_confirmation/tool_confirmation_bottom_bar.dart';
@@ -254,6 +255,48 @@ void main() {
     final inputBounds =
         tester.getRect(find.byKey(const ValueKey('chat-input-dock')));
     expect(inputBounds.top, lessThan(listBounds.bottom));
+  });
+
+  testWidgets('chat page uses a solid theme background instead of a gradient',
+      (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final backgroundBox = tester.widget<DecoratedBox>(
+      find.byType(DecoratedBox).first,
+    );
+    final decoration = backgroundBox.decoration as BoxDecoration;
+    final colors = Theme.of(
+      tester.element(find.byType(ChatPage)),
+    ).extension<AppThemeSpec>()!;
+
+    expect(decoration.gradient, isNull);
+    expect(decoration.color, equals(colors.chatBackground));
   });
 
   testWidgets(

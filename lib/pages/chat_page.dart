@@ -123,17 +123,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: colors.chatBackground,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        colors.assistantSurface.withValues(alpha: 0.78),
-                        colors.chatBackground,
-                        colors.toolWorkflowSurface.withValues(alpha: 0.52),
-                        colors.chatBackground,
-                      ],
-                      stops: const [0, 0.38, 0.82, 1],
-                    ),
                   ),
                 ),
               ),
