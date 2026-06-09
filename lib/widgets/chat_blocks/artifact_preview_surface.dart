@@ -101,6 +101,13 @@ bool shouldPrepareFinalArtifactTakeover({
   return lastRenderedSource != source || hasPendingFinalController;
 }
 
+@visibleForTesting
+bool shouldReloadArtifactHostDocumentForThemeChange({
+  required String? source,
+}) {
+  return source != null && source.trim().isNotEmpty;
+}
+
 enum ArtifactHostViewportProbeStatus {
   ok,
   noContext,
@@ -744,12 +751,9 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     _lastThemeSignature = nextSignature;
     _controller ??= _createController();
     final source = widget.source;
-    if (didThemeChange && source != null && source.trim().isNotEmpty) {
-      if (widget.isRuntimePreview) {
-        _updateControllerContent(source);
-      } else {
-        _loadFinalSource(source);
-      }
+    if (didThemeChange &&
+        shouldReloadArtifactHostDocumentForThemeChange(source: source)) {
+      _reloadHostDocumentForThemeChange(source!);
     }
   }
 
@@ -875,6 +879,24 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     final controller = _controller;
     if (controller == null) return;
     await _applySourceToController(controller, source);
+  }
+
+  void _reloadHostDocumentForThemeChange(String source) {
+    _streamingUpdateTimer?.cancel();
+    _streamingUpdateTimer = null;
+    _pendingSource = null;
+    _pendingFinalController = null;
+    _pendingFinalSource = null;
+    _lastRenderedSource = null;
+    _isControllerReady = false;
+    _controllerReadyCompleter = null;
+    _errorText = null;
+    _previewHeight = _defaultArtifactPreviewHeight;
+    _isPreviewTruncated = false;
+    _controller = _createController();
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _loadFinalSource(String source) {

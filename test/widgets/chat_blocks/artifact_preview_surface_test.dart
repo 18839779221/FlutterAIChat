@@ -266,6 +266,26 @@ void main() {
     );
   });
 
+  test('theme change with populated source forces host document reload', () {
+    expect(
+      shouldReloadArtifactHostDocumentForThemeChange(
+        source: '<div>same</div>',
+      ),
+      isTrue,
+    );
+  });
+
+  test('theme change skips host document reload when source is empty', () {
+    expect(
+      shouldReloadArtifactHostDocumentForThemeChange(source: null),
+      isFalse,
+    );
+    expect(
+      shouldReloadArtifactHostDocumentForThemeChange(source: '   '),
+      isFalse,
+    );
+  });
+
   test('clamps reported preview height into three-screen bounds', () {
     expect(clampArtifactPreviewHeight(80, viewportHeight: 800), 180);
     expect(clampArtifactPreviewHeight(320, viewportHeight: 800), 320);
