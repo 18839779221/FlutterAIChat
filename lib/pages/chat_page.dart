@@ -61,9 +61,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final activeTurnStatus = ref.watch(activeTurnStatusPresentationProvider);
     final shouldShowFloatingActiveStatus =
         ref.watch(activeTurnStatusFloatingVisibilityProvider);
+    final shouldShowScrollToBottomButton =
+        ref.watch(scrollToBottomButtonVisibleProvider);
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final chatController = ref.read(chatControllerProvider);
+    final scrollController = ref.read(scrollControllerProvider);
 
     ref.listen(streamingTraceSnapshotProvider, (previous, next) {
       if (next == null) {
@@ -243,6 +246,40 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                                                 ),
                                               ),
                                             ),
+                                          ),
+                                        ),
+                                      ),
+                                    if (shouldShowScrollToBottomButton)
+                                      Padding(
+                                        padding: EdgeInsets.fromLTRB(
+                                          spacing.md,
+                                          0,
+                                          spacing.md,
+                                          spacing.xs,
+                                        ),
+                                        child: Align(
+                                          alignment: Alignment.centerRight,
+                                          child: _ScrollToBottomButton(
+                                            onPressed: () {
+                                              if (!scrollController.hasClients) {
+                                                return;
+                                              }
+                                              scrollController.jumpTo(
+                                                scrollController
+                                                    .position.maxScrollExtent,
+                                              );
+                                              WidgetsBinding.instance
+                                                  .addPostFrameCallback((_) {
+                                                    if (!scrollController
+                                                        .hasClients) {
+                                                      return;
+                                                    }
+                                                    scrollController.jumpTo(
+                                                      scrollController.position
+                                                          .maxScrollExtent,
+                                                    );
+                                                  });
+                                            },
                                           ),
                                         ),
                                       ),
@@ -686,6 +723,23 @@ class _MeasuredBottomOverlayHostState
           child: widget.child,
         ),
       ),
+    );
+  }
+}
+
+class _ScrollToBottomButton extends StatelessWidget {
+  const _ScrollToBottomButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return _HeaderButton(
+      shellKey: const ValueKey('scroll-to-bottom-button-shell'),
+      buttonKey: const ValueKey('scroll-to-bottom-button'),
+      tooltip: '滑动到底部',
+      onPressed: onPressed,
+      icon: Icons.keyboard_arrow_down_rounded,
     );
   }
 }

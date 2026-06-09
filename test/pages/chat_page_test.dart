@@ -365,6 +365,93 @@ void main() {
     );
   });
 
+  testWidgets(
+      'chat page shows a scroll-to-bottom button above the composer when not at the latest message',
+      (tester) async {
+    final scrollController = ScrollController();
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+        scrollControllerProvider.overrideWith((ref) => scrollController),
+      ],
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      scrollController.dispose();
+    });
+
+    final baseTime = DateTime(2026, 6, 1, 12);
+    container.read(messagesProvider.notifier).setMessages([
+      for (var i = 0; i < 24; i++) ...[
+        ChatMessage(
+          id: i * 2 + 1,
+          text: 'older user $i',
+          role: MessageRole.user,
+          status: MessageStatus.completed,
+          timestamp: baseTime.add(Duration(minutes: i * 2)),
+        ),
+        ChatMessage(
+          id: i * 2 + 2,
+          text: 'older assistant $i',
+          role: MessageRole.assistant,
+          status: MessageStatus.completed,
+          timestamp: baseTime.add(Duration(minutes: i * 2 + 1)),
+        ),
+      ],
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('scroll-to-bottom-button')),
+      findsNothing,
+    );
+
+    scrollController.jumpTo(scrollController.position.minScrollExtent);
+    await tester.pump();
+    await tester.pump();
+
+    final buttonFinder = find.byKey(const ValueKey('scroll-to-bottom-button'));
+    expect(buttonFinder, findsOneWidget);
+
+    final buttonBounds = tester.getRect(buttonFinder);
+    final inputBounds =
+        tester.getRect(find.byKey(const ValueKey('chat-input-dock')));
+    expect(buttonBounds.right, lessThanOrEqualTo(inputBounds.right + 1));
+    expect(buttonBounds.bottom, lessThanOrEqualTo(inputBounds.top + 16));
+    expect(buttonBounds.bottom, greaterThan(inputBounds.top - 56));
+
+    await tester.tap(buttonFinder);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 260));
+
+    expect(
+      scrollController.offset,
+      greaterThanOrEqualTo(scrollController.position.maxScrollExtent - 60),
+    );
+    expect(buttonFinder, findsNothing);
+  });
+
   testWidgets('chat page renders a semi-transparent bottom overlay veil',
       (tester) async {
     final container = ProviderContainer(
@@ -1076,6 +1163,9 @@ class _StubSessionCoordinator implements ChatSessionCoordinator {
 
   @override
   Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {}
+
+  @override
+  Future<void> syncDraftGroupProviderStyle() async {}
 }
 
 class _StubSummaryController implements ChatSummaryController {

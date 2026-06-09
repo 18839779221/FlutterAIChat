@@ -39,6 +39,7 @@ class ChatMessageList extends ConsumerStatefulWidget {
 class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   final ChatBlockBuilder _blockBuilder = ChatBlockBuilder();
   static const double _anchorThreshold = 100;
+  static const double _scrollToBottomVisibilityThreshold = 56;
   static const double _floatingEnterViewportMargin = 12;
   static const double _floatingExitViewportMargin = 4;
   static const double _ghostHeaderHeight = 56;
@@ -93,7 +94,24 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     }
 
     _scheduleActiveStatusVisibilitySync();
+    _syncScrollToBottomButtonVisibility();
     _scheduleDynamicInsetSync();
+  }
+
+  void _syncScrollToBottomButtonVisibility() {
+    final controller = ref.read(scrollControllerProvider);
+    if (!controller.hasClients) {
+      return;
+    }
+    final distanceToBottom =
+        controller.position.maxScrollExtent - controller.offset;
+    final shouldShow =
+        distanceToBottom > _scrollToBottomVisibilityThreshold;
+    final notifier = ref.read(scrollToBottomButtonVisibleProvider.notifier);
+    if (notifier.state == shouldShow) {
+      return;
+    }
+    notifier.state = shouldShow;
   }
 
   bool _shouldLoadOlderHistory(ScrollController scrollController) {
@@ -171,9 +189,11 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     ref.read(pendingPinnedUserMessageStableKeyProvider.notifier).state = null;
     final notifier = ref.read(chatMessageListExtraBottomInsetProvider.notifier);
     if (notifier.state == 0) {
+      ref.read(scrollToBottomButtonVisibleProvider.notifier).state = false;
       return;
     }
     notifier.state = 0;
+    ref.read(scrollToBottomButtonVisibleProvider.notifier).state = false;
   }
 
   @override
@@ -258,6 +278,13 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       _groupSwitchStaleMessages = null;
       _scheduleScrollToLatest();
     }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _syncScrollToBottomButtonVisibility();
+    });
 
     if (messages.isEmpty) {
       _resetInitialHistoryPosition();

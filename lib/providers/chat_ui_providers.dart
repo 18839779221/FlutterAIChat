@@ -267,6 +267,10 @@ final activeTurnStatusFloatingStateProvider =
   );
 });
 
+/// Page-level visibility switch for the scroll-to-latest affordance when the
+/// timeline is no longer anchored to the newest content.
+final scrollToBottomButtonVisibleProvider = StateProvider<bool>((ref) => false);
+
 /// Page-level visibility switch for the floating active status host.
 final activeTurnStatusFloatingVisibilityProvider = Provider<bool>((ref) {
   final status = ref.watch(activeTurnStatusPresentationProvider);
