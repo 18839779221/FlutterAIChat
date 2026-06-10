@@ -28,21 +28,14 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final reader = FlutterMarkdownReaderTokens.build(context);
-    final content = Padding(
+    final content = Container(
+      width: double.infinity,
+      color: reader.codeBlockBackgroundColor,
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: reader.codeBlockBackgroundColor,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
-          child: HighlightedCodeContent(
-            code: widget.code,
-            language: widget.language,
-            autoLineBreak: _autoLineBreak,
-          ),
-        ),
+      child: HighlightedCodeContent(
+        code: widget.code,
+        language: widget.language,
+        autoLineBreak: _autoLineBreak,
       ),
     );
 
