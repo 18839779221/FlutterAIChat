@@ -105,15 +105,16 @@ class SdkResponsesAdapter extends ApiStyleAdapter {
       config.systemPrompt,
     );
 
-    final input = normalizedMessages
-        .map((msg) => _buildInputItem(msg))
-        .toList();
+    final input =
+        normalizedMessages.map((msg) => _buildInputItem(msg)).toList();
 
     final payload = <String, dynamic>{
       'model': modelName,
       'input': input,
       'reasoning': _reasoningConfig,
       'store': false,
+      if (requestOptions.maxOutputTokens != null)
+        'max_output_tokens': requestOptions.maxOutputTokens,
     };
     _applyCacheHints(payload, requestOptions.cache);
     return oai.CreateResponseRequest.fromJson(payload);
@@ -186,20 +187,18 @@ class SdkResponsesAdapter extends ApiStyleAdapter {
                         .isNotEmpty,
               )
               .toList(),
-          'resolvedReferenceKinds': resolvedImageReferences
-              .map((value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'missing';
-                }
-                if (value.startsWith('data:')) {
-                  return 'data_url';
-                }
-                if (value.startsWith('http://') || value.startsWith('https://')) {
-                  return 'remote_url';
-                }
-                return 'local_path';
-              })
-              .toList(),
+          'resolvedReferenceKinds': resolvedImageReferences.map((value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'missing';
+            }
+            if (value.startsWith('data:')) {
+              return 'data_url';
+            }
+            if (value.startsWith('http://') || value.startsWith('https://')) {
+              return 'remote_url';
+            }
+            return 'local_path';
+          }).toList(),
           'modelContextType': modelContextTypeOf(message),
         },
       );
@@ -316,7 +315,8 @@ class SdkResponsesAdapter extends ApiStyleAdapter {
               );
             }
           case 'message':
-            final text = _extractMessageText(normalizedItem, preserveWhitespace: true);
+            final text =
+                _extractMessageText(normalizedItem, preserveWhitespace: true);
             if (text != null) assistantBuffer.write(text);
           case 'reasoning':
             final directText = normalizeText(
@@ -337,8 +337,10 @@ class SdkResponsesAdapter extends ApiStyleAdapter {
         }
       }
 
-      final assistantMessage = normalizeAggregatedText(assistantBuffer.toString());
-      final visibleReasoning = normalizeAggregatedText(reasoningBuffer.toString());
+      final assistantMessage =
+          normalizeAggregatedText(assistantBuffer.toString());
+      final visibleReasoning =
+          normalizeAggregatedText(reasoningBuffer.toString());
       if (toolCalls.isNotEmpty ||
           assistantMessage != null ||
           visibleReasoning != null) {
@@ -494,10 +496,10 @@ class SdkResponsesAdapter extends ApiStyleAdapter {
               instructions == null ? content : '$instructions\n\n$content';
 
         case SyntheticCarrier(
-              role: SyntheticRole.user,
-              :final content,
-              :final attachments,
-            ):
+            role: SyntheticRole.user,
+            :final content,
+            :final attachments,
+          ):
           input.add({
             'type': 'message',
             'role': 'user',
@@ -508,10 +510,10 @@ class SdkResponsesAdapter extends ApiStyleAdapter {
           });
 
         case SyntheticCarrier(
-              role: SyntheticRole.toolResult,
-              :final toolCallId,
-              :final content,
-            ):
+            role: SyntheticRole.toolResult,
+            :final toolCallId,
+            :final content,
+          ):
           input.add({
             'type': 'function_call_output',
             'call_id': toolCallId,
@@ -559,7 +561,8 @@ class SdkResponsesAdapter extends ApiStyleAdapter {
       parts.add({'type': 'input_text', 'text': content});
     }
     parts.addAll(
-      ChatAttachmentPayloadCodec.imageAttachments(attachments).map((attachment) {
+      ChatAttachmentPayloadCodec.imageAttachments(attachments)
+          .map((attachment) {
         final imageReference =
             ChatAttachmentPayloadCodec.resolveImageReference(attachment);
         if (imageReference == null || imageReference.trim().isEmpty) {

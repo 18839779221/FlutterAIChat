@@ -4,10 +4,13 @@ import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/context/model_context_item.dart';
 import '../models/context/planner_context_carrier.dart';
+import '../models/llm/llm_config.dart';
+import '../models/llm/resolved_model_budget.dart';
 import '../models/response/message_content_type.dart';
 import '../models/session/context_compaction_config.dart';
 import '../models/session/session_context_snapshot.dart';
 import '../models/tool/tool_result.dart';
+import '../repositories/app_settings_repository.dart';
 import '../repositories/chat_event_repository.dart';
 import '../repositories/chat_turn_repository.dart';
 import '../repositories/session_context_snapshot_repository.dart';
@@ -38,6 +41,7 @@ class SessionContextTurnSegment {
 
 class SessionContextBuildResult {
   final String modelName;
+  final ResolvedModelBudget resolvedBudget;
   final String resolvedSystemPrompt;
   final int systemPromptTokens;
   final List<ChatMessage> runtimeUserContextMessages;
@@ -50,6 +54,7 @@ class SessionContextBuildResult {
 
   const SessionContextBuildResult({
     required this.modelName,
+    required this.resolvedBudget,
     required this.resolvedSystemPrompt,
     required this.systemPromptTokens,
     required this.runtimeUserContextMessages,
@@ -137,6 +142,7 @@ class SessionContextService {
     RuntimeUserContextService? runtimeUserContextService,
     UserContextMessageBuilder? userContextMessageBuilder,
     ToolResultContextProjector? toolResultContextProjector,
+    AppSettingsRepository? settingsRepository,
   })  : _chatTurnRepository = chatTurnRepository,
         _chatEventRepository = chatEventRepository,
         _snapshotRepository = snapshotRepository,
@@ -150,7 +156,8 @@ class SessionContextService {
         _userContextMessageBuilder =
             userContextMessageBuilder ?? const UserContextMessageBuilder(),
         _toolResultContextProjector =
-            toolResultContextProjector ?? const ToolResultContextProjector();
+            toolResultContextProjector ?? const ToolResultContextProjector(),
+        _settingsRepository = settingsRepository;
 
   final ChatTurnRepository _chatTurnRepository;
   final ChatEventRepository _chatEventRepository;
@@ -163,12 +170,14 @@ class SessionContextService {
   final RuntimeUserContextService _runtimeUserContextService;
   final UserContextMessageBuilder _userContextMessageBuilder;
   final ToolResultContextProjector _toolResultContextProjector;
+  final AppSettingsRepository? _settingsRepository;
 
   Future<ManualSessionCompactionResult> compactCompletedHistoryForGroup({
     required int groupId,
     int? keepRecentCompletedTurns,
   }) async {
-    final existingSnapshot = await _snapshotRepository.getLatestByGroup(groupId);
+    final existingSnapshot =
+        await _snapshotRepository.getLatestByGroup(groupId);
     final allTurns = await _chatTurnRepository.getTurnsByGroup(groupId);
     final completedTurns = allTurns.where((turn) {
       final turnId = turn.id;
@@ -213,9 +222,8 @@ class SessionContextService {
       );
     }
 
-    final compactedSegments = historySegments
-        .take(compactCount)
-        .toList(growable: false);
+    final compactedSegments =
+        historySegments.take(compactCount).toList(growable: false);
     final snapshot = await _rollSummaryForward(
       groupId: groupId,
       existingSnapshot: existingSnapshot,
@@ -433,8 +441,14 @@ class SessionContextService {
   }) async {
     final snapshot = await _snapshotRepository.getLatestByGroup(groupId);
     final currentTurn = await _chatTurnRepository.getTurn(currentTurnId);
-    final modelName = _chatService.getModelName(config);
-    final profile = _tokenBudgetService.resolveProfile(modelName);
+    final runtimeConfig = await _resolveRuntimeConfig();
+    final modelName = runtimeConfig?.model.trim().isNotEmpty == true
+        ? runtimeConfig!.model.trim()
+        : _chatService.getModelName(config);
+    final resolvedBudget = runtimeConfig == null
+        ? _tokenBudgetService.resolveBudgetForModelName(modelName)
+        : _tokenBudgetService.resolveCachedBudgetForRuntime(runtimeConfig);
+    final profile = resolvedBudget.policy;
     final compactionConfig = profile.compactionConfig;
 
     final allTurns = await _chatTurnRepository.getTurnsByGroup(groupId);
@@ -458,7 +472,8 @@ class SessionContextService {
       groupedEvents: groupedHistoryEvents,
     );
     final userContextMessages = _userContextMessageBuilder.buildMessages(
-      snapshot: await _runtimeUserContextService.buildSnapshot(groupId: groupId),
+      snapshot:
+          await _runtimeUserContextService.buildSnapshot(groupId: groupId),
     );
     final filteredCurrentTurnTranscript = _filterCurrentTurnTranscript(
       snapshot: snapshot,
@@ -487,13 +502,13 @@ class SessionContextService {
     var activeSummary = snapshot;
     var recentSegments = _selectRecentCompletedTurns(
       historySegments: historySegments,
-      usableInputBudget: profile.usableInputBudget,
+      usableInputBudget: resolvedBudget.policy.usableInputBudget,
       compactionConfig: compactionConfig,
     );
     var didCompactHistory = false;
 
-    var budget = _tokenBudgetService.evaluatePlannerBudget(
-      modelName: modelName,
+    var budget = _tokenBudgetService.evaluatePlannerBudgetForResolvedBudget(
+      resolvedBudget: resolvedBudget,
       fixedPrefixTokens: fixedPrefixTokens,
       summaryTokens: _resolveSnapshotTokens(activeSummary),
       recentTurnsTokens: _estimateSegmentsTokens(recentSegments),
@@ -506,7 +521,7 @@ class SessionContextService {
         existingSnapshot: activeSummary,
         historySegments: historySegments,
         initialRecentSegments: recentSegments,
-        modelName: modelName,
+        resolvedBudget: resolvedBudget,
         fixedPrefixTokens: fixedPrefixTokens,
         currentTurnTokens: currentTurnTokens,
         compactionConfig: compactionConfig,
@@ -515,8 +530,8 @@ class SessionContextService {
       recentSegments = compactionResult.recentSegments;
       didCompactHistory = compactionResult.didCompactHistory;
     }
-    budget = _tokenBudgetService.evaluatePlannerBudget(
-      modelName: modelName,
+    budget = _tokenBudgetService.evaluatePlannerBudgetForResolvedBudget(
+      resolvedBudget: resolvedBudget,
       fixedPrefixTokens: fixedPrefixTokens,
       summaryTokens: _resolveSnapshotTokens(activeSummary),
       recentTurnsTokens: _estimateSegmentsTokens(recentSegments),
@@ -525,6 +540,7 @@ class SessionContextService {
 
     return SessionContextBuildResult(
       modelName: modelName,
+      resolvedBudget: resolvedBudget,
       resolvedSystemPrompt: resolvedSystemPrompt,
       systemPromptTokens: systemPromptTokens,
       runtimeUserContextMessages: userContextMessages,
@@ -798,15 +814,14 @@ class SessionContextService {
     required SessionContextSnapshot? existingSnapshot,
     required List<SessionContextTurnSegment> historySegments,
     required List<SessionContextTurnSegment> initialRecentSegments,
-    required String modelName,
+    required ResolvedModelBudget resolvedBudget,
     required int fixedPrefixTokens,
     required int currentTurnTokens,
     required ContextCompactionConfig compactionConfig,
   }) async {
-    final targetHistoryTokens =
-        (_tokenBudgetService.resolveProfile(modelName).usableInputBudget *
-                compactionConfig.postCompressionHistoryRatio)
-            .floor();
+    final targetHistoryTokens = (resolvedBudget.policy.usableInputBudget *
+            compactionConfig.postCompressionHistoryRatio)
+        .floor();
     final recentSegments = initialRecentSegments.toList(growable: true);
     final compactedSegments = historySegments
         .take(historySegments.length - recentSegments.length)
@@ -849,6 +864,18 @@ class SessionContextService {
       recentSegments: recentSegments.toList(growable: false),
       didCompactHistory: compactedSegments.isNotEmpty,
     );
+  }
+
+  Future<LLMConfig?> _resolveRuntimeConfig() async {
+    final repository = _settingsRepository;
+    if (repository == null) {
+      return null;
+    }
+    try {
+      return await repository.getLlmConfig();
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<SessionContextSnapshot?> _rollSummaryForward({

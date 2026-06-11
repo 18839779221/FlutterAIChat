@@ -44,12 +44,19 @@ void main() {
 
   test(
       'sessionContextServiceProvider can be constructed from chat service and storage overrides',
-      () {
+      () async {
     final expected = ChatService(llm: _NoopBaseLLM());
+    SharedPreferences.setMockInitialValues({});
     final container = ProviderContainer(
       overrides: [
         chatServiceFactoryProvider.overrideWith((ref) => expected),
         databaseProvider.overrideWithValue(_NoopChatStorage()),
+        appSettingsRepositoryProvider.overrideWithValue(
+          AppSettingsRepository(
+            await SharedPreferences.getInstance(),
+            localDefaultsLoader: () async => null,
+          ),
+        ),
       ],
     );
     addTearDown(container.dispose);
@@ -57,7 +64,8 @@ void main() {
     expect(container.read(sessionContextServiceProvider), isNotNull);
   });
 
-  test('contextWindowSnapshotProvider resolves inspector-backed snapshot', () async {
+  test('contextWindowSnapshotProvider resolves inspector-backed snapshot',
+      () async {
     final expected = ChatService(llm: _NoopBaseLLM());
     SharedPreferences.setMockInitialValues({});
     final container = ProviderContainer(
@@ -78,8 +86,9 @@ void main() {
     addTearDown(container.dispose);
 
     container.read(currentGroupProvider.notifier).state = ChatGroup(
-      id: 1,
-      title: 'Context Group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+        id: 1,
+        title: 'Context Group',
+        lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
     container.read(systemPromptProvider.notifier).state = '你是一个助手';
 
     final snapshot = await container.read(contextWindowSnapshotProvider.future);
@@ -91,10 +100,17 @@ void main() {
       'sessionContextServiceProvider wires runtime skill catalog into planner messages',
       () async {
     final expected = ChatService(llm: _NoopBaseLLM());
+    SharedPreferences.setMockInitialValues({});
     final container = ProviderContainer(
       overrides: [
         chatServiceFactoryProvider.overrideWith((ref) => expected),
         databaseProvider.overrideWithValue(_PlannerMessageChatStorage()),
+        appSettingsRepositoryProvider.overrideWithValue(
+          AppSettingsRepository(
+            await SharedPreferences.getInstance(),
+            localDefaultsLoader: () async => null,
+          ),
+        ),
         skillRuntimeServiceProvider.overrideWithValue(
           _StaticSkillRuntimeService(
             catalog: const [
@@ -112,26 +128,28 @@ void main() {
     );
     addTearDown(container.dispose);
 
-    final plannerMessages =
-        await container.read(sessionContextServiceProvider).buildPlannerMessages(
+    final plannerMessages = await container
+        .read(sessionContextServiceProvider)
+        .buildPlannerMessages(
+          groupId: 1,
+          currentTurnId: 1,
+          currentTurnTranscript: [
+            ChatEvent(
+              turnId: 1,
               groupId: 1,
-              currentTurnId: 1,
-              currentTurnTranscript: [
-                ChatEvent(
-                  turnId: 1,
-                  groupId: 1,
-                  sequence: 1,
-                  eventType: ChatEventType.userMessage,
-                  role: MessageRole.user,
-                  content: '检查 skill list 是否注入',
-                ),
-              ],
-              config: ChatConfig(systemPrompt: '你是一个助手'),
-            );
+              sequence: 1,
+              eventType: ChatEventType.userMessage,
+              role: MessageRole.user,
+              content: '检查 skill list 是否注入',
+            ),
+          ],
+          config: ChatConfig(systemPrompt: '你是一个助手'),
+        );
 
     expect(
       plannerMessages[1].text,
-      contains('The following skills are available for use with the Skill tool:'),
+      contains(
+          'The following skills are available for use with the Skill tool:'),
     );
     expect(
       plannerMessages[1].text,
@@ -170,7 +188,8 @@ void main() {
     expect(config.apiKey, 'speech-key');
   });
 
-  test('aliyunRealtimeAsrClientProvider builds realtime client for aliyun config',
+  test(
+      'aliyunRealtimeAsrClientProvider builds realtime client for aliyun config',
       () async {
     SharedPreferences.setMockInitialValues({});
     final repository = AppSettingsRepository(

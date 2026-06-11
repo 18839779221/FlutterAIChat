@@ -131,6 +131,34 @@ artifact 相关补充：
 
 负责统一预算计算。
 
+当前预算链路已经拆成两层：
+
+1. capability facts
+   - 由 `ModelCapabilityResolver` 解析
+   - 来源顺序为：
+     - 当前选中 model 的 local override
+     - provider metadata cache
+     - built-in fallback
+   - 异步刷新顺序为：
+     - local override
+     - provider metadata
+     - catalog
+     - built-in fallback
+   - provider metadata 或 catalog 若字段不完整，允许按字段级回退到 fallback，而不是整条来源作废
+2. budget policy
+   - 由 `ModelBudgetRegistry` 提供 `ModelBudgetProfile`
+   - 负责 `reservedOutputTokens`、`reasoningReserveTokens`、`safetyMarginTokens`、`compactionConfig`
+
+两层合并后的正式运行时结果是 `ResolvedModelBudget`：
+
+- `capability`
+  - 表示当前 model/provider/baseUrl 对应的上下文事实
+- `policy`
+  - 表示 app 内部的保守预算策略
+
+`SessionContextService` 在构建 planner 上下文时，会优先从 `AppSettingsRepository.getLlmConfig()` 解析当前 runtime 配置，并通过 `SessionTokenBudgetService.resolveCachedBudgetForRuntime()` 读取 `ResolvedModelBudget`。
+只有在拿不到 runtime 配置时，才退回按 `modelName` 的旧兼容预算路径。
+
 正式输入预算公式：
 
 ```text
@@ -152,6 +180,18 @@ autoCompactTriggerTokens =
 ```
 
 其中 `plannerInputUsageRatio = estimatedPlannerInputTokens / autoCompactTriggerTokens` 是当前唯一正式主指标。
+
+补充说明：
+
+- `maxContextTokens`
+  - 取自 `ResolvedModelBudget.maxContextTokens`
+  - 即 capability `contextWindowTotal` 优先，缺省时回退到 policy `maxContextTokens`
+- `effectiveInputBudget`
+  - 由 capability `maxInputTokens` 与 policy 保留区共同裁剪得出
+- `shouldCompact`
+  - 现在严格由 `totalInputTokens >= autoCompactTriggerTokens` 判断
+- `capabilitySource`
+  - 会随 `SessionPlannerBudgetEvaluation` 一起输出，供 inspector/UI 显示当前预算事实来自 local override、provider metadata、catalog 还是 built-in fallback
 
 ### SessionSummaryService
 
@@ -181,6 +221,7 @@ autoCompactTriggerTokens =
 - planner 可见 segment 拆解
 - `reserved output`、`reasoning reserve`、`safety margin`、`free headroom`
 - 当前是否已经触发历史压缩
+- 当前 budget capability source
 
 UI 约束：
 

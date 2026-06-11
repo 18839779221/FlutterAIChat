@@ -18,6 +18,10 @@ import 'package:ai_chat/services/chat_timeline_order_anchor_store.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/latest_message_running_status_resolver.dart';
 import 'package:ai_chat/services/model_budget_registry.dart';
+import 'package:ai_chat/services/model_capability_resolver.dart';
+import 'package:ai_chat/services/model_capability_sources/anthropic_model_capability_source.dart';
+import 'package:ai_chat/services/model_capability_sources/catalog_model_capability_source.dart';
+import 'package:ai_chat/services/model_capability_sources/gemini_model_capability_source.dart';
 import 'package:ai_chat/repositories/session_runtime_marker_repository.dart';
 import 'package:ai_chat/services/prompt/runtime_user_context_service.dart';
 import 'package:ai_chat/services/session_context_projector.dart';
@@ -67,7 +71,8 @@ final appSettingsRepositoryProvider = Provider<AppSettingsRepository>((ref) {
   throw UnimplementedError('需要在 main.dart 中覆盖 AppSettingsRepository');
 });
 
-final speechInputConfigProvider = FutureProvider<SpeechInputConfig?>((ref) async {
+final speechInputConfigProvider =
+    FutureProvider<SpeechInputConfig?>((ref) async {
   return ref.read(appSettingsRepositoryProvider).getSpeechInputConfig();
 });
 
@@ -187,8 +192,8 @@ final chatTimelineOrderAnchorStoreProvider =
 final artifactFileStorageServiceProvider =
     Provider<ArtifactFileStorageService?>((ref) => null);
 
-final artifactThemeTokenMapperProvider =
-    Provider<ArtifactThemeTokenMapper>((ref) => const ArtifactThemeTokenMapper());
+final artifactThemeTokenMapperProvider = Provider<ArtifactThemeTokenMapper>(
+    (ref) => const ArtifactThemeTokenMapper());
 
 final artifactGuidelineContractBuilderProvider =
     Provider<ArtifactGuidelineContractBuilder>(
@@ -246,7 +251,8 @@ final runtimeUserContextServiceProvider = Provider<RuntimeUserContextService>(
   ),
 );
 
-final enabledSkillCatalogProvider = FutureProvider<List<SkillCatalogEntry>>((ref) {
+final enabledSkillCatalogProvider =
+    FutureProvider<List<SkillCatalogEntry>>((ref) {
   return ref.read(skillRuntimeServiceProvider).listSkillCatalogEntries();
 });
 
@@ -295,9 +301,23 @@ final sessionRuntimeMarkerServiceProvider =
 final modelBudgetRegistryProvider =
     Provider<ModelBudgetRegistry>((ref) => ModelBudgetRegistry());
 
+final modelCapabilityResolverProvider =
+    Provider<ModelCapabilityResolver>((ref) {
+  return ModelCapabilityResolver(
+    settingsRepository: ref.watch(appSettingsRepositoryProvider),
+    budgetRegistry: ref.watch(modelBudgetRegistryProvider),
+    providerSources: [
+      AnthropicModelCapabilitySource(),
+      GeminiModelCapabilitySource(),
+    ],
+    catalogSource: CatalogModelCapabilitySource(),
+  );
+});
+
 final sessionTokenBudgetServiceProvider = Provider<SessionTokenBudgetService>(
   (ref) => SessionTokenBudgetService(
     modelBudgetRegistry: ref.watch(modelBudgetRegistryProvider),
+    modelCapabilityResolver: ref.watch(modelCapabilityResolverProvider),
   ),
 );
 
@@ -316,6 +336,7 @@ final sessionContextServiceProvider = Provider<SessionContextService>((ref) {
     summaryService: ref.watch(sessionSummaryServiceProvider),
     chatService: ref.watch(chatServiceProvider),
     runtimeUserContextService: ref.watch(runtimeUserContextServiceProvider),
+    settingsRepository: ref.watch(appSettingsRepositoryProvider),
   );
 });
 

@@ -1,6 +1,7 @@
 import 'base_llm.dart';
 import 'configurable_http_llm.dart';
 import '../../repositories/app_settings_repository.dart';
+import '../../services/model_capability_resolver.dart';
 
 enum LLMType {
   configurable,
@@ -12,10 +13,14 @@ class LLMFactory {
     LLMType type, {
     required AppSettingsRepository settingsRepository,
     String chatCompletionsAdapterType = 'sdk',
+    ModelCapabilityResolver? modelCapabilityResolver,
   }) {
     switch (type) {
       case LLMType.configurable:
-        final llm = ConfigurableHttpLLM(settingsRepository: settingsRepository);
+        final llm = ConfigurableHttpLLM(
+          settingsRepository: settingsRepository,
+          modelCapabilityResolver: modelCapabilityResolver,
+        );
         if (chatCompletionsAdapterType != 'sdk') {
           llm.setChatCompletionsAdapter(chatCompletionsAdapterType);
         }

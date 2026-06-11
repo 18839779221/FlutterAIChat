@@ -250,6 +250,20 @@ class AppSettingsRepository {
     required String baseUrlFingerprint,
     required String modelId,
   }) async {
+    return getModelCapabilityCacheSync(
+      providerId: providerId,
+      providerStyle: providerStyle,
+      baseUrlFingerprint: baseUrlFingerprint,
+      modelId: modelId,
+    );
+  }
+
+  ResolvedModelCapability? getModelCapabilityCacheSync({
+    required String providerId,
+    required ApiStyle providerStyle,
+    required String baseUrlFingerprint,
+    required String modelId,
+  }) {
     final raw = _preferences.getString(_modelCapabilityCacheKey);
     if (raw == null || raw.trim().isEmpty) {
       return null;
@@ -327,6 +341,41 @@ class AppSettingsRepository {
       fallbackModelId: selection.defaultModelId,
     );
     return resolvedModel?.capabilityOverride;
+  }
+
+  String? getSelectedModelIdSync() {
+    final providers = _readProvidersFromPreferences();
+    if (providers.isEmpty) {
+      return null;
+    }
+    final raw = _preferences.getString(_selectionJsonKey);
+    final selection = raw == null || raw.trim().isEmpty
+        ? const LlmSelectionState()
+        : (() {
+            final decoded = jsonDecode(raw);
+            if (decoded is! Map<String, dynamic>) {
+              return const LlmSelectionState();
+            }
+            return LlmSelectionState.fromJson(decoded);
+          })();
+    final resolvedProvider = _resolveProvider(
+      providers,
+      selection.selectedProviderId,
+      fallbackProviderId: selection.defaultProviderId,
+    );
+    if (resolvedProvider == null) {
+      return null;
+    }
+    final resolvedModel = _resolveModel(
+      resolvedProvider,
+      selection.selectedModelId,
+      fallbackModelId: selection.defaultModelId,
+    );
+    final modelId = resolvedModel?.id.trim();
+    if (modelId == null || modelId.isEmpty) {
+      return null;
+    }
+    return modelId;
   }
 
   Future<String?> getThemeId() async {

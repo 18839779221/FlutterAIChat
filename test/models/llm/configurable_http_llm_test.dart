@@ -11,12 +11,14 @@ import 'package:ai_chat/models/llm/adapters/api_style_adapter.dart';
 import 'package:ai_chat/models/llm/adapters/provider_capabilities.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/llm/configurable_http_llm.dart';
-import 'package:ai_chat/models/llm/llm_config.dart';
 import 'package:ai_chat/models/llm/llm_cache_usage.dart';
 import 'package:ai_chat/models/llm/llm_cache_strategy.dart';
+import 'package:ai_chat/models/llm/llm_config.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/models/llm/llm_provider_model.dart';
+import 'package:ai_chat/models/llm/llm_request_purpose.dart';
 import 'package:ai_chat/models/llm/llm_request_options.dart';
+import 'package:ai_chat/models/llm/model_capability_override.dart';
 import 'package:ai_chat/models/agent/model_turn_decision.dart';
 import 'package:ai_chat/models/agent/planner_tool_choice.dart';
 import 'package:ai_chat/models/llm/adapters/sdk_anthropic_messages_adapter.dart';
@@ -2202,6 +2204,7 @@ void main() {
         config: ChatConfig(systemPrompt: ''),
         modelName: 'claude-sonnet',
         stream: false,
+        requestOptions: const LlmRequestOptions(maxOutputTokens: 12000),
       );
 
       expect(jsonEncode(payload), contains('"type":"image"'));
@@ -2230,6 +2233,7 @@ void main() {
         config: ChatConfig(systemPrompt: ''),
         modelName: 'claude-sonnet',
         stream: false,
+        requestOptions: const LlmRequestOptions(maxOutputTokens: 12000),
       );
 
       expect(jsonEncode(payload), contains('"type":"base64"'));
@@ -2637,6 +2641,27 @@ void main() {
       expect(result, '网页核心结论');
     });
   });
+
+  group('request budget', () {
+    test('caps planner maxOutputTokens by resolved capability maxOutputTokens',
+        () async {
+      final llm = await _buildLlm(
+        baseUrl: 'https://api.openai.com/v1/responses',
+        modelId: 'gpt-5',
+        capabilityOverride: const ModelCapabilityOverride(
+          contextWindowTotal: 1000000,
+          maxInputTokens: 256000,
+          maxOutputTokens: 4096,
+        ),
+      );
+
+      final options = await llm.debugRequestOptionsForTest(
+        purpose: LlmRequestPurpose.planner,
+      );
+
+      expect(options.maxOutputTokens, 4096);
+    });
+  });
 }
 
 Future<ConfigurableHttpLLM> _buildLlm({
@@ -2650,6 +2675,7 @@ Future<ConfigurableHttpLLM> _buildLlm({
   int mainFlowNetworkRetryAttempts = 5,
   String apiKey = 'test-key',
   String modelId = 'gpt-5.4',
+  ModelCapabilityOverride? capabilityOverride,
   void Function(
     String tag,
     String message, {
@@ -2672,7 +2698,11 @@ Future<ConfigurableHttpLLM> _buildLlm({
           apiKey: apiKey,
           baseUrl: baseUrl,
           models: [
-            LlmProviderModel(id: modelId, name: modelId),
+            LlmProviderModel(
+              id: modelId,
+              name: modelId,
+              capabilityOverride: capabilityOverride,
+            ),
           ],
         ),
       ],

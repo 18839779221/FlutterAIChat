@@ -27,13 +27,31 @@ flowchart LR
 - `TurnHarness / Agent Loop Core`
   - 只关心统一的 planner decision、tool round-trip、waiting state、turn stop/continue
 - `ConfigurableHttpLLM`
-  - 只负责高层编排、重试、timeout、trace、accumulator 接线
+  - 负责高层编排、重试、timeout、trace、accumulator 接线
+  - 负责把 runtime provider/model 解析为统一的 `ResolvedModelBudget`
 - `ApiStyleAdapter`
   - 负责协议语义映射、payload 组装、provider raw response 到统一 decision 的解析
 - `ProtocolExecutionRuntime`
   - 负责真实请求执行、SDK/HTTP 调用、流式事件归一化
 - `Live Capability Matrix`
   - 只存在于测试层，用来表达具体 provider 的真实能力预期
+
+补充运行时预算链路：
+
+```mermaid
+flowchart LR
+    A["AppSettingsRepository.getLlmConfig()"] --> B["ModelCapabilityResolver"]
+    B --> C["ResolvedModelBudget"]
+    D["ModelBudgetRegistry policy"] --> C
+    C --> E["ConfigurableHttpLLM request options"]
+    C --> F["SessionTokenBudgetService / compaction"]
+```
+
+要求：
+
+- provider 请求侧与 session compaction 侧必须消费同一份 `ResolvedModelBudget`
+- 不允许一边用 provider metadata / cache，另一边仍用硬编码默认值
+- `ModelBudgetRegistry` 现在主要承担 policy/fallback 角色，不再是 runtime capability facts 的唯一事实源
 
 ## 生产层边界
 
@@ -66,6 +84,7 @@ flowchart LR
 - 根据 base URL 解析 `ApiStyle`
 - 选择 adapter 与 runtime
 - 组织 request purpose
+- 通过 `ModelCapabilityResolver.resolveCachedOrFallback()` 读取当前 runtime 的 `ResolvedModelBudget`
 - 统一接线日志、超时、重试、stream accumulator
 - 返回统一的 `ModelTurnDecision` 或 side-task 文本结果
 
@@ -77,6 +96,15 @@ flowchart LR
 - 某个 provider 的 continuation 特判
 
 这些都应停留在 adapter / runtime 内部。
+
+当前 `ConfigurableHttpLLM` 的 request options 还承担一个正式约束：
+
+- `planner` 请求的 `maxOutputTokens`
+  - 来自 `ResolvedModelBudget.plannerMaxOutputTokens`
+- `summary` / `webpageProcessing` / `sideTask`
+  - 来自 `ResolvedModelBudget.summaryMaxOutputTokens`
+
+也就是说，provider 请求侧的输出上限已经与 session 预算侧共用同一份 resolved budget，而不是各自维护独立默认值。
 
 ### 3. `ApiStyleAdapter` 与 `ProtocolExecutionRuntime` 的职责划分
 
@@ -123,6 +151,7 @@ flowchart LR
 - 上层都返回统一 `ModelTurnDecision`
 - 上层都支持 append-only transcript replay
 - 上层都不把 provider-native continuation 当作语义主路径
+- 上层都从统一 `LlmRequestOptions.maxOutputTokens` 接收输出预算，而不是在 adapter 内部各自写死默认值
 
 差异只允许存在于：
 
@@ -139,6 +168,7 @@ flowchart LR
 - side-task 仍然通过 `ApiStyleAdapter` 组织请求
 - side-task 仍然通过 `ProtocolExecutionRuntime` 执行
 - provider 特定 path、SDK baseUrl、transport fallback 必须与主 planner 保持同一边界
+- side-task 的 `maxOutputTokens` 也必须复用 `ResolvedModelBudget.summaryMaxOutputTokens`
 
 这也是为什么兼容前缀路由这类问题应修在 runtime，而不是修在调用方。
 

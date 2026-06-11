@@ -32,6 +32,10 @@ import 'services/chat_trace_recorder.dart';
 import 'services/agent_planner_service.dart';
 import 'services/default_file_tool_adapters.dart';
 import 'services/model_budget_registry.dart';
+import 'services/model_capability_resolver.dart';
+import 'services/model_capability_sources/anthropic_model_capability_source.dart';
+import 'services/model_capability_sources/catalog_model_capability_source.dart';
+import 'services/model_capability_sources/gemini_model_capability_source.dart';
 import 'services/turn_harness.dart';
 import 'services/turn_verifier.dart';
 import 'services/tool_call_service.dart';
@@ -88,12 +92,22 @@ void main() async {
     await storage.testDatabaseConnection();
     final chatCompletionsAdapterType =
         await settingsRepository.getChatCompletionsAdapterType();
+    final modelBudgetRegistry = ModelBudgetRegistry();
+    final modelCapabilityResolver = ModelCapabilityResolver(
+      settingsRepository: settingsRepository,
+      budgetRegistry: modelBudgetRegistry,
+      providerSources: [
+        AnthropicModelCapabilitySource(),
+        GeminiModelCapabilitySource(),
+      ],
+      catalogSource: CatalogModelCapabilitySource(),
+    );
     final llm = LLMFactory.createLLM(
       LLMType.configurable,
       settingsRepository: settingsRepository,
       chatCompletionsAdapterType: chatCompletionsAdapterType,
+      modelCapabilityResolver: modelCapabilityResolver,
     );
-    final modelBudgetRegistry = ModelBudgetRegistry();
     final fileToolAdapters = await buildDefaultFileToolHostAdapters();
     final appSupportDirectory = await getApplicationSupportDirectory();
     final agentRootDirectory = Directory(
@@ -227,9 +241,11 @@ void main() async {
       contextProjector: SessionContextProjector(),
       tokenBudgetService: SessionTokenBudgetService(
         modelBudgetRegistry: modelBudgetRegistry,
+        modelCapabilityResolver: modelCapabilityResolver,
       ),
       summaryService: SessionSummaryService(chatService: chatService),
       chatService: chatService,
+      settingsRepository: settingsRepository,
     );
     turnHarness = TurnHarness(
       plannerService: AgentPlannerService(

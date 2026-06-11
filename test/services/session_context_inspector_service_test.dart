@@ -7,7 +7,9 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
+import 'package:ai_chat/models/llm/model_capability_source_kind.dart';
 import 'package:ai_chat/models/session/context_compaction_config.dart';
+import 'package:ai_chat/models/session/context_usage_category.dart';
 import 'package:ai_chat/models/session/context_window_segment.dart';
 import 'package:ai_chat/models/session/context_window_snapshot.dart';
 import 'package:ai_chat/models/session/model_budget_profile.dart';
@@ -74,7 +76,9 @@ void main() {
         databaseName: 'session_context_inspector_service_segments_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Context Inspector', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+        ChatGroup(
+            title: 'Context Inspector',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -195,17 +199,34 @@ void main() {
       expect(snapshot.plannerInputUsageRatio, greaterThan(0));
       expect(snapshot.totalWindowUsageRatio, greaterThan(0));
       expect(snapshot.effectiveInputUsageRatio, greaterThan(0));
+      expect(
+          snapshot.capabilitySource, ModelCapabilitySourceKind.builtInFallback);
+      expect(snapshot.categories, isNotEmpty);
+      expect(
+        snapshot.categories.map((item) => item.type),
+        contains(ContextUsageCategoryType.toolResults),
+      );
+      expect(
+        snapshot.categories.map((item) => item.label),
+        contains('系统设定'),
+      );
+      expect(snapshot.topItems, isNotEmpty);
+      expect(
+          snapshot.topItems.first.displayLabel, contains('Read · README.md'));
 
       await storage.deleteGroup(groupId);
     });
 
-    test('snapshot exposes compaction metadata when history rolled into summary',
+    test(
+        'snapshot exposes compaction metadata when history rolled into summary',
         () async {
       final storage = DatabaseHelper(
         databaseName: 'session_context_inspector_service_compaction_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Context Inspector Compaction', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+        ChatGroup(
+            title: 'Context Inspector Compaction',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -341,5 +362,4 @@ class _FakeBaseLlm implements BaseLLM {
 
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async => '';
-
 }

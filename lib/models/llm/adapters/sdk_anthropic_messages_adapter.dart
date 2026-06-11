@@ -62,7 +62,8 @@ class SdkAnthropicMessagesAdapter extends ApiStyleAdapter {
       LlmRequestPurpose.planner => false,
       LlmRequestPurpose.summary ||
       LlmRequestPurpose.webpageProcessing ||
-      LlmRequestPurpose.sideTask => true,
+      LlmRequestPurpose.sideTask =>
+        true,
     };
     if (requestOptions.allowReasoning == allowReasoning) {
       return requestOptions;
@@ -136,7 +137,8 @@ class SdkAnthropicMessagesAdapter extends ApiStyleAdapter {
       'model': modelName,
       if (systemSegments.isNotEmpty) 'system': systemSegments.join('\n\n'),
       'messages': normalizedMessages,
-      'max_tokens': requestOptions.maxOutputTokens ?? 4096,
+      if (requestOptions.maxOutputTokens != null)
+        'max_tokens': requestOptions.maxOutputTokens,
       if (!requestOptions.allowReasoning)
         'thinking': const {'type': 'disabled'},
     };
@@ -277,7 +279,8 @@ class SdkAnthropicMessagesAdapter extends ApiStyleAdapter {
   ModelTurnDecision? parseDecision(Map<String, dynamic> payload) {
     final content = payload['content'];
     final providerState = <String, dynamic>{
-      if (payload['id'] is String && (payload['id'] as String).trim().isNotEmpty)
+      if (payload['id'] is String &&
+          (payload['id'] as String).trim().isNotEmpty)
         'message_id': payload['id'],
       if (content is List)
         'content_blocks': content
@@ -322,7 +325,8 @@ class SdkAnthropicMessagesAdapter extends ApiStyleAdapter {
       if (text != null) textBuffer.write(text);
     }
 
-    final visibleReasoning = normalizeAggregatedText(reasoningBuffer.toString());
+    final visibleReasoning =
+        normalizeAggregatedText(reasoningBuffer.toString());
 
     if (toolCalls.isNotEmpty) {
       return ModelTurnDecision(
@@ -383,7 +387,8 @@ class SdkAnthropicMessagesAdapter extends ApiStyleAdapter {
     final reasoning = snapshot.reasoning;
     if (reasoning != null && reasoning.isNotEmpty) {
       final signature =
-          snapshot.providerState['anthropic_thinking_signature']?.toString() ?? '';
+          snapshot.providerState['anthropic_thinking_signature']?.toString() ??
+              '';
       blocks.add({
         'type': 'thinking',
         'thinking': reasoning,
@@ -485,10 +490,10 @@ class SdkAnthropicMessagesAdapter extends ApiStyleAdapter {
           });
 
         case SyntheticCarrier(
-              role: SyntheticRole.toolResult,
-              :final toolCallId,
-              :final content,
-            ):
+            role: SyntheticRole.toolResult,
+            :final toolCallId,
+            :final content,
+          ):
           (pendingToolResults ??= <Map<String, dynamic>>[]).add({
             'type': 'tool_result',
             'tool_use_id': toolCallId,
@@ -517,7 +522,8 @@ class SdkAnthropicMessagesAdapter extends ApiStyleAdapter {
       'model': modelName,
       if (systemText != null) 'system': systemText,
       'messages': messages,
-      'max_tokens': requestOptions.maxOutputTokens ?? 4096,
+      if (requestOptions.maxOutputTokens != null)
+        'max_tokens': requestOptions.maxOutputTokens,
       if (tools.isNotEmpty) 'tools': tools,
       if (!requestOptions.allowReasoning)
         'thinking': const {'type': 'disabled'},
@@ -533,7 +539,8 @@ class SdkAnthropicMessagesAdapter extends ApiStyleAdapter {
       parts.add({'type': 'text', 'text': content});
     }
     parts.addAll(
-      ChatAttachmentPayloadCodec.imageAttachments(attachments).map((attachment) {
+      ChatAttachmentPayloadCodec.imageAttachments(attachments)
+          .map((attachment) {
         final imageReference =
             ChatAttachmentPayloadCodec.resolveImageReference(attachment);
         if (imageReference == null) {

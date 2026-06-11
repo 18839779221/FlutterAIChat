@@ -3,6 +3,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/services/model_capability_resolver.dart';
+import 'package:ai_chat/services/model_capability_sources/anthropic_model_capability_source.dart';
+import 'package:ai_chat/services/model_capability_sources/catalog_model_capability_source.dart';
+import 'package:ai_chat/services/model_capability_sources/gemini_model_capability_source.dart';
 import 'package:ai_chat/services/prompt/prompt_builder_service.dart';
 import 'package:ai_chat/services/prompt/prompt_locale.dart';
 import 'package:ai_chat/services/prompt/prompt_stage.dart';
@@ -16,7 +20,7 @@ import '../agent/planner_tool_option.dart';
 import '../chat_message.dart';
 import '../chat_turn.dart';
 import '../context/planner_context_carrier.dart';
-import '../session/model_budget_profile.dart';
+import '../llm/resolved_model_budget.dart';
 import '../../services/session_summary_service.dart';
 import 'adapters/api_style_adapter.dart';
 import 'adapters/chat_completions_adapter.dart';
@@ -41,8 +45,7 @@ import 'runtime/openai_responses_runtime.dart';
 import 'runtime/protocol_request_spec.dart';
 import 'runtime/protocol_runtime_registry.dart';
 
-class ConfigurableHttpLLM
-    implements BaseLLM, PlannerRuntimeStreamingCapable {
+class ConfigurableHttpLLM implements BaseLLM, PlannerRuntimeStreamingCapable {
   static const String _tag = 'ConfigurableHttpLLM';
   // Architecture:
   // - docs/architecture/append-only-transcript.md
@@ -78,6 +81,7 @@ class ConfigurableHttpLLM
   final ProtocolRuntimeRegistry _runtimeRegistry;
   final PromptBuilderService _promptBuilder;
   final ModelBudgetRegistry _modelBudgetRegistry;
+  late final ModelCapabilityResolver _modelCapabilityResolver;
   final void Function(
     String tag,
     String message, {
@@ -100,6 +104,7 @@ class ConfigurableHttpLLM
     ProtocolRuntimeRegistry? runtimeRegistry,
     PromptBuilderService? promptBuilder,
     ModelBudgetRegistry? modelBudgetRegistry,
+    ModelCapabilityResolver? modelCapabilityResolver,
     void Function(
       String tag,
       String message, {
@@ -112,17 +117,15 @@ class ConfigurableHttpLLM
         _requestTimeout = requestTimeout ?? _defaultRequestTimeout,
         _plannerRequestTimeout =
             plannerRequestTimeout ?? _defaultPlannerRequestTimeout,
-        _plannerStreamIdleTimeout =
-            plannerStreamIdleTimeout ??
-                plannerRequestTimeout ??
-                _defaultPlannerRequestTimeout,
-        _plannerStreamOverallTimeout =
-            plannerStreamOverallTimeout ??
-                _resolveDefaultPlannerStreamOverallTimeout(
-                  plannerStreamIdleTimeout ??
-                      plannerRequestTimeout ??
-                      _defaultPlannerRequestTimeout,
-                ),
+        _plannerStreamIdleTimeout = plannerStreamIdleTimeout ??
+            plannerRequestTimeout ??
+            _defaultPlannerRequestTimeout,
+        _plannerStreamOverallTimeout = plannerStreamOverallTimeout ??
+            _resolveDefaultPlannerStreamOverallTimeout(
+              plannerStreamIdleTimeout ??
+                  plannerRequestTimeout ??
+                  _defaultPlannerRequestTimeout,
+            ),
         _mainFlowNetworkRetryAttempts = mainFlowNetworkRetryAttempts,
         _adapters = adapters ?? _defaultAdapters,
         _runtimeRegistry = runtimeRegistry ??
@@ -144,6 +147,16 @@ class ConfigurableHttpLLM
         _traceEmitter = traceEmitter ?? Logger.trace,
         _retryDelayBuilder = retryDelayBuilder ?? _defaultRetryDelayForAttempt {
     assert(mainFlowNetworkRetryAttempts >= 1);
+    _modelCapabilityResolver = modelCapabilityResolver ??
+        ModelCapabilityResolver(
+          settingsRepository: _settingsRepository,
+          budgetRegistry: _modelBudgetRegistry,
+          providerSources: [
+            AnthropicModelCapabilitySource(),
+            GeminiModelCapabilitySource(),
+          ],
+          catalogSource: CatalogModelCapabilitySource(),
+        );
   }
 
   @override
@@ -158,7 +171,8 @@ class ConfigurableHttpLLM
     if (adapter == null) {
       throw StateError('No ApiStyleAdapter registered for $apiStyle');
     }
-    Logger.i(_tag, 'adapter selected style=$apiStyle impl=${adapter.runtimeType}');
+    Logger.i(
+        _tag, 'adapter selected style=$apiStyle impl=${adapter.runtimeType}');
     return adapter;
   }
 
@@ -175,7 +189,7 @@ class ConfigurableHttpLLM
 
   @override
   String getModelName(ChatConfig config) {
-    return 'deepseek-chat';
+    return _settingsRepository.getSelectedModelIdSync() ?? 'deepseek-chat';
   }
 
   @override
@@ -318,6 +332,7 @@ class ConfigurableHttpLLM
       final modelName = _resolveModelName(runtimeConfig, config);
       final requestOptions = adapter.normalizeRequestOptions(
         _requestOptionsFor(
+          runtimeConfig: runtimeConfig,
           modelName: modelName,
           purpose: LlmRequestPurpose.planner,
           apiStyle: apiStyle,
@@ -369,9 +384,7 @@ class ConfigurableHttpLLM
       final execution = await _performRetriableMainFlowRequest(
         label: 'native_planner',
         onRetryScheduled: onRetryScheduled,
-        operation: () => _runtimeRegistry
-            .runtimeFor(apiStyle)
-            .execute(
+        operation: () => _runtimeRegistry.runtimeFor(apiStyle).execute(
               requestSpec: requestSpec,
               runtimeConfig: runtimeConfig,
               timeout: _plannerRequestTimeout,
@@ -433,9 +446,11 @@ class ConfigurableHttpLLM
         level: LogLevel.error,
         data: {
           'label': 'native_planner',
-          'apiStyle': _protocolResolver.resolveStyle(
-            (await _settingsRepository.getLlmConfig()).apiUrl,
-          ).name,
+          'apiStyle': _protocolResolver
+              .resolveStyle(
+                (await _settingsRepository.getLlmConfig()).apiUrl,
+              )
+              .name,
           'model': (await _settingsRepository.getLlmConfig()).model,
           'purpose': LlmRequestPurpose.planner.name,
           'error': e.toString(),
@@ -520,7 +535,8 @@ class ConfigurableHttpLLM
         firstChunkAt ??= DateTime.now();
         _emitFirstChunk(
           traceContext,
-          firstChunkMs: firstChunkAt!.difference(traceContext.startedAt).inMilliseconds,
+          firstChunkMs:
+              firstChunkAt!.difference(traceContext.startedAt).inMilliseconds,
         );
       },
       onEvent: (event) {
@@ -530,11 +546,18 @@ class ConfigurableHttpLLM
           final usageMap = metadata['_usage'] as Map<String, dynamic>?;
           if (usageMap != null) {
             streamUsage = LlmCacheUsage(
-              inputTokens: usageMap['input_tokens'] as int? ?? usageMap['inputTokens'] as int?,
-              outputTokens: usageMap['output_tokens'] as int? ?? usageMap['outputTokens'] as int?,
-              cachedInputTokens: usageMap['cached_input_tokens'] as int? ?? usageMap['cachedInputTokens'] as int?,
-              cacheReadInputTokens: usageMap['cache_read_input_tokens'] as int? ?? usageMap['cacheReadInputTokens'] as int?,
-              cacheWriteInputTokens: usageMap['cache_creation_input_tokens'] as int? ?? usageMap['cacheWriteInputTokens'] as int?,
+              inputTokens: usageMap['input_tokens'] as int? ??
+                  usageMap['inputTokens'] as int?,
+              outputTokens: usageMap['output_tokens'] as int? ??
+                  usageMap['outputTokens'] as int?,
+              cachedInputTokens: usageMap['cached_input_tokens'] as int? ??
+                  usageMap['cachedInputTokens'] as int?,
+              cacheReadInputTokens:
+                  usageMap['cache_read_input_tokens'] as int? ??
+                      usageMap['cacheReadInputTokens'] as int?,
+              cacheWriteInputTokens:
+                  usageMap['cache_creation_input_tokens'] as int? ??
+                      usageMap['cacheWriteInputTokens'] as int?,
               rawUsage: usageMap,
             );
           }
@@ -546,7 +569,8 @@ class ConfigurableHttpLLM
       traceContext,
       totalMs: _elapsedMilliseconds(traceContext.startedAt),
       payloadBytes: _payloadBytes(streamingPayload),
-      firstChunkMs: firstChunkAt?.difference(traceContext.startedAt).inMilliseconds,
+      firstChunkMs:
+          firstChunkAt?.difference(traceContext.startedAt).inMilliseconds,
       cacheUsage: streamUsage ?? execution.cacheUsage,
     );
     final debugSnapshot = accumulator.debugSnapshot();
@@ -558,19 +582,21 @@ class ConfigurableHttpLLM
     final builtDecision = accumulator.buildDecision();
     // Capture provider raw assistant message for round-trip replay.
     final snapshot = accumulator.currentSnapshot();
-    final rawAssistantMessage =
-        builtDecision == null ? null : adapter.assembleRawFromStreamingSnapshot(snapshot);
-    final decisionWithRaw = (builtDecision == null || rawAssistantMessage == null)
-        ? builtDecision
-        : builtDecision.copyWith(
-            providerState: {
-              ...builtDecision.providerState,
-              'streaming_preview_identity': _buildStreamingPreviewIdentity(
-                snapshot,
-              ),
-              'raw_assistant_message': rawAssistantMessage,
-            },
-          );
+    final rawAssistantMessage = builtDecision == null
+        ? null
+        : adapter.assembleRawFromStreamingSnapshot(snapshot);
+    final decisionWithRaw =
+        (builtDecision == null || rawAssistantMessage == null)
+            ? builtDecision
+            : builtDecision.copyWith(
+                providerState: {
+                  ...builtDecision.providerState,
+                  'streaming_preview_identity': _buildStreamingPreviewIdentity(
+                    snapshot,
+                  ),
+                  'raw_assistant_message': rawAssistantMessage,
+                },
+              );
     return _StreamingPlannerAttemptResult.completed(
       decisionWithRaw,
       debugSnapshot: debugSnapshot,
@@ -589,8 +615,7 @@ class ConfigurableHttpLLM
 
     void logChunkProgress(String phase) {
       final snapshot = accumulator.debugSnapshot();
-      final assistantChars =
-          (snapshot['assistantTextLength'] as int?) ?? 0;
+      final assistantChars = (snapshot['assistantTextLength'] as int?) ?? 0;
       final reasoningChars = (snapshot['reasoningLength'] as int?) ?? 0;
       final toolDrafts =
           (snapshot['toolDrafts'] as List<dynamic>?) ?? const <dynamic>[];
@@ -671,7 +696,8 @@ class ConfigurableHttpLLM
         }
       }
       logChunkProgress('completed');
-    }()).timeout(
+    }())
+        .timeout(
       _plannerStreamOverallTimeout,
       onTimeout: () {
         Logger.temp(
@@ -722,14 +748,17 @@ class ConfigurableHttpLLM
   }
 
   LlmRequestOptions _requestOptionsFor({
+    required LLMConfig runtimeConfig,
     required String modelName,
     required LlmRequestPurpose purpose,
     required ApiStyle apiStyle,
   }) {
-    final profile = _modelBudgetRegistry.resolve(modelName);
+    final resolvedBudget = _modelCapabilityResolver.resolveCachedOrFallback(
+      runtimeConfig,
+    );
     return LlmRequestOptions(
       maxOutputTokens: _resolveMaxOutputTokens(
-        profile: profile,
+        budget: resolvedBudget,
         purpose: purpose,
       ),
       allowReasoning: true,
@@ -754,17 +783,33 @@ class ConfigurableHttpLLM
   }
 
   int _resolveMaxOutputTokens({
-    required ModelBudgetProfile profile,
+    required ResolvedModelBudget budget,
     required LlmRequestPurpose purpose,
   }) {
     switch (purpose) {
       case LlmRequestPurpose.planner:
-        return profile.reservedOutputTokens;
+        return budget.plannerMaxOutputTokens;
       case LlmRequestPurpose.summary:
       case LlmRequestPurpose.webpageProcessing:
       case LlmRequestPurpose.sideTask:
-        return profile.reservedOutputTokens + profile.reasoningReserveTokens;
+        return budget.summaryMaxOutputTokens;
     }
+  }
+
+  Future<LlmRequestOptions> debugRequestOptionsForTest({
+    required LlmRequestPurpose purpose,
+    ChatConfig? config,
+  }) async {
+    final runtimeConfig = await _settingsRepository.getLlmConfig();
+    final effectiveConfig = config ?? ChatConfig(systemPrompt: '');
+    final apiStyle = _protocolResolver.resolveStyle(runtimeConfig.apiUrl);
+    final modelName = _resolveModelName(runtimeConfig, effectiveConfig);
+    return _requestOptionsFor(
+      runtimeConfig: runtimeConfig,
+      modelName: modelName,
+      purpose: purpose,
+      apiStyle: apiStyle,
+    );
   }
 
   _RequestTraceContext _requestTraceContext({
@@ -829,7 +874,8 @@ class ConfigurableHttpLLM
         'messageCount': context.messageCount,
         'payloadBytes': _payloadBytes(payload),
         'cacheStrategy': context.cacheStrategy.name,
-        'cacheKeyPresent': context.cacheKey != null && context.cacheKey!.isNotEmpty,
+        'cacheKeyPresent':
+            context.cacheKey != null && context.cacheKey!.isNotEmpty,
         if ((context.cacheRetention ?? '').isNotEmpty)
           'cacheRetention': context.cacheRetention,
         if (context.markStableSystemPrefix) 'markStableSystemPrefix': true,
@@ -878,7 +924,8 @@ class ConfigurableHttpLLM
         'cacheStrategy': context.cacheStrategy.name,
         if (cacheUsage != null) 'inputTokens': cacheUsage.inputTokens,
         if (cacheUsage != null) 'outputTokens': cacheUsage.outputTokens,
-        if (cacheUsage != null) 'cachedInputTokens': cacheUsage.cachedInputTokens,
+        if (cacheUsage != null)
+          'cachedInputTokens': cacheUsage.cachedInputTokens,
         if (cacheUsage != null)
           'cacheReadInputTokens': cacheUsage.cacheReadInputTokens,
         if (cacheUsage != null)
@@ -925,6 +972,7 @@ class ConfigurableHttpLLM
     };
     final requestOptions = adapter.normalizeRequestOptions(
       _requestOptionsFor(
+        runtimeConfig: runtimeConfig,
         modelName: modelName,
         purpose: purpose,
         apiStyle: apiStyle,
@@ -1042,8 +1090,7 @@ class ConfigurableHttpLLM
         ? toolDrafts
             .whereType<Map>()
             .map(
-              (draft) =>
-                  '#${draft['sequence']}'
+              (draft) => '#${draft['sequence']}'
                   ':name=${draft['toolName'] ?? '-'}'
                   ':id=${draft['providerCallId'] ?? '-'}'
                   ':done=${draft['isCompleted'] == true}'

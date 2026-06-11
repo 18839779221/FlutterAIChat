@@ -1,7 +1,13 @@
 import '../models/chat_message.dart';
 import '../models/context/planner_context_carrier.dart';
+import '../models/llm/api_protocol_resolver.dart';
+import '../models/llm/llm_config.dart';
+import '../models/llm/model_capability_source_kind.dart';
+import '../models/llm/resolved_model_budget.dart';
+import '../models/llm/resolved_model_capability.dart';
 import '../models/session/context_compaction_config.dart';
 import '../models/session/model_budget_profile.dart';
+import 'model_capability_resolver.dart';
 import 'model_budget_registry.dart';
 
 class SessionModelBudget {
@@ -39,8 +45,10 @@ typedef SessionModelBudgetResolver = SessionModelBudget Function(
     String modelName);
 
 class SessionPlannerBudgetEvaluation {
+  final int maxContextTokens;
   final int usableInputBudget;
   final int effectiveInputBudget;
+  final ModelCapabilitySourceKind capabilitySource;
   final int fixedPrefixTokens;
   final int summaryTokens;
   final int recentTurnsTokens;
@@ -55,8 +63,10 @@ class SessionPlannerBudgetEvaluation {
   final bool shouldCompact;
 
   const SessionPlannerBudgetEvaluation({
+    required this.maxContextTokens,
     required this.usableInputBudget,
     required this.effectiveInputBudget,
+    required this.capabilitySource,
     required this.fixedPrefixTokens,
     required this.summaryTokens,
     required this.recentTurnsTokens,
@@ -76,11 +86,14 @@ class SessionTokenBudgetService {
   SessionTokenBudgetService({
     SessionModelBudgetResolver? modelBudgetResolver,
     ModelBudgetRegistry? modelBudgetRegistry,
+    ModelCapabilityResolver? modelCapabilityResolver,
   })  : _modelBudgetResolver = modelBudgetResolver,
-        _modelBudgetRegistry = modelBudgetRegistry ?? ModelBudgetRegistry();
+        _modelBudgetRegistry = modelBudgetRegistry ?? ModelBudgetRegistry(),
+        _modelCapabilityResolver = modelCapabilityResolver;
 
   final SessionModelBudgetResolver? _modelBudgetResolver;
   final ModelBudgetRegistry _modelBudgetRegistry;
+  final ModelCapabilityResolver? _modelCapabilityResolver;
 
   SessionModelBudget resolveBudget(String modelName) {
     final resolver = _modelBudgetResolver;
@@ -115,6 +128,42 @@ class SessionTokenBudgetService {
     return _modelBudgetRegistry.resolve(modelName);
   }
 
+  ResolvedModelBudget resolveBudgetForModelName(String modelName) {
+    final profile = resolveProfile(modelName);
+    final resolver = _modelBudgetResolver;
+    final capability = resolver == null
+        ? _modelBudgetRegistry.resolveFallbackCapability(modelName)
+        : ResolvedModelCapability(
+            providerId: 'runtime-budget',
+            providerStyle: ApiStyle.chatCompletions,
+            baseUrlFingerprint: 'runtime-budget',
+            modelId: modelName.trim().isEmpty ? 'runtime' : modelName.trim(),
+            contextWindowTotal: profile.maxContextTokens,
+            maxInputTokens: profile.providerInputCap,
+            source: ModelCapabilitySourceKind.builtInFallback,
+          );
+    return ResolvedModelBudget(
+      capability: capability,
+      policy: profile,
+    );
+  }
+
+  ResolvedModelBudget resolveCachedBudgetForRuntime(LLMConfig runtimeConfig) {
+    final resolver = _modelCapabilityResolver;
+    if (resolver == null) {
+      return resolveBudgetForModelName(runtimeConfig.model);
+    }
+    return resolver.resolveCachedOrFallback(runtimeConfig);
+  }
+
+  Future<ResolvedModelBudget> resolveBudgetForRuntime(LLMConfig runtimeConfig) {
+    final resolver = _modelCapabilityResolver;
+    if (resolver == null) {
+      return Future.value(resolveBudgetForModelName(runtimeConfig.model));
+    }
+    return resolver.resolveForRuntime(runtimeConfig);
+  }
+
   SessionBudgetEvaluation evaluate({
     required String modelName,
     required int systemPromptTokens,
@@ -140,36 +189,60 @@ class SessionTokenBudgetService {
   }
 
   SessionPlannerBudgetEvaluation evaluatePlannerBudget({
-    required String modelName,
+    String? modelName,
+    LLMConfig? runtimeConfig,
     required int fixedPrefixTokens,
     required int summaryTokens,
     required int recentTurnsTokens,
     required int currentTurnTokens,
     int toolSchemaTokens = 0,
   }) {
-    final profile = resolveProfile(modelName);
+    final resolvedBudget = runtimeConfig != null
+        ? resolveCachedBudgetForRuntime(runtimeConfig)
+        : resolveBudgetForModelName(modelName ?? '');
+    return evaluatePlannerBudgetForResolvedBudget(
+      resolvedBudget: resolvedBudget,
+      fixedPrefixTokens: fixedPrefixTokens,
+      summaryTokens: summaryTokens,
+      recentTurnsTokens: recentTurnsTokens,
+      currentTurnTokens: currentTurnTokens,
+      toolSchemaTokens: toolSchemaTokens,
+    );
+  }
+
+  SessionPlannerBudgetEvaluation evaluatePlannerBudgetForResolvedBudget({
+    required ResolvedModelBudget resolvedBudget,
+    required int fixedPrefixTokens,
+    required int summaryTokens,
+    required int recentTurnsTokens,
+    required int currentTurnTokens,
+    int toolSchemaTokens = 0,
+  }) {
+    final profile = resolvedBudget.policy;
     final usableInputBudget = profile.usableInputBudget;
-    final effectiveInputBudget = profile.effectiveInputBudget;
+    final effectiveInputBudget = resolvedBudget.effectiveInputBudget;
     final historyPayloadTokens = summaryTokens + recentTurnsTokens;
-    final totalInputTokens =
-        fixedPrefixTokens +
+    final totalInputTokens = fixedPrefixTokens +
         historyPayloadTokens +
         currentTurnTokens +
         toolSchemaTokens;
     final totalUsageRatio =
         usableInputBudget <= 0 ? 1.0 : totalInputTokens / usableInputBudget;
-    final autoCompactTriggerTokens =
-        (effectiveInputBudget - profile.compactionConfig.autoCompactBufferTokens)
-            .clamp(0, effectiveInputBudget);
+    final autoCompactTriggerTokens = (effectiveInputBudget -
+            profile.compactionConfig.autoCompactBufferTokens)
+        .clamp(0, effectiveInputBudget);
     final plannerInputUsageRatio = autoCompactTriggerTokens <= 0
         ? 1.0
         : totalInputTokens / autoCompactTriggerTokens;
-    final effectiveInputUsageRatio =
-        effectiveInputBudget <= 0 ? 1.0 : totalInputTokens / effectiveInputBudget;
+    final effectiveInputUsageRatio = effectiveInputBudget <= 0
+        ? 1.0
+        : totalInputTokens / effectiveInputBudget;
 
     return SessionPlannerBudgetEvaluation(
+      maxContextTokens: resolvedBudget.maxContextTokens,
       usableInputBudget: usableInputBudget,
       effectiveInputBudget: effectiveInputBudget,
+      capabilitySource: resolvedBudget.capability.source,
       fixedPrefixTokens: fixedPrefixTokens,
       summaryTokens: summaryTokens,
       recentTurnsTokens: recentTurnsTokens,
