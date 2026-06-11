@@ -298,6 +298,37 @@ class AppSettingsRepository {
     return resolvedModel?.capabilityOverride;
   }
 
+  ModelCapabilityOverride? getSelectedModelCapabilityOverrideSync() {
+    final providers = _readProvidersFromPreferences();
+    if (providers.isEmpty) {
+      return null;
+    }
+    final raw = _preferences.getString(_selectionJsonKey);
+    final selection = raw == null || raw.trim().isEmpty
+        ? const LlmSelectionState()
+        : (() {
+            final decoded = jsonDecode(raw);
+            if (decoded is! Map<String, dynamic>) {
+              return const LlmSelectionState();
+            }
+            return LlmSelectionState.fromJson(decoded);
+          })();
+    final resolvedProvider = _resolveProvider(
+      providers,
+      selection.selectedProviderId,
+      fallbackProviderId: selection.defaultProviderId,
+    );
+    if (resolvedProvider == null) {
+      return null;
+    }
+    final resolvedModel = _resolveModel(
+      resolvedProvider,
+      selection.selectedModelId,
+      fallbackModelId: selection.defaultModelId,
+    );
+    return resolvedModel?.capabilityOverride;
+  }
+
   Future<String?> getThemeId() async {
     return getThemeIdSync();
   }

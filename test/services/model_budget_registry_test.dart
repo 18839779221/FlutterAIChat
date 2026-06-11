@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('ModelBudgetRegistry', () {
-    test('resolves exact model profile before family fallback', () {
+    test('resolves exact policy profile before family fallback', () {
       final registry = ModelBudgetRegistry(
         profiles: {
           'gpt-5': const ModelBudgetProfile(
@@ -29,10 +29,32 @@ void main() {
         },
       );
 
-      final profile = registry.resolve('gpt-5');
+      final profile = registry.resolvePolicy('gpt-5');
 
       expect(profile.modelId, 'gpt-5');
-      expect(profile.maxContextTokens, 200000);
+      expect(profile.reservedOutputTokens, 16000);
+    });
+
+    test('resolves fallback capability facts for exact models', () {
+      final registry = ModelBudgetRegistry(
+        profiles: {
+          'gpt-5': const ModelBudgetProfile(
+            modelId: 'gpt-5',
+            maxContextTokens: 200000,
+            providerInputCap: 180000,
+            reservedOutputTokens: 16000,
+            reasoningReserveTokens: 8000,
+            safetyMarginTokens: 4000,
+            compactionConfig: ContextCompactionConfig(),
+          ),
+        },
+      );
+
+      final capability = registry.resolveFallbackCapability('gpt-5');
+
+      expect(capability.modelId, 'gpt-5');
+      expect(capability.contextWindowTotal, 200000);
+      expect(capability.maxInputTokens, 180000);
     });
 
     test('prefers runtime override over built-in defaults', () {
@@ -61,10 +83,10 @@ void main() {
         },
       );
 
-      final profile = registry.resolve('gpt-5');
+      final profile = registry.resolvePolicy('gpt-5');
 
       expect(profile.modelId, 'gpt-5-runtime');
-      expect(profile.maxContextTokens, 256000);
+      expect(profile.reservedOutputTokens, 20000);
       expect(profile.compactionConfig.compressionTriggerRatio, 0.75);
     });
 
@@ -72,9 +94,10 @@ void main() {
         () {
       final registry = ModelBudgetRegistry();
 
-      final profile = registry.resolve('unknown-model');
+      final profile = registry.resolvePolicy('unknown-model');
+      final capability = registry.resolveFallbackCapability('unknown-model');
 
-      expect(profile.maxContextTokens, greaterThan(0));
+      expect(capability.contextWindowTotal, greaterThan(0));
       expect(profile.reservedOutputTokens, greaterThan(0));
       expect(profile.compactionConfig.minRecentCompletedTurns, 1);
     });

@@ -1,3 +1,6 @@
+import '../models/llm/api_protocol_resolver.dart';
+import '../models/llm/model_capability_source_kind.dart';
+import '../models/llm/resolved_model_capability.dart';
 import '../models/session/context_compaction_config.dart';
 import '../models/session/model_budget_profile.dart';
 
@@ -18,7 +21,7 @@ class ModelBudgetRegistry {
   final Map<String, ModelBudgetProfile> _runtimeOverrides;
   final ModelBudgetProfile _fallbackProfile;
 
-  ModelBudgetProfile resolve(String modelName) {
+  ModelBudgetProfile resolvePolicy(String modelName) {
     final normalized = _normalize(modelName);
     if (normalized.isEmpty) {
       return _fallbackProfile;
@@ -46,6 +49,23 @@ class ModelBudgetRegistry {
     }
 
     return _fallbackProfile;
+  }
+
+  ResolvedModelCapability resolveFallbackCapability(String modelName) {
+    final profile = resolvePolicy(modelName);
+    return ResolvedModelCapability(
+      providerId: 'built-in-fallback',
+      providerStyle: ApiStyle.chatCompletions,
+      baseUrlFingerprint: 'built-in-fallback',
+      modelId: profile.modelId,
+      contextWindowTotal: profile.maxContextTokens,
+      maxInputTokens: profile.providerInputCap,
+      source: ModelCapabilitySourceKind.builtInFallback,
+    );
+  }
+
+  ModelBudgetProfile resolve(String modelName) {
+    return resolvePolicy(modelName);
   }
 
   static String _normalize(String modelName) => modelName.trim().toLowerCase();
