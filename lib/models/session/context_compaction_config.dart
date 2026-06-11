@@ -3,6 +3,9 @@ class ContextCompactionConfig {
   /// Trigger compaction when total estimated usage reaches this ratio.
   final double compressionTriggerRatio;
 
+  /// Keep this many tokens free before auto-compaction is allowed to trigger.
+  final int autoCompactBufferTokens;
+
   /// Target ratio for summary + recent completed turns after compaction.
   final double postCompressionHistoryRatio;
 
@@ -17,6 +20,7 @@ class ContextCompactionConfig {
 
   const ContextCompactionConfig({
     this.compressionTriggerRatio = 0.80,
+    this.autoCompactBufferTokens = 13000,
     this.postCompressionHistoryRatio = 0.15,
     this.defaultRecentCompletedTurns = 6,
     this.recentTurnsMaxRatio = 0.10,

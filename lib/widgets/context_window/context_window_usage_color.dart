@@ -8,12 +8,11 @@ Color resolveContextWindowUsageColor(
   AppThemeSpec colors,
   ContextWindowSnapshot snapshot,
 ) {
-  final ratio = snapshot.totalWindowUsageRatio.clamp(0.0, 1.0);
-  final trigger = snapshot.compressionTriggerRatio;
-  if (ratio >= trigger) {
+  final ratio = snapshot.plannerInputUsageRatio;
+  if (ratio >= 1.0) {
     return colors.workflowWarning.withValues(alpha: 0.72);
   }
-  if (ratio >= trigger * 0.85) {
+  if (ratio >= 0.85) {
     return colors.workflowRunning.withValues(alpha: 0.64);
   }
   return colors.secondaryText.withValues(alpha: 0.48);

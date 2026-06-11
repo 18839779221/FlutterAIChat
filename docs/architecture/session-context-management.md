@@ -45,17 +45,23 @@ Session 代表“同一个会话容器下的完整连续上下文对话”。
 - snapshot 边界之后的最近 working set
 - 当前 turn transcript
 
+补充约束：
+
+- `history summary`、`recent working set`、`current turn transcript` 三段必须互斥
+- 若 snapshot 命中了当前 turn 且存在 event 级边界，则当前 turn 只保留边界之后的 transcript 后缀
+- active-turn 自动压缩后，会结束旧 turn 并立即切到一个新的 continuation turn；新的 planner 请求只依赖 `runtime user context + snapshot summary + continuation turn 新增 transcript`
+
 ### SessionContextProjector
 
-负责把消息和事件投影成模型可见 `ChatMessage`。
+负责把消息和事件投影成模型可见上下文。
 
 保留：
 
 - 用户消息
-- assistant tool use
-- 最终 assistant 消息
 - tool result / tool error 的紧凑文本
 - ask-user-question 的提问与用户回答
+- `assistantTurnSnapshot` 对应的 provider-native assistant message
+- `assistantPlannerMessage` 对应的中间 assistant 文本（通过 carrier 路径继续参与后续 loop）
 
 过滤：
 
@@ -125,26 +131,37 @@ artifact 相关补充：
 
 负责统一预算计算。
 
-预算核心公式：
+正式输入预算公式：
 
 ```text
-inputBudget = maxContextTokens - reservedOutputTokens - safetyMarginTokens
+effectiveInputBudget =
+  min(
+    providerInputCap 或 +inf,
+    maxContextTokens
+      - reservedOutputTokens
+      - reasoningReserveTokens
+      - safetyMarginTokens
+  )
 ```
 
-当估算输入接近预算阈值时，触发历史压缩。
+正式自动压缩阈值：
+
+```text
+autoCompactTriggerTokens =
+  effectiveInputBudget - autoCompactBufferTokens
+```
+
+其中 `plannerInputUsageRatio = estimatedPlannerInputTokens / autoCompactTriggerTokens` 是当前唯一正式主指标。
 
 ### SessionSummaryService
 
 负责把较早历史整理为稳定摘要。
 
-摘要栏目固定为：
+当前使用 Claude 风格 continuation summary prompt：
 
-- 当前目标
-- 已确认事实
-- 用户偏好/限制
-- 重要工具结论
-- 未完成事项
-- 风险与下一步
+- 输出要求包含 `<analysis>...</analysis>` 与 `<summary>...</summary>`
+- 持久化时只保留 `<summary>` body
+- summary 仍按一整块原始文本存储，不做字段级结构化解析
 
 ### SessionContextSnapshotRepository
 
@@ -158,11 +175,17 @@ inputBudget = maxContextTokens - reservedOutputTokens - safetyMarginTokens
 
 输出重点包括：
 
+- `plannerInputUsageRatio`
 - 占总上下文窗口的比例
-- 占可用输入预算的比例
+- 占 effective input budget 的比例
 - planner 可见 segment 拆解
 - `reserved output`、`reasoning reserve`、`safety margin`、`free headroom`
 - 当前是否已经触发历史压缩
+
+UI 约束：
+
+- composer 小圆环与颜色分级只看 `plannerInputUsageRatio`
+- `totalWindowUsageRatio` 与 `effectiveInputUsageRatio` 只在 bottom sheet 中作为诊断值展示
 
 ## 存储模型
 
@@ -171,23 +194,32 @@ inputBudget = maxContextTokens - reservedOutputTokens - safetyMarginTokens
 - `group_id`
 - `summary_text`
 - `covered_until_turn_id`
+- `covered_until_event_id`
 - `estimated_tokens`
 - `created_at`
 - `updated_at`
 
-其中 `covered_until_turn_id` 用来定义 snapshot 已覆盖到哪个 turn。
-构建 working set 时，只读取这个边界之后的 turn。
+其中：
+
+- `covered_until_turn_id` 用来定义 snapshot 已覆盖到哪个 turn
+- `covered_until_event_id` 允许同一 turn 内只覆盖到某个 event 前缀
+
+构建 working set 时：
+
+- `covered_until_turn_id` 之前的 whole turns 不再进入 planner
+- 若当前 turn 命中 `covered_until_turn_id` 且存在 `covered_until_event_id`，只读取该 turn 的后缀事件
 
 ## 压缩触发
 
-压缩的主触发器是 token budget pressure，而不是固定消息数或固定 turn 数。
+压缩的主触发器是 `totalInputTokens >= autoCompactTriggerTokens`，而不是固定消息数或固定 turn 数。
 
 执行顺序：
 
-1. 估算 system prompt、工具 schema、snapshot、recent working set、当前 turn transcript 的 token
-2. 与当前模型预算比较
-3. 若接近阈值，则对较早历史生成新 snapshot
-4. planner 改用“snapshot + 当前 turn”或“snapshot + 较短 recent working set + 当前 turn”
+1. 估算 system prompt、runtime user context、snapshot、recent working set、当前 turn transcript 的 token
+2. 与 `effectiveInputBudget` / `autoCompactTriggerTokens` 比较
+3. 若 completed history 已足够缓解压力，则先滚动 summary 压缩历史
+4. 若压力仍然来自当前 active turn，则把“snapshot 后的 recent completed turns + 当前 turn 到边界 event 为止的 planner-visible 前缀”压成新的 summary
+5. 旧 turn 以 `completed + stopReason=auto_compacted_continue` 收口，并立即创建 summary-only continuation turn 自动续跑
 
 ## 为什么删除旧 context strategy
 

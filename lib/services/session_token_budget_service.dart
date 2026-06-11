@@ -40,24 +40,34 @@ typedef SessionModelBudgetResolver = SessionModelBudget Function(
 
 class SessionPlannerBudgetEvaluation {
   final int usableInputBudget;
+  final int effectiveInputBudget;
   final int fixedPrefixTokens;
   final int summaryTokens;
   final int recentTurnsTokens;
   final int currentTurnTokens;
+  final int toolSchemaTokens;
   final int historyPayloadTokens;
   final int totalInputTokens;
   final double totalUsageRatio;
+  final int autoCompactTriggerTokens;
+  final double plannerInputUsageRatio;
+  final double effectiveInputUsageRatio;
   final bool shouldCompact;
 
   const SessionPlannerBudgetEvaluation({
     required this.usableInputBudget,
+    required this.effectiveInputBudget,
     required this.fixedPrefixTokens,
     required this.summaryTokens,
     required this.recentTurnsTokens,
     required this.currentTurnTokens,
+    required this.toolSchemaTokens,
     required this.historyPayloadTokens,
     required this.totalInputTokens,
     required this.totalUsageRatio,
+    required this.autoCompactTriggerTokens,
+    required this.plannerInputUsageRatio,
+    required this.effectiveInputUsageRatio,
     required this.shouldCompact,
   });
 }
@@ -98,6 +108,7 @@ class SessionTokenBudgetService {
         safetyMarginTokens: budget.safetyMarginTokens,
         compactionConfig: ContextCompactionConfig(
           compressionTriggerRatio: budget.pressureThreshold,
+          autoCompactBufferTokens: 0,
         ),
       );
     }
@@ -134,26 +145,43 @@ class SessionTokenBudgetService {
     required int summaryTokens,
     required int recentTurnsTokens,
     required int currentTurnTokens,
+    int toolSchemaTokens = 0,
   }) {
     final profile = resolveProfile(modelName);
     final usableInputBudget = profile.usableInputBudget;
+    final effectiveInputBudget = profile.effectiveInputBudget;
     final historyPayloadTokens = summaryTokens + recentTurnsTokens;
     final totalInputTokens =
-        fixedPrefixTokens + historyPayloadTokens + currentTurnTokens;
+        fixedPrefixTokens +
+        historyPayloadTokens +
+        currentTurnTokens +
+        toolSchemaTokens;
     final totalUsageRatio =
         usableInputBudget <= 0 ? 1.0 : totalInputTokens / usableInputBudget;
+    final autoCompactTriggerTokens =
+        (effectiveInputBudget - profile.compactionConfig.autoCompactBufferTokens)
+            .clamp(0, effectiveInputBudget);
+    final plannerInputUsageRatio = autoCompactTriggerTokens <= 0
+        ? 1.0
+        : totalInputTokens / autoCompactTriggerTokens;
+    final effectiveInputUsageRatio =
+        effectiveInputBudget <= 0 ? 1.0 : totalInputTokens / effectiveInputBudget;
 
     return SessionPlannerBudgetEvaluation(
       usableInputBudget: usableInputBudget,
+      effectiveInputBudget: effectiveInputBudget,
       fixedPrefixTokens: fixedPrefixTokens,
       summaryTokens: summaryTokens,
       recentTurnsTokens: recentTurnsTokens,
       currentTurnTokens: currentTurnTokens,
+      toolSchemaTokens: toolSchemaTokens,
       historyPayloadTokens: historyPayloadTokens,
       totalInputTokens: totalInputTokens,
       totalUsageRatio: totalUsageRatio,
-      shouldCompact:
-          totalUsageRatio >= profile.compactionConfig.compressionTriggerRatio,
+      autoCompactTriggerTokens: autoCompactTriggerTokens,
+      plannerInputUsageRatio: plannerInputUsageRatio,
+      effectiveInputUsageRatio: effectiveInputUsageRatio,
+      shouldCompact: totalInputTokens >= autoCompactTriggerTokens,
     );
   }
 

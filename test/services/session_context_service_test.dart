@@ -11,6 +11,7 @@ import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/session/context_compaction_config.dart';
 import 'package:ai_chat/models/session/model_budget_profile.dart';
+import 'package:ai_chat/models/session/session_context_snapshot.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/repositories/session_context_snapshot_repository.dart';
@@ -463,6 +464,122 @@ void main() {
           .toList(growable: false);
       expect(boundaryMessages, hasLength(1));
       expect(boundaryMessages.single.text, '已压缩历史上下文');
+
+      await storage.deleteGroup(groupId);
+    });
+
+    test(
+        'keeps only post-boundary suffix from partially compacted current turn',
+        () async {
+      final storage = DatabaseHelper(
+        databaseName: 'session_context_service_partial_turn_suffix_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(
+          title: 'Session Context Partial Turn Suffix',
+          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        ),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final eventRepository = ChatEventRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '继续当前任务',
+        ),
+      );
+
+      final earlyUserEvent = ChatEvent(
+        turnId: currentTurnId,
+        groupId: groupId,
+        sequence: 1,
+        eventType: ChatEventType.userMessage,
+        role: MessageRole.user,
+        content: 'old user message before compaction',
+      );
+      final compactedToolResultEvent = ChatEvent(
+        turnId: currentTurnId,
+        groupId: groupId,
+        sequence: 2,
+        eventType: ChatEventType.toolResult,
+        role: MessageRole.assistant,
+        content: '已执行联网搜索',
+        payloadJson: const {
+          'toolName': 'web_search',
+          'status': 'success',
+          'summary': '已执行联网搜索',
+          'data': {
+            'query': 'Claude latest news 2026',
+            'results': [
+              {
+                'title': 'Claude latest update',
+                'url': 'https://example.com/claude-latest',
+                'snippet': 'first result snippet',
+              },
+            ],
+          },
+        },
+      );
+      final retainedUserInteractionEvent = ChatEvent(
+        turnId: currentTurnId,
+        groupId: groupId,
+        sequence: 3,
+        eventType: ChatEventType.userInteractionResult,
+        role: MessageRole.user,
+        content: 'new event after compaction',
+        payloadJson: const {
+          'providerCallId': 'call_after_compaction',
+          'answer': 'Android',
+        },
+      );
+
+      await snapshotRepository.upsertLatest(
+        SessionContextSnapshot(
+          groupId: groupId,
+          summaryText: 'summary',
+          coveredUntilTurnId: currentTurnId,
+          coveredUntilEventId: 2,
+          estimatedTokens: 50,
+        ),
+      );
+
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        chatStorage: storage,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: SessionTokenBudgetService(
+          modelBudgetResolver: (_) => const SessionModelBudget(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
+          ),
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw UnimplementedError(),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      );
+
+      final state = await service.buildPlannerContextState(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: [
+          earlyUserEvent,
+          compactedToolResultEvent,
+          retainedUserInteractionEvent,
+        ],
+        config: ChatConfig(systemPrompt: '你是一个助手'),
+      );
+
+      final joined = state.currentTurnMessages.map((m) => m.text).join('\n');
+      expect(joined, isNot(contains('old user message before compaction')));
+      expect(joined, isNot(contains('Claude latest news 2026')));
+      expect(joined, contains('new event after compaction'));
 
       await storage.deleteGroup(groupId);
     });

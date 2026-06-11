@@ -8,6 +8,9 @@ class ModelBudgetProfile {
   /// Provider-advertised or app-safe context window upper bound.
   final int maxContextTokens;
 
+  /// Optional platform-specific cap for request input tokens.
+  final int? providerInputCap;
+
   /// Tokens reserved for final visible output.
   final int reservedOutputTokens;
 
@@ -23,6 +26,7 @@ class ModelBudgetProfile {
   const ModelBudgetProfile({
     required this.modelId,
     required this.maxContextTokens,
+    this.providerInputCap,
     required this.reservedOutputTokens,
     required this.reasoningReserveTokens,
     required this.safetyMarginTokens,
@@ -36,9 +40,20 @@ class ModelBudgetProfile {
       reasoningReserveTokens -
       safetyMarginTokens;
 
+  /// Effective planner input budget after provider-side caps and reserves.
+  int get effectiveInputBudget {
+    final usable = usableInputBudget;
+    final providerCap = providerInputCap;
+    if (providerCap == null) {
+      return usable;
+    }
+    return providerCap < usable ? providerCap : usable;
+  }
+
   ModelBudgetProfile copyWith({
     String? modelId,
     int? maxContextTokens,
+    int? providerInputCap,
     int? reservedOutputTokens,
     int? reasoningReserveTokens,
     int? safetyMarginTokens,
@@ -47,6 +62,7 @@ class ModelBudgetProfile {
     return ModelBudgetProfile(
       modelId: modelId ?? this.modelId,
       maxContextTokens: maxContextTokens ?? this.maxContextTokens,
+      providerInputCap: providerInputCap ?? this.providerInputCap,
       reservedOutputTokens: reservedOutputTokens ?? this.reservedOutputTokens,
       reasoningReserveTokens:
           reasoningReserveTokens ?? this.reasoningReserveTokens,

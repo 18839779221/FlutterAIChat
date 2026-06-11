@@ -11,6 +11,9 @@ class SessionContextSnapshot {
   /// Last turn already covered by this snapshot summary.
   final int coveredUntilTurnId;
 
+  /// Optional event-level boundary for partial-turn compaction coverage.
+  final int? coveredUntilEventId;
+
   /// Estimated token cost of the snapshot text itself.
   final int estimatedTokens;
   final DateTime createdAt;
@@ -21,6 +24,7 @@ class SessionContextSnapshot {
     required this.groupId,
     required this.summaryText,
     required this.coveredUntilTurnId,
+    this.coveredUntilEventId,
     this.estimatedTokens = 0,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -33,6 +37,7 @@ class SessionContextSnapshot {
       'group_id': groupId,
       'summary_text': summaryText,
       'covered_until_turn_id': coveredUntilTurnId,
+      'covered_until_event_id': coveredUntilEventId,
       'estimated_tokens': estimatedTokens,
       'created_at': createdAt.millisecondsSinceEpoch,
       'updated_at': updatedAt.millisecondsSinceEpoch,
@@ -45,6 +50,7 @@ class SessionContextSnapshot {
       groupId: map['group_id'] as int,
       summaryText: map['summary_text'] as String? ?? '',
       coveredUntilTurnId: map['covered_until_turn_id'] as int? ?? 0,
+      coveredUntilEventId: map['covered_until_event_id'] as int?,
       estimatedTokens: map['estimated_tokens'] as int? ?? 0,
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updated_at'] as int),
@@ -56,6 +62,7 @@ class SessionContextSnapshot {
     int? groupId,
     String? summaryText,
     int? coveredUntilTurnId,
+    int? coveredUntilEventId,
     int? estimatedTokens,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -65,6 +72,7 @@ class SessionContextSnapshot {
       groupId: groupId ?? this.groupId,
       summaryText: summaryText ?? this.summaryText,
       coveredUntilTurnId: coveredUntilTurnId ?? this.coveredUntilTurnId,
+      coveredUntilEventId: coveredUntilEventId ?? this.coveredUntilEventId,
       estimatedTokens: estimatedTokens ?? this.estimatedTokens,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

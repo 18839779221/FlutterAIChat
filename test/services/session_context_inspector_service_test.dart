@@ -31,15 +31,16 @@ void main() {
   });
 
   group('ContextWindowSnapshot', () {
-    test('exposes total and usable ratios separately', () {
+    test('exposes planner, total, and effective ratios separately', () {
       const snapshot = ContextWindowSnapshot(
         modelName: 'gpt-5',
         maxContextTokens: 128000,
-        usableInputBudget: 104000,
-        compressionTriggerRatio: 0.8,
+        effectiveInputBudget: 104000,
+        autoCompactTriggerTokens: 91000,
         totalEstimatedInputTokens: 64000,
+        plannerInputUsageRatio: 64000 / 91000,
         totalWindowUsageRatio: 0.5,
-        usableInputUsageRatio: 64000 / 104000,
+        effectiveInputUsageRatio: 64000 / 104000,
         didCompactHistory: false,
         recentCompletedTurnCount: 2,
         segments: [
@@ -55,7 +56,8 @@ void main() {
       );
 
       expect(snapshot.totalWindowUsageRatio, 0.5);
-      expect(snapshot.usableInputUsageRatio, greaterThan(0.6));
+      expect(snapshot.plannerInputUsageRatio, greaterThan(0.7));
+      expect(snapshot.effectiveInputUsageRatio, greaterThan(0.6));
       expect(snapshot.segments.single.isPlannerVisible, isTrue);
       expect(
         snapshot.segments.single.type,
@@ -190,8 +192,9 @@ void main() {
         snapshot.segments.map((item) => item.type),
         contains(ContextWindowSegmentType.reservedOutput),
       );
+      expect(snapshot.plannerInputUsageRatio, greaterThan(0));
       expect(snapshot.totalWindowUsageRatio, greaterThan(0));
-      expect(snapshot.usableInputUsageRatio, greaterThan(0));
+      expect(snapshot.effectiveInputUsageRatio, greaterThan(0));
 
       await storage.deleteGroup(groupId);
     });

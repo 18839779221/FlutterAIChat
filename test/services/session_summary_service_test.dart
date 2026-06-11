@@ -4,21 +4,23 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('SessionSummaryService', () {
-    test('builds stable session summary prompt from projected history messages',
+    test('uses claude-style continuation summary prompt sections',
         () async {
       final service = SessionSummaryService(
         summaryGenerator: (messages) async {
           expect(messages.first.role, MessageRole.system);
-          expect(messages.first.text, contains('当前目标：'));
+          final prompt = messages.first.text;
+          expect(prompt, contains('<analysis>'));
+          expect(prompt, contains('<summary>'));
+          expect(prompt, contains('Primary Request and Intent'));
+          expect(prompt, contains('All user messages'));
+          expect(prompt, contains('Context for Continuing Work'));
+          expect(
+            prompt,
+            contains('If the current task does not involve code files'),
+          );
           expect(messages.last.text, '我会先设计 SessionContextService');
-          return '''
-当前目标：实现 Session 上下文管理
-已确认事实：需要按 token budget 自动压缩
-用户偏好/限制：无
-重要工具结论：无
-未完成事项：接入 TurnHarness
-风险与下一步：补齐 SessionContextService
-''';
+          return '<summary>ok</summary>';
         },
       );
 
@@ -33,8 +35,7 @@ void main() {
         ],
       );
 
-      expect(summary.summaryText, contains('当前目标'));
-      expect(summary.summaryText, contains('未完成事项'));
+      expect(summary.summaryText, 'ok');
       expect(summary.estimatedTokens, greaterThan(0));
     });
 
@@ -58,19 +59,19 @@ void main() {
         () async {
       expect(
         SessionSummaryService.summaryInstructionPrompt,
-        contains('当前目标：'),
+        contains('<analysis>'),
       );
       expect(
         SessionSummaryService.summaryInstructionPrompt,
-        contains('文件/工具/代码结论：'),
+        contains('<summary>'),
       );
       expect(
         SessionSummaryService.summaryInstructionPrompt,
-        contains('当前进展：'),
+        contains('Primary Request and Intent'),
       );
       expect(
         SessionSummaryService.summaryInstructionPrompt,
-        contains('下一步：'),
+        contains('Context for Continuing Work'),
       );
     });
 
@@ -83,16 +84,7 @@ void main() {
               messages.map((item) => item.text).join('\n'), contains('最初需求'));
           expect(messages.map((item) => item.text).join('\n'),
               contains('仅 Android'));
-          return '''
-当前目标：最初需求
-已确认事实：仅 Android
-用户偏好/限制：无
-已确认决策：无
-已否决方案：无
-重要工具结论：无
-未完成事项：继续实现
-风险与下一步：补齐滚动 summary
-''';
+          return '<summary>Current Work: 最初需求\nContext for Continuing Work: 仅 Android</summary>';
         },
       );
 
@@ -105,6 +97,28 @@ void main() {
 
       expect(summary.summaryText, contains('最初需求'));
       expect(summary.summaryText, contains('仅 Android'));
+    });
+
+    test('strips analysis block before persisting summary text', () async {
+      final service = SessionSummaryService(
+        summaryGenerator: (_) async => '''
+<analysis>
+internal scratchpad
+</analysis>
+<summary>
+Primary Request and Intent: continue task
+</summary>
+''',
+      );
+
+      final summary = await service.summarizeHistory(
+        historicalMessages: [
+          ChatMessage(text: '继续', role: MessageRole.user),
+        ],
+      );
+
+      expect(summary.summaryText, isNot(contains('internal scratchpad')));
+      expect(summary.summaryText, contains('Primary Request and Intent'));
     });
   });
 }

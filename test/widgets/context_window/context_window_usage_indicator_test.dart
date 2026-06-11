@@ -11,11 +11,12 @@ ContextWindowSnapshot _snapshot(double ratio) {
   return ContextWindowSnapshot(
     modelName: 'gpt-test',
     maxContextTokens: 128000,
-    usableInputBudget: 104000,
-    compressionTriggerRatio: 0.8,
+    effectiveInputBudget: 104000,
+    autoCompactTriggerTokens: 91000,
     totalEstimatedInputTokens: 1000,
-    totalWindowUsageRatio: ratio,
-    usableInputUsageRatio: 0.0,
+    plannerInputUsageRatio: ratio,
+    totalWindowUsageRatio: 0.0,
+    effectiveInputUsageRatio: 0.0,
     didCompactHistory: false,
     recentCompletedTurnCount: 0,
     segments: const <ContextWindowSegment>[],
@@ -92,17 +93,17 @@ void main() {
     );
 
     final handle = tester.ensureSemantics();
-    expect(find.bySemanticsLabel('Context 使用率 24%'), findsOneWidget);
+    expect(find.bySemanticsLabel('Planner 输入使用率 24%'), findsOneWidget);
     handle.dispose();
   });
 
-  testWidgets('color shifts to warning at or above trigger ratio', (
+  testWidgets('color shifts to warning at or above planner trigger ratio', (
     tester,
   ) async {
     await tester.pumpWidget(
       _host(
         ContextWindowUsageIndicator(
-          snapshot: _snapshot(0.9),
+          snapshot: _snapshot(1.0),
           onTap: () {},
         ),
       ),

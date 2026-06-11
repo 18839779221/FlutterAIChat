@@ -78,5 +78,38 @@ void main() {
 
       await storage.deleteGroup(groupId);
     });
+
+    test('persists partial-turn compaction boundary with coveredUntilEventId',
+        () async {
+      final storage = DatabaseHelper(
+        databaseName:
+            'session_context_snapshot_repository_partial_turn_test.db',
+      );
+      final repository = SessionContextSnapshotRepository(storage);
+      final groupId = await storage.insertGroup(
+        ChatGroup(
+            title: 'Session Context Partial Turn',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+      );
+
+      final id = await repository.upsertLatest(
+        SessionContextSnapshot(
+          groupId: groupId,
+          summaryText: '当前目标：继续处理 active turn',
+          coveredUntilTurnId: 12,
+          coveredUntilEventId: 1205,
+          estimatedTokens: 180,
+        ),
+      );
+
+      final snapshot = await repository.getLatestByGroup(groupId);
+
+      expect(id, greaterThan(0));
+      expect(snapshot, isNotNull);
+      expect(snapshot!.coveredUntilTurnId, 12);
+      expect(snapshot.coveredUntilEventId, 1205);
+
+      await storage.deleteGroup(groupId);
+    });
   });
 }

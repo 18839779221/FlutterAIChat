@@ -7,20 +7,23 @@ class ContextWindowSnapshot {
   /// Provider-advertised or app-safe context window upper bound.
   final int maxContextTokens;
 
-  /// Budget currently available to planner-visible input after reserves.
-  final int usableInputBudget;
+  /// Formal planner-visible input budget after reserves and provider caps.
+  final int effectiveInputBudget;
 
-  /// Ratio at which history compaction starts to trigger.
-  final double compressionTriggerRatio;
+  /// Formal token threshold that triggers auto compaction.
+  final int autoCompactTriggerTokens;
 
   /// Estimated total tokens that would be sent as planner input.
   final int totalEstimatedInputTokens;
 
+  /// Share of the auto-compaction trigger currently consumed by planner input.
+  final double plannerInputUsageRatio;
+
   /// Share of the full context window currently consumed by planner input.
   final double totalWindowUsageRatio;
 
-  /// Share of the planner-usable input budget currently consumed.
-  final double usableInputUsageRatio;
+  /// Share of the formal effective input budget currently consumed.
+  final double effectiveInputUsageRatio;
 
   /// Whether older history was compacted into snapshot summary during build.
   final bool didCompactHistory;
@@ -37,11 +40,12 @@ class ContextWindowSnapshot {
   const ContextWindowSnapshot({
     required this.modelName,
     required this.maxContextTokens,
-    required this.usableInputBudget,
-    required this.compressionTriggerRatio,
+    required this.effectiveInputBudget,
+    required this.autoCompactTriggerTokens,
     required this.totalEstimatedInputTokens,
+    required this.plannerInputUsageRatio,
     required this.totalWindowUsageRatio,
-    required this.usableInputUsageRatio,
+    required this.effectiveInputUsageRatio,
     required this.didCompactHistory,
     this.snapshotCoveredUntilTurnId,
     required this.recentCompletedTurnCount,

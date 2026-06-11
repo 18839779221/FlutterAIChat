@@ -123,26 +123,35 @@ class _SummaryCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _DetailLine(
-            label: '总窗口',
+            label: 'planner 输入占触发阈值',
+            value:
+                '${(snapshot.plannerInputUsageRatio * 100).toStringAsFixed(1)}%',
+          ),
+          _DetailLine(
+            label: '总窗口占比',
             value:
                 '${(snapshot.totalWindowUsageRatio * 100).toStringAsFixed(1)}%',
           ),
           _DetailLine(
-            label: '可用输入预算',
+            label: 'effective input 占比',
             value:
-                '${(snapshot.usableInputUsageRatio * 100).toStringAsFixed(1)}%',
+                '${(snapshot.effectiveInputUsageRatio * 100).toStringAsFixed(1)}%',
           ),
           _DetailLine(
             label: '估算输入 tokens',
             value: '${snapshot.totalEstimatedInputTokens}',
           ),
           _DetailLine(
+            label: '自动压缩阈值',
+            value: '${snapshot.autoCompactTriggerTokens}',
+          ),
+          _DetailLine(
             label: 'max context',
             value: '${snapshot.maxContextTokens}',
           ),
           _DetailLine(
-            label: 'usable input budget',
-            value: '${snapshot.usableInputBudget}',
+            label: 'effective input budget',
+            value: '${snapshot.effectiveInputBudget}',
           ),
         ],
       ),

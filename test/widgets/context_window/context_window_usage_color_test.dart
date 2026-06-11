@@ -11,11 +11,12 @@ void main() {
     return ContextWindowSnapshot(
       modelName: 'gpt-test',
       maxContextTokens: 128000,
-      usableInputBudget: 104000,
-      compressionTriggerRatio: 0.8,
+      effectiveInputBudget: 104000,
+      autoCompactTriggerTokens: 91000,
       totalEstimatedInputTokens: 0,
-      totalWindowUsageRatio: ratio,
-      usableInputUsageRatio: 0.0,
+      plannerInputUsageRatio: ratio,
+      totalWindowUsageRatio: 0.0,
+      effectiveInputUsageRatio: 0.0,
       didCompactHistory: false,
       recentCompletedTurnCount: 0,
       segments: const <ContextWindowSegment>[],
@@ -31,7 +32,7 @@ void main() {
   });
 
   test('mid ratio uses workflowRunning', () {
-    final color = resolveContextWindowUsageColor(colors, snapshot(0.7));
+    final color = resolveContextWindowUsageColor(colors, snapshot(0.85));
     expect(
       color.toARGB32(),
       colors.workflowRunning.withValues(alpha: 0.64).toARGB32(),
@@ -39,7 +40,7 @@ void main() {
   });
 
   test('at or above trigger uses workflowWarning', () {
-    final color = resolveContextWindowUsageColor(colors, snapshot(0.8));
+    final color = resolveContextWindowUsageColor(colors, snapshot(1.0));
     expect(
       color.toARGB32(),
       colors.workflowWarning.withValues(alpha: 0.72).toARGB32(),

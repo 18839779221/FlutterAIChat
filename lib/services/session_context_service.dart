@@ -85,6 +85,36 @@ class ManualSessionCompactionResult {
   });
 }
 
+class ActiveTurnCompactionPlan {
+  final String continuationSummaryText;
+  final int coveredUntilTurnId;
+  final int coveredUntilEventId;
+
+  const ActiveTurnCompactionPlan({
+    required this.continuationSummaryText,
+    required this.coveredUntilTurnId,
+    required this.coveredUntilEventId,
+  });
+}
+
+class ActiveTurnCompactionApplyResult {
+  final SessionContextSnapshot snapshot;
+  final int coveredUntilTurnId;
+  final int coveredUntilEventId;
+  final String continuationUserInput;
+  final bool didWriteBoundary;
+  final ChatEvent? boundaryEvent;
+
+  const ActiveTurnCompactionApplyResult({
+    required this.snapshot,
+    required this.coveredUntilTurnId,
+    required this.coveredUntilEventId,
+    required this.continuationUserInput,
+    required this.didWriteBoundary,
+    this.boundaryEvent,
+  });
+}
+
 class SessionContextService {
   static const String _tag = 'SessionContextService';
   // Architecture:
@@ -268,10 +298,117 @@ class SessionContextService {
     }
 
     // (4) current turn transcript
-    carriers.addAll(_eventsToCarriers(currentTurnTranscript));
-    carriers.addAll(_attachmentReminderCarriers(currentTurnTranscript));
+    final filteredCurrentTurnTranscript = _filterCurrentTurnTranscript(
+      snapshot: state.activeSnapshot,
+      currentTurnId: currentTurnId,
+      currentTurnTranscript: currentTurnTranscript,
+    );
+    carriers.addAll(_eventsToCarriers(filteredCurrentTurnTranscript));
+    carriers.addAll(_attachmentReminderCarriers(filteredCurrentTurnTranscript));
 
     return carriers;
+  }
+
+  Future<ActiveTurnCompactionPlan?> planActiveTurnCompaction({
+    required int groupId,
+    required int currentTurnId,
+    required List<ChatEvent> currentTurnTranscript,
+    required ChatConfig config,
+    required int boundaryEventId,
+  }) async {
+    final state = await buildPlannerContextState(
+      groupId: groupId,
+      currentTurnId: currentTurnId,
+      currentTurnTranscript: currentTurnTranscript,
+      config: config,
+    );
+    if (!state.budgetEvaluation.shouldCompact) {
+      return null;
+    }
+
+    final compactedEvents = currentTurnTranscript
+        .where((event) => (event.id ?? event.sequence) <= boundaryEventId)
+        .toList(growable: false);
+    final sourceMessages = _buildActiveTurnCompactionMessages(
+      recentSegments: state.recentSegments,
+      compactedEvents: compactedEvents,
+    );
+    if (sourceMessages.isEmpty) {
+      return null;
+    }
+
+    final summary = await _summaryService.summarizeHistory(
+      previousSummary: state.activeSnapshot?.summaryText,
+      historicalMessages: sourceMessages,
+    );
+
+    return ActiveTurnCompactionPlan(
+      continuationSummaryText: summary.summaryText,
+      coveredUntilTurnId: currentTurnId,
+      coveredUntilEventId: boundaryEventId,
+    );
+  }
+
+  Future<ActiveTurnCompactionApplyResult?> applyActiveTurnCompaction({
+    required int groupId,
+    required int currentTurnId,
+    required List<ChatEvent> currentTurnTranscript,
+    required ChatConfig config,
+    required int boundaryEventId,
+  }) async {
+    final state = await buildPlannerContextState(
+      groupId: groupId,
+      currentTurnId: currentTurnId,
+      currentTurnTranscript: currentTurnTranscript,
+      config: config,
+    );
+    if (!state.budgetEvaluation.shouldCompact) {
+      return null;
+    }
+
+    final currentTurn = await _chatTurnRepository.getTurn(currentTurnId);
+    if (currentTurn == null) {
+      throw StateError('Turn $currentTurnId not found');
+    }
+
+    final compactedEvents = currentTurnTranscript
+        .where((event) => (event.id ?? event.sequence) <= boundaryEventId)
+        .toList(growable: false);
+    final sourceMessages = _buildActiveTurnCompactionMessages(
+      recentSegments: state.recentSegments,
+      compactedEvents: compactedEvents,
+    );
+    if (sourceMessages.isEmpty) {
+      return null;
+    }
+
+    final summary = await _summaryService.summarizeHistory(
+      previousSummary: state.activeSnapshot?.summaryText,
+      historicalMessages: sourceMessages,
+    );
+    final snapshot = SessionContextSnapshot(
+      groupId: groupId,
+      summaryText: summary.summaryText,
+      coveredUntilTurnId: currentTurnId,
+      coveredUntilEventId: boundaryEventId,
+      estimatedTokens: summary.estimatedTokens,
+    );
+    await _snapshotRepository.upsertLatest(snapshot);
+    final boundaryEvent = await _persistContextCompactedBoundary(
+      groupId: groupId,
+      turnId: currentTurnId,
+    );
+    final persistedSnapshot =
+        await _snapshotRepository.getLatestByGroup(groupId) ?? snapshot;
+
+    return ActiveTurnCompactionApplyResult(
+      snapshot: persistedSnapshot,
+      coveredUntilTurnId: currentTurnId,
+      coveredUntilEventId: boundaryEventId,
+      continuationUserInput: currentTurn.userInput,
+      didWriteBoundary: true,
+      boundaryEvent: boundaryEvent,
+    );
   }
 
   SyntheticCarrier _chatMessageToSyntheticCarrier(ChatMessage m) {
@@ -323,11 +460,18 @@ class SessionContextService {
     final userContextMessages = _userContextMessageBuilder.buildMessages(
       snapshot: await _runtimeUserContextService.buildSnapshot(groupId: groupId),
     );
+    final filteredCurrentTurnTranscript = _filterCurrentTurnTranscript(
+      snapshot: snapshot,
+      currentTurnId: currentTurnId,
+      currentTurnTranscript: currentTurnTranscript,
+    );
     final currentItems = <ModelContextItem>[
       ..._contextProjector.projectMessagesToContextItems(
         _extractRuntimeReminderMessages(currentTurn),
       ),
-      ..._contextProjector.projectEventsToContextItems(currentTurnTranscript),
+      ..._contextProjector.projectEventsToContextItems(
+        filteredCurrentTurnTranscript,
+      ),
     ];
     final normalizedCurrentMessages =
         _contextProjector.encodeContextItems(currentItems);
@@ -370,15 +514,14 @@ class SessionContextService {
       activeSummary = compactionResult.snapshot;
       recentSegments = compactionResult.recentSegments;
       didCompactHistory = compactionResult.didCompactHistory;
-    } else {
-      budget = _tokenBudgetService.evaluatePlannerBudget(
-        modelName: modelName,
-        fixedPrefixTokens: fixedPrefixTokens,
-        summaryTokens: _resolveSnapshotTokens(activeSummary),
-        recentTurnsTokens: _estimateSegmentsTokens(recentSegments),
-        currentTurnTokens: currentTurnTokens,
-      );
     }
+    budget = _tokenBudgetService.evaluatePlannerBudget(
+      modelName: modelName,
+      fixedPrefixTokens: fixedPrefixTokens,
+      summaryTokens: _resolveSnapshotTokens(activeSummary),
+      recentTurnsTokens: _estimateSegmentsTokens(recentSegments),
+      currentTurnTokens: currentTurnTokens,
+    );
 
     return SessionContextBuildResult(
       modelName: modelName,
@@ -486,6 +629,13 @@ class SessionContextService {
             ),
           );
 
+        case ChatEventType.assistantPlannerMessage:
+          final content = (event.content ?? '').trim();
+          if (content.isEmpty) {
+            break;
+          }
+          carriers.add(SyntheticCarrier.user(content));
+
         case ChatEventType.toolResult:
         case ChatEventType.toolError:
         case ChatEventType.userInteractionResult:
@@ -508,7 +658,6 @@ class SessionContextService {
           break;
 
         // UI-only events: skip from LLM round-trip.
-        case ChatEventType.assistantPlannerMessage:
         case ChatEventType.assistantTextDelta:
         case ChatEventType.assistantTextFinal:
         case ChatEventType.assistantReasoningDelta:
@@ -523,6 +672,26 @@ class SessionContextService {
       }
     }
     return carriers;
+  }
+
+  List<ChatEvent> _filterCurrentTurnTranscript({
+    required SessionContextSnapshot? snapshot,
+    required int currentTurnId,
+    required List<ChatEvent> currentTurnTranscript,
+  }) {
+    if (snapshot == null) {
+      return currentTurnTranscript;
+    }
+    if (snapshot.coveredUntilTurnId != currentTurnId) {
+      return currentTurnTranscript;
+    }
+    final coveredUntilEventId = snapshot.coveredUntilEventId;
+    if (coveredUntilEventId == null) {
+      return currentTurnTranscript;
+    }
+    return currentTurnTranscript
+        .where((event) => (event.id ?? event.sequence) > coveredUntilEventId)
+        .toList(growable: false);
   }
 
   List<PlannerContextCarrier> _attachmentReminderCarriers(
@@ -546,6 +715,16 @@ class SessionContextService {
         'Do not say that no image was provided.\n'
         '</system-reminder>',
       ),
+    ];
+  }
+
+  List<ChatMessage> _buildActiveTurnCompactionMessages({
+    required List<SessionContextTurnSegment> recentSegments,
+    required List<ChatEvent> compactedEvents,
+  }) {
+    return <ChatMessage>[
+      ...recentSegments.expand((segment) => segment.messages),
+      ..._contextProjector.projectEventsToContext(compactedEvents),
     ];
   }
 
@@ -700,12 +879,12 @@ class SessionContextService {
     }
   }
 
-  Future<void> _persistContextCompactedBoundary({
+  Future<ChatEvent> _persistContextCompactedBoundary({
     required int groupId,
     required int turnId,
   }) async {
     const boundaryText = '已压缩历史上下文';
-    await _chatEventRepository.appendContextCompacted(
+    final event = await _chatEventRepository.appendContextCompacted(
       turnId: turnId,
       groupId: groupId,
       content: boundaryText,
@@ -719,6 +898,7 @@ class SessionContextService {
       ),
       groupId,
     );
+    return event;
   }
 
   int _estimateSegmentsTokens(Iterable<SessionContextTurnSegment> segments) {

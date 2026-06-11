@@ -18,22 +18,57 @@ typedef SessionSummaryGenerator = Future<String> Function(
 
 class SessionSummaryService {
   static const String summaryInstructionPrompt = '''
-请将以下会话历史整理为稳定摘要，必须使用以下栏目且不要输出 Markdown 代码块：
-当前目标：
-已确认事实：
-用户偏好/限制：
-已确认决策：
-已否决方案：
-文件/工具/代码结论：
-错误与修正：
-未完成事项：
-当前进展：
-下一步：
+Your task is to create a detailed summary of this conversation. This summary will be placed at the start of a continuing session; newer messages that build on this context will follow after your summary.
 
-要求：
-1. 只保留后续继续工作需要的信息。
-2. 不要输出原始 JSON 或 payload。
-3. 如果某栏目暂无内容，写“无”。
+Before providing your final summary, wrap your analysis in <analysis> tags to organize your thoughts and ensure you've covered all necessary points. In your analysis process:
+
+1. Analyze the conversation chronologically. For each section thoroughly identify:
+   - The user's explicit requests and intents
+   - Your approach to addressing the user's requests
+   - Key decisions, technical concepts, and important working patterns
+   - Specific details such as file names, important paths, tool conclusions, configurations, and outputs
+   - Errors that you ran into and how you fixed them
+   - Specific user feedback, especially where the user told you to do something differently
+2. Double-check for technical accuracy and completeness before producing the final summary.
+
+Your entire response must be plain text and follow this structure exactly:
+
+<analysis>
+[Your internal working notes]
+</analysis>
+
+<summary>
+1. Primary Request and Intent:
+   [Detailed description]
+
+2. Key Technical Concepts:
+   - [Concept 1]
+   - [Concept 2]
+
+3. Files and Code Sections:
+   - [File or important working surface]
+   - [Why it matters]
+   - [Important details]
+   - If the current task does not involve code files, use this section to record key tool conclusions, UI surfaces, artifact paths, config objects, or other important work surfaces needed to continue accurately.
+
+4. Errors and fixes:
+   - [Error and fix]
+
+5. Problem Solving:
+   [Solved problems and ongoing troubleshooting]
+
+6. All user messages:
+   - [List ALL non-tool-result user messages]
+
+7. Pending Tasks:
+   - [Pending work]
+
+8. Work Completed:
+   [What was completed by the end of this portion]
+
+9. Context for Continuing Work:
+   [What the next continuation needs to know]
+</summary>
 ''';
 
   SessionSummaryService({
@@ -78,7 +113,8 @@ class SessionSummaryService {
       ...historicalMessages,
     ];
 
-    final summaryText = (await generator(summaryPromptMessages)).trim();
+    final generated = (await generator(summaryPromptMessages)).trim();
+    final summaryText = _extractSummaryBody(generated);
     if (summaryText.isEmpty) {
       throw StateError('session_summary_empty');
     }
@@ -99,6 +135,17 @@ class SessionSummaryService {
       throw StateError('SessionSummaryService requires a summary generator');
     }
     return chatService.llm.summarizeConversation;
+  }
+
+  String _extractSummaryBody(String generated) {
+    final summaryMatch = RegExp(
+      r'<summary>\s*([\s\S]*?)\s*</summary>',
+      caseSensitive: false,
+    ).firstMatch(generated);
+    if (summaryMatch != null) {
+      return summaryMatch.group(1)?.trim() ?? '';
+    }
+    return generated.trim();
   }
 
 }

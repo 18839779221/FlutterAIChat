@@ -46,7 +46,7 @@ class DatabaseHelper implements ChatStorage {
 
       return await openDatabase(
         path,
-        version: 15,
+        version: 16,
         onCreate: (Database db, int version) async {
           Logger.i(_tag, '创建数据库表...');
           // 创建分组表
@@ -293,6 +293,19 @@ class DatabaseHelper implements ChatStorage {
               ''');
             }
           }
+          if (oldVersion < 16) {
+            final hasCoveredUntilEventId = await _tableHasColumn(
+              db,
+              tableName: 'session_context_snapshots',
+              columnName: 'covered_until_event_id',
+            );
+            if (!hasCoveredUntilEventId) {
+              await db.execute('''
+                ALTER TABLE session_context_snapshots
+                ADD COLUMN covered_until_event_id INTEGER
+              ''');
+            }
+          }
         },
       );
     } catch (e, stackTrace) {
@@ -384,6 +397,7 @@ class DatabaseHelper implements ChatStorage {
         group_id INTEGER NOT NULL,
         summary_text TEXT NOT NULL,
         covered_until_turn_id INTEGER NOT NULL,
+        covered_until_event_id INTEGER,
         estimated_tokens INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,

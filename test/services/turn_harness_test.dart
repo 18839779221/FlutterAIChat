@@ -4459,6 +4459,28 @@ class _StubSessionContextService extends SessionContextService {
       ),
     ];
   }
+
+  @override
+  Future<List<PlannerContextCarrier>> buildPlannerCarriers({
+    required int groupId,
+    required int currentTurnId,
+    required List<ChatEvent> currentTurnTranscript,
+    required ChatConfig config,
+  }) async {
+    final messages = await buildPlannerMessages(
+      groupId: groupId,
+      currentTurnId: currentTurnId,
+      currentTurnTranscript: currentTurnTranscript,
+      config: config,
+    );
+    return messages
+        .map(
+          (message) => message.role == MessageRole.system
+              ? SyntheticCarrier.system(message.text)
+              : SyntheticCarrier.user(message.text),
+        )
+        .toList(growable: false);
+  }
 }
 
 class _PlannerContextCall {

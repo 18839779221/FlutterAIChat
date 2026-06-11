@@ -8,6 +8,7 @@ import '../models/chat/chat_attachment.dart';
 import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/interaction/ask_user_question_request.dart';
+import '../models/context/planner_context_carrier.dart';
 import '../models/interaction/ask_user_question_response.dart';
 import '../models/tool/tool_access_snapshot.dart';
 import '../models/tool/tool_invocation.dart';
@@ -23,6 +24,7 @@ import 'decision_tool_call_executor.dart';
 import 'turn_verifier.dart';
 import 'tool_call_service.dart';
 import 'transcript_builder_service.dart';
+import 'session_context_projector.dart';
 import 'session_context_service.dart';
 import 'session_runtime_marker_service.dart';
 
@@ -367,6 +369,22 @@ class TurnHarness {
       }
 
       final transcript = await _transcriptBuilderService.loadTranscript(turnId);
+      final compactionRestart = await _maybeAutoCompactAndRestart(
+        turn: currentTurn,
+        transcript: transcript,
+        config: config,
+      );
+      if (compactionRestart != null) {
+        if (compactionRestart.boundaryEvent != null) {
+          yield compactionRestart.boundaryEvent!;
+        }
+        yield* _continueTurnLoop(
+          turn: compactionRestart.continuationTurn,
+          config: config,
+          consecutiveFailures: failures,
+        );
+        break;
+      }
       Logger.trace(
         _tag,
         'planner.start',
@@ -388,12 +406,7 @@ class TurnHarness {
       final steps = _stepRepository == null
           ? <ChatTurnStep>[]
           : await _stepRepository!.listSteps(turnId);
-      if (_sessionContextService == null) {
-        throw StateError(
-          'SessionContextService is required for carrier-based planner path',
-        );
-      }
-      final carriers = await _sessionContextService!.buildPlannerCarriers(
+      final carriers = await _buildPlannerCarriers(
         groupId: currentTurn.groupId,
         currentTurnId: turnId,
         currentTurnTranscript: transcript,
@@ -681,6 +694,138 @@ class TurnHarness {
       );
       break;
     }
+  }
+
+  Future<_AutoCompactionRestartResult?> _maybeAutoCompactAndRestart({
+    required ChatTurn turn,
+    required List<ChatEvent> transcript,
+    required ChatConfig config,
+  }) async {
+    final sessionContextService = _sessionContextService;
+    if (sessionContextService == null || transcript.isEmpty) {
+      return null;
+    }
+    final boundaryEventId = _resolveAutoCompactionBoundaryEventId(transcript);
+    if (boundaryEventId == null) {
+      return null;
+    }
+
+    final compactionResult = await sessionContextService.applyActiveTurnCompaction(
+      groupId: turn.groupId,
+      currentTurnId: turn.id!,
+      currentTurnTranscript: transcript,
+      config: config,
+      boundaryEventId: boundaryEventId,
+    );
+    if (compactionResult == null) {
+      return null;
+    }
+
+    await _turnRepository.markCompleted(
+      turn.id!,
+      stopReason: 'auto_compacted_continue',
+    );
+    final continuationTurnId = await _turnRepository.createTurn(
+      ChatTurn(
+        groupId: turn.groupId,
+        status: ChatTurnStatus.running,
+        userInput: compactionResult.continuationUserInput,
+        goalSummary: turn.goalSummary,
+        providerStyle: turn.providerStyle,
+        modelName: turn.modelName,
+        providerStateJson: _buildContinuationProviderState(turn),
+      ),
+    );
+    final continuationTurn = await _requireTurn(continuationTurnId);
+    Logger.i(
+      _tag,
+      'auto compaction restarted turn ${turn.id} as continuation turn $continuationTurnId',
+    );
+    return _AutoCompactionRestartResult(
+      continuationTurn: continuationTurn,
+      boundaryEvent: compactionResult.boundaryEvent,
+    );
+  }
+
+  int? _resolveAutoCompactionBoundaryEventId(List<ChatEvent> transcript) {
+    if (transcript.isEmpty) {
+      return null;
+    }
+    final lastEvent = transcript.last;
+    return lastEvent.id ?? lastEvent.sequence;
+  }
+
+  Map<String, dynamic>? _buildContinuationProviderState(ChatTurn turn) {
+    final runtimeContext =
+        turn.providerStateJson?[SessionRuntimeMarkerService.runtimeContextKey];
+    if (runtimeContext is! Map) {
+      return null;
+    }
+    return {
+      SessionRuntimeMarkerService.runtimeContextKey:
+          Map<String, dynamic>.from(runtimeContext),
+    };
+  }
+
+  Future<List<PlannerContextCarrier>> _buildPlannerCarriers({
+    required int groupId,
+    required int currentTurnId,
+    required List<ChatEvent> currentTurnTranscript,
+    required ChatConfig config,
+  }) async {
+    final sessionContextService = _sessionContextService;
+    if (sessionContextService != null) {
+      return sessionContextService.buildPlannerCarriers(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: currentTurnTranscript,
+        config: config,
+      );
+    }
+    return _fallbackPlannerCarriers(currentTurnTranscript);
+  }
+
+  List<PlannerContextCarrier> _fallbackPlannerCarriers(
+    List<ChatEvent> transcript,
+  ) {
+    final projector = SessionContextProjector();
+    final carriers = <PlannerContextCarrier>[];
+    for (final event in transcript) {
+      if (event.eventType == ChatEventType.assistantTurnSnapshot) {
+        final payload = event.payloadJson;
+        final apiStyleName = payload?['apiStyle']?.toString();
+        final raw = payload?['rawAssistantMessage'];
+        if (apiStyleName != null && raw is Map) {
+          final style = ChatTurnProviderStyle.values.firstWhere(
+            (value) => value.name == apiStyleName,
+            orElse: () => ChatTurnProviderStyle.openaiResponses,
+          );
+          carriers.add(
+            RawAssistantCarrier(
+              apiStyle: style,
+              rawJson: Map<String, dynamic>.from(raw),
+            ),
+          );
+        }
+        continue;
+      }
+      final message = projector.projectEventToContext(event);
+      if (message == null) {
+        continue;
+      }
+      switch (message.role) {
+        case MessageRole.system:
+          carriers.add(SyntheticCarrier.system(message.text));
+          break;
+        case MessageRole.user:
+          carriers.add(SyntheticCarrier.user(message.text));
+          break;
+        case MessageRole.assistant:
+          carriers.add(SyntheticCarrier.user(message.text));
+          break;
+      }
+    }
+    return carriers;
   }
 
   Future<void> _persistDecisionRuntimeState({
@@ -1095,4 +1240,14 @@ class TurnHarness {
     }
     return lines.join('\n');
   }
+}
+
+class _AutoCompactionRestartResult {
+  final ChatTurn continuationTurn;
+  final ChatEvent? boundaryEvent;
+
+  const _AutoCompactionRestartResult({
+    required this.continuationTurn,
+    required this.boundaryEvent,
+  });
 }

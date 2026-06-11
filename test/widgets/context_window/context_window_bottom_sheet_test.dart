@@ -10,7 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets(
-      'bottom sheet shows total and usable ratios with segment breakdown',
+      'bottom sheet shows planner, total, and effective ratios with segment breakdown',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -32,8 +32,8 @@ void main() {
     expect(find.text('system prompt'), findsOneWidget);
     expect(find.text('current turn transcript'), findsOneWidget);
     expect(find.text('GPT-5.4'), findsOneWidget);
-    expect(find.textContaining('总窗口'), findsOneWidget);
-    expect(find.textContaining('可用输入预算'), findsOneWidget);
+    expect(find.textContaining('planner 输入占触发阈值'), findsOneWidget);
+    expect(find.textContaining('effective input 占比'), findsOneWidget);
   });
 
   testWidgets('tapping usage indicator opens context window bottom sheet',
@@ -81,11 +81,12 @@ ContextWindowSnapshot _snapshot() {
   return const ContextWindowSnapshot(
     modelName: 'GPT-5.4',
     maxContextTokens: 128000,
-    usableInputBudget: 104000,
-    compressionTriggerRatio: 0.8,
+    effectiveInputBudget: 104000,
+    autoCompactTriggerTokens: 91000,
     totalEstimatedInputTokens: 70000,
+    plannerInputUsageRatio: 70000 / 91000,
     totalWindowUsageRatio: 0.546875,
-    usableInputUsageRatio: 0.6731,
+    effectiveInputUsageRatio: 0.6731,
     didCompactHistory: true,
     snapshotCoveredUntilTurnId: 42,
     recentCompletedTurnCount: 3,
