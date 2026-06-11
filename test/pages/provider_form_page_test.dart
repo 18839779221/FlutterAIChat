@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/models/llm/llm_provider_model.dart';
 import 'package:ai_chat/pages/provider_form_page.dart';
@@ -253,6 +255,110 @@ void main() {
     expect(modelNameField.controller?.text, 'gpt-4o-mini');
   });
 
+  testWidgets('model row saves image generation capability checkbox',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = await _createRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ProviderFormPage(
+          repository: repository,
+          discoveryService: _FakeDiscoveryService(),
+          testService: _FakeModelTestService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Provider 名称'),
+      'Beehears',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Base URL'),
+      'https://ai.beehears.com/v1',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'API Key'),
+      'image-key',
+    );
+    await tester.tap(find.text('手动新增模型'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, '模型 ID'),
+      'gpt-image-2',
+    );
+    await tester.tap(find.text('支持生图'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    final providers = await repository.getProviders();
+    expect(providers.single.models.single.supportsImageGeneration, isTrue);
+  });
+
+  testWidgets('image generation test requires confirmation and debounces taps',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = await _createRepository();
+    final testService = _FakeModelTestService();
+    final imageTestCompleter = testService.holdNextImageGenerationTest();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ProviderFormPage(
+          initialProvider: const LlmProviderConfig(
+            id: 'beehears',
+            name: 'Beehears',
+            apiKey: 'image-key',
+            baseUrl: 'https://ai.beehears.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-image-2', name: 'GPT Image 2'),
+            ],
+          ),
+          repository: repository,
+          discoveryService: _FakeDiscoveryService(),
+          testService: testService,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('测试生图'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('可能较慢且产生费用'), findsOneWidget);
+
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(testService.imageGenerationTestCallCount, 0);
+
+    await tester.tap(find.text('测试生图'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认测试'));
+    await tester.pump();
+    expect(testService.imageGenerationTestCallCount, 1);
+
+    await tester.tap(find.text('测试中'));
+    await tester.pump();
+    expect(testService.imageGenerationTestCallCount, 1);
+
+    imageTestCompleter.complete(
+      const LlmImageGenerationProbeResult(
+        modelId: 'gpt-image-2',
+        latency: Duration(milliseconds: 900),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(testService.imageGenerationTestCallCount, 1);
+    expect(find.text('支持生图'), findsOneWidget);
+  });
+
   testWidgets('base url with explicit endpoint auto-selects matching api style',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 1200));
@@ -395,9 +501,18 @@ class _FakeDiscoveryService extends LlmModelDiscoveryService {
 
 class _FakeModelTestService extends LlmModelTestService {
   int speedTestCallCount = 0;
+  int imageGenerationTestCallCount = 0;
   String? lastSpeedModelId;
+  String? lastImageGenerationModelId;
   final List<LlmModelProbeType> probeCallTypes = <LlmModelProbeType>[];
   final List<String> probeCallModelIds = <String>[];
+  Completer<LlmImageGenerationProbeResult>? _heldImageGenerationTest;
+
+  Completer<LlmImageGenerationProbeResult> holdNextImageGenerationTest() {
+    final completer = Completer<LlmImageGenerationProbeResult>();
+    _heldImageGenerationTest = completer;
+    return completer;
+  }
 
   @override
   Future<LlmModelSpeedTestResult> speedTestModel({
@@ -435,6 +550,24 @@ class _FakeModelTestService extends LlmModelTestService {
       modelId: model.id,
       responseText: probeType == LlmModelProbeType.ping ? 'ping' : 'pong',
       latency: const Duration(milliseconds: 90),
+    );
+  }
+
+  @override
+  Future<LlmImageGenerationProbeResult> testImageGenerationModel({
+    required LlmProviderConfig provider,
+    required LlmProviderModel model,
+  }) async {
+    imageGenerationTestCallCount += 1;
+    lastImageGenerationModelId = model.id;
+    final held = _heldImageGenerationTest;
+    if (held != null) {
+      _heldImageGenerationTest = null;
+      return held.future;
+    }
+    return LlmImageGenerationProbeResult(
+      modelId: model.id,
+      latency: const Duration(milliseconds: 900),
     );
   }
 }

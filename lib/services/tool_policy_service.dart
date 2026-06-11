@@ -2,6 +2,7 @@ import '../models/tool/tool_access_snapshot.dart';
 import '../models/tool/tool_definition.dart';
 import '../models/tool/tool_policy.dart';
 import '../repositories/app_settings_repository.dart';
+import 'image_generation_config_resolver.dart';
 import '../utils/logger.dart';
 
 class ToolPolicyService {
@@ -34,6 +35,18 @@ class ToolPolicyService {
   }
 
   Future<ToolAccessSnapshot> resolveToolAccess(ToolDefinition tool) async {
+    if (tool.name == 'generate_image' &&
+        !await _hasImageGenerationRuntimeConfig()) {
+      Logger.i(
+        _tag,
+        'resolveToolAccess tool=${tool.name} decision=blocked source=image_generation_not_configured',
+      );
+      return _buildToolAccess(
+        tool,
+        ToolPolicyDecision.blocked,
+      );
+    }
+
     final blockedTools = await _repository.getBlockedToolNames();
     if (blockedTools.contains(tool.name)) {
       Logger.i(
@@ -103,5 +116,15 @@ class ToolPolicyService {
       definition: tool,
       executionDecision: executionDecision,
     );
+  }
+
+  Future<bool> _hasImageGenerationRuntimeConfig() async {
+    final providers = await _repository.getProviders();
+    final additionalConfig = await _repository.getAdditionalConfig();
+    return const ImageGenerationConfigResolver().resolve(
+          providers: providers,
+          additionalConfig: additionalConfig,
+        ) !=
+        null;
   }
 }

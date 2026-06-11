@@ -200,6 +200,7 @@ void main() async {
       reminderCreator: buildDefaultReminderCreator(),
       calendarEventCreator: buildDefaultCalendarEventCreator(),
       resultSharer: buildDefaultResultSharer(),
+      imageGenerator: buildOpenAIImageGenerator(),
     );
     final runtimeRegistry = buildDefaultToolRuntimeRegistry(
       toolExecutor: toolExecutor,

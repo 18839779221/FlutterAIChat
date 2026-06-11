@@ -1,5 +1,6 @@
 import 'package:ai_chat/constants/route_constant.dart';
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat/send_message_request.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
@@ -163,6 +164,13 @@ class _StubSendCoordinator implements ChatSendCoordinator {
   }) async {}
 
   @override
+  Future<void> sendMessageRequest(
+    SendMessageRequest request, {
+    required void Function() scheduleAutoSummary,
+    required void Function() cancelActiveStream,
+  }) async {}
+
+  @override
   Future<void> submitQuestionAnswers(
     ChatMessage message, {
     required AskUserQuestionResponse response,
@@ -190,6 +198,9 @@ class _StubSessionCoordinator implements ChatSessionCoordinator {
 
   @override
   Future<void> selectGroup(ChatGroup group) async {}
+
+  @override
+  Future<void> syncDraftGroupProviderStyle() async {}
 
   @override
   Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {}

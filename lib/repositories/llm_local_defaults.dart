@@ -44,7 +44,8 @@ class LlmLocalDefaults {
     final providers = rawProviders is List
         ? rawProviders
             .whereType<Map>()
-            .map((item) => LlmProviderConfig.fromJson(Map<String, dynamic>.from(item)))
+            .map((item) =>
+                LlmProviderConfig.fromJson(Map<String, dynamic>.from(item)))
             .where(
               (item) =>
                   item.id.isNotEmpty &&
@@ -69,9 +70,7 @@ class LlmLocalDefaults {
 
   static Map<String, dynamic> _readAdditionalConfig(Map<String, dynamic> json) {
     final webSearch = json['web_search'];
-    if (webSearch is! Map) {
-      return const {};
-    }
+    final imageGeneration = json['image_generation'];
 
     String? normalize(dynamic value) {
       if (value is! String) {
@@ -81,14 +80,31 @@ class LlmLocalDefaults {
       return trimmed.isEmpty ? null : trimmed;
     }
 
-    final provider = normalize(webSearch['provider']);
-    final tavilyApiKey = normalize(webSearch['tavily_api_key']);
-    final tavilyBaseUrl = normalize(webSearch['tavily_base_url']);
+    final provider = webSearch is Map ? normalize(webSearch['provider']) : null;
+    final tavilyApiKey =
+        webSearch is Map ? normalize(webSearch['tavily_api_key']) : null;
+    final tavilyBaseUrl =
+        webSearch is Map ? normalize(webSearch['tavily_base_url']) : null;
+    final imageDefaultProviderId = imageGeneration is Map
+        ? normalize(imageGeneration['default_provider_id'])
+        : null;
+    final imageDefaultModelId = imageGeneration is Map
+        ? normalize(imageGeneration['default_model_id'])
+        : null;
+    final imageQualityDefault = imageGeneration is Map
+        ? normalize(imageGeneration['quality_default'])
+        : null;
 
     return {
       if (provider != null) 'web_search.provider': provider,
       if (tavilyApiKey != null) 'web_search.tavily_api_key': tavilyApiKey,
       if (tavilyBaseUrl != null) 'web_search.tavily_base_url': tavilyBaseUrl,
+      if (imageDefaultProviderId != null)
+        'image_generation.default_provider_id': imageDefaultProviderId,
+      if (imageDefaultModelId != null)
+        'image_generation.default_model_id': imageDefaultModelId,
+      if (imageQualityDefault != null)
+        'image_generation.quality_default': imageQualityDefault,
     };
   }
 

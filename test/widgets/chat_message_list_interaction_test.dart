@@ -989,6 +989,9 @@ class _NoopChatSessionCoordinator implements ChatSessionCoordinator {
   Future<void> selectGroup(ChatGroup group) async {}
 
   @override
+  Future<void> syncDraftGroupProviderStyle() async {}
+
+  @override
   Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {}
 }
 

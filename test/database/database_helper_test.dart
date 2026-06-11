@@ -20,7 +20,7 @@ void main() {
       () {
     final source = File('lib/database/database_helper.dart').readAsStringSync();
 
-    expect(source, contains('version: 15'));
+    expect(source, contains('version: 16'));
     expect(
       source,
       contains(RegExp(r'CREATE TABLE chat_turns \(')),
@@ -61,6 +61,7 @@ void main() {
     expect(source, contains('if (oldVersion < 10)'));
     expect(source, contains('if (oldVersion < 11)'));
     expect(source, contains('if (oldVersion < 15)'));
+    expect(source, contains('if (oldVersion < 16)'));
   });
 
   test(

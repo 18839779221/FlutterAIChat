@@ -7,6 +7,7 @@ import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_theme_spec.dart';
 import '../theme/app_typography.dart';
+import '../widgets/home_header_button.dart';
 
 class LiquidGlassLabPage extends StatefulWidget {
   const LiquidGlassLabPage({super.key});
@@ -83,7 +84,7 @@ class _LiquidGlassLabPageState extends State<LiquidGlassLabPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Liquid Glass 首页组件调试',
+          '首页 Header 按钮调试',
           style: AppTypography.uiStyle(
             color: colors.primaryText,
             fontSize: 24,
@@ -93,7 +94,7 @@ class _LiquidGlassLabPageState extends State<LiquidGlassLabPage> {
         ),
         const SizedBox(height: 8),
         Text(
-          '独立入口，不接正式数据。用于用 Flutter 原生组件微调首页玻璃按钮、边缘高光和按压形变。',
+          '直接拿首页按钮的真实实现来调静态材质。关注平面玻璃、边缘折射高光和按压反馈是否成立。',
           style: AppTypography.uiStyle(
             color: colors.secondaryText,
             fontSize: 13,
@@ -255,38 +256,57 @@ class _HomeSurfacePreview extends StatelessWidget {
               ),
               Padding(
                 padding: EdgeInsets.all(spacing.lg + 4),
-                child: Column(
+              child: Column(
                   children: [
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        LiquidGlassBar(
-                          config: config,
-                          children: [
-                            LiquidGlassButtonSegment(
-                              semanticLabel: '会话列表',
-                              icon: Icons.menu_rounded,
-                              config: config,
-                            ),
-                          ],
+                        HomeHeaderButton(
+                          shellKey: const ValueKey('lab-header-menu-button-shell'),
+                          buttonKey: const ValueKey('lab-header-menu-button'),
+                          icon: Icons.menu,
+                          tooltip: '会话列表',
+                          onPressed: () {},
+                          filled: true,
                         ),
                         const Spacer(),
-                        LiquidGlassBar(
-                          config: config,
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            LiquidGlassButtonSegment(
-                              semanticLabel: '缩小',
-                              icon: Icons.zoom_out_rounded,
-                              config: config,
+                            HomeHeaderButton(
+                              shellKey: const ValueKey(
+                                'lab-header-new-chat-button-shell',
+                              ),
+                              buttonKey: const ValueKey(
+                                'lab-header-new-chat-button',
+                              ),
+                              icon: Icons.add,
+                              tooltip: '新建对话',
+                              onPressed: () {},
                             ),
-                            LiquidGlassButtonSegment(
-                              semanticLabel: '当前页',
-                              icon: Icons.filter_1_rounded,
-                              config: config,
+                            SizedBox(width: spacing.xxs + 2),
+                            HomeHeaderButton(
+                              shellKey: const ValueKey(
+                                'lab-header-debug-cases-button-shell',
+                              ),
+                              buttonKey: const ValueKey(
+                                'lab-header-debug-cases-button',
+                              ),
+                              icon: Icons.science_outlined,
+                              tooltip: '测试案例',
+                              onPressed: () {},
                             ),
-                            LiquidGlassButtonSegment(
-                              semanticLabel: '放大',
-                              icon: Icons.zoom_in_rounded,
-                              config: config,
+                            SizedBox(width: spacing.xxs + 2),
+                            HomeHeaderButton(
+                              shellKey: const ValueKey(
+                                'lab-header-debug-inspector-button-shell',
+                              ),
+                              buttonKey: const ValueKey(
+                                'lab-header-debug-inspector-button',
+                              ),
+                              icon: Icons.bug_report_outlined,
+                              tooltip: '调试检查器',
+                              onPressed: () {},
                             ),
                           ],
                         ),

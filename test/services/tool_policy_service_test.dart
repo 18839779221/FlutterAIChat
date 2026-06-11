@@ -1,7 +1,10 @@
 import 'package:ai_chat/models/tool/tool_definition.dart';
 import 'package:ai_chat/models/tool/tool_access_snapshot.dart';
 import 'package:ai_chat/models/tool/tool_policy.dart';
+import 'package:ai_chat/models/llm/llm_provider_config.dart';
+import 'package:ai_chat/models/llm/llm_provider_model.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
+import 'package:ai_chat/repositories/llm_local_defaults.dart';
 import 'package:ai_chat/services/tool_policy_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -71,7 +74,8 @@ void main() {
         await service.resolveExecutionMode(reminderTool),
         ToolPolicyDecision.autoRun,
       );
-      expect(await repository.getTrustedToolNames(), contains(reminderTool.name));
+      expect(
+          await repository.getTrustedToolNames(), contains(reminderTool.name));
     });
 
     test('untrusting a tool restores confirmation behavior', () async {
@@ -89,7 +93,8 @@ void main() {
         await service.resolveExecutionMode(reminderTool),
         ToolPolicyDecision.requireConfirmation,
       );
-      expect(await repository.getTrustedToolNames(), isNot(contains(reminderTool.name)));
+      expect(await repository.getTrustedToolNames(),
+          isNot(contains(reminderTool.name)));
     });
 
     test('blocking a tool returns blocked policy decision', () async {
@@ -137,7 +142,9 @@ void main() {
       expect(blockedAccess.isVisibleToPlanner, isFalse);
     });
 
-    test('tool policy outputs stable blocked/require_confirmation/auto_run labels', () async {
+    test(
+        'tool policy outputs stable blocked/require_confirmation/auto_run labels',
+        () async {
       const readTool = ToolDefinition(
         name: 'search_chat_history',
         title: '搜索聊天记录',
@@ -171,7 +178,9 @@ void main() {
       expect(blockedAccess.executionDecision, ToolPolicyDecision.blocked);
     });
 
-    test('tool policy planner visibility stays consistent with execution policy', () async {
+    test(
+        'tool policy planner visibility stays consistent with execution policy',
+        () async {
       const readTool = ToolDefinition(
         name: 'search_chat_history',
         title: '搜索聊天记录',
@@ -202,6 +211,61 @@ void main() {
       expect(blockedAccess.isVisibleToPlanner, isFalse);
       expect(blockedAccess.executionDecision, ToolPolicyDecision.blocked);
       expect(blockedAccess.executionPolicyLabel, 'blocked');
+    });
+
+    test('generate_image is hidden from planner without image capable model',
+        () async {
+      const generateImageTool = ToolDefinition(
+        name: 'generate_image',
+        title: '生成图片',
+        parameters: {'prompt': 'string'},
+      );
+
+      final access = await service.resolveToolAccess(generateImageTool);
+
+      expect(access.executionDecision, ToolPolicyDecision.blocked);
+      expect(access.isVisibleToPlanner, isFalse);
+      expect(access.executionPolicyLabel, 'blocked');
+    });
+
+    test('generate_image is visible when an image capable model exists',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final repositoryWithImageModel = AppSettingsRepository(
+        preferences,
+        localDefaultsLoader: () async => const LlmLocalDefaults(
+          providers: [
+            LlmProviderConfig(
+              id: 'beehears',
+              name: 'Beehears',
+              apiKey: 'image-key',
+              baseUrl: 'https://ai.beehears.com/v1',
+              models: [
+                LlmProviderModel(
+                  id: 'gpt-image-2',
+                  name: 'GPT Image 2',
+                  supportsImageGeneration: true,
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+      final serviceWithImageModel = ToolPolicyService(
+        repository: repositoryWithImageModel,
+      );
+      const generateImageTool = ToolDefinition(
+        name: 'generate_image',
+        title: '生成图片',
+        parameters: {'prompt': 'string'},
+      );
+
+      final access =
+          await serviceWithImageModel.resolveToolAccess(generateImageTool);
+
+      expect(access.executionDecision, ToolPolicyDecision.autoRun);
+      expect(access.isVisibleToPlanner, isTrue);
     });
   });
 }

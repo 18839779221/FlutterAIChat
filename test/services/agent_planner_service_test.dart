@@ -158,7 +158,73 @@ void main() {
           llm.lastToolOptions!.single.executionPolicy, 'require_confirmation');
     });
 
-    test('planNextDecision does not inject active skill runtime sections into prompt',
+    test('planNextDecision hides generate_image without image capable model',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final policyService = ToolPolicyService(
+        repository: AppSettingsRepository(
+          preferences,
+          localDefaultsLoader: () async => null,
+        ),
+      );
+      final llm = _NativeDecisionLLM(
+        decision: const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: 'ok',
+          providerState: {},
+          isTerminal: true,
+        ),
+      );
+      final service = AgentPlannerService(
+        llm: llm,
+        toolPolicyService: policyService,
+        availableTools: const [
+          ToolDefinition(
+            name: 'generate_image',
+            title: '生成图片',
+            descriptionForModel: '生成图片',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'prompt': ToolArgumentProperty.string(description: '提示词'),
+              },
+              required: ['prompt'],
+            ),
+          ),
+          ToolDefinition(
+            name: 'search_chat_history',
+            title: '搜索聊天记录',
+            descriptionForModel: '搜索聊天记录',
+            argumentSchema: ToolArgumentSchema(
+              properties: {
+                'query': ToolArgumentProperty.string(description: '查询词'),
+              },
+              required: ['query'],
+            ),
+          ),
+        ],
+      );
+
+      await service.planNextDecision(
+        turn: _turn(userInput: '帮我生成一张图'),
+        transcript: [_userEvent()],
+        steps: const [],
+        config: ChatConfig(systemPrompt: ''),
+        limits: const AgentLoopLimits(),
+        carriers: const [SyntheticCarrier.user('帮我生成一张图')],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
+      );
+
+      expect(llm.lastToolOptions, isNotNull);
+      expect(
+        llm.lastToolOptions!.map((tool) => tool.name),
+        isNot(contains('generate_image')),
+      );
+    });
+
+    test(
+        'planNextDecision does not inject active skill runtime sections into prompt',
         () async {
       final llm = _NativeDecisionLLM(
         decision: const ModelTurnDecision(
@@ -178,7 +244,9 @@ void main() {
         steps: const [],
         config: ChatConfig(systemPrompt: ''),
         limits: const AgentLoopLimits(),
-        carriers: const [SyntheticCarrier.user('Please help with Android edge-to-edge')],
+        carriers: const [
+          SyntheticCarrier.user('Please help with Android edge-to-edge')
+        ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
         currentTurnRunning: false,
       );
@@ -225,9 +293,9 @@ void main() {
           steps: const [],
           config: ChatConfig(systemPrompt: ''),
           limits: const AgentLoopLimits(),
-        carriers: const [],
-        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
-        currentTurnRunning: false,
+          carriers: const [],
+          activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+          currentTurnRunning: false,
         ),
         throwsA(
           isA<StateError>().having(
@@ -564,7 +632,8 @@ void main() {
         carriers: const [
           SyntheticCarrier.toolResult(
             toolCallId: 'edit_call_1',
-            content: 'Edit path: agent/my_hobbies.md\n已编辑文件：agent/my_hobbies.md',
+            content:
+                'Edit path: agent/my_hobbies.md\n已编辑文件：agent/my_hobbies.md',
           ),
         ],
         activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
@@ -1809,8 +1878,7 @@ void main() {
           ),
           SyntheticCarrier.toolResult(
             toolCallId: 'call_00',
-            content:
-                'fetch_webpage url: https://example.com/a\n页面 A 的正文摘要',
+            content: 'fetch_webpage url: https://example.com/a\n页面 A 的正文摘要',
           ),
           SyntheticCarrier.toolResult(
             toolCallId: 'call_01',
@@ -1832,10 +1900,13 @@ void main() {
               text.contains('fetch_webpage') || text.contains('web_search'))
           .toList();
       expect(toolResultTexts, hasLength(4));
-      expect(toolResultTexts.join('\n'), contains('fetch_webpage url: https://example.com/a'));
+      expect(toolResultTexts.join('\n'),
+          contains('fetch_webpage url: https://example.com/a'));
       expect(toolResultTexts.join('\n'), contains('页面 A 的正文摘要'));
-      expect(toolResultTexts.join('\n'), contains('fetch_webpage failed: network_timeout'));
-      expect(toolResultTexts.join('\n'), contains('web_search query: Google latest news 2026'));
+      expect(toolResultTexts.join('\n'),
+          contains('fetch_webpage failed: network_timeout'));
+      expect(toolResultTexts.join('\n'),
+          contains('web_search query: Google latest news 2026'));
     });
 
     test(
@@ -2041,8 +2112,7 @@ void main() {
           ),
           SyntheticCarrier.toolResult(
             toolCallId: 'call_01',
-            content:
-                'fetch_webpage url: https://example.com/b\n页面 B 的结构化结果',
+            content: 'fetch_webpage url: https://example.com/b\n页面 B 的结构化结果',
           ),
           SyntheticCarrier.toolResult(
             toolCallId: 'call_02',
@@ -2065,7 +2135,8 @@ void main() {
           llm.lastMessages.map((message) => message.text).join('\n');
       expect(projectedText, contains('fetch_webpage failed: network_error'));
       expect(projectedText, contains('fetch_webpage failed: timeout'));
-      expect(projectedText, contains('fetch_webpage url: https://example.com/b'));
+      expect(
+          projectedText, contains('fetch_webpage url: https://example.com/b'));
       expect(projectedText, contains('页面 B 的结构化结果'));
     });
 
@@ -2125,7 +2196,8 @@ void main() {
       expect(result.toolCalls.single.arguments,
           containsPair('url', 'https://example.com'));
     });
-    test('forwards runtime planner stream entries without changing decision flow',
+    test(
+        'forwards runtime planner stream entries without changing decision flow',
         () async {
       final emittedEvents = <StreamingMessageEvent>[];
       final traceEvents = <PlannerRequestTraceEvent>[];
@@ -2310,7 +2382,6 @@ class _NativeDecisionLLM implements BaseLLM {
     }
     return '';
   }
-
 }
 
 class _NativeNullPlannerLLM implements BaseLLM {
@@ -2345,7 +2416,6 @@ class _NativeNullPlannerLLM implements BaseLLM {
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async =>
       'summary';
-
 }
 
 class _ThrowingNativePlannerLLM implements BaseLLM {
@@ -2380,7 +2450,6 @@ class _ThrowingNativePlannerLLM implements BaseLLM {
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async =>
       'summary';
-
 }
 
 class _RuntimeStreamingDecisionLLM

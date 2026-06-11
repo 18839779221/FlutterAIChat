@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
+import 'package:ai_chat/models/chat/chat_attachment.dart';
 import 'package:ai_chat/models/chat/tool_presentation_event.dart';
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -159,17 +160,15 @@ class ChatTimelineRow extends ConsumerWidget {
         break;
       case AssistantTurnBlockType.finalResponse:
         final isRuntimePreview = block.payload?['isRuntimePreview'] == true;
-        final isStreaming =
-            sourceMessage?.status == MessageStatus.generating ||
-                isRuntimePreview;
+        final isStreaming = sourceMessage?.status == MessageStatus.generating ||
+            isRuntimePreview;
         // Stable cache key shared with the persisted state so the markdown
         // KeepAlive subtree carries across the streaming→completed handoff
         // instead of remounting. `logicalId` (when present) is the shared
         // identity contract emitted by both projection sources.
-        final markdownCacheKey =
-            block.logicalId?.trim().isNotEmpty == true
-                ? 'final:${block.logicalId}'
-                : item.stableKey;
+        final markdownCacheKey = block.logicalId?.trim().isNotEmpty == true
+            ? 'final:${block.logicalId}'
+            : item.stableKey;
         blockWidget = GestureDetector(
           onLongPress: sourceMessage == null
               ? null
@@ -275,11 +274,26 @@ class ChatTimelineRow extends ConsumerWidget {
         break;
     }
 
+    final assistantAttachments =
+        sourceMessage?.attachments ?? const <ChatAttachment>[];
+    final blockWithAttachments = assistantAttachments.isEmpty
+        ? blockWidget
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              blockWidget,
+              ChatMessageImageAttachments(
+                alignment: Alignment.centerLeft,
+                attachments: assistantAttachments,
+              ),
+            ],
+          );
+
     final shouldUseBlockTransition =
         block.type == AssistantTurnBlockType.toolResultSummary ||
-        block.type == AssistantTurnBlockType.toolWorkflow;
+            block.type == AssistantTurnBlockType.toolWorkflow;
     if (!shouldUseBlockTransition) {
-      return blockWidget;
+      return blockWithAttachments;
     }
 
     return AnimatedSwitcher(
@@ -291,7 +305,7 @@ class ChatTimelineRow extends ConsumerWidget {
       },
       child: KeyedSubtree(
         key: ValueKey('${block.type.name}_${block.id}_${block.text ?? ''}'),
-        child: blockWidget,
+        child: blockWithAttachments,
       ),
     );
   }
@@ -323,7 +337,8 @@ class ChatTimelineRow extends ConsumerWidget {
     required ToolUiRendererRegistry toolUiRegistry,
   }) {
     final steps = _extractWorkflowSteps(block);
-    if (steps.isNotEmpty && steps.every((step) => step.toolName == 'ask_user_question')) {
+    if (steps.isNotEmpty &&
+        steps.every((step) => step.toolName == 'ask_user_question')) {
       return const SizedBox.shrink();
     }
     final manualExpandedStepId =
@@ -465,35 +480,32 @@ class ChatTimelineRow extends ConsumerWidget {
     }
 
     final previewEvents = prefixMessages
-        .where((message) => message.contentType == MessageContentType.toolInvocation)
+        .where((message) =>
+            message.contentType == MessageContentType.toolInvocation)
         .map((message) {
-          final payload = message.payloadJson ?? const <String, dynamic>{};
-          final stepId = payload['stepId'];
-          final providerCallId = (payload['providerCallId'] ?? '')
-              .toString()
-              .trim();
-          return ToolPresentationEvent(
-            toolName: (payload['toolName'] ?? '').toString(),
-            phase: ToolPresentationEventPhase.running,
-            turnId: turnId,
-            stepId: stepId == null ? null : '$turnId-step-$stepId',
-            providerCallId:
-                providerCallId.isEmpty ? null : providerCallId,
-            sourceContentType: MessageContentType.toolInvocation,
-            sourceMessageId: message.id,
-            timestamp: message.timestamp,
-            data: {
-              ...payload,
-              'arguments': payload['arguments'] is Map
-                  ? Map<String, dynamic>.from(payload['arguments'] as Map)
-                  : const <String, dynamic>{},
-              'summary': payload['summary'] ?? message.text,
-              'requiresConfirmation':
-                  payload['requiresConfirmation'] == true,
-            },
-          );
-        })
-        .toList(growable: false);
+      final payload = message.payloadJson ?? const <String, dynamic>{};
+      final stepId = payload['stepId'];
+      final providerCallId =
+          (payload['providerCallId'] ?? '').toString().trim();
+      return ToolPresentationEvent(
+        toolName: (payload['toolName'] ?? '').toString(),
+        phase: ToolPresentationEventPhase.running,
+        turnId: turnId,
+        stepId: stepId == null ? null : '$turnId-step-$stepId',
+        providerCallId: providerCallId.isEmpty ? null : providerCallId,
+        sourceContentType: MessageContentType.toolInvocation,
+        sourceMessageId: message.id,
+        timestamp: message.timestamp,
+        data: {
+          ...payload,
+          'arguments': payload['arguments'] is Map
+              ? Map<String, dynamic>.from(payload['arguments'] as Map)
+              : const <String, dynamic>{},
+          'summary': payload['summary'] ?? message.text,
+          'requiresConfirmation': payload['requiresConfirmation'] == true,
+        },
+      );
+    }).toList(growable: false);
     final previewBlocks = _previewToolBlockProjector.project(
       events: previewEvents,
     );

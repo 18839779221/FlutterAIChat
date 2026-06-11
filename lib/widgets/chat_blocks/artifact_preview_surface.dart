@@ -17,10 +17,8 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 const double _minArtifactPreviewHeight = 180;
 const double _defaultArtifactPreviewHeight = 260;
-const double _maxArtifactPreviewScreenCount = 3;
 const String _artifactHeightChannelName = 'ArtifactHeight';
 const String _artifactRenderStateChannelName = 'ArtifactRenderState';
-const String artifactPreviewTruncationMessage = '内容较长，长按进入详情页查看完整内容。';
 const Duration _streamingDebounceDelay = Duration(milliseconds: 1000);
 const Duration _heightUpdateDebounceDelay = Duration(milliseconds: 100);
 const String _artifactPreviewLogTag = 'ArtifactPreviewSurface';
@@ -33,15 +31,10 @@ double clampArtifactPreviewHeight(
   if (!rawHeight.isFinite) {
     return _defaultArtifactPreviewHeight;
   }
-  final resolvedViewportHeight = viewportHeight.isFinite && viewportHeight > 0
-      ? viewportHeight
-      : _defaultArtifactPreviewHeight;
-  final maxArtifactPreviewHeight =
-      resolvedViewportHeight * _maxArtifactPreviewScreenCount;
   return rawHeight
       .clamp(
         _minArtifactPreviewHeight,
-        maxArtifactPreviewHeight,
+        double.infinity,
       )
       .toDouble();
 }
@@ -699,7 +692,6 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   WebViewController? _pendingFinalController;
   String? _errorText;
   double _previewHeight = _defaultArtifactPreviewHeight;
-  bool _isPreviewTruncated = false;
 
   // Fixed-rate streaming update state.
   Timer? _streamingUpdateTimer;
@@ -714,7 +706,6 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   // Height update debouncing
   Timer? _heightDebounceTimer;
   double? _pendingHeight;
-  bool? _pendingTruncated;
   late final ArtifactRenderSessionRecorder _sessionRecorder;
   late final StreamingVisibilityReporter _streamingVisibilityReporter;
   late final String _flowId;
@@ -863,7 +854,6 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         setState(() {
           _errorText = null;
           _previewHeight = _defaultArtifactPreviewHeight;
-          _isPreviewTruncated = false;
           _controller = _createController();
         });
       }
@@ -892,7 +882,6 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     _controllerReadyCompleter = null;
     _errorText = null;
     _previewHeight = _defaultArtifactPreviewHeight;
-    _isPreviewTruncated = false;
     _controller = _createController();
     if (mounted) {
       setState(() {});
@@ -1231,7 +1220,6 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         );
 
         _pendingHeight = clampedHeight;
-        _pendingTruncated = value > clampedHeight;
         _sessionRecorder.recordHeightSampled(
           sessionId: _sessionId,
           rawHeight: value,
@@ -1243,19 +1231,17 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         _heightDebounceTimer = Timer(_heightUpdateDebounceDelay, () {
           if (!mounted) return;
           final nextHeight = _pendingHeight ?? _previewHeight;
-          final nextTruncated = _pendingTruncated ?? _isPreviewTruncated;
           setState(() {
             _previewHeight = nextHeight;
-            _isPreviewTruncated = nextTruncated;
           });
           _persistPreviewStateToPageStorage(
             previewHeight: nextHeight,
-            isPreviewTruncated: nextTruncated,
+            isPreviewTruncated: false,
           );
           _sessionRecorder.recordHeightApplied(
             sessionId: _sessionId,
             appliedHeight: nextHeight,
-            isPreviewTruncated: nextTruncated,
+            isPreviewTruncated: false,
             timestamp: DateTime.now(),
           );
           Logger.temp(
@@ -1265,7 +1251,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
             data: {
               'sourcePath': widget.sourcePath,
               'appliedHeight': _pendingHeight,
-              'isPreviewTruncated': _pendingTruncated,
+              'isPreviewTruncated': false,
             },
           );
         });
@@ -1465,7 +1451,6 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
                 ),
             ],
           ),
-          if (_isPreviewTruncated) _buildTruncationMessage(context),
         ],
       ),
     );
@@ -1491,12 +1476,10 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
       cachedSnapshot: snapshot,
       defaultPreviewHeight: _defaultArtifactPreviewHeight,
     );
-    if (_previewHeight == resolved.previewHeight &&
-        _isPreviewTruncated == resolved.isPreviewTruncated) {
+    if (_previewHeight == resolved.previewHeight) {
       return;
     }
     _previewHeight = resolved.previewHeight;
-    _isPreviewTruncated = resolved.isPreviewTruncated;
   }
 
   void _persistPreviewStateToPageStorage({
@@ -1563,22 +1546,6 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
           height: 1.45,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTruncationMessage(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      color: theme.colorScheme.surface.withValues(alpha: 0.92),
-      padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
-      child: Text(
-        artifactPreviewTruncationMessage,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-          height: 1.4,
         ),
       ),
     );
@@ -1784,15 +1751,15 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
       ),
       'widgetSourcePath': widget.sourcePath,
       'previousAppliedHeight': previousAppliedHeight,
-      'sampleDeltaFromPreviousAppliedPx':
-          sampledHeight - previousAppliedHeight,
+      'sampleDeltaFromPreviousAppliedPx': sampledHeight - previousAppliedHeight,
       'sampledFromPendingFinalController': identical(
         controller,
         pendingFinalController,
       ),
       'hasPendingFinalController': pendingFinalController != null,
       'hostViewportProbeStatus': hostViewportProbe.status.wireName,
-      'hostViewportConfiguredHeight': hostViewportMetrics?.configuredPreviewHeight,
+      'hostViewportConfiguredHeight':
+          hostViewportMetrics?.configuredPreviewHeight,
       'hostViewportRenderHeight': hostViewportMetrics?.renderHeight,
       'hostViewportOvershootPx': hostViewportMetrics?.overshootPx,
       'hostViewportGapFromMeasuredHeightPx':

@@ -456,6 +456,13 @@ class AppSettingsRepository {
     return localDefaults?.speechInput;
   }
 
+  Future<Map<String, dynamic>> getAdditionalConfig() async {
+    final localDefaults = await _getLocalDefaults();
+    return <String, dynamic>{
+      ...?localDefaults?.additionalConfig,
+    };
+  }
+
   Future<LLMConfig> getLlmConfig() async {
     final providers = await getProviders();
     if (providers.isEmpty) {
@@ -481,10 +488,7 @@ class AppSettingsRepository {
       throw Exception('请先在设置中为当前提供方配置模型');
     }
 
-    final localDefaults = await _getLocalDefaults();
-    final additionalConfig = <String, dynamic>{
-      ...?localDefaults?.additionalConfig,
-    };
+    final additionalConfig = await getAdditionalConfig();
     final resolvedApiStyle = resolvedProvider.apiStyle ??
         const ApiProtocolResolver().resolveStyle(resolvedProvider.baseUrl);
 

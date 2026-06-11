@@ -495,6 +495,82 @@ void main() {
     expect(buttonFinder, findsNothing);
   });
 
+  testWidgets(
+      'floating status and scroll-to-bottom button share one row above composer',
+      (tester) async {
+    final buttonOnlyContainer = _createChatPageTestContainer(
+      showScrollToBottomButton: null,
+    );
+    addTearDown(() {
+      buttonOnlyContainer.dispose();
+    });
+    _seedShortChatHistory(buttonOnlyContainer);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: buttonOnlyContainer,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    buttonOnlyContainer
+        .read(scrollToBottomButtonVisibleProvider.notifier)
+        .state = true;
+    await tester.pump();
+
+    final buttonOnlyInputTop =
+        tester.getRect(find.byKey(const ValueKey('chat-input-dock'))).top;
+
+    await tester.pumpWidget(const SizedBox.shrink());
+
+    final combinedContainer = _createChatPageTestContainer(
+      activeStatus: const ActiveTurnStatusPresentation(
+        phase: ActiveTurnStatusPhase.planning,
+        text: '正在规划下一步',
+        turnId: 'turn-floating-combined',
+        sourceKind: ActiveTurnStatusSourceKind.toolEvent,
+        allowFloating: true,
+      ),
+      showFloatingStatus: true,
+      showScrollToBottomButton: null,
+    );
+    addTearDown(() {
+      combinedContainer.dispose();
+    });
+    _seedShortChatHistory(combinedContainer);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: combinedContainer,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    combinedContainer.read(scrollToBottomButtonVisibleProvider.notifier).state =
+        true;
+    await tester.pump();
+
+    final statusRect = tester.getRect(
+      find.byKey(const ValueKey('floating-turn-status-bar')),
+    );
+    final buttonRect = tester.getRect(
+      find.byKey(const ValueKey('scroll-to-bottom-button')),
+    );
+    final combinedInputTop =
+        tester.getRect(find.byKey(const ValueKey('chat-input-dock'))).top;
+
+    expect(statusRect.center.dy, closeTo(buttonRect.center.dy, 8));
+    expect(combinedInputTop, closeTo(buttonOnlyInputTop, 8));
+  });
+
   testWidgets('chat page renders a semi-transparent bottom overlay veil',
       (tester) async {
     final container = ProviderContainer(
@@ -1150,6 +1226,62 @@ const _debugCaseAwaitingInteractionAssertions = DebugTestCaseAssertions(
   mustNotFalseClaimReadSuccess: false,
   mustNotHang: true,
 );
+
+ProviderContainer _createChatPageTestContainer({
+  ScrollController? scrollController,
+  ActiveTurnStatusPresentation? activeStatus,
+  bool showFloatingStatus = false,
+  bool? showScrollToBottomButton,
+}) {
+  return ProviderContainer(
+    overrides: [
+      chatSessionCoordinatorProvider
+          .overrideWith((ref) => _StubSessionCoordinator()),
+      chatSendCoordinatorProvider.overrideWith((ref) => _StubSendCoordinator()),
+      chatSummaryControllerProvider.overrideWith(
+        (ref) => _StubSummaryController(),
+      ),
+      chatPreferencesControllerProvider.overrideWith(
+        (ref) => _StubPreferencesController(),
+      ),
+      hasMoreMessagesProvider.overrideWith((ref) => false),
+      if (scrollController != null)
+        scrollControllerProvider.overrideWith((ref) => scrollController),
+      if (activeStatus != null)
+        activeTurnStatusPresentationProvider.overrideWith(
+          (ref) => activeStatus,
+        ),
+      if (activeStatus != null)
+        activeTurnStatusFloatingVisibilityProvider.overrideWith(
+          (ref) => showFloatingStatus,
+        ),
+      if (showScrollToBottomButton != null)
+        scrollToBottomButtonVisibleProvider.overrideWith(
+          (ref) => showScrollToBottomButton,
+        ),
+    ],
+  );
+}
+
+void _seedShortChatHistory(ProviderContainer container) {
+  final baseTime = DateTime(2026, 6, 1, 12);
+  container.read(messagesProvider.notifier).setMessages([
+    ChatMessage(
+      id: 1,
+      text: 'hello',
+      role: MessageRole.user,
+      status: MessageStatus.completed,
+      timestamp: baseTime,
+    ),
+    ChatMessage(
+      id: 2,
+      text: 'hi',
+      role: MessageRole.assistant,
+      status: MessageStatus.completed,
+      timestamp: baseTime.add(const Duration(minutes: 1)),
+    ),
+  ]);
+}
 
 class _StubSendCoordinator implements ChatSendCoordinator {
   @override

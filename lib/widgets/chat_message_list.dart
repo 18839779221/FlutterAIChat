@@ -42,6 +42,8 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   static const double _scrollToBottomVisibilityThreshold = 56;
   static const double _floatingEnterViewportMargin = 12;
   static const double _floatingExitViewportMargin = 4;
+  static const Duration _floatingVisibilityExitGrace =
+      Duration(milliseconds: 180);
   static const double _ghostHeaderHeight = 56;
   bool _isLoadingOlderHistory = false;
   late final ScrollController _scrollController;
@@ -57,6 +59,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   int _previousItemCount = 0;
   bool _pendingVisibilityCheck = false;
   int _visibilityCheckGeneration = 0;
+  Timer? _floatingVisibilityGraceTimer;
   bool _pendingDynamicInsetSync = false;
   bool _hasPositionedInitialHistory = false;
   int? _pendingInitialHistoryGroupId;
@@ -79,6 +82,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
   @override
   void dispose() {
     _scrollController.removeListener(_scrollListener);
+    _floatingVisibilityGraceTimer?.cancel();
     _visibilityCheckGeneration += 1;
     super.dispose();
   }
@@ -105,8 +109,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     }
     final distanceToBottom =
         controller.position.maxScrollExtent - controller.offset;
-    final shouldShow =
-        distanceToBottom > _scrollToBottomVisibilityThreshold;
+    final shouldShow = distanceToBottom > _scrollToBottomVisibilityThreshold;
     final notifier = ref.read(scrollToBottomButtonVisibleProvider.notifier);
     if (notifier.state == shouldShow) {
       return;
@@ -1168,7 +1171,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     }
 
     final isCurrentlyFloating =
-        ref.read(activeTurnStatusFloatingVisibilityProvider);
+        ref.read(activeTurnStatusFloatingStateProvider).isFloating;
     final viewportMargin = isCurrentlyFloating
         ? _floatingExitViewportMargin
         : _floatingEnterViewportMargin;
@@ -1187,6 +1190,9 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       ActiveTurnStatusFloatingState(
         turnId: activeStatus.turnId,
         isFloating: !isFullyVisible,
+        isInVisibilityGrace: _shouldKeepFloatingVisibleDuringExit(
+          isFloating: !isFullyVisible,
+        ),
       ),
     );
   }
@@ -1195,10 +1201,52 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final notifier = ref.read(activeTurnStatusFloatingStateProvider.notifier);
     final previous = notifier.state;
     if (previous.turnId == nextState.turnId &&
-        previous.isFloating == nextState.isFloating) {
+        previous.isFloating == nextState.isFloating &&
+        previous.isInVisibilityGrace == nextState.isInVisibilityGrace) {
       return;
     }
     notifier.state = nextState;
+    _scheduleFloatingVisibilityGraceExpiry(nextState);
+  }
+
+  bool _shouldKeepFloatingVisibleDuringExit({required bool isFloating}) {
+    if (isFloating) {
+      return false;
+    }
+    final wasFloating =
+        ref.read(activeTurnStatusFloatingStateProvider).isFloating;
+    return wasFloating;
+  }
+
+  void _scheduleFloatingVisibilityGraceExpiry(
+    ActiveTurnStatusFloatingState state,
+  ) {
+    _floatingVisibilityGraceTimer?.cancel();
+    if (!state.isInVisibilityGrace) {
+      _floatingVisibilityGraceTimer = null;
+      return;
+    }
+    _floatingVisibilityGraceTimer = Timer(
+      _floatingVisibilityExitGrace,
+      () {
+        if (!mounted) {
+          return;
+        }
+        final notifier =
+            ref.read(activeTurnStatusFloatingStateProvider.notifier);
+        final current = notifier.state;
+        if (current.turnId == state.turnId &&
+            current.isInVisibilityGrace &&
+            !current.isFloating) {
+          notifier.state = ActiveTurnStatusFloatingState(
+            turnId: current.turnId,
+            isFloating: false,
+          );
+        } else {
+          _scheduleActiveStatusVisibilitySync();
+        }
+      },
+    );
   }
 }
 

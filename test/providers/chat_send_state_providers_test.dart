@@ -21,8 +21,31 @@ void main() {
             isGenerating: true,
           );
 
-      expect(container.read(sendPhaseProvider), ChatSendPhase.streamingResponse);
+      expect(
+          container.read(sendPhaseProvider), ChatSendPhase.streamingResponse);
       expect(container.read(isGeneratingProvider), isTrue);
+    });
+
+    test('进入流式回复阶段会清理 transient 重试文案', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final notifier = container.read(chatSendStateProvider.notifier);
+      notifier.update(
+        phase: ChatSendPhase.preparing,
+        isGenerating: false,
+        statusText: '请求失败，正在重试 1/5',
+      );
+
+      notifier.update(
+        phase: ChatSendPhase.streamingResponse,
+        isGenerating: true,
+      );
+
+      final state = container.read(chatSendStateProvider);
+      expect(state.phase, ChatSendPhase.streamingResponse);
+      expect(state.isGenerating, isTrue);
+      expect(state.statusText, isNull);
     });
   });
 }

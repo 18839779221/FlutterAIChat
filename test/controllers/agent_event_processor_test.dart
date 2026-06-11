@@ -1,5 +1,6 @@
 import 'package:ai_chat/controllers/agent_event_processor.dart';
 import 'package:ai_chat/models/chat_event.dart';
+import 'package:ai_chat/models/chat/chat_attachment.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
@@ -114,7 +115,8 @@ void main() {
 
     final toolReasoningMessages = container
         .read(messagesProvider)
-        .where((message) => message.payloadJson?['reasoningScope'] == 'tool_use')
+        .where(
+            (message) => message.payloadJson?['reasoningScope'] == 'tool_use')
         .toList(growable: false);
 
     expect(toolReasoningMessages, hasLength(1));
@@ -122,16 +124,77 @@ void main() {
       toolReasoningMessages.single.reasoningContent,
       '先规划 HTML 架构展示。补充 SVG 布局细节。',
     );
-    expect(storage.insertedMessages.where((m) => m.payloadJson?['reasoningScope'] == 'tool_use'), hasLength(1));
+    expect(
+        storage.insertedMessages
+            .where((m) => m.payloadJson?['reasoningScope'] == 'tool_use'),
+        hasLength(1));
     expect(storage.updatedReasoningCalls, hasLength(1));
     expect(storage.updatedReasoningCalls.single.reasoningContent,
         '先规划 HTML 架构展示。补充 SVG 布局细节。');
+  });
+
+  test('generate_image tool result persists generated image attachments',
+      () async {
+    final storage = _RecordingChatStorage();
+    final container = ProviderContainer(
+      overrides: [
+        databaseProvider.overrideWithValue(storage),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final processor = AgentEventProcessor(
+      ref: container.read(refProvider),
+      groupId: 7,
+      traceTurnId: 'trace-1',
+    );
+
+    await processor.handle(
+      ChatEvent(
+        turnId: 11,
+        groupId: 7,
+        sequence: 1,
+        eventType: ChatEventType.toolResult,
+        role: MessageRole.system,
+        content: '已生成图片',
+        payloadJson: const {
+          'toolName': 'generate_image',
+          'status': 'success',
+          'summary': '已生成图片',
+          'data': {
+            'prompt': 'A calendar cover',
+            'model': 'gpt-image-2',
+            'generatedImages': [
+              {
+                'localId': 'generated-1',
+                'fileName': 'generated.png',
+                'mimeType': 'image/png',
+                'dataUrl': 'data:image/png;base64,AAAA',
+              },
+            ],
+          },
+        },
+      ),
+    );
+
+    expect(storage.insertedMessages, hasLength(1));
+    expect(storage.insertedMessages.single.attachments, hasLength(1));
+    expect(
+      storage.insertedMessages.single.attachments.single.source,
+      ChatAttachmentSource.providerFile,
+    );
+    expect(storage.insertedAttachments.single.messageId, 1);
+    expect(storage.insertedAttachments.single.attachments, hasLength(1));
+    expect(container.read(messagesProvider).single.attachments, hasLength(1));
   });
 }
 
 class _RecordingChatStorage implements ChatStorage {
   final List<ChatMessage> insertedMessages = <ChatMessage>[];
-  final List<_UpdateReasoningCall> updatedReasoningCalls = <_UpdateReasoningCall>[];
+  final List<_InsertedAttachments> insertedAttachments =
+      <_InsertedAttachments>[];
+  final List<_UpdateReasoningCall> updatedReasoningCalls =
+      <_UpdateReasoningCall>[];
 
   @override
   Future<int> insertMessage(ChatMessage message, int groupId) async {
@@ -140,7 +203,21 @@ class _RecordingChatStorage implements ChatStorage {
   }
 
   @override
-  Future<void> updateMessageReasoning(int messageId, String? reasoningContent) async {
+  Future<void> insertMessageAttachments(
+    int messageId,
+    List<ChatAttachment> attachments,
+  ) async {
+    insertedAttachments.add(
+      _InsertedAttachments(
+        messageId: messageId,
+        attachments: attachments,
+      ),
+    );
+  }
+
+  @override
+  Future<void> updateMessageReasoning(
+      int messageId, String? reasoningContent) async {
     updatedReasoningCalls.add(
       _UpdateReasoningCall(
         messageId: messageId,
@@ -151,6 +228,16 @@ class _RecordingChatStorage implements ChatStorage {
 
   @override
   noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _InsertedAttachments {
+  const _InsertedAttachments({
+    required this.messageId,
+    required this.attachments,
+  });
+
+  final int messageId;
+  final List<ChatAttachment> attachments;
 }
 
 class _UpdateReasoningCall {

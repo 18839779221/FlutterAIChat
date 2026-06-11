@@ -62,6 +62,17 @@ class LlmModelSpeedTestResult {
   });
 }
 
+/// Result of a real image generation probe against one configured model.
+class LlmImageGenerationProbeResult {
+  final String modelId;
+  final Duration latency;
+
+  const LlmImageGenerationProbeResult({
+    required this.modelId,
+    required this.latency,
+  });
+}
+
 class LlmModelTestService {
   final http.Client _httpClient;
   final ApiProtocolResolver _protocolResolver;
@@ -141,6 +152,43 @@ class LlmModelTestService {
     return LlmModelSpeedTestResult(ping: ping, pong: pong);
   }
 
+  Future<LlmImageGenerationProbeResult> testImageGenerationModel({
+    required LlmProviderConfig provider,
+    required LlmProviderModel model,
+  }) async {
+    _validate(provider: provider, model: model);
+
+    final stopwatch = Stopwatch()..start();
+    final response = await _httpClient.post(
+      _buildImageGenerationUri(provider.baseUrl),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ${provider.apiKey}',
+      },
+      body: jsonEncode({
+        'model': model.id,
+        'prompt': 'A tiny blue square icon on a white background.',
+        'size': '1024x1024',
+        'quality': 'low',
+      }),
+    );
+    stopwatch.stop();
+
+    if (response.statusCode != 200) {
+      final body = response.body.trim();
+      throw Exception(
+        '生图测试失败: ${response.statusCode} ${response.reasonPhrase ?? ''} $body',
+      );
+    }
+    if (!_hasDecodableB64Image(response.body)) {
+      throw Exception('生图测试失败: 未返回可用图片');
+    }
+    return LlmImageGenerationProbeResult(
+      modelId: model.id,
+      latency: stopwatch.elapsed,
+    );
+  }
+
   void _validate({
     required LlmProviderConfig provider,
     required LlmProviderModel model,
@@ -173,6 +221,53 @@ class LlmModelTestService {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer ${provider.apiKey}',
     };
+  }
+
+  Uri _buildImageGenerationUri(String baseUrl) {
+    final uri = Uri.parse(baseUrl.trim());
+    final segments = uri.pathSegments.toList(growable: true);
+    if (segments.length >= 2 &&
+        segments[segments.length - 2] == 'chat' &&
+        segments.last == 'completions') {
+      segments.removeRange(segments.length - 2, segments.length);
+    } else if (segments.isNotEmpty && segments.last == 'responses') {
+      segments.removeLast();
+    } else if (segments.isNotEmpty && segments.last == 'completions') {
+      segments.removeLast();
+    }
+    if (segments.isEmpty || segments.last != 'v1') {
+      segments.add('v1');
+    }
+    return uri.replace(
+      pathSegments: [...segments, 'images', 'generations'],
+    );
+  }
+
+  bool _hasDecodableB64Image(String body) {
+    final decoded = jsonDecode(body);
+    if (decoded is! Map<String, dynamic>) {
+      return false;
+    }
+    final data = decoded['data'];
+    if (data is! List) {
+      return false;
+    }
+    for (final item in data) {
+      if (item is! Map) {
+        continue;
+      }
+      final b64 = item['b64_json'];
+      if (b64 is! String || b64.trim().isEmpty) {
+        continue;
+      }
+      try {
+        base64Decode(b64.trim());
+        return true;
+      } catch (_) {
+        continue;
+      }
+    }
+    return false;
   }
 
   Map<String, dynamic> _buildPayload(

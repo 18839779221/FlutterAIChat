@@ -45,9 +45,8 @@ class ActiveTurnStatusResolver {
     final activeRunningEvents = _activeRunningEvents(
       projection.toolPresentationEvents,
     );
-    final latestActiveRunningEvent = activeRunningEvents.isEmpty
-        ? null
-        : activeRunningEvents.last;
+    final latestActiveRunningEvent =
+        activeRunningEvents.isEmpty ? null : activeRunningEvents.last;
     final hasLatestProposed =
         latestToolEvent?.phase == ToolPresentationEventPhase.proposed;
     if (latestActiveRunningEvent != null) {
@@ -60,7 +59,8 @@ class ActiveTurnStatusResolver {
         text: statusTextOverride ?? runningText,
         turnId: latestActiveRunningEvent.turnId,
         sourceMessageId: latestActiveRunningEvent.sourceMessageId,
-        toolName: activeRunningEvents.length == 1 ? latestRunningToolName : null,
+        toolName:
+            activeRunningEvents.length == 1 ? latestRunningToolName : null,
         sourceKind: ActiveTurnStatusSourceKind.toolEvent,
         allowFloating: true,
       );
@@ -68,11 +68,10 @@ class ActiveTurnStatusResolver {
 
     if (!projection.runtimePreviewState.isEmpty ||
         sendState.phase == ChatSendPhase.streamingResponse) {
-      if (!projection.runtimePreviewState.isEmpty ||
-          sendState.isGenerating) {
+      if (!projection.runtimePreviewState.isEmpty || sendState.isGenerating) {
         return ActiveTurnStatusPresentation(
           phase: ActiveTurnStatusPhase.streamingResponse,
-          text: statusTextOverride ?? '正在生成回复',
+          text: '正在生成回复',
           turnId: _turnIdForPreview(projection),
           sourceKind: projection.runtimePreviewState.isEmpty
               ? ActiveTurnStatusSourceKind.sendPhaseFallback
@@ -128,9 +127,9 @@ class ActiveTurnStatusResolver {
           allowFloating: true,
         );
       case ChatSendPhase.streamingResponse:
-        return ActiveTurnStatusPresentation(
+        return const ActiveTurnStatusPresentation(
           phase: ActiveTurnStatusPhase.streamingResponse,
-          text: statusTextOverride ?? '正在生成回复',
+          text: '正在生成回复',
           turnId: 'pending',
           sourceKind: ActiveTurnStatusSourceKind.sendPhaseFallback,
           allowFloating: true,

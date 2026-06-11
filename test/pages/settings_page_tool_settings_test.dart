@@ -232,6 +232,9 @@ class _RecordingSessionCoordinator extends ChatSessionCoordinator {
   Future<void> selectGroup(ChatGroup group) async {}
 
   @override
+  Future<void> syncDraftGroupProviderStyle() async {}
+
+  @override
   Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {
     updatedWorkspaceIds.add(workspaceId);
   }

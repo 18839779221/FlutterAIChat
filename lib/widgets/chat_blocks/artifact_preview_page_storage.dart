@@ -5,7 +5,7 @@ class ArtifactPreviewPageStorageSnapshot {
   /// Last measured preview height after clamping.
   final double previewHeight;
 
-  /// Whether the preview was truncated at the stored height.
+  /// Legacy truncation flag kept so older stored snapshots still decode.
   final bool isPreviewTruncated;
 
   const ArtifactPreviewPageStorageSnapshot({
@@ -45,7 +45,7 @@ class ArtifactPreviewVisualState {
   /// Current preview height for the inline surface container.
   final double previewHeight;
 
-  /// Whether the current height implies truncation messaging.
+  /// Always false; inline artifact previews no longer apply a screen-count cap.
   final bool isPreviewTruncated;
 
   const ArtifactPreviewVisualState({
@@ -66,7 +66,7 @@ ArtifactPreviewVisualState resolveArtifactPreviewVisualState({
   }
   return ArtifactPreviewVisualState(
     previewHeight: cachedSnapshot.previewHeight,
-    isPreviewTruncated: cachedSnapshot.isPreviewTruncated,
+    isPreviewTruncated: false,
   );
 }
 

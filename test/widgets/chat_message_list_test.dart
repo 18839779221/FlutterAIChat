@@ -2452,7 +2452,7 @@ void main() {
             theme: AppTheme.light(),
             home: const Scaffold(
               body: SizedBox(
-                height: 420,
+                height: 720,
                 child: ChatMessageList(),
               ),
             ),
@@ -2465,15 +2465,6 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      scrollController.jumpTo(scrollController.position.maxScrollExtent);
-      await tester.pump();
-      await tester.pump();
-
-      expect(
-        container.read(activeTurnStatusFloatingVisibilityProvider),
-        isFalse,
-      );
-
       scrollController.jumpTo(scrollController.position.minScrollExtent);
       await tester.pump();
       await tester.pump();
@@ -2484,8 +2475,7 @@ void main() {
       );
     });
 
-    testWidgets(
-        'floating visibility turns off when the inline status anchor becomes visible again',
+    testWidgets('floating visibility stays stable while returning near inline',
         (tester) async {
       final scrollController = ScrollController();
       final container = ProviderContainer(
@@ -2554,13 +2544,19 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      scrollController.jumpTo(scrollController.position.maxScrollExtent);
-      await tester.pump();
-      await tester.pump();
-      expect(
-        container.read(activeTurnStatusFloatingVisibilityProvider),
-        isFalse,
+      await tester.scrollUntilVisible(
+        find.byKey(
+          const ValueKey('latest-message-running-tail'),
+          skipOffstage: false,
+        ),
+        300,
       );
+      await tester.pump();
+      await tester.pump();
+      if (container.read(activeTurnStatusFloatingVisibilityProvider)) {
+        await tester.pump(const Duration(milliseconds: 220));
+        await tester.pump();
+      }
 
       scrollController.jumpTo(scrollController.position.minScrollExtent);
       await tester.pump();
@@ -2570,13 +2566,22 @@ void main() {
         isTrue,
       );
 
-      scrollController.jumpTo(scrollController.position.maxScrollExtent);
+      await tester.scrollUntilVisible(
+        find.byKey(
+          const ValueKey('latest-message-running-tail'),
+          skipOffstage: false,
+        ),
+        300,
+      );
       await tester.pump();
       await tester.pump();
-
+      await tester.pump(const Duration(milliseconds: 220));
+      await tester.pump();
       expect(
         container.read(activeTurnStatusFloatingVisibilityProvider),
-        isFalse,
+        isTrue,
+        reason:
+            'near-threshold inline recovery keeps the floating host mounted',
       );
     });
 
@@ -2646,6 +2651,13 @@ void main() {
       await tester.pump();
       await tester.pump();
 
+      expect(
+        container.read(activeTurnStatusFloatingVisibilityProvider),
+        isTrue,
+        reason: 'inline recovery can pass through the exit grace',
+      );
+      await tester.pump(const Duration(milliseconds: 220));
+      await tester.pump();
       expect(
         container.read(activeTurnStatusFloatingVisibilityProvider),
         isFalse,

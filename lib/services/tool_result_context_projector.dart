@@ -15,6 +15,7 @@ class ToolResultContextProjector {
   String? projectToContextText(ToolResult result) {
     final projected = switch (result.toolName.trim()) {
       'web_search' => _projectWebSearch(result),
+      'generate_image' => _projectGenerateImage(result),
       'search_chat_history' => _projectSearchChatHistory(result),
       'fetch_webpage' => _projectFetchWebpage(result),
       'LS' || 'Glob' || 'Grep' => _projectDiscoveryResult(result),
@@ -34,6 +35,28 @@ class ToolResultContextProjector {
       return projected.trim();
     }
     return _projectFallback(result);
+  }
+
+  String? _projectGenerateImage(ToolResult result) {
+    final prompt = result.data['prompt']?.toString().trim();
+    final model = result.data['model']?.toString().trim();
+    final rawImages = result.data['generatedImages'];
+    final imageCount = rawImages is List ? rawImages.length : 0;
+    if (imageCount == 0) {
+      return null;
+    }
+
+    final noun = imageCount == 1 ? 'image' : 'images';
+    final lines = <String>[
+      'generate_image generated $imageCount $noun',
+    ];
+    if (model != null && model.isNotEmpty) {
+      lines.add('model: $model');
+    }
+    if (prompt != null && prompt.isNotEmpty) {
+      lines.add('prompt: $prompt');
+    }
+    return lines.join('\n');
   }
 
   String? _projectWebSearch(ToolResult result) {

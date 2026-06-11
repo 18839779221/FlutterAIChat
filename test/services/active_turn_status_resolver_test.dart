@@ -101,7 +101,9 @@ void main() {
       expect(status?.text, '正在联网搜索');
     });
 
-    test('tool result without active streaming falls back to planning next step', () {
+    test(
+        'tool result without active streaming falls back to planning next step',
+        () {
       final status = resolver.resolve(
         projection: ChatTimelineProjection(
           toolPresentationEvents: [
@@ -267,12 +269,29 @@ void main() {
       expect(status?.text, '正在读取网页');
     });
 
-    test('streaming phase falls back to generating reply when no richer signal exists', () {
+    test(
+        'streaming phase falls back to generating reply when no richer signal exists',
+        () {
       final status = resolver.resolve(
         projection: const ChatTimelineProjection(),
         sendState: const ChatSendState(
           phase: ChatSendPhase.streamingResponse,
           isGenerating: true,
+        ),
+      );
+
+      expect(status, isNotNull);
+      expect(status?.phase, ActiveTurnStatusPhase.streamingResponse);
+      expect(status?.text, '正在生成回复');
+    });
+
+    test('streaming final answer ignores stale retry override text', () {
+      final status = resolver.resolve(
+        projection: const ChatTimelineProjection(),
+        sendState: const ChatSendState(
+          phase: ChatSendPhase.streamingResponse,
+          isGenerating: true,
+          statusText: '请求失败，正在重试 1/5',
         ),
       );
 

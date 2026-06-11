@@ -11,6 +11,9 @@ class LlmProviderModel {
   /// Whether this concrete model entry is known to support image input.
   final bool supportsImageInput;
 
+  /// Whether this concrete model entry is known to support image generation.
+  final bool supportsImageGeneration;
+
   /// Optional local capability limits attached to this concrete model entry.
   final ModelCapabilityOverride? capabilityOverride;
 
@@ -18,6 +21,7 @@ class LlmProviderModel {
     required this.id,
     required this.name,
     this.supportsImageInput = false,
+    this.supportsImageGeneration = false,
     this.capabilityOverride,
   });
 
@@ -28,6 +32,8 @@ class LlmProviderModel {
       name: (json['name'] as String? ?? '').trim(),
       supportsImageInput: json['supportsImageInput'] == true ||
           json['supports_image_input'] == true,
+      supportsImageGeneration: json['supportsImageGeneration'] == true ||
+          json['supports_image_generation'] == true,
       capabilityOverride:
           capabilityOverride.isEmpty ? null : capabilityOverride,
     );
@@ -38,6 +44,7 @@ class LlmProviderModel {
       'id': id,
       'name': name,
       'supportsImageInput': supportsImageInput,
+      'supportsImageGeneration': supportsImageGeneration,
       ...?capabilityOverride?.toJson(),
     };
   }

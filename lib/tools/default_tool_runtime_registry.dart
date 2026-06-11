@@ -1,4 +1,5 @@
 import '../services/tool_executor.dart';
+import '../services/image_generation_config_resolver.dart';
 import '../services/skills/skill_runtime_service.dart';
 import '../repositories/app_settings_repository.dart';
 import 'core/tool_runtime_registry.dart';
@@ -10,6 +11,7 @@ import 'handlers/create_reminder_tool_handler.dart';
 import 'handlers/delete_tool_handler.dart';
 import 'handlers/edit_tool_handler.dart';
 import 'handlers/fetch_webpage_tool_handler.dart';
+import 'handlers/generate_image_tool_handler.dart';
 import 'handlers/glob_tool_handler.dart';
 import 'handlers/grep_tool_handler.dart';
 import 'handlers/ls_tool_handler.dart';
@@ -75,6 +77,43 @@ ToolRuntimeRegistry buildDefaultToolRuntimeRegistry({
           );
         },
       ),
+      GenerateImageToolHandler(
+        imageGenerator: ({
+          required prompt,
+          required model,
+          required size,
+          required quality,
+          apiKey,
+          baseUrl,
+        }) async {
+          final providers =
+              await appSettingsRepository?.getProviders() ?? const [];
+          final additionalConfig =
+              await appSettingsRepository?.getAdditionalConfig() ?? const {};
+          final imageConfig = const ImageGenerationConfigResolver().resolve(
+            providers: providers,
+            additionalConfig: additionalConfig,
+          );
+          if (imageConfig == null) {
+            return const ToolResult(
+              toolName: 'generate_image',
+              status: ToolExecutionStatus.failure,
+              summary: '生成图片失败',
+              data: {'reason': 'image_generation_not_configured'},
+              errorMessage: 'image_generation_not_configured',
+            );
+          }
+          return toolExecutor.executeGenerateImage(
+            prompt: prompt,
+            model: _resolveOptionalString(model) ?? imageConfig.model,
+            size: size,
+            quality:
+                _resolveOptionalString(quality) ?? imageConfig.qualityDefault,
+            apiKey: apiKey ?? imageConfig.apiKey,
+            baseUrl: baseUrl ?? imageConfig.baseUrl,
+          );
+        },
+      ),
       LsToolHandler(),
       GlobToolHandler(),
       GrepToolHandler(),
@@ -125,4 +164,12 @@ ToolRuntimeRegistry buildDefaultToolRuntimeRegistry({
       ),
     ],
   );
+}
+
+String? _resolveOptionalString(String? value) {
+  final trimmed = value?.trim();
+  if (trimmed == null || trimmed.isEmpty) {
+    return null;
+  }
+  return trimmed;
 }

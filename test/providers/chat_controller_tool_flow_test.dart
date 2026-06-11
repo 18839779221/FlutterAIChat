@@ -5,6 +5,7 @@ import 'package:ai_chat/models/agent/model_turn_decision.dart';
 import 'package:ai_chat/models/agent/planner_tool_option.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
+import 'package:ai_chat/models/chat/send_message_request.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/context/planner_context_carrier.dart';
@@ -12,6 +13,8 @@ import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
+import 'package:ai_chat/models/skill/skill_catalog_entry.dart';
+import 'package:ai_chat/models/skill/skill_descriptor.dart';
 import 'package:ai_chat/models/trace/chat_trace_event.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
@@ -20,6 +23,8 @@ import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/services/agent_planner_service.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
+import 'package:ai_chat/services/skills/skill_runtime_service.dart';
+import 'package:ai_chat/services/skills/skill_storage_service.dart';
 import 'package:ai_chat/services/turn_harness.dart';
 import 'package:ai_chat/services/turn_verifier.dart';
 import 'package:ai_chat/services/tool_call_service.dart';
@@ -553,7 +558,7 @@ void main() {
       await container
           .read(chatControllerProvider)
           .confirmToolInvocation(confirmationMessage, trustTool: true);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await _waitForSendPhase(container, ChatSendPhase.idle);
 
       final messages = container.read(messagesProvider);
       expect(
@@ -1891,6 +1896,9 @@ ProviderContainer _createContainer({
     overrides: [
       databaseProvider.overrideWith((ref) => databaseHelper),
       chatServiceProvider.overrideWith((ref) => chatService),
+      skillRuntimeServiceProvider.overrideWith(
+        (ref) => _EmptySkillRuntimeService(),
+      ),
       if (coordinator != null)
         chatSendCoordinatorProvider.overrideWith((ref) => coordinator),
       if (harness != null) turnHarnessProvider.overrideWith((ref) => harness),
@@ -1909,6 +1917,36 @@ ProviderContainer _createContainer({
       focusNodeProvider.overrideWith((ref) => FocusNode()),
     ],
   );
+}
+
+Future<void> _waitForSendPhase(
+  ProviderContainer container,
+  ChatSendPhase phase,
+) async {
+  for (var attempt = 0; attempt < 50; attempt += 1) {
+    if (container.read(sendPhaseProvider) == phase) {
+      await Future<void>.delayed(Duration.zero);
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  fail('Timed out waiting for send phase $phase');
+}
+
+class _EmptySkillRuntimeService extends SkillRuntimeService {
+  _EmptySkillRuntimeService()
+      : super(
+          storageService: SkillStorageService(
+            rootDirectoryProvider: () async =>
+                throw UnimplementedError('not used in this test'),
+          ),
+        );
+
+  @override
+  Future<List<SkillDescriptor>> listAvailableSkills() async => const [];
+
+  @override
+  Future<List<SkillCatalogEntry>> listSkillCatalogEntries() async => const [];
 }
 
 class _FakeChatService extends ChatService {
@@ -2149,6 +2187,15 @@ class _FakeChatSendCoordinator implements ChatSendCoordinator {
   }
 
   @override
+  Future<void> sendMessageRequest(
+    SendMessageRequest request, {
+    required VoidCallback scheduleAutoSummary,
+    required VoidCallback cancelActiveStream,
+  }) async {
+    sentMessages.add(request.text);
+  }
+
+  @override
   Future<void> confirmToolInvocation(
     ChatMessage message, {
     bool trustTool = false,
@@ -2210,6 +2257,9 @@ class _FakeChatSessionCoordinator implements ChatSessionCoordinator {
   Future<void> selectGroup(ChatGroup group) async {
     selectedGroups.add(group);
   }
+
+  @override
+  Future<void> syncDraftGroupProviderStyle() async {}
 
   @override
   Future<void> deleteGroup(int id) async {

@@ -11,11 +11,17 @@
       "models": [
         {
           "id": "gpt-5.4",
-          "name": ""
+          "name": "",
+          "supports_image_generation": false
         },
         {
           "id": "gpt-5-mini",
           "name": ""
+        },
+        {
+          "id": "gpt-image-2",
+          "name": "GPT Image 2",
+          "supports_image_generation": true
         }
       ]
     }
@@ -23,5 +29,10 @@
   "web_search": {
     "provider": "tavily",
     "tavily_api_key": "tvly-XXX"
+  },
+  "image_generation": {
+    "default_provider_id": "example-provider",
+    "default_model_id": "gpt-image-2",
+    "quality_default": "low"
   }
 }

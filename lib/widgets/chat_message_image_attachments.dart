@@ -11,15 +11,17 @@ class ChatMessageImageAttachments extends StatelessWidget {
   const ChatMessageImageAttachments({
     super.key,
     required this.attachments,
+    this.alignment = Alignment.centerRight,
   });
 
   final List<ChatAttachment> attachments;
+  final Alignment alignment;
 
   @override
   Widget build(BuildContext context) {
     return Align(
       key: const ValueKey('chat-message-image-attachments-align'),
-      alignment: Alignment.centerRight,
+      alignment: alignment,
       child: Column(
         key: const ValueKey('chat-message-image-attachments'),
         crossAxisAlignment: CrossAxisAlignment.end,

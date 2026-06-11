@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat/assistant_turn_block.dart';
+import 'package:ai_chat/models/chat/chat_attachment.dart';
 import 'package:ai_chat/models/chat/runtime_assistant_draft.dart';
 import 'package:ai_chat/models/chat/runtime_streaming_preview_state.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -105,9 +106,9 @@ class AgentEventProcessor {
       return;
     }
     await _ref.read(turnProjectionDispatcherProvider).dispatchTruthEvent(
-      event,
-      _handleTruthEvent,
-    );
+          event,
+          _handleTruthEvent,
+        );
   }
 
   Future<void> _handleTruthEvent(ChatEvent event) async {
@@ -341,16 +342,63 @@ class AgentEventProcessor {
     required String fallbackText,
     required Map<String, dynamic>? payloadJson,
   }) async {
+    final attachments = _generatedImageAttachmentsFromToolResult(payloadJson);
     final message = ChatMessage(
       text: event.content ?? fallbackText,
       role: MessageRole.assistant,
       status: MessageStatus.completed,
       contentType: MessageContentType.toolResult,
       payloadJson: payloadJson,
+      attachments: attachments,
     );
     final id = await dbHelper.insertMessage(message, _groupId);
     message.id = id;
+    if (attachments.isNotEmpty) {
+      await dbHelper.insertMessageAttachments(id, attachments);
+    }
     _ref.read(messagesProvider.notifier).addMessage(message);
+  }
+
+  List<ChatAttachment> _generatedImageAttachmentsFromToolResult(
+    Map<String, dynamic>? payloadJson,
+  ) {
+    if (payloadJson?['toolName'] != 'generate_image') {
+      return const <ChatAttachment>[];
+    }
+    final data = payloadJson?['data'];
+    if (data is! Map) {
+      return const <ChatAttachment>[];
+    }
+    final images = data['generatedImages'];
+    if (images is! List) {
+      return const <ChatAttachment>[];
+    }
+    final model = data['model']?.toString().trim();
+    final prompt = data['prompt']?.toString().trim();
+    return images
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .where((item) => (item['dataUrl']?.toString().trim() ?? '').isNotEmpty)
+        .map((item) {
+      final dataUrl = item['dataUrl']!.toString().trim();
+      final localId = item['localId']?.toString().trim();
+      final fileName = item['fileName']?.toString().trim();
+      final mimeType = item['mimeType']?.toString().trim();
+      return ChatAttachment.generatedImage(
+        localId: localId?.isNotEmpty == true
+            ? localId!
+            : 'generated-image-${DateTime.now().microsecondsSinceEpoch}',
+        fileName: fileName?.isNotEmpty == true ? fileName! : 'generated.png',
+        mimeType: mimeType?.isNotEmpty == true ? mimeType! : 'image/png',
+        dataUrl: dataUrl,
+        providerFileRefJson: {
+          if (model != null && model.isNotEmpty) 'model': model,
+          if (prompt != null && prompt.isNotEmpty) 'prompt': prompt,
+          if (item['revisedPrompt'] is String)
+            'revised_prompt': (item['revisedPrompt'] as String).trim(),
+        },
+      );
+    }).toList(growable: false);
   }
 
   Map<String, dynamic> _buildToolFailurePayload(ChatEvent event) {
@@ -410,7 +458,10 @@ class AgentEventProcessor {
       if (reasoningScope != null) 'reasoningScope': reasoningScope,
       if ((event.payloadJson?['logicalId'] ?? '').toString().trim().isNotEmpty)
         'logicalId': event.payloadJson!['logicalId'],
-      if ((event.payloadJson?['previewMessageId'] ?? '').toString().trim().isNotEmpty)
+      if ((event.payloadJson?['previewMessageId'] ?? '')
+          .toString()
+          .trim()
+          .isNotEmpty)
         'previewMessageId': event.payloadJson!['previewMessageId'],
       if ((event.payloadJson?['previewContentBlockId'] ?? '')
           .toString()
@@ -460,9 +511,15 @@ class AgentEventProcessor {
       // streaming preview of a later iteration's final answer.
       payloadJson: _withIdentity({
         'isFinalAnswer': true,
-        if ((event.payloadJson?['logicalId'] ?? '').toString().trim().isNotEmpty)
+        if ((event.payloadJson?['logicalId'] ?? '')
+            .toString()
+            .trim()
+            .isNotEmpty)
           'logicalId': event.payloadJson!['logicalId'],
-        if ((event.payloadJson?['previewMessageId'] ?? '').toString().trim().isNotEmpty)
+        if ((event.payloadJson?['previewMessageId'] ?? '')
+            .toString()
+            .trim()
+            .isNotEmpty)
           'previewMessageId': event.payloadJson!['previewMessageId'],
         if ((event.payloadJson?['previewContentBlockId'] ?? '')
             .toString()
@@ -631,9 +688,7 @@ class AgentEventProcessor {
   }
 
   String _runtimeTurnId() {
-    return '${_groupId}_runtime_${
-        _agentTurnId ?? _traceTurnId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')
-      }';
+    return '${_groupId}_runtime_${_agentTurnId ?? _traceTurnId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')}';
   }
 
   bool _isTerminalFailureStatus(String? status) {
@@ -647,7 +702,6 @@ class AgentEventProcessor {
         return false;
     }
   }
-
 }
 
 enum _AssistantDraftStage {

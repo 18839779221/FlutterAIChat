@@ -91,6 +91,146 @@ typedef ProviderWebSearcher = Future<ToolResult> Function({
   int? maxResults,
 });
 
+/// Builds an OpenAI-compatible image generation adapter.
+ImageGenerator buildOpenAIImageGenerator({
+  http.Client? client,
+}) {
+  final resolvedClient = client ?? http.Client();
+
+  return ({
+    required String prompt,
+    required String? model,
+    required String size,
+    required String? quality,
+    String? apiKey,
+    String? baseUrl,
+  }) async {
+    final normalizedApiKey = apiKey?.trim() ?? '';
+    if (normalizedApiKey.isEmpty) {
+      return const ToolResult(
+        toolName: 'generate_image',
+        status: ToolExecutionStatus.failure,
+        summary: '生成图片失败',
+        data: {'reason': 'missing_api_key'},
+        errorMessage: 'missing_api_key',
+      );
+    }
+
+    final resolvedModel =
+        (model == null || model.trim().isEmpty) ? 'gpt-image-2' : model.trim();
+    final resolvedQuality =
+        (quality == null || quality.trim().isEmpty) ? 'low' : quality.trim();
+
+    final endpoint = _resolveOpenAIImagesEndpoint(baseUrl);
+    if (endpoint == null) {
+      return const ToolResult(
+        toolName: 'generate_image',
+        status: ToolExecutionStatus.failure,
+        summary: '生成图片失败',
+        data: {'reason': 'invalid_base_url'},
+        errorMessage: 'invalid_base_url',
+      );
+    }
+
+    try {
+      final response = await resolvedClient.post(
+        endpoint,
+        headers: {
+          'Authorization': 'Bearer $normalizedApiKey',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'model': resolvedModel,
+          'prompt': prompt,
+          'size': size,
+          'quality': resolvedQuality,
+        }),
+      );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return ToolResult(
+          toolName: 'generate_image',
+          status: ToolExecutionStatus.failure,
+          summary: '生成图片失败',
+          data: {
+            'reason': 'http_${response.statusCode}',
+            'statusCode': response.statusCode,
+          },
+          errorMessage: 'http_${response.statusCode}',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return const ToolResult(
+          toolName: 'generate_image',
+          status: ToolExecutionStatus.failure,
+          summary: '生成图片失败',
+          data: {'reason': 'invalid_response'},
+          errorMessage: 'invalid_response',
+        );
+      }
+
+      final rawData = decoded['data'];
+      final images = <Map<String, dynamic>>[];
+      if (rawData is List) {
+        for (var i = 0; i < rawData.length; i++) {
+          final item = rawData[i];
+          if (item is! Map) {
+            continue;
+          }
+          final map = Map<String, dynamic>.from(item);
+          final b64 = map['b64_json'];
+          if (b64 is! String || b64.trim().isEmpty) {
+            continue;
+          }
+          final fileName = 'generated-image-${i + 1}.png';
+          images.add({
+            'localId':
+                'generated-image-${DateTime.now().microsecondsSinceEpoch}-$i',
+            'fileName': fileName,
+            'mimeType': 'image/png',
+            'dataUrl': 'data:image/png;base64,${b64.trim()}',
+            if (map['revised_prompt'] is String)
+              'revisedPrompt': (map['revised_prompt'] as String).trim(),
+          });
+        }
+      }
+
+      if (images.isEmpty) {
+        return const ToolResult(
+          toolName: 'generate_image',
+          status: ToolExecutionStatus.failure,
+          summary: '生成图片失败',
+          data: {'reason': 'missing_image_data'},
+          errorMessage: 'missing_image_data',
+        );
+      }
+
+      return ToolResult(
+        toolName: 'generate_image',
+        status: ToolExecutionStatus.success,
+        summary: '已生成图片',
+        data: {
+          'prompt': prompt,
+          'model': resolvedModel,
+          'size': size,
+          'quality': resolvedQuality,
+          'generatedImages': images,
+        },
+      );
+    } catch (_) {
+      return const ToolResult(
+        toolName: 'generate_image',
+        status: ToolExecutionStatus.failure,
+        summary: '生成图片失败',
+        data: {'reason': 'network_error'},
+        errorMessage: 'network_error',
+      );
+    }
+  };
+}
+
 /// Builds a Tavily-backed web search adapter.
 ///
 /// Returned payload fields:
@@ -214,6 +354,32 @@ ProviderWebSearcher buildTavilyWebSearcher({
   };
 }
 
+Uri? _resolveOpenAIImagesEndpoint(String? baseUrl) {
+  final normalized = (baseUrl?.trim().isNotEmpty ?? false)
+      ? baseUrl!.trim()
+      : 'https://api.openai.com/v1';
+  final uri = Uri.tryParse(normalized);
+  if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+    return null;
+  }
+
+  final segments =
+      uri.pathSegments.where((segment) => segment.isNotEmpty).toList();
+  final versionIndex = segments.indexOf('v1');
+  final baseSegments = versionIndex >= 0
+      ? segments.take(versionIndex + 1).toList()
+      : <String>[...segments, 'v1'];
+  return uri.replace(
+    pathSegments: [
+      ...baseSegments,
+      'images',
+      'generations',
+    ],
+    query: null,
+    fragment: null,
+  );
+}
+
 /// Builds the default webpage fetch adapter used by the mobile tool pipeline.
 ///
 /// Returned payload fields:
@@ -271,8 +437,7 @@ WebpageFetcher buildDefaultWebpageFetcher({
         );
       }
 
-      final processedContent =
-          await _processFetchedWebpageContentWithSideModel(
+      final processedContent = await _processFetchedWebpageContentWithSideModel(
         sideModelLlm: sideModelLlm,
         prompt: prompt,
         content: content,

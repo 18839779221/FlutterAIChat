@@ -286,11 +286,11 @@ void main() {
     );
   });
 
-  test('clamps reported preview height into three-screen bounds', () {
+  test('normalizes reported preview height without a three-screen cap', () {
     expect(clampArtifactPreviewHeight(80, viewportHeight: 800), 180);
     expect(clampArtifactPreviewHeight(320, viewportHeight: 800), 320);
     expect(clampArtifactPreviewHeight(2000, viewportHeight: 800), 2000);
-    expect(clampArtifactPreviewHeight(5000, viewportHeight: 800), 2400);
+    expect(clampArtifactPreviewHeight(5000, viewportHeight: 800), 5000);
   });
 
   test(
@@ -372,19 +372,6 @@ void main() {
       ),
       ArtifactHostViewportProbeStatus.ok,
     );
-  });
-
-  test('exposes a stable truncation hint for overlong artifact previews', () {
-    expect(artifactPreviewTruncationMessage, contains('详情页'));
-    expect(artifactPreviewTruncationMessage, contains('完整内容'));
-  });
-
-  test(
-      'artifact inline preview keeps details page wording as the overflow path',
-      () {
-    expect(artifactPreviewTruncationMessage, contains('详情页'));
-    expect(artifactPreviewTruncationMessage, isNot(contains('展开更多')));
-    expect(artifactPreviewTruncationMessage, isNot(contains('收起')));
   });
 
   test('builds host preview styles with root variables and native wrapper', () {

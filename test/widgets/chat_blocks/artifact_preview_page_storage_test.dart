@@ -14,7 +14,7 @@ void main() {
     expect(state.isPreviewTruncated, isFalse);
   });
 
-  test('restores artifact preview visual state from cached snapshot', () {
+  test('restores cached height without reviving legacy truncation state', () {
     final state = resolveArtifactPreviewVisualState(
       cachedSnapshot: const ArtifactPreviewPageStorageSnapshot(
         previewHeight: 480,
@@ -24,7 +24,7 @@ void main() {
     );
 
     expect(state.previewHeight, 480);
-    expect(state.isPreviewTruncated, isTrue);
+    expect(state.isPreviewTruncated, isFalse);
   });
 
   testWidgets('restores artifact preview snapshot across subtree remounts',

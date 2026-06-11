@@ -38,6 +38,16 @@ typedef ResultSharer = Future<ToolResult> Function({
   String? subject,
 });
 
+/// Generates image output and returns normalized generated image metadata.
+typedef ImageGenerator = Future<ToolResult> Function({
+  required String prompt,
+  required String? model,
+  required String size,
+  required String? quality,
+  String? apiKey,
+  String? baseUrl,
+});
+
 class ToolExecutor {
   ToolExecutor({
     required ChatStorage chatStorage,
@@ -46,12 +56,14 @@ class ToolExecutor {
     ReminderCreator? reminderCreator,
     CalendarEventCreator? calendarEventCreator,
     ResultSharer? resultSharer,
+    ImageGenerator? imageGenerator,
   })  : _chatStorage = chatStorage,
         _webSearcher = webSearcher,
         _webpageFetcher = webpageFetcher,
         _reminderCreator = reminderCreator,
         _calendarEventCreator = calendarEventCreator,
-        _resultSharer = resultSharer;
+        _resultSharer = resultSharer,
+        _imageGenerator = imageGenerator;
 
   final ChatStorage _chatStorage;
   final WebSearcher? _webSearcher;
@@ -59,6 +71,7 @@ class ToolExecutor {
   final ReminderCreator? _reminderCreator;
   final CalendarEventCreator? _calendarEventCreator;
   final ResultSharer? _resultSharer;
+  final ImageGenerator? _imageGenerator;
 
   /// Searches messages in the current group and returns compact match previews.
   Future<ToolResult> executeSearchChatHistory({
@@ -167,6 +180,29 @@ class ToolExecutor {
       return _unsupportedToolResult('share_result');
     }
     return sharer(text: text, subject: subject);
+  }
+
+  /// Generates an image through an injected provider adapter.
+  Future<ToolResult> executeGenerateImage({
+    required String prompt,
+    required String? model,
+    required String size,
+    required String? quality,
+    String? apiKey,
+    String? baseUrl,
+  }) async {
+    final generator = _imageGenerator;
+    if (generator == null) {
+      return _unsupportedToolResult('generate_image');
+    }
+    return generator(
+      prompt: prompt,
+      model: model,
+      size: size,
+      quality: quality,
+      apiKey: apiKey,
+      baseUrl: baseUrl,
+    );
   }
 
   bool _isSearchableMessage(ChatMessage message, String query) {

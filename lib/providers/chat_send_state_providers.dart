@@ -49,7 +49,8 @@ class ChatSendStateNotifier extends StateNotifier<ChatSendState> {
   void setPhase(ChatSendPhase phase) {
     state = state.copyWith(
       phase: phase,
-      clearStatusText: phase == ChatSendPhase.idle,
+      clearStatusText: phase == ChatSendPhase.idle ||
+          phase == ChatSendPhase.streamingResponse,
     );
   }
 
@@ -70,11 +71,13 @@ class ChatSendStateNotifier extends StateNotifier<ChatSendState> {
     String? statusText,
     bool clearStatusText = false,
   }) {
+    final nextPhase = phase ?? state.phase;
     state = state.copyWith(
       phase: phase,
       isGenerating: isGenerating,
       statusText: statusText,
-      clearStatusText: clearStatusText,
+      clearStatusText: clearStatusText ||
+          (statusText == null && nextPhase == ChatSendPhase.streamingResponse),
     );
   }
 }

@@ -61,6 +61,40 @@ class ChatAttachment {
     );
   }
 
+  /// Provider-generated image output associated with an assistant message.
+  factory ChatAttachment.generatedImage({
+    required String localId,
+    required String fileName,
+    required String mimeType,
+    required String dataUrl,
+    int? byteSize,
+    String? sha256,
+    String? errorCode,
+    String? errorMessage,
+    Map<String, dynamic>? providerFileRefJson,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return ChatAttachment(
+      localId: localId,
+      kind: ChatAttachmentKind.image,
+      source: ChatAttachmentSource.providerFile,
+      fileName: fileName,
+      mimeType: mimeType,
+      byteSize: byteSize,
+      sha256: sha256,
+      status: ChatAttachmentStatus.ready,
+      errorCode: errorCode,
+      errorMessage: errorMessage,
+      providerFileRefJson: {
+        if (providerFileRefJson != null) ...providerFileRefJson,
+        'data_url': dataUrl,
+      },
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+    );
+  }
+
   final String localId;
   final ChatAttachmentKind kind;
   final ChatAttachmentSource source;
@@ -149,10 +183,8 @@ class ChatAttachment {
       errorMessage: json['errorMessage'] as String?,
       providerFileRefJson:
           (json['providerFileRefJson'] as Map?)?.cast<String, dynamic>(),
-      createdAt:
-          DateTime.fromMillisecondsSinceEpoch(json['createdAt'] as int),
-      updatedAt:
-          DateTime.fromMillisecondsSinceEpoch(json['updatedAt'] as int),
+      createdAt: DateTime.fromMillisecondsSinceEpoch(json['createdAt'] as int),
+      updatedAt: DateTime.fromMillisecondsSinceEpoch(json['updatedAt'] as int),
     );
   }
 
@@ -171,9 +203,8 @@ class ChatAttachment {
       'status': status.name,
       'error_code': errorCode,
       'error_message': errorMessage,
-      'provider_file_ref_json': providerFileRefJson == null
-          ? null
-          : jsonEncode(providerFileRefJson),
+      'provider_file_ref_json':
+          providerFileRefJson == null ? null : jsonEncode(providerFileRefJson),
       'created_at': createdAt.millisecondsSinceEpoch,
       'updated_at': updatedAt.millisecondsSinceEpoch,
     };

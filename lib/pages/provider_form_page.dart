@@ -42,6 +42,7 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
   bool _isDiscovering = false;
   bool _isSaving = false;
   bool _isSpeedTesting = false;
+  int? _imageGenerationTestingIndex;
 
   bool get _isEdit => widget.initialProvider != null;
 
@@ -65,6 +66,7 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
                   text: item.name.isEmpty ? item.id : item.name,
                 ),
                 syncNameWithId: item.name.isEmpty || item.name == item.id,
+                supportsImageGeneration: item.supportsImageGeneration,
               ),
             )
             .toList(growable: true) ??
@@ -216,6 +218,7 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
           (row) => LlmProviderModel(
             id: row.idController.text.trim(),
             name: row.nameController.text.trim(),
+            supportsImageGeneration: row.supportsImageGeneration,
           ),
         )
         .where((item) => item.id.isNotEmpty)
@@ -244,6 +247,7 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
               text: item.name.isEmpty ? item.id : item.name,
             ),
             syncNameWithId: item.name.isEmpty || item.name == item.id,
+            supportsImageGeneration: item.supportsImageGeneration,
           ),
         )
         .toList(growable: true);
@@ -441,6 +445,86 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
     });
   }
 
+  Future<void> _testImageGenerationModel(
+    int index,
+    _EditableModelRow row,
+  ) async {
+    if (_imageGenerationTestingIndex != null) {
+      return;
+    }
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    final modelId = row.idController.text.trim();
+    if (modelId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先填写模型 ID')),
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认测试生图'),
+        content: const Text('生图测试会调用真实生图接口，可能较慢且产生费用。确认继续测试？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('确认测试'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _imageGenerationTestingIndex = index;
+    });
+
+    try {
+      final result = await widget.testService.testImageGenerationModel(
+        provider: _buildProvider(),
+        model: LlmProviderModel(
+          id: modelId,
+          name: row.nameController.text.trim(),
+          supportsImageGeneration: row.supportsImageGeneration,
+        ),
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        row.supportsImageGeneration = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '生图测试完成：${result.latency.inMilliseconds}ms，已勾选支持生图',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_formatActionError('生图测试失败', error))),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _imageGenerationTestingIndex = null;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final spacing = Theme.of(context).extension<AppSpacing>()!;
@@ -585,6 +669,17 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
                             row: row,
                             onSetDefault: () => _setDefaultModel(row),
                             onDelete: () => _removeModelRow(index),
+                            onImageGenerationChanged: (value) {
+                              setState(() {
+                                row.supportsImageGeneration = value;
+                              });
+                            },
+                            onTestImageGeneration: () =>
+                                _testImageGenerationModel(index, row),
+                            isImageGenerationTesting:
+                                _imageGenerationTestingIndex == index,
+                            isAnyImageGenerationTesting:
+                                _imageGenerationTestingIndex != null,
                           ),
                         );
                       }).toList(growable: false),
@@ -824,12 +919,20 @@ class _ModelEditorCard extends StatelessWidget {
     required this.row,
     required this.onSetDefault,
     required this.onDelete,
+    required this.onImageGenerationChanged,
+    required this.onTestImageGeneration,
+    required this.isImageGenerationTesting,
+    required this.isAnyImageGenerationTesting,
   });
 
   final int index;
   final _EditableModelRow row;
   final VoidCallback onSetDefault;
   final VoidCallback onDelete;
+  final ValueChanged<bool> onImageGenerationChanged;
+  final VoidCallback onTestImageGeneration;
+  final bool isImageGenerationTesting;
+  final bool isAnyImageGenerationTesting;
 
   @override
   Widget build(BuildContext context) {
@@ -882,11 +985,43 @@ class _ModelEditorCard extends StatelessWidget {
                   (value?.trim().isEmpty ?? true) ? '请输入模型 ID' : null,
             ),
             SizedBox(height: spacing.sm),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: row.supportsImageGeneration,
+              onChanged: (value) => onImageGenerationChanged(value ?? false),
+              title: const Text('支持生图'),
+              subtitle: Text(
+                '勾选后该模型可作为 generate_image 的运行模型。',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colors.secondaryText,
+                    ),
+              ),
+            ),
+            SizedBox(height: spacing.sm),
             Align(
               alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: onDelete,
-                child: const Text('删除'),
+              child: Wrap(
+                spacing: spacing.sm,
+                alignment: WrapAlignment.end,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: isAnyImageGenerationTesting
+                        ? null
+                        : onTestImageGeneration,
+                    icon: isImageGenerationTesting
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.image_search_outlined),
+                    label: Text(isImageGenerationTesting ? '测试中' : '测试生图'),
+                  ),
+                  TextButton(
+                    onPressed: onDelete,
+                    child: const Text('删除'),
+                  ),
+                ],
               ),
             ),
           ],
@@ -1090,6 +1225,7 @@ class _ApiStyleSelectionSheet extends StatelessWidget {
 class _EditableModelRow {
   final TextEditingController idController;
   final TextEditingController nameController;
+  bool supportsImageGeneration;
   bool _syncNameWithId;
   bool _isUpdatingNameFromId = false;
   late final VoidCallback _idListener;
@@ -1099,6 +1235,7 @@ class _EditableModelRow {
     required this.idController,
     required this.nameController,
     required bool syncNameWithId,
+    this.supportsImageGeneration = false,
   }) : _syncNameWithId = syncNameWithId {
     _idListener = () {
       if (!_syncNameWithId) {
@@ -1133,6 +1270,7 @@ class _EditableModelRow {
       idController: TextEditingController(),
       nameController: TextEditingController(),
       syncNameWithId: true,
+      supportsImageGeneration: false,
     );
   }
 

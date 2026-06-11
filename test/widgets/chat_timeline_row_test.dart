@@ -18,6 +18,10 @@ import 'package:ai_chat/services/tool_ui_renderer_registry.dart';
 import 'package:ai_chat/widgets/tool_renderers/edit_tool_renderer.dart';
 
 void main() {
+  const transparentPngDataUrl =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ'
+      'AAAADUlEQVR42mP8z8BQDwAFgwJ/lXc1PwAAAABJRU5ErkJggg==';
+
   testWidgets(
     'tool workflow row renders from typed projection without payload step parsing',
     (tester) async {
@@ -239,6 +243,64 @@ void main() {
         find.byKey(const ValueKey('chat-message-image-attachments-align')),
         findsOneWidget,
       );
+    },
+  );
+
+  testWidgets(
+    'assistant final response row renders generated image attachments on assistant side',
+    (tester) async {
+      final sourceMessage = ChatMessage(
+        id: 4,
+        text: '已生成图片',
+        role: MessageRole.assistant,
+        attachments: [
+          ChatAttachment.generatedImage(
+            localId: 'generated-1',
+            fileName: 'generated.png',
+            mimeType: 'image/png',
+            dataUrl: transparentPngDataUrl,
+          ),
+        ],
+      );
+      final block = AssistantTurnBlock(
+        id: 'turn-image-final-1',
+        turnId: 'turn-image',
+        type: AssistantTurnBlockType.finalResponse,
+        sequence: 1,
+        createdAt: DateTime(2026, 6, 12, 10, 0, 0),
+        updatedAt: DateTime(2026, 6, 12, 10, 0, 0),
+        title: '最终回答',
+        text: '已生成图片',
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: Scaffold(
+              body: ChatTimelineRow(
+                item: ChatTimelineItem(
+                  stableKey: 'assistant-generated-image-row',
+                  type: ChatTimelineItemType.assistantBlock,
+                  sourceMessage: sourceMessage,
+                  sourceMessages: [sourceMessage],
+                  block: block,
+                ),
+                blockBuilder: ChatBlockBuilder(),
+                currentGroupId: 1,
+                onLongPressMessage: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('已生成图片'), findsOneWidget);
+      final align = tester.widget<Align>(
+        find.byKey(const ValueKey('chat-message-image-attachments-align')),
+      );
+      expect(align.alignment, Alignment.centerLeft);
+      expect(find.byType(Image), findsOneWidget);
     },
   );
 }

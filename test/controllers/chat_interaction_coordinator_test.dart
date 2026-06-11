@@ -1,4 +1,5 @@
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/chat/send_message_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_item.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
@@ -142,6 +143,13 @@ class _RecordingChatSendCoordinator implements ChatSendCoordinator {
   @override
   Future<void> sendMessage(
     String text, {
+    required void Function() scheduleAutoSummary,
+    required void Function() cancelActiveStream,
+  }) async {}
+
+  @override
+  Future<void> sendMessageRequest(
+    SendMessageRequest request, {
     required void Function() scheduleAutoSummary,
     required void Function() cancelActiveStream,
   }) async {}

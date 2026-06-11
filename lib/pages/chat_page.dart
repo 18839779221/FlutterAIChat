@@ -203,42 +203,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                                           trustTool: true,
                                         ),
                                       ),
-                                    if (activeTurnStatus != null &&
-                                        activeTurnStatus.allowFloating &&
-                                        shouldShowFloatingActiveStatus)
-                                      IgnorePointer(
-                                        child: Padding(
-                                          padding: EdgeInsets.fromLTRB(
-                                            spacing.md - 2,
-                                            0,
-                                            spacing.md - 2,
-                                            spacing.xxs + 1,
-                                          ),
-                                          child: Align(
-                                            alignment: Alignment.centerLeft,
-                                            child: ConstrainedBox(
-                                              constraints: const BoxConstraints(
-                                                maxWidth: 320,
-                                              ),
-                                              child: Transform.translate(
-                                                offset: const Offset(0, -2),
-                                                child: KeyedSubtree(
-                                                  key: const ValueKey(
-                                                    'floating-turn-status-bar',
-                                                  ),
-                                                  child: UnifiedTurnStatusBar(
-                                                    status: activeTurnStatus,
-                                                    variant:
-                                                        UnifiedTurnStatusBarVariant
-                                                            .floating,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    if (shouldShowScrollToBottomButton)
+                                    if ((activeTurnStatus != null &&
+                                            activeTurnStatus.allowFloating &&
+                                            shouldShowFloatingActiveStatus) ||
+                                        shouldShowScrollToBottomButton)
                                       Padding(
                                         padding: EdgeInsets.fromLTRB(
                                           spacing.md,
@@ -246,19 +214,62 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                                           spacing.md,
                                           spacing.xs,
                                         ),
-                                        child: Align(
-                                          alignment: Alignment.centerRight,
-                                          child: _ScrollToBottomButton(
-                                            onPressed: () {
-                                              if (!scrollController.hasClients) {
-                                                return;
-                                              }
-                                              scrollController.jumpTo(
-                                                scrollController
-                                                    .position.maxScrollExtent,
-                                              );
-                                              WidgetsBinding.instance
-                                                  .addPostFrameCallback((_) {
+                                        child: Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.center,
+                                          children: [
+                                            if (activeTurnStatus != null &&
+                                                activeTurnStatus
+                                                    .allowFloating &&
+                                                shouldShowFloatingActiveStatus)
+                                              Expanded(
+                                                child: IgnorePointer(
+                                                  child: Align(
+                                                    alignment:
+                                                        Alignment.centerLeft,
+                                                    child: ConstrainedBox(
+                                                      constraints:
+                                                          const BoxConstraints(
+                                                        maxWidth: 320,
+                                                      ),
+                                                      child:
+                                                          Transform.translate(
+                                                        offset:
+                                                            const Offset(0, -2),
+                                                        child: KeyedSubtree(
+                                                          key: const ValueKey(
+                                                            'floating-turn-status-bar',
+                                                          ),
+                                                          child:
+                                                              UnifiedTurnStatusBar(
+                                                            status:
+                                                                activeTurnStatus,
+                                                            variant:
+                                                                UnifiedTurnStatusBarVariant
+                                                                    .floating,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              )
+                                            else
+                                              const Spacer(),
+                                            if (shouldShowScrollToBottomButton)
+                                              _ScrollToBottomButton(
+                                                onPressed: () {
+                                                  if (!scrollController
+                                                      .hasClients) {
+                                                    return;
+                                                  }
+                                                  scrollController.jumpTo(
+                                                    scrollController.position
+                                                        .maxScrollExtent,
+                                                  );
+                                                  WidgetsBinding.instance
+                                                      .addPostFrameCallback(
+                                                          (_) {
                                                     if (!scrollController
                                                         .hasClients) {
                                                       return;
@@ -268,8 +279,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                                                           .maxScrollExtent,
                                                     );
                                                   });
-                                            },
-                                          ),
+                                                },
+                                              ),
+                                          ],
                                         ),
                                       ),
                                     ChatInput(

@@ -127,6 +127,100 @@ void main() {
       expect(result.errorMessage, 'missing_api_key');
     });
 
+    group('image generator', () {
+      test('posts to images generations endpoint and maps b64 response',
+          () async {
+        final client = _FakeHttpClient(
+          responses: {
+            'https://api.openai.com/v1/images/generations': http.Response(
+              jsonEncode({
+                'data': [
+                  {'b64_json': 'AAAA'},
+                ],
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            ),
+          },
+        );
+        final generator = buildOpenAIImageGenerator(client: client);
+
+        final result = await generator(
+          prompt: 'A small brass robot painting clouds',
+          model: 'gpt-image-2',
+          size: '1024x1024',
+          quality: 'high',
+          apiKey: 'key-1',
+          baseUrl: 'https://api.openai.com/v1/chat/completions',
+        );
+
+        expect(result.status, ToolExecutionStatus.success);
+        expect(result.summary, '已生成图片');
+        expect(client.requests.single.url.toString(),
+            'https://api.openai.com/v1/images/generations');
+        expect(client.requests.single.headers['Authorization'], 'Bearer key-1');
+        expect(client.singleJsonBody, {
+          'model': 'gpt-image-2',
+          'prompt': 'A small brass robot painting clouds',
+          'size': '1024x1024',
+          'quality': 'high',
+        });
+        final images = result.data['generatedImages'] as List;
+        expect(images.single['dataUrl'], 'data:image/png;base64,AAAA');
+        expect(images.single['mimeType'], 'image/png');
+      });
+
+      test('uses low quality and default image model when omitted', () async {
+        final client = _FakeHttpClient(
+          responses: {
+            'https://api.openai.com/v1/images/generations': http.Response(
+              jsonEncode({
+                'data': [
+                  {'b64_json': 'AAAA'},
+                ],
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            ),
+          },
+        );
+        final generator = buildOpenAIImageGenerator(client: client);
+
+        final result = await generator(
+          prompt: 'A small brass robot painting clouds',
+          model: null,
+          size: '1024x1024',
+          quality: null,
+          apiKey: 'key-1',
+          baseUrl: 'https://api.openai.com/v1',
+        );
+
+        expect(result.status, ToolExecutionStatus.success);
+        expect(client.singleJsonBody['model'], 'gpt-image-2');
+        expect(client.singleJsonBody['quality'], 'low');
+        expect(result.data['model'], 'gpt-image-2');
+        expect(result.data['quality'], 'low');
+      });
+
+      test('returns stable failure when image api key is missing', () async {
+        final generator = buildOpenAIImageGenerator(
+          client: _FakeHttpClient(responses: const {}),
+        );
+
+        final result = await generator(
+          prompt: 'A calendar cover',
+          model: 'gpt-image-2',
+          size: '1024x1024',
+          quality: 'auto',
+          apiKey: '',
+          baseUrl: 'https://api.openai.com/v1',
+        );
+
+        expect(result.status, ToolExecutionStatus.failure);
+        expect(result.errorMessage, 'missing_api_key');
+      });
+    });
+
     test('result sharer returns success when share sheet is invoked', () async {
       final sharer = buildDefaultResultSharer(
         shareInvoker: ({required text, subject}) async =>
@@ -367,9 +461,18 @@ class _FakeHttpClient extends http.BaseClient {
   _FakeHttpClient({required this.responses});
 
   final Map<String, http.Response> responses;
+  final List<http.Request> requests = <http.Request>[];
+
+  Map<String, dynamic> get singleJsonBody {
+    expect(requests, hasLength(1));
+    return jsonDecode(requests.single.body) as Map<String, dynamic>;
+  }
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (request is http.Request) {
+      requests.add(request);
+    }
     final response =
         responses[request.url.toString()] ?? http.Response('not found', 404);
     return http.StreamedResponse(

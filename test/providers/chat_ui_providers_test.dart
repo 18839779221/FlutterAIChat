@@ -215,7 +215,8 @@ void main() {
       );
     });
 
-    test('reading timeline projection does not mutate streaming trace state', () async {
+    test('reading timeline projection does not mutate streaming trace state',
+        () async {
       final container = ProviderContainer();
       addTearDown(container.dispose);
 
@@ -274,11 +275,13 @@ void main() {
       expect(
         container.read(streamingTraceSnapshotProvider),
         isNull,
-        reason: 'Projection reads should stay pure and avoid mutating trace state during provider build.',
+        reason:
+            'Projection reads should stay pure and avoid mutating trace state during provider build.',
       );
     });
 
-    test('runtime preview consumes deltas immediately within publish throttle window',
+    test(
+        'runtime preview consumes deltas immediately within publish throttle window',
         () async {
       final container = ProviderContainer();
       addTearDown(container.dispose);
@@ -329,7 +332,8 @@ void main() {
       );
     });
 
-    test('runtime tool-use preview records slow tool streaming stages for trace aggregation',
+    test(
+        'runtime tool-use preview records slow tool streaming stages for trace aggregation',
         () async {
       final container = ProviderContainer();
       addTearDown(container.dispose);
@@ -431,7 +435,38 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      expect(container.read(activeTurnStatusFloatingVisibilityProvider), isTrue);
+      expect(
+          container.read(activeTurnStatusFloatingVisibilityProvider), isTrue);
+    });
+
+    test('floating visibility remains visible during exit grace window', () {
+      final statusProvider = StateProvider<ActiveTurnStatusPresentation?>(
+        (ref) => const ActiveTurnStatusPresentation(
+          phase: ActiveTurnStatusPhase.streamingResponse,
+          text: '正在生成回复',
+          turnId: 'turn-grace',
+          sourceKind: ActiveTurnStatusSourceKind.sendPhaseFallback,
+          allowFloating: true,
+        ),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          activeTurnStatusPresentationProvider.overrideWith(
+            (ref) => ref.watch(statusProvider),
+          ),
+          activeTurnStatusFloatingStateProvider.overrideWith(
+            (ref) => const ActiveTurnStatusFloatingState(
+              turnId: 'turn-grace',
+              isFloating: false,
+              isInVisibilityGrace: true,
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      expect(
+          container.read(activeTurnStatusFloatingVisibilityProvider), isTrue);
     });
   });
 }

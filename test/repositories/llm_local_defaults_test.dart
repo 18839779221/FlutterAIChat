@@ -56,6 +56,11 @@ void main() {
           'provider': 'tavily',
           'tavily_api_key': 'tvly-test',
         },
+        'image_generation': {
+          'default_provider_id': 'beehears',
+          'default_model_id': 'gpt-image-2',
+          'quality_default': 'low',
+        },
       });
 
       expect(defaults.defaultProviderId, 'aigocode');
@@ -70,6 +75,18 @@ void main() {
       expect(
         defaults.additionalConfig['web_search.tavily_api_key'],
         'tvly-test',
+      );
+      expect(
+        defaults.additionalConfig['image_generation.default_provider_id'],
+        'beehears',
+      );
+      expect(
+        defaults.additionalConfig['image_generation.default_model_id'],
+        'gpt-image-2',
+      );
+      expect(
+        defaults.additionalConfig['image_generation.quality_default'],
+        'low',
       );
     });
 

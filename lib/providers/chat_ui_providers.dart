@@ -250,6 +250,7 @@ class ActiveTurnStatusFloatingState {
   const ActiveTurnStatusFloatingState({
     this.turnId,
     required this.isFloating,
+    this.isInVisibilityGrace = false,
   });
 
   /// Turn identity of the inline status anchor that produced this state.
@@ -257,6 +258,10 @@ class ActiveTurnStatusFloatingState {
 
   /// Whether the current active status should render in the floating host.
   final bool isFloating;
+
+  /// Whether the floating host should stay mounted during a short
+  /// near-threshold viewport handoff.
+  final bool isInVisibilityGrace;
 }
 
 final activeTurnStatusFloatingStateProvider =
@@ -282,7 +287,7 @@ final activeTurnStatusFloatingVisibilityProvider = Provider<bool>((ref) {
   // Without this handoff tolerance, a fast status turnId swap can briefly
   // evaluate to false before the next viewport sync updates the anchor state,
   // which produces a visible disappear/reappear flash above the composer.
-  return floatingState.isFloating;
+  return floatingState.isFloating || floatingState.isInVisibilityGrace;
 });
 
 class RuntimeStreamingPreviewController

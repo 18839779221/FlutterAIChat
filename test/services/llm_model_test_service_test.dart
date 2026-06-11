@@ -104,6 +104,92 @@ void main() {
       expect(result.pong.responseText, 'pong');
     });
 
+    test('testImageGenerationModel posts low quality image probe', () async {
+      http.Request? capturedRequest;
+      final service = LlmModelTestService(
+        httpClient: _FakeHttpClient(
+          handler: (request) async {
+            capturedRequest = request as http.Request;
+            return http.Response(
+              jsonEncode({
+                'data': [
+                  {
+                    'b64_json': base64Encode([0, 1, 2, 3])
+                  },
+                ],
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          },
+        ),
+      );
+
+      final result = await service.testImageGenerationModel(
+        provider: const LlmProviderConfig(
+          id: 'beehears',
+          name: 'Beehears',
+          apiKey: 'image-key',
+          baseUrl: 'https://ai.beehears.com/v1',
+          models: [
+            LlmProviderModel(id: 'gpt-image-2', name: 'GPT Image 2'),
+          ],
+        ),
+        model: const LlmProviderModel(id: 'gpt-image-2', name: 'GPT Image 2'),
+      );
+
+      expect(result.modelId, 'gpt-image-2');
+      expect(result.latency, isNotNull);
+      expect(
+        capturedRequest?.url.toString(),
+        'https://ai.beehears.com/v1/images/generations',
+      );
+      expect(capturedRequest?.headers['Authorization'], 'Bearer image-key');
+      final payload = jsonDecode(capturedRequest!.body) as Map<String, dynamic>;
+      expect(payload['model'], 'gpt-image-2');
+      expect(payload['quality'], 'low');
+      expect(payload['size'], '1024x1024');
+    });
+
+    test('testImageGenerationModel rejects responses without b64 image data',
+        () async {
+      final service = LlmModelTestService(
+        httpClient: _FakeHttpClient(
+          handler: (request) async => http.Response(
+            jsonEncode({
+              'data': [
+                {'url': 'https://example.com/temp.png'},
+              ],
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          ),
+        ),
+      );
+
+      expect(
+        () => service.testImageGenerationModel(
+          provider: const LlmProviderConfig(
+            id: 'beehears',
+            name: 'Beehears',
+            apiKey: 'image-key',
+            baseUrl: 'https://ai.beehears.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-image-2', name: 'GPT Image 2'),
+            ],
+          ),
+          model: const LlmProviderModel(id: 'gpt-image-2', name: 'GPT Image 2'),
+        ),
+        throwsA(
+          isA<Exception>().having(
+            (error) => error.toString(),
+            'message',
+            contains('未返回可用图片'),
+          ),
+        ),
+      );
+    });
+
     test('returns assistant text for a successful responses request', () async {
       final service = LlmModelTestService(
         httpClient: _FakeHttpClient(
