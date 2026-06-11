@@ -64,12 +64,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 10000,
-            reservedOutputTokens: 1000,
-            safetyMarginTokens: 500,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async => throw UnimplementedError(),
@@ -135,12 +133,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 10000,
-            reservedOutputTokens: 1000,
-            safetyMarginTokens: 500,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async => throw UnimplementedError(),
@@ -222,13 +218,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 10000,
-            reservedOutputTokens: 1000,
-            safetyMarginTokens: 500,
-            pressureThreshold: 0.95,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async {
@@ -328,13 +321,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 100,
-            reservedOutputTokens: 20,
-            safetyMarginTokens: 10,
-            pressureThreshold: 0.8,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 100,
+          reservedOutputTokens: 20,
+          safetyMarginTokens: 10,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async => '''
@@ -382,7 +372,8 @@ void main() {
       await storage.deleteGroup(groupId);
     });
 
-    test('manual compact rolls completed history into snapshot and keeps recent tail',
+    test(
+        'manual compact rolls completed history into snapshot and keeps recent tail',
         () async {
       final storage = DatabaseHelper(
         databaseName: 'session_context_service_manual_compact_test.db',
@@ -422,12 +413,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 10000,
-            reservedOutputTokens: 1000,
-            safetyMarginTokens: 500,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async => '''
@@ -552,12 +541,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 10000,
-            reservedOutputTokens: 1000,
-            safetyMarginTokens: 500,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async => throw UnimplementedError(),
@@ -650,13 +637,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 420,
-            reservedOutputTokens: 140,
-            safetyMarginTokens: 80,
-            pressureThreshold: 0.55,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 420,
+          reservedOutputTokens: 140,
+          safetyMarginTokens: 80,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (messages) async {
@@ -716,11 +700,10 @@ void main() {
         ],
         config: ChatConfig(systemPrompt: '你是一个助手'),
       );
-      final summaryCarrier = plannerCarriers
-          .whereType<SyntheticCarrier>()
-          .firstWhere(
-            (carrier) => carrier.content.contains('旧历史已经被压缩为 snapshot'),
-          );
+      final summaryCarrier =
+          plannerCarriers.whereType<SyntheticCarrier>().firstWhere(
+                (carrier) => carrier.content.contains('旧历史已经被压缩为 snapshot'),
+              );
       expect(summaryCarrier.role, SyntheticRole.user);
 
       expect(plannerMessages.first.text, contains('# currentDate'));
@@ -880,7 +863,6 @@ void main() {
                 reasoningReserveTokens: 50,
                 safetyMarginTokens: 80,
                 compactionConfig: ContextCompactionConfig(
-                  compressionTriggerRatio: 0.35,
                   postCompressionHistoryRatio: 0.15,
                   defaultRecentCompletedTurns: 3,
                   recentTurnsMaxRatio: 0.10,
@@ -990,13 +972,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 120,
-            reservedOutputTokens: 20,
-            safetyMarginTokens: 10,
-            pressureThreshold: 0.5,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 120,
+          reservedOutputTokens: 20,
+          safetyMarginTokens: 10,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async =>
@@ -1086,12 +1065,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 10000,
-            reservedOutputTokens: 1000,
-            safetyMarginTokens: 500,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async => throw UnimplementedError(),
@@ -1170,12 +1147,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 10000,
-            reservedOutputTokens: 1000,
-            safetyMarginTokens: 500,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async => throw UnimplementedError(),
@@ -1269,7 +1244,8 @@ void main() {
         'buildPlannerCarriers keeps current-turn chat-completions tool snapshot paired with tool result carrier',
         () async {
       final storage = DatabaseHelper(
-        databaseName: 'session_context_service_chat_completions_pairing_test.db',
+        databaseName:
+            'session_context_service_chat_completions_pairing_test.db',
       );
       final groupId = await storage.insertGroup(
         ChatGroup(
@@ -1295,12 +1271,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 10000,
-            reservedOutputTokens: 1000,
-            safetyMarginTokens: 500,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async => throw UnimplementedError(),
@@ -1408,12 +1382,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 10000,
-            reservedOutputTokens: 1000,
-            safetyMarginTokens: 500,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async => throw UnimplementedError(),
@@ -1504,12 +1476,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 10000,
-            reservedOutputTokens: 1000,
-            safetyMarginTokens: 500,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async => throw UnimplementedError(),
@@ -1628,12 +1598,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 10000,
-            reservedOutputTokens: 1000,
-            safetyMarginTokens: 500,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async => throw UnimplementedError(),
@@ -1660,6 +1628,29 @@ void main() {
       await storage.deleteGroup(groupId);
     });
   });
+}
+
+SessionTokenBudgetService _testTokenBudgetService({
+  required int maxContextTokens,
+  required int reservedOutputTokens,
+  required int safetyMarginTokens,
+}) {
+  return SessionTokenBudgetService(
+    modelBudgetRegistry: ModelBudgetRegistry(
+      profiles: const {},
+      familyProfiles: const {},
+      fallbackProfile: ModelBudgetProfile(
+        modelId: 'test-fallback',
+        maxContextTokens: maxContextTokens,
+        reservedOutputTokens: reservedOutputTokens,
+        reasoningReserveTokens: 0,
+        safetyMarginTokens: safetyMarginTokens,
+        compactionConfig: const ContextCompactionConfig(
+          autoCompactBufferTokens: 0,
+        ),
+      ),
+    ),
+  );
 }
 
 int _countOccurrences(String source, String needle) {

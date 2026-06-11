@@ -1,48 +1,11 @@
 import '../models/chat_message.dart';
 import '../models/context/planner_context_carrier.dart';
-import '../models/llm/api_protocol_resolver.dart';
 import '../models/llm/llm_config.dart';
 import '../models/llm/model_capability_source_kind.dart';
 import '../models/llm/resolved_model_budget.dart';
-import '../models/llm/resolved_model_capability.dart';
-import '../models/session/context_compaction_config.dart';
 import '../models/session/model_budget_profile.dart';
 import 'model_capability_resolver.dart';
 import 'model_budget_registry.dart';
-
-class SessionModelBudget {
-  final int maxContextTokens;
-  final int reservedOutputTokens;
-  final int safetyMarginTokens;
-  final double pressureThreshold;
-
-  const SessionModelBudget({
-    required this.maxContextTokens,
-    required this.reservedOutputTokens,
-    required this.safetyMarginTokens,
-    this.pressureThreshold = 0.85,
-  });
-
-  int get inputBudget =>
-      maxContextTokens - reservedOutputTokens - safetyMarginTokens;
-}
-
-class SessionBudgetEvaluation {
-  final int inputBudget;
-  final int estimatedInputTokens;
-  final double pressureRatio;
-  final bool shouldCompress;
-
-  const SessionBudgetEvaluation({
-    required this.inputBudget,
-    required this.estimatedInputTokens,
-    required this.pressureRatio,
-    required this.shouldCompress,
-  });
-}
-
-typedef SessionModelBudgetResolver = SessionModelBudget Function(
-    String modelName);
 
 class SessionPlannerBudgetEvaluation {
   final int maxContextTokens;
@@ -54,9 +17,7 @@ class SessionPlannerBudgetEvaluation {
   final int recentTurnsTokens;
   final int currentTurnTokens;
   final int toolSchemaTokens;
-  final int historyPayloadTokens;
   final int totalInputTokens;
-  final double totalUsageRatio;
   final int autoCompactTriggerTokens;
   final double plannerInputUsageRatio;
   final double effectiveInputUsageRatio;
@@ -72,9 +33,7 @@ class SessionPlannerBudgetEvaluation {
     required this.recentTurnsTokens,
     required this.currentTurnTokens,
     required this.toolSchemaTokens,
-    required this.historyPayloadTokens,
     required this.totalInputTokens,
-    required this.totalUsageRatio,
     required this.autoCompactTriggerTokens,
     required this.plannerInputUsageRatio,
     required this.effectiveInputUsageRatio,
@@ -84,66 +43,21 @@ class SessionPlannerBudgetEvaluation {
 
 class SessionTokenBudgetService {
   SessionTokenBudgetService({
-    SessionModelBudgetResolver? modelBudgetResolver,
     ModelBudgetRegistry? modelBudgetRegistry,
     ModelCapabilityResolver? modelCapabilityResolver,
-  })  : _modelBudgetResolver = modelBudgetResolver,
-        _modelBudgetRegistry = modelBudgetRegistry ?? ModelBudgetRegistry(),
+  })  : _modelBudgetRegistry = modelBudgetRegistry ?? ModelBudgetRegistry(),
         _modelCapabilityResolver = modelCapabilityResolver;
 
-  final SessionModelBudgetResolver? _modelBudgetResolver;
   final ModelBudgetRegistry _modelBudgetRegistry;
   final ModelCapabilityResolver? _modelCapabilityResolver;
 
-  SessionModelBudget resolveBudget(String modelName) {
-    final resolver = _modelBudgetResolver;
-    if (resolver != null) {
-      return resolver(modelName);
-    }
-    final profile = resolveProfile(modelName);
-    return SessionModelBudget(
-      maxContextTokens: profile.maxContextTokens,
-      reservedOutputTokens: profile.reservedOutputTokens,
-      safetyMarginTokens: profile.safetyMarginTokens,
-      pressureThreshold: profile.compactionConfig.compressionTriggerRatio,
-    );
-  }
-
-  ModelBudgetProfile resolveProfile(String modelName) {
-    final resolver = _modelBudgetResolver;
-    if (resolver != null) {
-      final budget = resolver(modelName);
-      return ModelBudgetProfile(
-        modelId: modelName.trim().isEmpty ? 'runtime' : modelName.trim(),
-        maxContextTokens: budget.maxContextTokens,
-        reservedOutputTokens: budget.reservedOutputTokens,
-        reasoningReserveTokens: 0,
-        safetyMarginTokens: budget.safetyMarginTokens,
-        compactionConfig: ContextCompactionConfig(
-          compressionTriggerRatio: budget.pressureThreshold,
-          autoCompactBufferTokens: 0,
-        ),
-      );
-    }
-    return _modelBudgetRegistry.resolve(modelName);
-  }
+  ModelBudgetProfile resolveProfile(String modelName) =>
+      _modelBudgetRegistry.resolve(modelName);
 
   ResolvedModelBudget resolveBudgetForModelName(String modelName) {
     final profile = resolveProfile(modelName);
-    final resolver = _modelBudgetResolver;
-    final capability = resolver == null
-        ? _modelBudgetRegistry.resolveFallbackCapability(modelName)
-        : ResolvedModelCapability(
-            providerId: 'runtime-budget',
-            providerStyle: ApiStyle.chatCompletions,
-            baseUrlFingerprint: 'runtime-budget',
-            modelId: modelName.trim().isEmpty ? 'runtime' : modelName.trim(),
-            contextWindowTotal: profile.maxContextTokens,
-            maxInputTokens: profile.providerInputCap,
-            source: ModelCapabilitySourceKind.builtInFallback,
-          );
     return ResolvedModelBudget(
-      capability: capability,
+      capability: _modelBudgetRegistry.resolveFallbackCapability(modelName),
       policy: profile,
     );
   }
@@ -162,30 +76,6 @@ class SessionTokenBudgetService {
       return Future.value(resolveBudgetForModelName(runtimeConfig.model));
     }
     return resolver.resolveForRuntime(runtimeConfig);
-  }
-
-  SessionBudgetEvaluation evaluate({
-    required String modelName,
-    required int systemPromptTokens,
-    required int toolSchemaTokens,
-    required int candidateContextTokens,
-    required int currentTurnTokens,
-  }) {
-    final budget = resolveBudget(modelName);
-    final inputBudget = budget.inputBudget;
-    final estimatedInputTokens = systemPromptTokens +
-        toolSchemaTokens +
-        candidateContextTokens +
-        currentTurnTokens;
-    final pressureRatio =
-        inputBudget <= 0 ? 1.0 : estimatedInputTokens / inputBudget;
-
-    return SessionBudgetEvaluation(
-      inputBudget: inputBudget,
-      estimatedInputTokens: estimatedInputTokens,
-      pressureRatio: pressureRatio,
-      shouldCompress: pressureRatio >= budget.pressureThreshold,
-    );
   }
 
   SessionPlannerBudgetEvaluation evaluatePlannerBudget({
@@ -221,13 +111,11 @@ class SessionTokenBudgetService {
     final profile = resolvedBudget.policy;
     final usableInputBudget = profile.usableInputBudget;
     final effectiveInputBudget = resolvedBudget.effectiveInputBudget;
-    final historyPayloadTokens = summaryTokens + recentTurnsTokens;
     final totalInputTokens = fixedPrefixTokens +
-        historyPayloadTokens +
+        summaryTokens +
+        recentTurnsTokens +
         currentTurnTokens +
         toolSchemaTokens;
-    final totalUsageRatio =
-        usableInputBudget <= 0 ? 1.0 : totalInputTokens / usableInputBudget;
     final autoCompactTriggerTokens = (effectiveInputBudget -
             profile.compactionConfig.autoCompactBufferTokens)
         .clamp(0, effectiveInputBudget);
@@ -248,9 +136,7 @@ class SessionTokenBudgetService {
       recentTurnsTokens: recentTurnsTokens,
       currentTurnTokens: currentTurnTokens,
       toolSchemaTokens: toolSchemaTokens,
-      historyPayloadTokens: historyPayloadTokens,
       totalInputTokens: totalInputTokens,
-      totalUsageRatio: totalUsageRatio,
       autoCompactTriggerTokens: autoCompactTriggerTokens,
       plannerInputUsageRatio: plannerInputUsageRatio,
       effectiveInputUsageRatio: effectiveInputUsageRatio,

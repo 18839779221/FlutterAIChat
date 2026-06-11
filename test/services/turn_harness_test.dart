@@ -21,6 +21,8 @@ import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
+import 'package:ai_chat/models/session/context_compaction_config.dart';
+import 'package:ai_chat/models/session/model_budget_profile.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
 import 'package:ai_chat/models/session/session_runtime_marker.dart';
 import 'package:ai_chat/models/tool/tool_call.dart';
@@ -35,6 +37,7 @@ import 'package:ai_chat/repositories/session_context_snapshot_repository.dart';
 import 'package:ai_chat/services/agent_planner_service.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/decision_tool_call_executor.dart';
+import 'package:ai_chat/services/model_budget_registry.dart';
 import 'package:ai_chat/services/session_context_projector.dart';
 import 'package:ai_chat/services/session_context_service.dart';
 import 'package:ai_chat/services/session_summary_service.dart';
@@ -311,15 +314,15 @@ void main() {
         ),
         turnVerifier: _AlwaysStopVerifier(),
         toolCallService: _FakeToolCallService(
-          executeResult: ToolPreparationResult(
-            toolInvocation: const ToolInvocation(
+          executeResult: const ToolPreparationResult(
+            toolInvocation: ToolInvocation(
               toolName: 'search_chat_history',
               arguments: {'query': '数据库'},
               status: ToolInvocationStatus.running,
               summary: '正在执行工具：搜索历史',
               requiresConfirmation: false,
             ),
-            toolAccess: const ToolAccessSnapshot(
+            toolAccess: ToolAccessSnapshot(
               definition: ToolDefinition(
                 name: 'search_chat_history',
                 title: '搜索聊天记录',
@@ -328,7 +331,7 @@ void main() {
               executionPolicyLabel: 'auto_run',
               isVisibleToPlanner: true,
             ),
-            toolResult: const ToolResult(
+            toolResult: ToolResult(
               toolName: 'search_chat_history',
               status: ToolExecutionStatus.success,
               summary: '已找到数据库版本是 7',
@@ -1330,12 +1333,10 @@ void main() {
           ),
           chatStorage: _NoopChatStorage(),
           contextProjector: SessionContextProjector(),
-          tokenBudgetService: SessionTokenBudgetService(
-            modelBudgetResolver: (_) => const SessionModelBudget(
-              maxContextTokens: 10000,
-              reservedOutputTokens: 1000,
-              safetyMarginTokens: 500,
-            ),
+          tokenBudgetService: _testTokenBudgetService(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
           ),
           summaryService: SessionSummaryService(
             summaryGenerator: (_) async => 'summary',
@@ -2315,12 +2316,10 @@ void main() {
           ),
           chatStorage: _NoopChatStorage(),
           contextProjector: SessionContextProjector(),
-          tokenBudgetService: SessionTokenBudgetService(
-            modelBudgetResolver: (_) => const SessionModelBudget(
-              maxContextTokens: 10000,
-              reservedOutputTokens: 1000,
-              safetyMarginTokens: 500,
-            ),
+          tokenBudgetService: _testTokenBudgetService(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
           ),
           summaryService: SessionSummaryService(
             summaryGenerator: (_) async => 'summary',
@@ -2440,12 +2439,10 @@ void main() {
           ),
           chatStorage: _NoopChatStorage(),
           contextProjector: SessionContextProjector(),
-          tokenBudgetService: SessionTokenBudgetService(
-            modelBudgetResolver: (_) => const SessionModelBudget(
-              maxContextTokens: 10000,
-              reservedOutputTokens: 1000,
-              safetyMarginTokens: 500,
-            ),
+          tokenBudgetService: _testTokenBudgetService(
+            maxContextTokens: 10000,
+            reservedOutputTokens: 1000,
+            safetyMarginTokens: 500,
           ),
           summaryService: SessionSummaryService(
             summaryGenerator: (_) async => 'summary',
@@ -2796,15 +2793,15 @@ void main() {
         ),
         turnVerifier: _AlwaysStopVerifier(),
         toolCallService: _SequencedToolCallService([
-          ToolPreparationResult(
-            toolInvocation: const ToolInvocation(
+          const ToolPreparationResult(
+            toolInvocation: ToolInvocation(
               toolName: 'search_chat_history',
               arguments: {'query': '数据库版本'},
               status: ToolInvocationStatus.running,
               summary: '正在执行工具：搜索历史',
               requiresConfirmation: false,
             ),
-            toolResult: const ToolResult(
+            toolResult: ToolResult(
               toolName: 'search_chat_history',
               status: ToolExecutionStatus.success,
               summary: '数据库版本是 7',
@@ -2947,15 +2944,15 @@ void main() {
         ),
         turnVerifier: _AlwaysStopVerifier(),
         toolCallService: _FakeToolCallService(
-          executeResult: ToolPreparationResult(
-            toolInvocation: const ToolInvocation(
+          executeResult: const ToolPreparationResult(
+            toolInvocation: ToolInvocation(
               toolName: 'web_search',
               arguments: {'query': 'Claude latest news'},
               status: ToolInvocationStatus.running,
               summary: '正在执行工具：联网搜索',
               requiresConfirmation: false,
             ),
-            toolResult: const ToolResult(
+            toolResult: ToolResult(
               toolName: 'web_search',
               status: ToolExecutionStatus.success,
               summary: '已执行联网搜索',
@@ -3241,15 +3238,15 @@ void main() {
         ),
         turnVerifier: _AlwaysStopVerifier(),
         toolCallService: _SequencedToolCallService([
-          ToolPreparationResult(
-            toolInvocation: const ToolInvocation(
+          const ToolPreparationResult(
+            toolInvocation: ToolInvocation(
               toolName: 'search_chat_history',
               arguments: {'query': '数据库版本 发版时间'},
               status: ToolInvocationStatus.running,
               summary: '正在执行工具：搜索历史',
               requiresConfirmation: false,
             ),
-            toolResult: const ToolResult(
+            toolResult: ToolResult(
               toolName: 'search_chat_history',
               status: ToolExecutionStatus.success,
               summary: '已执行：搜索历史记录',
@@ -3405,6 +3402,29 @@ class _FakePlannerService extends AgentPlannerService {
     capturedTranscripts.add(List<ChatEvent>.from(transcript));
     return _decisionFromAction(actions.removeFirst());
   }
+}
+
+SessionTokenBudgetService _testTokenBudgetService({
+  required int maxContextTokens,
+  required int reservedOutputTokens,
+  required int safetyMarginTokens,
+}) {
+  return SessionTokenBudgetService(
+    modelBudgetRegistry: ModelBudgetRegistry(
+      profiles: const {},
+      familyProfiles: const {},
+      fallbackProfile: ModelBudgetProfile(
+        modelId: 'test-fallback',
+        maxContextTokens: maxContextTokens,
+        reservedOutputTokens: reservedOutputTokens,
+        reasoningReserveTokens: 0,
+        safetyMarginTokens: safetyMarginTokens,
+        compactionConfig: const ContextCompactionConfig(
+          autoCompactBufferTokens: 0,
+        ),
+      ),
+    ),
+  );
 }
 
 class _NativeDecisionPlannerService extends AgentPlannerService {

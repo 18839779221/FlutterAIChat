@@ -24,8 +24,8 @@ class ContextWindowSegment {
   /// Share of the full provider-advertised context window.
   final double shareOfTotalWindow;
 
-  /// Share of the planner-usable input budget.
-  final double shareOfUsableInput;
+  /// Share of the effective planner input budget after provider caps.
+  final double shareOfEffectiveInput;
 
   /// Whether this segment is actually visible to the planner.
   final bool isPlannerVisible;
@@ -38,7 +38,7 @@ class ContextWindowSegment {
     required this.label,
     required this.estimatedTokens,
     required this.shareOfTotalWindow,
-    required this.shareOfUsableInput,
+    required this.shareOfEffectiveInput,
     required this.isPlannerVisible,
     this.details = const {},
   });

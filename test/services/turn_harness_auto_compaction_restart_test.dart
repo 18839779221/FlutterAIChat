@@ -11,13 +11,15 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
-import 'package:ai_chat/models/tool/tool_result.dart';
+import 'package:ai_chat/models/session/context_compaction_config.dart';
+import 'package:ai_chat/models/session/model_budget_profile.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/repositories/session_context_snapshot_repository.dart';
 import 'package:ai_chat/services/agent_planner_service.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/decision_tool_call_executor.dart';
+import 'package:ai_chat/services/model_budget_registry.dart';
 import 'package:ai_chat/services/session_context_projector.dart';
 import 'package:ai_chat/services/session_context_service.dart';
 import 'package:ai_chat/services/session_summary_service.dart';
@@ -93,13 +95,10 @@ void main() {
       snapshotRepository: snapshotRepository,
       chatStorage: storage,
       contextProjector: SessionContextProjector(),
-      tokenBudgetService: SessionTokenBudgetService(
-        modelBudgetResolver: (_) => const SessionModelBudget(
-          maxContextTokens: 2000,
-          reservedOutputTokens: 200,
-          safetyMarginTokens: 100,
-          pressureThreshold: 0.8,
-        ),
+      tokenBudgetService: _testTokenBudgetService(
+        maxContextTokens: 2000,
+        reservedOutputTokens: 200,
+        safetyMarginTokens: 100,
       ),
       summaryService: SessionSummaryService(
         summaryGenerator: (_) async =>
@@ -162,6 +161,29 @@ void main() {
 
     await storage.deleteGroup(groupId);
   });
+}
+
+SessionTokenBudgetService _testTokenBudgetService({
+  required int maxContextTokens,
+  required int reservedOutputTokens,
+  required int safetyMarginTokens,
+}) {
+  return SessionTokenBudgetService(
+    modelBudgetRegistry: ModelBudgetRegistry(
+      profiles: const {},
+      familyProfiles: const {},
+      fallbackProfile: ModelBudgetProfile(
+        modelId: 'test-fallback',
+        maxContextTokens: maxContextTokens,
+        reservedOutputTokens: reservedOutputTokens,
+        reasoningReserveTokens: 0,
+        safetyMarginTokens: safetyMarginTokens,
+        compactionConfig: const ContextCompactionConfig(
+          autoCompactBufferTokens: 0,
+        ),
+      ),
+    ),
+  );
 }
 
 class _SequencedPlannerService extends AgentPlannerService {

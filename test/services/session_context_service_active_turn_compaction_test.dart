@@ -4,10 +4,13 @@ import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
+import 'package:ai_chat/models/session/context_compaction_config.dart';
+import 'package:ai_chat/models/session/model_budget_profile.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/repositories/session_context_snapshot_repository.dart';
 import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/services/model_budget_registry.dart';
 import 'package:ai_chat/services/session_context_projector.dart';
 import 'package:ai_chat/services/session_context_service.dart';
 import 'package:ai_chat/services/session_summary_service.dart';
@@ -52,13 +55,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 300,
-            reservedOutputTokens: 50,
-            safetyMarginTokens: 20,
-            pressureThreshold: 0.8,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 300,
+          reservedOutputTokens: 50,
+          safetyMarginTokens: 20,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async =>
@@ -178,13 +178,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 300,
-            reservedOutputTokens: 50,
-            safetyMarginTokens: 20,
-            pressureThreshold: 0.8,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 300,
+          reservedOutputTokens: 50,
+          safetyMarginTokens: 20,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (messages) async {
@@ -271,13 +268,37 @@ void main() {
 
       final events = await eventRepository.listEventsByGroup(groupId);
       expect(
-        events.where((event) => event.eventType == ChatEventType.contextCompacted),
+        events.where(
+            (event) => event.eventType == ChatEventType.contextCompacted),
         hasLength(1),
       );
 
       await storage.deleteGroup(groupId);
     });
   });
+}
+
+SessionTokenBudgetService _testTokenBudgetService({
+  required int maxContextTokens,
+  required int reservedOutputTokens,
+  required int safetyMarginTokens,
+}) {
+  return SessionTokenBudgetService(
+    modelBudgetRegistry: ModelBudgetRegistry(
+      profiles: const {},
+      familyProfiles: const {},
+      fallbackProfile: ModelBudgetProfile(
+        modelId: 'test-fallback',
+        maxContextTokens: maxContextTokens,
+        reservedOutputTokens: reservedOutputTokens,
+        reasoningReserveTokens: 0,
+        safetyMarginTokens: safetyMarginTokens,
+        compactionConfig: const ContextCompactionConfig(
+          autoCompactBufferTokens: 0,
+        ),
+      ),
+    ),
+  );
 }
 
 class _FakeBaseLlm extends BaseLLM {

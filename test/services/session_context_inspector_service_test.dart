@@ -51,7 +51,7 @@ void main() {
             label: 'system prompt',
             estimatedTokens: 8000,
             shareOfTotalWindow: 8000 / 128000,
-            shareOfUsableInput: 8000 / 104000,
+            shareOfEffectiveInput: 8000 / 104000,
             isPlannerVisible: true,
           ),
         ],
@@ -199,6 +199,7 @@ void main() {
       expect(snapshot.plannerInputUsageRatio, greaterThan(0));
       expect(snapshot.totalWindowUsageRatio, greaterThan(0));
       expect(snapshot.effectiveInputUsageRatio, greaterThan(0));
+      expect(snapshot.plannerReserveTokens, greaterThan(0));
       expect(
           snapshot.capabilitySource, ModelCapabilitySourceKind.builtInFallback);
       expect(snapshot.categories, isNotEmpty);
@@ -272,13 +273,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 120,
-            reservedOutputTokens: 20,
-            safetyMarginTokens: 10,
-            pressureThreshold: 0.5,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 120,
+          reservedOutputTokens: 20,
+          safetyMarginTokens: 10,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async => '''
@@ -294,13 +292,10 @@ void main() {
       );
       final inspector = SessionContextInspectorService(
         sessionContextService: sessionContextService,
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 120,
-            reservedOutputTokens: 20,
-            safetyMarginTokens: 10,
-            pressureThreshold: 0.5,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 120,
+          reservedOutputTokens: 20,
+          safetyMarginTokens: 10,
         ),
         chatTurnRepository: turnRepository,
         chatEventRepository: eventRepository,
@@ -332,6 +327,29 @@ void main() {
       await storage.deleteGroup(groupId);
     });
   });
+}
+
+SessionTokenBudgetService _testTokenBudgetService({
+  required int maxContextTokens,
+  required int reservedOutputTokens,
+  required int safetyMarginTokens,
+}) {
+  return SessionTokenBudgetService(
+    modelBudgetRegistry: ModelBudgetRegistry(
+      profiles: const {},
+      familyProfiles: const {},
+      fallbackProfile: ModelBudgetProfile(
+        modelId: 'test-fallback',
+        maxContextTokens: maxContextTokens,
+        reservedOutputTokens: reservedOutputTokens,
+        reasoningReserveTokens: 0,
+        safetyMarginTokens: safetyMarginTokens,
+        compactionConfig: const ContextCompactionConfig(
+          autoCompactBufferTokens: 0,
+        ),
+      ),
+    ),
+  );
 }
 
 class _FakeBaseLlm implements BaseLLM {

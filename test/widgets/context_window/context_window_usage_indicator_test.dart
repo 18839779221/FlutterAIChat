@@ -14,8 +14,27 @@ ContextWindowSnapshot _snapshot(double ratio) {
     effectiveInputBudget: 104000,
     autoCompactTriggerTokens: 91000,
     totalEstimatedInputTokens: 1000,
-    plannerInputUsageRatio: ratio,
-    totalWindowUsageRatio: 0.0,
+    plannerInputUsageRatio: 0.0,
+    totalWindowUsageRatio: ratio,
+    effectiveInputUsageRatio: 0.0,
+    didCompactHistory: false,
+    recentCompletedTurnCount: 0,
+    segments: const <ContextWindowSegment>[],
+  );
+}
+
+ContextWindowSnapshot _mixedSnapshot({
+  required double plannerRatio,
+  required double totalWindowUsageRatio,
+}) {
+  return ContextWindowSnapshot(
+    modelName: 'gpt-test',
+    maxContextTokens: 128000,
+    effectiveInputBudget: 104000,
+    autoCompactTriggerTokens: 91000,
+    totalEstimatedInputTokens: 1000,
+    plannerInputUsageRatio: plannerRatio,
+    totalWindowUsageRatio: totalWindowUsageRatio,
     effectiveInputUsageRatio: 0.0,
     didCompactHistory: false,
     recentCompletedTurnCount: 0,
@@ -59,6 +78,30 @@ void main() {
     expect(ringSize.height, 16);
   });
 
+  testWidgets(
+      'visible percent follows total window usage ratio instead of planner ratio',
+      (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        ContextWindowUsageIndicator(
+          snapshot: _mixedSnapshot(
+            plannerRatio: 0.91,
+            totalWindowUsageRatio: 0.64,
+          ),
+          onTap: () {},
+        ),
+      ),
+    );
+
+    final ring = tester.widget<CircularProgressIndicator>(
+      find.byType(CircularProgressIndicator),
+    );
+    expect(ring.value, closeTo(0.64, 1e-9));
+    expect(find.text('64%'), findsOneWidget);
+  });
+
   testWidgets('tap hit area is at least 32x32 and invokes onTap once', (
     tester,
   ) async {
@@ -78,11 +121,13 @@ void main() {
     expect(hitSize.width, greaterThanOrEqualTo(32));
     expect(hitSize.height, greaterThanOrEqualTo(32));
 
-    await tester.tap(find.byKey(const ValueKey('context-window-usage-indicator')));
+    await tester
+        .tap(find.byKey(const ValueKey('context-window-usage-indicator')));
     expect(taps, 1);
   });
 
-  testWidgets('semantics label includes rounded percentage', (tester) async {
+  testWidgets('semantics label includes rounded usage percentage',
+      (tester) async {
     await tester.pumpWidget(
       _host(
         ContextWindowUsageIndicator(
@@ -93,11 +138,11 @@ void main() {
     );
 
     final handle = tester.ensureSemantics();
-    expect(find.bySemanticsLabel('Planner 输入使用率 24%'), findsOneWidget);
+    expect(find.bySemanticsLabel('上下文已用 24%'), findsOneWidget);
     handle.dispose();
   });
 
-  testWidgets('color shifts to warning at or above planner trigger ratio', (
+  testWidgets('color shifts to warning at or above full context usage', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -112,7 +157,8 @@ void main() {
     final ring = tester.widget<CircularProgressIndicator>(
       find.byType(CircularProgressIndicator),
     );
-    final expected = AppThemeSpec.light().workflowWarning.withValues(alpha: 0.72);
+    final expected =
+        AppThemeSpec.light().workflowWarning.withValues(alpha: 0.72);
     expect(
       (ring.valueColor as AlwaysStoppedAnimation<Color>).value.toARGB32(),
       expected.toARGB32(),

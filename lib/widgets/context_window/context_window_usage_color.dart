@@ -8,7 +8,7 @@ Color resolveContextWindowUsageColor(
   AppThemeSpec colors,
   ContextWindowSnapshot snapshot,
 ) {
-  final ratio = snapshot.plannerInputUsageRatio;
+  final ratio = snapshot.totalWindowUsageRatio;
   if (ratio >= 1.0) {
     return colors.workflowWarning.withValues(alpha: 0.72);
   }

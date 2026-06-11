@@ -123,15 +123,12 @@ class SessionContextInspectorService {
             summaryTokens -
             toolResultTokens)
         .clamp(0, state.budgetEvaluation.totalInputTokens);
-    final usedWindowTokens =
-        state.budgetEvaluation.totalInputTokens + reserveTokens;
     final categories = _buildUsageCategories(
       maxContextTokens: maxContextTokens,
       recentConversationTokens: conversationTokens,
       toolResultTokens: toolResultTokens,
       historySummaryTokens: summaryTokens,
       systemSettingsTokens: systemSettingsTokens,
-      reserveTokens: reserveTokens,
     );
     final topItems = _buildTopItems(
       maxContextTokens: maxContextTokens,
@@ -153,11 +150,7 @@ class SessionContextInspectorService {
         denominator: maxContextTokens,
       ),
       effectiveInputUsageRatio: state.budgetEvaluation.effectiveInputUsageRatio,
-      usedWindowTokens: usedWindowTokens,
-      usedWindowRatio: _ratio(
-        numerator: usedWindowTokens,
-        denominator: maxContextTokens,
-      ),
+      plannerReserveTokens: reserveTokens,
       didCompactHistory: state.didCompactHistory,
       snapshotCoveredUntilTurnId: state.activeSnapshot?.coveredUntilTurnId,
       recentCompletedTurnCount: state.recentSegments.length,
@@ -169,7 +162,7 @@ class SessionContextInspectorService {
             label: 'system prompt',
             tokens: state.systemPromptTokens,
             totalBudget: maxContextTokens,
-            usableInputBudget: state.budgetEvaluation.effectiveInputBudget,
+            effectiveInputBudget: state.budgetEvaluation.effectiveInputBudget,
             isPlannerVisible: true,
           ),
         if (state.runtimeUserContextTokens > 0)
@@ -178,7 +171,7 @@ class SessionContextInspectorService {
             label: 'runtime user context',
             tokens: state.runtimeUserContextTokens,
             totalBudget: maxContextTokens,
-            usableInputBudget: state.budgetEvaluation.effectiveInputBudget,
+            effectiveInputBudget: state.budgetEvaluation.effectiveInputBudget,
             isPlannerVisible: true,
           ),
         if (summaryTokens > 0)
@@ -187,7 +180,7 @@ class SessionContextInspectorService {
             label: 'history summary',
             tokens: summaryTokens,
             totalBudget: maxContextTokens,
-            usableInputBudget: state.budgetEvaluation.effectiveInputBudget,
+            effectiveInputBudget: state.budgetEvaluation.effectiveInputBudget,
             isPlannerVisible: true,
             details: {
               'coveredUntilTurnId': state.activeSnapshot?.coveredUntilTurnId,
@@ -199,7 +192,7 @@ class SessionContextInspectorService {
             label: 'recent completed turns',
             tokens: recentTokens,
             totalBudget: maxContextTokens,
-            usableInputBudget: state.budgetEvaluation.effectiveInputBudget,
+            effectiveInputBudget: state.budgetEvaluation.effectiveInputBudget,
             isPlannerVisible: true,
             details: {
               'turnCount': state.recentSegments.length,
@@ -211,7 +204,7 @@ class SessionContextInspectorService {
             label: 'current turn transcript',
             tokens: currentTurnTokens,
             totalBudget: maxContextTokens,
-            usableInputBudget: state.budgetEvaluation.effectiveInputBudget,
+            effectiveInputBudget: state.budgetEvaluation.effectiveInputBudget,
             isPlannerVisible: true,
             details: {
               'messageCount': state.currentTurnMessages.length,
@@ -222,7 +215,7 @@ class SessionContextInspectorService {
           label: 'reserved output',
           tokens: reservedOutputTokens,
           totalBudget: maxContextTokens,
-          usableInputBudget: state.budgetEvaluation.effectiveInputBudget,
+          effectiveInputBudget: state.budgetEvaluation.effectiveInputBudget,
           isPlannerVisible: false,
         ),
         _segment(
@@ -230,7 +223,7 @@ class SessionContextInspectorService {
           label: 'reasoning reserve',
           tokens: reasoningReserveTokens,
           totalBudget: maxContextTokens,
-          usableInputBudget: state.budgetEvaluation.effectiveInputBudget,
+          effectiveInputBudget: state.budgetEvaluation.effectiveInputBudget,
           isPlannerVisible: false,
         ),
         _segment(
@@ -238,7 +231,7 @@ class SessionContextInspectorService {
           label: 'safety margin',
           tokens: safetyMarginTokens,
           totalBudget: maxContextTokens,
-          usableInputBudget: state.budgetEvaluation.effectiveInputBudget,
+          effectiveInputBudget: state.budgetEvaluation.effectiveInputBudget,
           isPlannerVisible: false,
         ),
         _segment(
@@ -246,7 +239,7 @@ class SessionContextInspectorService {
           label: 'free headroom',
           tokens: freeHeadroomTokens,
           totalBudget: maxContextTokens,
-          usableInputBudget: state.budgetEvaluation.effectiveInputBudget,
+          effectiveInputBudget: state.budgetEvaluation.effectiveInputBudget,
           isPlannerVisible: false,
         ),
       ],
@@ -295,7 +288,6 @@ class SessionContextInspectorService {
     required int toolResultTokens,
     required int historySummaryTokens,
     required int systemSettingsTokens,
-    required int reserveTokens,
   }) {
     final categories = <ContextUsageCategory>[
       if (recentConversationTokens > 0)
@@ -329,16 +321,6 @@ class SessionContextInspectorService {
     ]..sort(
         (left, right) => right.estimatedTokens.compareTo(left.estimatedTokens));
 
-    if (reserveTokens > 0) {
-      categories.add(
-        _usageCategory(
-          type: ContextUsageCategoryType.reserve,
-          label: '预留',
-          tokens: reserveTokens,
-          maxContextTokens: maxContextTokens,
-        ),
-      );
-    }
     return categories.toList(growable: false);
   }
 
@@ -517,7 +499,7 @@ class SessionContextInspectorService {
     required String label,
     required int tokens,
     required int totalBudget,
-    required int usableInputBudget,
+    required int effectiveInputBudget,
     required bool isPlannerVisible,
     Map<String, Object?> details = const {},
   }) {
@@ -529,9 +511,9 @@ class SessionContextInspectorService {
         numerator: tokens,
         denominator: totalBudget,
       ),
-      shareOfUsableInput: _ratio(
+      shareOfEffectiveInput: _ratio(
         numerator: tokens,
-        denominator: usableInputBudget,
+        denominator: effectiveInputBudget,
       ),
       isPlannerVisible: isPlannerVisible,
       details: details,

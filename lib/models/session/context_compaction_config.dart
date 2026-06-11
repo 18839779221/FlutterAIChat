@@ -1,8 +1,5 @@
 /// Tunable thresholds controlling when and how session history compacts.
 class ContextCompactionConfig {
-  /// Trigger compaction when total estimated usage reaches this ratio.
-  final double compressionTriggerRatio;
-
   /// Keep this many tokens free before auto-compaction is allowed to trigger.
   final int autoCompactBufferTokens;
 
@@ -19,7 +16,6 @@ class ContextCompactionConfig {
   final int minRecentCompletedTurns;
 
   const ContextCompactionConfig({
-    this.compressionTriggerRatio = 0.80,
     this.autoCompactBufferTokens = 13000,
     this.postCompressionHistoryRatio = 0.15,
     this.defaultRecentCompletedTurns = 6,

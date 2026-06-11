@@ -76,9 +76,7 @@ void main() {
             reservedOutputTokens: 20000,
             reasoningReserveTokens: 12000,
             safetyMarginTokens: 6000,
-            compactionConfig: ContextCompactionConfig(
-              compressionTriggerRatio: 0.75,
-            ),
+            compactionConfig: ContextCompactionConfig(),
           ),
         },
       );
@@ -87,7 +85,6 @@ void main() {
 
       expect(profile.modelId, 'gpt-5-runtime');
       expect(profile.reservedOutputTokens, 20000);
-      expect(profile.compactionConfig.compressionTriggerRatio, 0.75);
     });
 
     test('falls back to conservative default profile when model is unknown',

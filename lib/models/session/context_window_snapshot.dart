@@ -28,11 +28,8 @@ class ContextWindowSnapshot {
   /// Share of the formal effective input budget currently consumed.
   final double effectiveInputUsageRatio;
 
-  /// Total context tokens currently occupied by planner input and reserves.
-  final int usedWindowTokens;
-
-  /// Share of the full context window currently occupied by planner input and reserves.
-  final double usedWindowRatio;
+  /// Tokens held back outside planner input for output, reasoning, and safety.
+  final int plannerReserveTokens;
 
   /// Whether older history was compacted into snapshot summary during build.
   final bool didCompactHistory;
@@ -64,8 +61,7 @@ class ContextWindowSnapshot {
     required this.plannerInputUsageRatio,
     required this.totalWindowUsageRatio,
     required this.effectiveInputUsageRatio,
-    this.usedWindowTokens = 0,
-    this.usedWindowRatio = 0,
+    this.plannerReserveTokens = 0,
     required this.didCompactHistory,
     this.snapshotCoveredUntilTurnId,
     required this.recentCompletedTurnCount,

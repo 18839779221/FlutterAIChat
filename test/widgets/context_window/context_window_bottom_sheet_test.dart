@@ -1,3 +1,5 @@
+import 'package:ai_chat/models/session/context_usage_category.dart';
+import 'package:ai_chat/models/session/context_usage_top_item.dart';
 import 'package:ai_chat/models/session/context_window_segment.dart';
 import 'package:ai_chat/models/session/context_window_snapshot.dart';
 import 'package:ai_chat/theme/app_theme_spec.dart';
@@ -10,7 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets(
-      'bottom sheet shows planner, total, and effective ratios with segment breakdown',
+      'bottom sheet shows usage grid categories top items and collapsed technical details',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -29,11 +31,30 @@ void main() {
       ),
     );
 
-    expect(find.text('system prompt'), findsOneWidget);
-    expect(find.text('current turn transcript'), findsOneWidget);
+    expect(find.byKey(const ValueKey('context-usage-grid')), findsOneWidget);
     expect(find.text('GPT-5.4'), findsOneWidget);
-    expect(find.textContaining('planner 输入占触发阈值'), findsOneWidget);
-    expect(find.textContaining('effective input 占比'), findsOneWidget);
+    expect(find.text('压缩预留区 19.5%'), findsOneWidget);
+    final sheetScrollable = find.descendant(
+      of: find.byKey(const ValueKey('context-window-bottom-sheet')),
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(
+      find.text('Top 5'),
+      180,
+      scrollable: sheetScrollable,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Top 5'), findsOneWidget);
+    expect(find.text('最近对话'), findsWidgets);
+    expect(find.text('工具 / 网页 / 文件结果'), findsWidgets);
+    expect(find.text('fetch_webpage · openai.com/pricing'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('技术细节'),
+      180,
+      scrollable: sheetScrollable,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('技术细节'), findsOneWidget);
   });
 
   testWidgets('tapping usage indicator opens context window bottom sheet',
@@ -75,6 +96,46 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+      'sheet stays partial-height when opened as scroll-controlled modal',
+      (tester) async {
+    final snapshot = _snapshot();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          extensions: [
+            AppThemeSpec.light(),
+            AppSpacing.base(),
+            AppRadius.base(),
+          ],
+        ),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () {
+                showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (_) => ContextWindowBottomSheet(snapshot: snapshot),
+                );
+              },
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    final rect = tester.getRect(
+      find.byKey(const ValueKey('context-window-bottom-sheet')),
+    );
+    expect(rect.top, greaterThan(40));
+  });
 }
 
 ContextWindowSnapshot _snapshot() {
@@ -90,13 +151,14 @@ ContextWindowSnapshot _snapshot() {
     didCompactHistory: true,
     snapshotCoveredUntilTurnId: 42,
     recentCompletedTurnCount: 3,
+    plannerReserveTokens: 12000,
     segments: [
       ContextWindowSegment(
         type: ContextWindowSegmentType.systemPrompt,
         label: 'system prompt',
         estimatedTokens: 8000,
         shareOfTotalWindow: 0.0625,
-        shareOfUsableInput: 0.076,
+        shareOfEffectiveInput: 0.076,
         isPlannerVisible: true,
       ),
       ContextWindowSegment(
@@ -104,7 +166,7 @@ ContextWindowSnapshot _snapshot() {
         label: 'current turn transcript',
         estimatedTokens: 18000,
         shareOfTotalWindow: 0.14,
-        shareOfUsableInput: 0.17,
+        shareOfEffectiveInput: 0.17,
         isPlannerVisible: true,
       ),
       ContextWindowSegment(
@@ -112,8 +174,48 @@ ContextWindowSnapshot _snapshot() {
         label: 'reserved output',
         estimatedTokens: 12000,
         shareOfTotalWindow: 0.09,
-        shareOfUsableInput: 0.11,
+        shareOfEffectiveInput: 0.11,
         isPlannerVisible: false,
+      ),
+    ],
+    categories: [
+      ContextUsageCategory(
+        type: ContextUsageCategoryType.recentConversation,
+        label: '最近对话',
+        estimatedTokens: 22000,
+        shareOfTotalWindow: 0.1719,
+      ),
+      ContextUsageCategory(
+        type: ContextUsageCategoryType.toolResults,
+        label: '工具 / 网页 / 文件结果',
+        estimatedTokens: 18000,
+        shareOfTotalWindow: 0.1406,
+      ),
+      ContextUsageCategory(
+        type: ContextUsageCategoryType.historySummary,
+        label: '历史摘要',
+        estimatedTokens: 14000,
+        shareOfTotalWindow: 0.1094,
+      ),
+      ContextUsageCategory(
+        type: ContextUsageCategoryType.systemSettings,
+        label: '系统设定',
+        estimatedTokens: 12000,
+        shareOfTotalWindow: 0.0938,
+      ),
+    ],
+    topItems: [
+      ContextUsageTopItem(
+        toolName: 'fetch_webpage',
+        objectLabel: 'openai.com/pricing',
+        estimatedTokens: 12000,
+        shareOfTotalWindow: 0.0938,
+      ),
+      ContextUsageTopItem(
+        toolName: 'Read',
+        objectLabel: '/workspaces/demo/README.md',
+        estimatedTokens: 6000,
+        shareOfTotalWindow: 0.0469,
       ),
     ],
   );

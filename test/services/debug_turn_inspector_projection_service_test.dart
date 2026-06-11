@@ -6,6 +6,8 @@ import 'package:ai_chat/models/debug/debug_cache_panel_projection.dart';
 import 'package:ai_chat/models/debug/llm_cache_stats_summary.dart';
 import 'package:ai_chat/models/debug/debug_turn_inspector_timeline_entry.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
+import 'package:ai_chat/models/session/context_compaction_config.dart';
+import 'package:ai_chat/models/session/model_budget_profile.dart';
 import 'package:ai_chat/models/trace/chat_trace_event.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
@@ -14,6 +16,7 @@ import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/debug/debug_turn_inspector_projection_service.dart';
 import 'package:ai_chat/services/debug/llm_cache_stats_service.dart';
+import 'package:ai_chat/services/model_budget_registry.dart';
 import 'package:ai_chat/services/session_context_projector.dart';
 import 'package:ai_chat/services/session_context_service.dart';
 import 'package:ai_chat/services/session_summary_service.dart';
@@ -77,12 +80,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 10000,
-            reservedOutputTokens: 1000,
-            safetyMarginTokens: 500,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async => throw UnimplementedError(),
@@ -190,12 +191,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 10000,
-            reservedOutputTokens: 1000,
-            safetyMarginTokens: 500,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async => throw UnimplementedError(),
@@ -256,12 +255,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 10000,
-            reservedOutputTokens: 1000,
-            safetyMarginTokens: 500,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async => throw UnimplementedError(),
@@ -297,6 +294,29 @@ void main() {
 
     await storage.deleteGroup(groupId);
   });
+}
+
+SessionTokenBudgetService _testTokenBudgetService({
+  required int maxContextTokens,
+  required int reservedOutputTokens,
+  required int safetyMarginTokens,
+}) {
+  return SessionTokenBudgetService(
+    modelBudgetRegistry: ModelBudgetRegistry(
+      profiles: const {},
+      familyProfiles: const {},
+      fallbackProfile: ModelBudgetProfile(
+        modelId: 'test-fallback',
+        maxContextTokens: maxContextTokens,
+        reservedOutputTokens: reservedOutputTokens,
+        reasoningReserveTokens: 0,
+        safetyMarginTokens: safetyMarginTokens,
+        compactionConfig: const ContextCompactionConfig(
+          autoCompactBufferTokens: 0,
+        ),
+      ),
+    ),
+  );
 }
 
 class _FakeBaseLlm extends BaseLLM {

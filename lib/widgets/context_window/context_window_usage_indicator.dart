@@ -25,15 +25,15 @@ class ContextWindowUsageIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
-    final visibleRatio = snapshot.plannerInputUsageRatio.clamp(0.0, 1.0);
-    final percent = (snapshot.plannerInputUsageRatio * 100).round();
+    final visibleRatio = snapshot.totalWindowUsageRatio.clamp(0.0, 1.0);
+    final percent = (snapshot.totalWindowUsageRatio * 100).round();
     final accent = resolveContextWindowUsageColor(colors, snapshot);
 
     return Semantics(
       container: true,
       button: true,
       excludeSemantics: true,
-      label: 'Planner 输入使用率 $percent%',
+      label: '上下文已用 $percent%',
       child: Material(
         color: Colors.transparent,
         child: InkWell(

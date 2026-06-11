@@ -40,16 +40,6 @@ class ModelBudgetProfile {
       reasoningReserveTokens -
       safetyMarginTokens;
 
-  /// Effective planner input budget after provider-side caps and reserves.
-  int get effectiveInputBudget {
-    final usable = usableInputBudget;
-    final providerCap = providerInputCap;
-    if (providerCap == null) {
-      return usable;
-    }
-    return providerCap < usable ? providerCap : usable;
-  }
-
   ModelBudgetProfile copyWith({
     String? modelId,
     int? maxContextTokens,

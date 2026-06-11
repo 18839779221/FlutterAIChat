@@ -7,12 +7,15 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
+import 'package:ai_chat/models/session/context_compaction_config.dart';
+import 'package:ai_chat/models/session/model_budget_profile.dart';
 import 'package:ai_chat/models/skill/invoked_skill_context.dart';
 import 'package:ai_chat/models/skill/skill_catalog_entry.dart';
 import 'package:ai_chat/repositories/chat_event_repository.dart';
 import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/repositories/session_context_snapshot_repository.dart';
 import 'package:ai_chat/services/chat_service.dart';
+import 'package:ai_chat/services/model_budget_registry.dart';
 import 'package:ai_chat/services/prompt/runtime_user_context_service.dart';
 import 'package:ai_chat/services/session_context_projector.dart';
 import 'package:ai_chat/services/session_context_service.dart';
@@ -38,7 +41,9 @@ void main() {
         databaseName: 'session_context_service_skills_projection_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Skills Projection', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+        ChatGroup(
+            title: 'Session Context Skills Projection',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -57,12 +62,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 10000,
-            reservedOutputTokens: 1000,
-            safetyMarginTokens: 500,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async => throw UnimplementedError(),
@@ -157,7 +160,9 @@ void main() {
         databaseName: 'session_context_service_skills_rebuild_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Skills Rebuild', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+        ChatGroup(
+            title: 'Session Context Skills Rebuild',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -209,13 +214,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 120,
-            reservedOutputTokens: 20,
-            safetyMarginTokens: 10,
-            pressureThreshold: 0.5,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 120,
+          reservedOutputTokens: 20,
+          safetyMarginTokens: 10,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async => '''
@@ -308,7 +310,9 @@ void main() {
         databaseName: 'session_context_service_explicit_skill_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Explicit Skill', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+        ChatGroup(
+            title: 'Session Context Explicit Skill',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final snapshotRepository = SessionContextSnapshotRepository(storage);
@@ -335,12 +339,10 @@ void main() {
         snapshotRepository: snapshotRepository,
         chatStorage: storage,
         contextProjector: SessionContextProjector(),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 10000,
-            reservedOutputTokens: 1000,
-            safetyMarginTokens: 500,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async => throw UnimplementedError(),
@@ -395,7 +397,9 @@ void main() {
         databaseName: 'session_context_service_skill_truncation_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Skill Truncation', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+        ChatGroup(
+            title: 'Session Context Skill Truncation',
+            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
       );
       final turnRepository = ChatTurnRepository(storage);
       final currentTurnId = await turnRepository.createTurn(
@@ -421,12 +425,10 @@ void main() {
             ),
           ),
         ),
-        tokenBudgetService: SessionTokenBudgetService(
-          modelBudgetResolver: (_) => const SessionModelBudget(
-            maxContextTokens: 10000,
-            reservedOutputTokens: 1000,
-            safetyMarginTokens: 500,
-          ),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
         ),
         summaryService: SessionSummaryService(
           summaryGenerator: (_) async => throw UnimplementedError(),
@@ -480,6 +482,29 @@ void main() {
       await storage.deleteGroup(groupId);
     });
   });
+}
+
+SessionTokenBudgetService _testTokenBudgetService({
+  required int maxContextTokens,
+  required int reservedOutputTokens,
+  required int safetyMarginTokens,
+}) {
+  return SessionTokenBudgetService(
+    modelBudgetRegistry: ModelBudgetRegistry(
+      profiles: const {},
+      familyProfiles: const {},
+      fallbackProfile: ModelBudgetProfile(
+        modelId: 'test-fallback',
+        maxContextTokens: maxContextTokens,
+        reservedOutputTokens: reservedOutputTokens,
+        reasoningReserveTokens: 0,
+        safetyMarginTokens: safetyMarginTokens,
+        compactionConfig: const ContextCompactionConfig(
+          autoCompactBufferTokens: 0,
+        ),
+      ),
+    ),
+  );
 }
 
 class _FakeBaseLlm implements BaseLLM {

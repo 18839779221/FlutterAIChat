@@ -110,7 +110,6 @@ void main() {
       expect(result.autoCompactTriggerTokens, 620);
       expect(result.fixedPrefixTokens, 200);
       expect(result.toolSchemaTokens, 20);
-      expect(result.historyPayloadTokens, 160);
       expect(result.totalInputTokens, 420);
       expect(result.shouldCompact, isFalse);
     });
