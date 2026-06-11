@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/llm/llm_config.dart';
+import '../models/llm/model_capability_override.dart';
+import '../models/llm/resolved_model_capability.dart';
 import '../models/llm/api_protocol_resolver.dart';
 import '../models/llm/llm_provider_config.dart';
 import '../models/llm/llm_provider_model.dart';
@@ -27,6 +29,8 @@ class AppSettingsRepository {
   static const String _themeIdKey = 'appearance.theme_id';
   static const String _runtimeImageInputSupportKey =
       'llm.runtime_image_input_support_json';
+  static const String _modelCapabilityCacheKey =
+      'llm.model_capability_cache_json';
   static const String _legacyApiKeyKey = 'llm.api_key';
   static const String _legacyBaseUrlKey = 'llm.base_url';
   static const String _legacyModelKey = 'llm.model';
@@ -217,6 +221,83 @@ class AppSettingsRepository {
     );
   }
 
+  Future<void> saveModelCapabilityCache(
+    ResolvedModelCapability capability,
+  ) async {
+    final raw = _preferences.getString(_modelCapabilityCacheKey);
+    final nextMap = <String, dynamic>{};
+    if (raw != null && raw.trim().isNotEmpty) {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        nextMap.addAll(decoded);
+      }
+    }
+    nextMap[_modelCapabilityCacheEntryKey(
+      providerId: capability.providerId,
+      providerStyle: capability.providerStyle,
+      baseUrlFingerprint: capability.baseUrlFingerprint,
+      modelId: capability.modelId,
+    )] = capability.toJson();
+    await _preferences.setString(
+      _modelCapabilityCacheKey,
+      jsonEncode(nextMap),
+    );
+  }
+
+  Future<ResolvedModelCapability?> getModelCapabilityCache({
+    required String providerId,
+    required ApiStyle providerStyle,
+    required String baseUrlFingerprint,
+    required String modelId,
+  }) async {
+    final raw = _preferences.getString(_modelCapabilityCacheKey);
+    if (raw == null || raw.trim().isEmpty) {
+      return null;
+    }
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map<String, dynamic>) {
+      return null;
+    }
+    final value = decoded[_modelCapabilityCacheEntryKey(
+      providerId: providerId,
+      providerStyle: providerStyle,
+      baseUrlFingerprint: baseUrlFingerprint,
+      modelId: modelId,
+    )];
+    if (value is! Map<String, dynamic>) {
+      return null;
+    }
+    final capability = ResolvedModelCapability.fromJson(value);
+    if (capability.providerId.isEmpty ||
+        capability.baseUrlFingerprint.isEmpty ||
+        capability.modelId.isEmpty) {
+      return null;
+    }
+    return capability;
+  }
+
+  Future<ModelCapabilityOverride?> getSelectedModelCapabilityOverride() async {
+    final providers = await getProviders();
+    if (providers.isEmpty) {
+      return null;
+    }
+    final selection = await getSelectionState();
+    final resolvedProvider = _resolveProvider(
+      providers,
+      selection.selectedProviderId,
+      fallbackProviderId: selection.defaultProviderId,
+    );
+    if (resolvedProvider == null) {
+      return null;
+    }
+    final resolvedModel = _resolveModel(
+      resolvedProvider,
+      selection.selectedModelId,
+      fallbackModelId: selection.defaultModelId,
+    );
+    return resolvedModel?.capabilityOverride;
+  }
+
   Future<String?> getThemeId() async {
     return getThemeIdSync();
   }
@@ -238,6 +319,15 @@ class AppSettingsRepository {
     required String modelId,
   }) {
     return '${providerId.trim()}::${modelId.trim()}';
+  }
+
+  String _modelCapabilityCacheEntryKey({
+    required String providerId,
+    required ApiStyle providerStyle,
+    required String baseUrlFingerprint,
+    required String modelId,
+  }) {
+    return '${providerId.trim()}::${providerStyle.name}::${baseUrlFingerprint.trim()}::${modelId.trim()}';
   }
 
   Future<void> selectProviderAndModel({
@@ -328,6 +418,7 @@ class AppSettingsRepository {
         'llm.selected_provider_id': resolvedProvider.id,
         'llm.selected_model_id': resolvedModel.id,
         'llm.selected_api_style': resolvedApiStyle.name,
+        'llm.selected_base_url': resolvedProvider.baseUrl,
         'llm.selected_model_supports_image_input':
             resolvedModel.supportsImageInput,
         'llm.runtime_selected_model_supports_image_input':

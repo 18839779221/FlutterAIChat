@@ -1,3 +1,6 @@
+import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
+import 'package:ai_chat/models/llm/model_capability_source_kind.dart';
+import 'package:ai_chat/models/llm/resolved_model_capability.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/models/llm/llm_provider_model.dart';
 import 'package:ai_chat/models/speech/speech_input_config.dart';
@@ -10,6 +13,38 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('AppSettingsRepository provider-first settings', () {
+    test('stores and retrieves resolved model capability cache entries',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final repository = AppSettingsRepository(
+        preferences,
+        localDefaultsLoader: () async => null,
+      );
+
+      await repository.saveModelCapabilityCache(
+        const ResolvedModelCapability(
+          providerId: 'anthropic',
+          providerStyle: ApiStyle.anthropicMessages,
+          baseUrlFingerprint: 'anthropic::v1',
+          modelId: 'claude-sonnet-4-5',
+          contextWindowTotal: 200000,
+          maxInputTokens: 200000,
+          maxOutputTokens: 32000,
+          source: ModelCapabilitySourceKind.providerMetadata,
+        ),
+      );
+
+      final cached = await repository.getModelCapabilityCache(
+        providerId: 'anthropic',
+        providerStyle: ApiStyle.anthropicMessages,
+        baseUrlFingerprint: 'anthropic::v1',
+        modelId: 'claude-sonnet-4-5',
+      );
+
+      expect(cached?.maxOutputTokens, 32000);
+    });
+
     test('seeds providers from local defaults on first read', () async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
@@ -43,6 +78,10 @@ void main() {
       expect(config.apiKey, 'local-key');
       expect(config.apiUrl, 'https://api.aigocode.com');
       expect(config.model, 'gpt-5.4');
+      expect(
+        config.additionalConfig['llm.selected_base_url'],
+        'https://api.aigocode.com',
+      );
       expect(
         config.additionalConfig['llm.selected_model_supports_image_input'],
         isFalse,

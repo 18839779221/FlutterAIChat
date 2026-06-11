@@ -3,6 +3,33 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('LlmLocalDefaults', () {
+    test('parses model capability overrides from provider model entries', () {
+      final defaults = LlmLocalDefaults.fromJson({
+        'providers': [
+          {
+            'id': 'openai',
+            'name': 'OpenAI',
+            'apiKey': 'k',
+            'baseUrl': 'https://api.openai.com/v1',
+            'models': [
+              {
+                'id': 'gpt-5',
+                'name': 'GPT-5',
+                'contextWindowTotal': 1000000,
+                'maxInputTokens': 256000,
+                'maxOutputTokens': 32000,
+              },
+            ],
+          },
+        ],
+      });
+
+      final model = defaults.providers.single.models.single;
+      expect(model.capabilityOverride?.contextWindowTotal, 1000000);
+      expect(model.capabilityOverride?.maxInputTokens, 256000);
+      expect(model.capabilityOverride?.maxOutputTokens, 32000);
+    });
+
     test('parses provider-first local defaults structure', () {
       final defaults = LlmLocalDefaults.fromJson({
         'default_provider_id': 'aigocode',
