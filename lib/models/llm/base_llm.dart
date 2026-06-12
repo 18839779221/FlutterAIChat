@@ -76,3 +76,22 @@ abstract class BaseLLM {
     return null;
   }
 }
+
+/// Optional capability for LLMs that can accept per-call runtime overrides for
+/// side-model tasks without changing the base interface for older fakes/tests.
+abstract class RuntimeConfigurableBaseLlm {
+  Future<String> summarizeConversationWithConfig(
+    List<ChatMessage> messages, {
+    required ChatConfig config,
+  });
+
+  Future<String> processWebpageContentWithConfig({
+    required String webpageContent,
+    required String prompt,
+    required ChatConfig config,
+  }) {
+    throw UnimplementedError(
+      'processWebpageContentWithConfig is not implemented',
+    );
+  }
+}

@@ -1,6 +1,4 @@
 import 'package:ai_chat/models/chat_group.dart';
-import 'package:ai_chat/models/chat_turn.dart';
-import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/providers/chat_ui_providers.dart';
@@ -23,8 +21,6 @@ abstract class ChatSessionCoordinator {
   Future<void> selectGroup(ChatGroup group);
 
   Future<void> updateCurrentGroupWorkspace(String? workspaceId);
-
-  Future<void> syncDraftGroupProviderStyle();
 }
 
 class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
@@ -67,6 +63,7 @@ class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
           _ref.read(currentGroupProvider.notifier).state = latestGroup;
           _ref.read(systemPromptProvider.notifier).state =
               latestGroup.systemPrompt;
+          await _restoreRuntimeForGroup(latestGroup.id);
           await loadMessages();
         }
       } else {
@@ -82,14 +79,16 @@ class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
     try {
       final groups = _ref.read(groupsProvider);
       final systemPrompt = _ref.read(systemPromptProvider);
-      final lockedProviderStyle = await _resolveCurrentProviderStyle();
       final newGroup = ChatGroup(
         title: '新对话 ${groups.length + 1}',
         systemPrompt: systemPrompt,
-        lockedProviderStyle: lockedProviderStyle,
       );
 
       _ref.read(currentGroupProvider.notifier).state = newGroup;
+      final draftRuntime =
+          await _ref.read(sessionRuntimeConfigServiceProvider).createDraftRuntime();
+      _ref.read(currentSessionRuntimeConfigProvider.notifier).state =
+          draftRuntime;
       _ref.read(messagesProvider.notifier).clearMessages();
       _ref.read(hasMoreMessagesProvider.notifier).state = false;
       _ref.read(isInitializingProvider.notifier).state = false;
@@ -98,20 +97,15 @@ class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
     }
   }
 
-  Future<ChatTurnProviderStyle> _resolveCurrentProviderStyle() async {
-    try {
-      final config =
-          await _ref.read(appSettingsRepositoryProvider).getLlmConfig();
-      final apiStyle = config.apiStyle ??
-          const ApiProtocolResolver().resolveStyle(config.apiUrl);
-      return apiStyle.toChatTurnProviderStyle();
-    } catch (e) {
-      Logger.w(
-        _tag,
-        '无法读取当前 provider style，新会话回落到 Chat Completions: $e',
-      );
-      return ChatTurnProviderStyle.openaiChatCompletions;
+  Future<void> _restoreRuntimeForGroup(int? groupId) async {
+    if (groupId == null) {
+      _ref.read(currentSessionRuntimeConfigProvider.notifier).state = null;
+      return;
     }
+    final runtime = await _ref
+        .read(sessionRuntimeConfigServiceProvider)
+        .loadPersisted(groupId);
+    _ref.read(currentSessionRuntimeConfigProvider.notifier).state = runtime;
   }
 
   @override
@@ -133,6 +127,7 @@ class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
         _ref.read(currentGroupProvider.notifier).state = latestGroup;
         _ref.read(systemPromptProvider.notifier).state =
             latestGroup.systemPrompt;
+        await _restoreRuntimeForGroup(latestGroup.id);
         await loadMessages();
         return;
       }
@@ -208,6 +203,7 @@ class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
     _ref.read(currentGroupProvider.notifier).state = group;
     _ref.read(systemPromptProvider.notifier).state = group.systemPrompt;
     _ref.read(messagesProvider.notifier).clearMessages();
+    await _restoreRuntimeForGroup(group.id);
     await loadMessages();
   }
 
@@ -241,22 +237,5 @@ class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
           .read(databaseProvider)
           .updateGroupWorkspaceId(currentGroup.id!, normalizedWorkspaceId);
     }
-  }
-
-  @override
-  Future<void> syncDraftGroupProviderStyle() async {
-    final currentGroup = _ref.read(currentGroupProvider);
-    if (currentGroup == null || currentGroup.id != null) {
-      return;
-    }
-
-    final lockedProviderStyle = await _resolveCurrentProviderStyle();
-    if (currentGroup.lockedProviderStyle == lockedProviderStyle) {
-      return;
-    }
-
-    _ref.read(currentGroupProvider.notifier).state = currentGroup.copyWith(
-      lockedProviderStyle: lockedProviderStyle,
-    );
   }
 }

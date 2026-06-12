@@ -11,6 +11,7 @@ import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/response/message_content_type.dart';
 import '../models/session/session_context_snapshot.dart';
+import '../models/session/session_runtime_config.dart';
 import '../models/session/session_runtime_marker.dart';
 import '../utils/logger.dart';
 import 'chat_storage.dart';
@@ -23,6 +24,7 @@ class WebChatStorage implements ChatStorage {
   static const String _messageAttachmentsKey = 'web.message_attachments';
   static const String _sessionContextSnapshotsKey =
       'web.session_context_snapshots';
+  static const String _sessionRuntimeConfigsKey = 'web.session_runtime_configs';
   static const String _sessionRuntimeMarkersKey = 'web.session_runtime_markers';
   static const String _artifactRegistryKey = 'web.artifact_registry';
   static const String _turnsKey = 'web.chat_turns';
@@ -466,6 +468,45 @@ class WebChatStorage implements ChatStorage {
   }
 
   @override
+  Future<int> insertSessionRuntimeConfig(SessionRuntimeConfig config) async {
+    final configs = await _readSessionRuntimeConfigs();
+    final nextId = _nextId(configs.map((item) => item['id'] as int?));
+    configs.removeWhere((item) => item['group_id'] == config.groupId);
+    configs.add({
+      ...config.toMap(),
+      'id': nextId,
+    });
+    await _writeSessionRuntimeConfigs(configs);
+    return nextId;
+  }
+
+  @override
+  Future<SessionRuntimeConfig?> getSessionRuntimeConfigByGroup(int groupId) async {
+    final configs = await _readSessionRuntimeConfigs();
+    final matches = configs.where((item) => item['group_id'] == groupId).toList()
+      ..sort(
+        (left, right) =>
+            (right['updated_at'] as int).compareTo(left['updated_at'] as int),
+      );
+    if (matches.isEmpty) {
+      return null;
+    }
+    return SessionRuntimeConfig.fromMap(matches.first);
+  }
+
+  @override
+  Future<void> updateSessionRuntimeConfig(SessionRuntimeConfig config) async {
+    final configs = await _readSessionRuntimeConfigs();
+    final updated = configs.map((storedConfig) {
+      if (storedConfig['id'] != config.id) {
+        return storedConfig;
+      }
+      return config.toMap();
+    }).toList();
+    await _writeSessionRuntimeConfigs(updated);
+  }
+
+  @override
   Future<int> insertSessionRuntimeMarker(SessionRuntimeMarker marker) async {
     final markers = await _readSessionRuntimeMarkers();
     final nextId = _nextId(markers.map((item) => item['id'] as int?));
@@ -759,6 +800,21 @@ class WebChatStorage implements ChatStorage {
         .toList();
   }
 
+  Future<List<Map<String, dynamic>>> _readSessionRuntimeConfigs() async {
+    final raw = _preferences.getString(_sessionRuntimeConfigsKey);
+    if (raw == null || raw.isEmpty) {
+      return <Map<String, dynamic>>[];
+    }
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) {
+      Logger.w(_tag, 'Invalid stored session runtime configs payload');
+      return <Map<String, dynamic>>[];
+    }
+    return decoded.whereType<Map>().map((item) {
+      return Map<String, dynamic>.from(item);
+    }).toList(growable: false);
+  }
+
   Future<List<Map<String, dynamic>>> _readSessionRuntimeMarkers() async {
     final raw = _preferences.getString(_sessionRuntimeMarkersKey);
     if (raw == null || raw.isEmpty) {
@@ -797,6 +853,15 @@ class WebChatStorage implements ChatStorage {
     await _preferences.setString(
       _sessionContextSnapshotsKey,
       jsonEncode(snapshots),
+    );
+  }
+
+  Future<void> _writeSessionRuntimeConfigs(
+    List<Map<String, dynamic>> configs,
+  ) async {
+    await _preferences.setString(
+      _sessionRuntimeConfigsKey,
+      jsonEncode(configs),
     );
   }
 

@@ -29,6 +29,7 @@
 4. 新建 session 时，以全局默认 provider / model 作为初始值
 5. 删除已经过时的 `lockedProviderStyle`
 6. 为后续 session 级 capability / budget / 多 agent runtime 扩展预留稳定边界
+7. 保留 `primary model + side model` 语义，不把 side task 强行折叠到主模型
 
 ## 3. 非目标
 
@@ -85,16 +86,35 @@
 
 - `id`
 - `groupId`
-- `providerId`
-- `modelId`
-- `providerStyle`
+- `primaryProviderId`
+- `primaryModelId`
+- `primaryProviderStyle`
+- `sideProviderId`
+- `sideModelId`
+- `sideProviderStyle`
 - `updatedAt`
 
 语义：
 
-- 表示某个 session 当前绑定的 LLM runtime 选择
+- 表示某个 session 当前绑定的一组 LLM runtime slot 选择
 - 是切 session、发消息、解析能力、预算推导时的第一事实源
 - 与全局默认配置分离
+- 当前先落地 `primary + side` 两个 slot，为后续 capability 级 runtime 路由预留稳定边界
+
+### 5.1.1 Slot 语义
+
+当前 runtime profile 不再只有一个 provider / model，而是先约定两个 slot：
+
+- `primary`
+  - 供主对话发送、planner、主 turn loop 使用
+- `side`
+  - 供 summary、`fetch_webpage` 这类 side-task 使用
+
+当前 fallback 规则：
+
+- 如果 session 没有显式配置 `side`，则 `side -> primary`
+
+这条 fallback 只是默认解析规则，不代表 side 语义消失。
 
 ### 5.2 职责分层
 
@@ -171,6 +191,10 @@
 
 只要存在当前 session，所有实际 runtime 解析都必须优先读取该 session 对应的 `SessionRuntimeConfig`，而不是全局 `selectedProviderId` / `selectedModelId`。
 
+#### Rule E：side task 优先解析 side slot
+
+凡是被归类为 side-task 的能力，优先解析 session runtime profile 的 `side` slot；只有在 `side` 未配置时才回退到 `primary`。
+
 ## 6. 关键流程设计
 
 ### 6.1 新建 session
@@ -182,6 +206,8 @@
 3. 将其与当前草稿 `ChatGroup` 绑定
 
 此时还不要求立刻写库，因为当前草稿 session 可能尚未发送任何消息。
+
+当前实现中，全局默认只直接初始化 `primary`；`side` 默认留空，并在解析时回退到 `primary`。
 
 ### 6.2 草稿 session 内切换 provider / model
 
@@ -229,6 +255,8 @@
 - 当前 session 后续 turn 使用新的 runtime
 - 其他 session 不受影响
 - 全局默认不受影响
+
+当前 UI 只直接编辑 `primary` slot；`side` slot 已在 runtime/profile 层支持，但还没有单独的设置入口。
 
 ### 6.6 新建 session 的初始值来源
 

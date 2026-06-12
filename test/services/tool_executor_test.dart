@@ -6,6 +6,7 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/chat/chat_attachment.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
+import 'package:ai_chat/models/session/session_runtime_config.dart';
 import 'package:ai_chat/models/session/session_runtime_marker.dart';
 import 'package:ai_chat/services/tool_executor.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
@@ -136,8 +137,12 @@ void main() {
         () async {
       final executor = ToolExecutor(
         chatStorage: const _FakeChatStorage(messages: []),
-        webpageFetcher:
-            ({required url, required prompt}) async => const ToolResult(
+        webpageFetcher: ({
+          required groupId,
+          required url,
+          required prompt,
+          sideRuntimeConfigOverride,
+        }) async => const ToolResult(
           toolName: 'fetch_webpage',
           status: ToolExecutionStatus.success,
           summary: '已读取网页',
@@ -150,6 +155,7 @@ void main() {
       );
 
       final result = await executor.executeFetchWebpage(
+        groupId: 1,
         url: 'https://example.com',
         prompt: '提取页面核心内容',
       );
@@ -254,6 +260,18 @@ class _FakeChatStorage implements ChatStorage {
 
   @override
   Future<int> insertOrReplaceArtifactRecord(ArtifactRecord record) =>
+      throw UnimplementedError();
+
+  @override
+  Future<int> insertSessionRuntimeConfig(SessionRuntimeConfig config) =>
+      throw UnimplementedError();
+
+  @override
+  Future<SessionRuntimeConfig?> getSessionRuntimeConfigByGroup(int groupId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> updateSessionRuntimeConfig(SessionRuntimeConfig config) =>
       throw UnimplementedError();
 
   @override

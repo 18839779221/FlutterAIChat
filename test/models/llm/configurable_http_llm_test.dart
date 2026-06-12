@@ -231,6 +231,51 @@ void main() {
       expect(adapter.parseDecisionCalls, 1);
     });
 
+    test('planner request uses runtime config override model and endpoint',
+        () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'role': 'assistant',
+                  'content': 'override planner response',
+                },
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+      final llm = await _buildLlm(
+        baseUrl: 'https://global.example/v1/chat/completions',
+        modelId: 'global-model',
+        httpClient: client,
+      );
+
+      final decision = await llm.planTurnDecision(
+        carriers: [SyntheticCarrier.user('继续')],
+        activeApiStyle: ChatTurnProviderStyle.openaiChatCompletions,
+        currentTurnRunning: false,
+        config: ChatConfig(
+          systemPrompt: '',
+          runtimeConfigOverride: const LLMConfig(
+            apiKey: 'override-key',
+            apiUrl: 'https://override.example/v1/chat/completions',
+            model: 'override-model',
+            apiStyle: ApiStyle.chatCompletions,
+          ),
+        ),
+        availableTools: const [],
+      );
+
+      expect(client.lastRequest?.url.host, 'override.example');
+      expect(client.lastRequestBody?['model'], 'override-model');
+      expect(decision?.modelName, 'override-model');
+    });
+
     test('planner fallback json is parsed through adapter contract', () async {
       final runtime = _CountingRuntime(
         streamResult: ProtocolStreamExecutionResult(
@@ -2276,6 +2321,50 @@ void main() {
   });
 
   group('ConfigurableHttpLLM.summarizeConversation', () {
+    test('uses runtime config override for summary request', () async {
+      final client = _RecordingHttpClient(
+        handler: (request) => http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'role': 'assistant',
+                  'content': 'override summary',
+                },
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final llm = await _buildLlm(
+        baseUrl: 'https://global.example/v1/chat/completions',
+        modelId: 'global-model',
+        httpClient: client,
+      );
+
+      final summary = await llm.summarizeConversationWithConfig(
+        [
+          ChatMessage(text: '历史消息', role: MessageRole.user),
+        ],
+        config: ChatConfig(
+          systemPrompt: '',
+          runtimeConfigOverride: const LLMConfig(
+            apiKey: 'override-key',
+            apiUrl: 'https://override.example/v1/chat/completions',
+            model: 'override-model',
+            apiStyle: ApiStyle.chatCompletions,
+          ),
+        ),
+      );
+
+      expect(summary, 'override summary');
+      expect(client.lastRequest?.url.host, 'override.example');
+      expect(client.lastRequestBody?['model'], 'override-model');
+    });
+
     test('replaces session summary instruction prompt instead of stacking it',
         () async {
       final client = _RecordingHttpClient(
@@ -2640,6 +2729,7 @@ void main() {
 
       expect(result, '网页核心结论');
     });
+
   });
 
   group('request budget', () {
@@ -2660,6 +2750,27 @@ void main() {
       );
 
       expect(options.maxOutputTokens, 4096);
+    });
+
+    test('getModelName prefers runtime config override',
+        () async {
+      final llm = await _buildLlm(
+        baseUrl: 'https://api.openai.com/v1/responses',
+        modelId: 'global-model',
+      );
+
+      final modelName = llm.getModelName(
+        ChatConfig(
+          systemPrompt: '',
+          runtimeConfigOverride: const LLMConfig(
+            apiKey: 'override-key',
+            apiUrl: 'https://api.openai.com/v1/responses',
+            model: 'override-model',
+          ),
+        ),
+      );
+
+      expect(modelName, 'override-model');
     });
   });
 }

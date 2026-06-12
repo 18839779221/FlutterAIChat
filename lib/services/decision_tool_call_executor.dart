@@ -523,6 +523,7 @@ class DefaultDecisionToolCallExecutor implements DecisionToolCallExecutor {
           groupId: turn.groupId,
           invocation: invocation,
           currentTurnEvents: await _eventRepository.listEventsByTurn(turn.id!),
+          sideRuntimeConfigOverride: config.sideRuntimeConfigOverride,
           onExecutionStarted: (
               {required invocation, required toolAccess}) async {
             final toolPayload = _buildToolInvocationPayload(

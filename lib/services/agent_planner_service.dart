@@ -109,6 +109,7 @@ class AgentPlannerService {
       ),
       userSystemPrompt: _resolveUserSystemPrompt(config),
       promptLocale: config.promptLocale,
+      runtimeConfigOverride: config.runtimeConfigOverride,
     );
     final runtimeStreamTraceId = streamingTraceIdForTurn(turn.id!);
     final plannerRequestId = _buildPlannerRequestId(turn);

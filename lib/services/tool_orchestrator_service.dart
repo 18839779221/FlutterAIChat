@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../models/chat_event.dart';
 import '../models/chat_message.dart';
+import '../models/llm/llm_config.dart';
 import '../models/tool/tool_access_snapshot.dart';
 import '../models/tool/tool_definition.dart';
 import '../models/tool/tool_policy.dart';
@@ -41,6 +42,7 @@ class ToolOrchestratorService {
     bool trustTool = false,
     String? turnId,
     List<ChatEvent> currentTurnEvents = const <ChatEvent>[],
+    LLMConfig? sideRuntimeConfigOverride,
     ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
     if (trustTool) {
@@ -177,6 +179,7 @@ class ToolOrchestratorService {
       hostAdapters: _hostAdapters,
       cwd: resolvedWorkspace?.fileRoot ?? '/',
       workspace: resolvedWorkspace,
+      sideRuntimeConfigOverride: sideRuntimeConfigOverride,
     );
     Logger.i(
       _tag,

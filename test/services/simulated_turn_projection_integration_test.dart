@@ -16,6 +16,7 @@ import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
+import 'package:ai_chat/models/llm/llm_config.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_argument_property.dart';
 import 'package:ai_chat/models/tool/tool_argument_schema.dart';
@@ -177,9 +178,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId = await databaseHelper
-          .insertGroup(ChatGroup(title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          .insertGroup(ChatGroup(title: 'projection group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'projection group');
 
       final turnRepository = ChatTurnRepository(databaseHelper);
       final turnId = await turnRepository.createTurn(
@@ -377,9 +378,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId = await databaseHelper
-          .insertGroup(ChatGroup(title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          .insertGroup(ChatGroup(title: 'projection group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'projection group');
 
       final turnRepository = ChatTurnRepository(databaseHelper);
       final turnId = await turnRepository.createTurn(
@@ -602,9 +603,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId = await databaseHelper
-          .insertGroup(ChatGroup(title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          .insertGroup(ChatGroup(title: 'projection group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'projection group');
 
       final turnRepository = ChatTurnRepository(databaseHelper);
       final turnId = await turnRepository.createTurn(
@@ -762,9 +763,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId = await databaseHelper
-          .insertGroup(ChatGroup(title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          .insertGroup(ChatGroup(title: 'projection group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'projection group');
 
       final turnRepository = ChatTurnRepository(databaseHelper);
       final turnId = await turnRepository.createTurn(
@@ -933,9 +934,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId = await databaseHelper
-          .insertGroup(ChatGroup(title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          .insertGroup(ChatGroup(title: 'projection group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'projection group');
 
       final turnRepository = ChatTurnRepository(databaseHelper);
       final turnId = await turnRepository.createTurn(
@@ -1065,9 +1066,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId = await databaseHelper
-          .insertGroup(ChatGroup(title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          .insertGroup(ChatGroup(title: 'projection group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'projection group');
 
       await container.read(chatControllerProvider).sendMessage('先查数据库版本，再继续');
       await Future<void>.delayed(const Duration(milliseconds: 40));
@@ -1157,9 +1158,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId = await databaseHelper
-          .insertGroup(ChatGroup(title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          .insertGroup(ChatGroup(title: 'projection group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'projection group');
 
       final turnRepository = ChatTurnRepository(databaseHelper);
       final turnId = await turnRepository.createTurn(
@@ -1248,9 +1249,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId = await databaseHelper
-          .insertGroup(ChatGroup(title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          .insertGroup(ChatGroup(title: 'projection group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'projection group');
 
       final turnRepository = ChatTurnRepository(databaseHelper);
       final turnId = await turnRepository.createTurn(
@@ -1372,9 +1373,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId = await databaseHelper
-          .insertGroup(ChatGroup(title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          .insertGroup(ChatGroup(title: 'projection group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'projection group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'projection group');
 
       final turnRepository = ChatTurnRepository(databaseHelper);
       final eventRepository = ChatEventRepository(databaseHelper);
@@ -1642,6 +1643,7 @@ class _QueuedToolCallService extends ToolCallService {
     bool trustTool = false,
     String? turnId,
     List<ChatEvent> currentTurnEvents = const <ChatEvent>[],
+    LLMConfig? sideRuntimeConfigOverride,
     ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
     final queue = _queuedResultsByTool[invocation.toolName];

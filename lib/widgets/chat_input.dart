@@ -12,9 +12,11 @@ import 'chat_input_attachment_strip.dart';
 import 'context_window/context_window_usage_indicator.dart';
 import '../models/chat/send_message_request.dart';
 import '../models/chat/chat_attachment.dart';
+import '../models/session/session_runtime_config.dart';
 import '../models/llm/llm_provider_config.dart';
 import '../models/llm/llm_provider_model.dart';
 import '../repositories/app_settings_repository.dart';
+import '../services/session_runtime_config_service.dart';
 import '../utils/logger.dart';
 import '../pages/model_management_page.dart';
 
@@ -86,23 +88,23 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   }
 
   Future<void> _refreshModelChipLabel(AppSettingsRepository repository) async {
+    final runtime = ref.read(currentSessionRuntimeConfigProvider);
     final providers = await repository.getProviders();
-    final selection = await repository.getSelectionState();
     String? nextLabel;
     LlmProviderConfig? resolvedProvider;
     for (final provider in providers) {
-      if (provider.id == selection.selectedProviderId) {
+      if (provider.id == runtime?.providerId) {
         resolvedProvider = provider;
         break;
       }
     }
     resolvedProvider ??= providers.cast<LlmProviderConfig?>().firstWhere(
-          (provider) => provider?.id == selection.defaultProviderId,
+          (provider) => provider?.id == runtime?.providerId,
           orElse: () => providers.isEmpty ? null : providers.first,
         );
     if (resolvedProvider != null) {
       for (final model in resolvedProvider.models) {
-        if (model.id == selection.selectedModelId) {
+        if (model.id == runtime?.modelId) {
           nextLabel = model.displayName;
           break;
         }
@@ -110,7 +112,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       nextLabel ??= resolvedProvider.models
           .cast<LlmProviderModel?>()
           .firstWhere(
-            (model) => model?.id == selection.defaultModelId,
+            (model) => model?.id == runtime?.modelId,
             orElse: () => resolvedProvider!.models.isEmpty
                 ? null
                 : resolvedProvider.models.first,
@@ -448,7 +450,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         return;
       }
       final providers = await repository.getProviders();
-      final selection = await repository.getSelectionState();
+      final runtime = ref.read(currentSessionRuntimeConfigProvider);
       if (!mounted) {
         return;
       }
@@ -462,16 +464,12 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       }
 
       LlmProviderConfig? selectedProvider;
-      LlmProviderConfig? defaultProvider;
       for (final item in providers) {
-        if (item.id == selection.selectedProviderId) {
+        if (item.id == runtime?.providerId) {
           selectedProvider = item;
         }
-        if (item.id == selection.defaultProviderId) {
-          defaultProvider = item;
-        }
       }
-      final provider = selectedProvider ?? defaultProvider ?? providers.first;
+      final provider = selectedProvider ?? providers.first;
       final renderObject =
           _modelChipKey.currentContext?.findRenderObject() as RenderBox?;
       final overlay =
@@ -492,9 +490,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
           anchorRect: anchorRect,
           providers: providers,
           initialProviderId: provider.id,
-          selectedModelId:
-              selection.selectedModelId ?? selection.defaultModelId,
-          defaultModelId: selection.defaultModelId,
+          selectedModelId: runtime?.modelId,
+          defaultModelId: runtime?.modelId,
         ),
         transitionBuilder: (context, animation, _, child) {
           return FadeTransition(
@@ -511,13 +508,22 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         return;
       }
 
-      await repository.selectProviderAndModel(
+      final currentGroup = ref.read(currentGroupProvider);
+      final runtimeGroupId =
+          currentGroup?.id ?? SessionRuntimeConfigService.draftGroupId;
+      final updatedRuntime = await ref
+          .read(sessionRuntimeConfigServiceProvider)
+          .updateRuntime(
+            groupId: runtimeGroupId,
+            providerId: result.providerId,
+            modelId: result.modelId,
+          );
+      ref.read(currentSessionRuntimeConfigProvider.notifier).state =
+          updatedRuntime;
+      await repository.setDefaultProviderAndModel(
         providerId: result.providerId,
         modelId: result.modelId,
       );
-      await ref
-          .read(chatSessionCoordinatorProvider)
-          .syncDraftGroupProviderStyle();
       await _refreshModelChipLabel(repository);
     }
 
@@ -1183,7 +1189,12 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     }
 
     final repository = ref.read(appSettingsRepositoryProvider);
-    final config = await repository.getLlmConfig();
+    final runtime = ref.read(currentSessionRuntimeConfigProvider);
+    if (runtime == null) {
+      return false;
+    }
+    final config =
+        await ref.read(sessionLlmConfigResolverProvider).resolve(runtime);
     final providerId =
         config.additionalConfig['llm.selected_provider_id'] as String?;
     final modelId = config.additionalConfig['llm.selected_model_id'] as String?;

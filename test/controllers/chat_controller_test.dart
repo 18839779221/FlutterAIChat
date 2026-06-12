@@ -12,8 +12,10 @@ import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
+import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
+import 'package:ai_chat/models/session/session_runtime_config.dart';
 import 'package:ai_chat/models/session/session_runtime_marker.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/session_context_projector.dart';
@@ -160,13 +162,13 @@ void main() {
       final group = ChatGroup(
           id: 1,
           title: '新对话 1',
-          systemPrompt: '',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          systemPrompt: '');
       await runCase('selectGroup', (c) => c.selectGroup(group));
     });
   });
 
-  test('createNewGroup locks provider style from current settings', () async {
+  test('createNewGroup initializes draft runtime from current defaults',
+      () async {
     SharedPreferences.setMockInitialValues({});
     final settingsRepository = AppSettingsRepository(
       await SharedPreferences.getInstance(),
@@ -196,38 +198,14 @@ void main() {
 
     await container.read(chatSessionCoordinatorProvider).createNewGroup();
 
-    expect(
-      container.read(currentGroupProvider)?.lockedProviderStyle,
-      ChatTurnProviderStyle.anthropicMessages,
-    );
+    final runtime = container.read(currentSessionRuntimeConfigProvider);
+    expect(runtime, isNotNull);
+    expect(runtime!.providerId, 'claude');
+    expect(runtime.modelId, 'claude-sonnet');
+    expect(runtime.providerStyle, ChatTurnProviderStyle.anthropicMessages);
   });
 
-  test(
-      'createNewGroup falls back to chat completions when settings are unavailable',
-      () async {
-    SharedPreferences.setMockInitialValues({});
-    final container = ProviderContainer(
-      overrides: [
-        appSettingsRepositoryProvider.overrideWithValue(
-          AppSettingsRepository(
-            await SharedPreferences.getInstance(),
-            localDefaultsLoader: () async => null,
-          ),
-        ),
-        databaseProvider.overrideWithValue(_FakeChatStorage()),
-      ],
-    );
-    addTearDown(container.dispose);
-
-    await container.read(chatSessionCoordinatorProvider).createNewGroup();
-
-    expect(
-      container.read(currentGroupProvider)?.lockedProviderStyle,
-      ChatTurnProviderStyle.openaiChatCompletions,
-    );
-  });
-
-  test('syncDraftGroupProviderStyle updates only draft groups', () async {
+  test('selectGroup restores persisted session runtime config', () async {
     SharedPreferences.setMockInitialValues({});
     final settingsRepository = AppSettingsRepository(
       await SharedPreferences.getInstance(),
@@ -247,38 +225,32 @@ void main() {
         ],
       ),
     );
+    final storage = _FakeChatStorage(
+      sessionRuntimeConfig: SessionRuntimeConfig(
+        id: 5,
+        groupId: 9,
+        providerId: 'openai',
+        modelId: 'gpt-4.1',
+        providerStyle: ApiStyle.chatCompletions.toChatTurnProviderStyle(),
+      ),
+    );
     final container = ProviderContainer(
       overrides: [
         appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
-        databaseProvider.overrideWithValue(_FakeChatStorage()),
+        databaseProvider.overrideWithValue(storage),
       ],
     );
     addTearDown(container.dispose);
 
-    container.read(currentGroupProvider.notifier).state = ChatGroup(
-      title: 'draft',
-      lockedProviderStyle: ChatTurnProviderStyle.anthropicMessages,
-    );
-    await container
-        .read(chatSessionCoordinatorProvider)
-        .syncDraftGroupProviderStyle();
-    expect(
-      container.read(currentGroupProvider)?.lockedProviderStyle,
-      ChatTurnProviderStyle.openaiResponses,
-    );
+    await container.read(chatSessionCoordinatorProvider).selectGroup(
+          ChatGroup(id: 9, title: 'persisted'),
+        );
 
-    container.read(currentGroupProvider.notifier).state = ChatGroup(
-      id: 1,
-      title: 'persisted',
-      lockedProviderStyle: ChatTurnProviderStyle.anthropicMessages,
-    );
-    await container
-        .read(chatSessionCoordinatorProvider)
-        .syncDraftGroupProviderStyle();
-    expect(
-      container.read(currentGroupProvider)?.lockedProviderStyle,
-      ChatTurnProviderStyle.anthropicMessages,
-    );
+    final runtime = container.read(currentSessionRuntimeConfigProvider);
+    expect(runtime, isNotNull);
+    expect(runtime!.groupId, 9);
+    expect(runtime.providerId, 'openai');
+    expect(runtime.modelId, 'gpt-4.1');
   });
 
   test('loadMoreMessages prepends older page and clears exhausted pagination',
@@ -305,7 +277,6 @@ void main() {
     container.read(currentGroupProvider.notifier).state = ChatGroup(
       id: 7,
       title: 'group',
-      lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
     );
     container.read(hasMoreMessagesProvider.notifier).state = true;
     container.read(messagesProvider.notifier).setMessages([
@@ -372,7 +343,6 @@ void main() {
           ChatGroup(
             id: 2,
             title: 'Next group',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
           ),
         );
 
@@ -391,10 +361,7 @@ void main() {
           'chat_attachment_test_${DateTime.now().microsecondsSinceEpoch}.db',
     );
     final groupId = await databaseHelper.insertGroup(
-      ChatGroup(
-        title: 'group',
-        lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
-      ),
+      ChatGroup(title: 'group'),
     );
     final message = ChatMessage(
       text: 'look at this image',
@@ -482,7 +449,6 @@ void main() {
     container.read(currentGroupProvider.notifier).state = ChatGroup(
       id: 42,
       title: 'active group',
-      lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
     );
 
     final result =
@@ -617,9 +583,6 @@ class _NoopChatSessionCoordinator implements ChatSessionCoordinator {
 
   @override
   Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {}
-
-  @override
-  Future<void> syncDraftGroupProviderStyle() async {}
 }
 
 class _RecordingChatSessionCoordinator extends _NoopChatSessionCoordinator {
@@ -729,11 +692,13 @@ class _FakeChatStorage implements ChatStorage {
     this.messagesByGroup = const {},
     this.paginatedMessages = const [],
     this.groupMessageCount = 0,
+    this.sessionRuntimeConfig,
   });
 
   final Map<int, List<ChatMessage>> messagesByGroup;
   final List<ChatMessage> paginatedMessages;
   final int groupMessageCount;
+  SessionRuntimeConfig? sessionRuntimeConfig;
 
   @override
   Future<int> insertOrReplaceArtifactRecord(ArtifactRecord record) async => 1;
@@ -844,6 +809,12 @@ class _FakeChatStorage implements ChatStorage {
       1;
 
   @override
+  Future<int> insertSessionRuntimeConfig(SessionRuntimeConfig config) async {
+    sessionRuntimeConfig = config.copyWith(id: 1);
+    return 1;
+  }
+
+  @override
   Future<int> insertSessionRuntimeMarker(SessionRuntimeMarker marker) async =>
       1;
 
@@ -861,6 +832,17 @@ class _FakeChatStorage implements ChatStorage {
     int groupId,
   ) async =>
       null;
+
+  @override
+  Future<SessionRuntimeConfig?> getSessionRuntimeConfigByGroup(
+    int groupId,
+  ) async {
+    final config = sessionRuntimeConfig;
+    if (config?.groupId != groupId) {
+      return null;
+    }
+    return config;
+  }
 
   @override
   Future<void> updateGroupLastMessageTime(int groupId) async {}
@@ -892,6 +874,11 @@ class _FakeChatStorage implements ChatStorage {
   Future<void> updateSessionContextSnapshot(
     SessionContextSnapshot snapshot,
   ) async {}
+
+  @override
+  Future<void> updateSessionRuntimeConfig(SessionRuntimeConfig config) async {
+    sessionRuntimeConfig = config;
+  }
 
   @override
   Future<void> updateSessionRuntimeMarker(SessionRuntimeMarker marker) async {}

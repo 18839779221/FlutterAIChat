@@ -1,7 +1,15 @@
 import 'dart:convert';
 
 import 'package:ai_chat/services/default_tool_adapters.dart';
+import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/tool_executor.dart';
+import 'package:ai_chat/models/agent/model_turn_decision.dart';
+import 'package:ai_chat/models/agent/planner_tool_option.dart';
+import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/chat_turn.dart';
+import 'package:ai_chat/models/context/planner_context_carrier.dart';
+import 'package:ai_chat/models/llm/base_llm.dart';
+import 'package:ai_chat/models/llm/llm_config.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -78,6 +86,7 @@ void main() {
       );
 
       final result = await fetcher(
+        groupId: 1,
         url: 'https://example.com/article',
         prompt: '提取页面核心内容',
       );
@@ -104,12 +113,52 @@ void main() {
       );
 
       final result = await fetcher(
+        groupId: 1,
         url: 'https://example.com/missing',
         prompt: '提取页面核心内容',
       );
 
       expect(result.status, ToolExecutionStatus.failure);
       expect(result.errorMessage, 'http_404');
+    });
+
+    test('webpage fetcher uses side runtime override when llm supports it',
+        () async {
+      final llm = _CapturingRuntimeConfigurableLlm();
+      final fetcher = buildDefaultWebpageFetcher(
+        client: _FakeHttpClient(
+          responses: {
+            'https://example.com/article': http.Response(
+              '<html><body><p>Example page body.</p></body></html>',
+              200,
+              headers: {'content-type': 'text/html; charset=utf-8'},
+            ),
+          },
+        ),
+        sideModelLlm: llm,
+      );
+
+      final result = await fetcher(
+        groupId: 42,
+        url: 'https://example.com/article',
+        prompt: '提取核心内容',
+        sideRuntimeConfigOverride: const LLMConfig(
+          apiKey: 'side-key',
+          apiUrl: 'https://side.example/v1/messages',
+          model: 'side-model',
+        ),
+      );
+
+      expect(result.status, ToolExecutionStatus.success);
+      expect(llm.capturedConfig, isNotNull);
+      expect(
+        llm.capturedConfig!.sideRuntimeConfigOverride?.apiUrl,
+        'https://side.example/v1/messages',
+      );
+      expect(
+        llm.capturedConfig!.sideRuntimeConfigOverride?.model,
+        'side-model',
+      );
     });
 
     test('web search adapter returns failure when tavily api key is missing',
@@ -455,6 +504,59 @@ void main() {
       expect(copiedText, contains('会议室 A'));
     });
   });
+}
+
+class _CapturingRuntimeConfigurableLlm
+    implements BaseLLM, RuntimeConfigurableBaseLlm {
+  ChatConfig? capturedConfig;
+
+  @override
+  Map<String, dynamic> get config => const {};
+
+  @override
+  String getModelName(ChatConfig config) => 'test-model';
+
+  @override
+  Future<String> processWebpageContent({
+    required String webpageContent,
+    required String prompt,
+  }) async {
+    return 'legacy';
+  }
+
+  @override
+  Future<String> processWebpageContentWithConfig({
+    required String webpageContent,
+    required String prompt,
+    required ChatConfig config,
+  }) async {
+    capturedConfig = config;
+    return 'processed with side runtime';
+  }
+
+  @override
+  Future<String> summarizeConversation(List<ChatMessage> messages) async {
+    return 'summary';
+  }
+
+  @override
+  Future<String> summarizeConversationWithConfig(
+    List<ChatMessage> messages, {
+    required ChatConfig config,
+  }) async {
+    return 'summary';
+  }
+
+  @override
+  Future<ModelTurnDecision?> planTurnDecision({
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
+    required ChatConfig config,
+    required List<PlannerToolOption> availableTools,
+    void Function(LlmRetryProgress progress)? onRetryScheduled,
+  }) async =>
+      null;
 }
 
 class _FakeHttpClient extends http.BaseClient {

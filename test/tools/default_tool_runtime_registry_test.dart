@@ -11,6 +11,7 @@ import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/models/llm/llm_provider_model.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
+import 'package:ai_chat/models/session/session_runtime_config.dart';
 import 'package:ai_chat/models/session/session_runtime_marker.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
@@ -380,6 +381,10 @@ class _FakeChatStorage implements ChatStorage {
       1;
 
   @override
+  Future<int> insertSessionRuntimeConfig(SessionRuntimeConfig config) async =>
+      1;
+
+  @override
   Future<int> insertSessionRuntimeMarker(SessionRuntimeMarker marker) async =>
       1;
 
@@ -394,6 +399,12 @@ class _FakeChatStorage implements ChatStorage {
 
   @override
   Future<SessionRuntimeMarker?> getLatestSessionRuntimeMarkerByGroup(
+    int groupId,
+  ) async =>
+      null;
+
+  @override
+  Future<SessionRuntimeConfig?> getSessionRuntimeConfigByGroup(
     int groupId,
   ) async =>
       null;
@@ -428,6 +439,9 @@ class _FakeChatStorage implements ChatStorage {
   Future<void> updateSessionContextSnapshot(
     SessionContextSnapshot snapshot,
   ) async {}
+
+  @override
+  Future<void> updateSessionRuntimeConfig(SessionRuntimeConfig config) async {}
 
   @override
   Future<void> updateSessionRuntimeMarker(SessionRuntimeMarker marker) async {}

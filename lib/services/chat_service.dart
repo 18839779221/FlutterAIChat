@@ -1,5 +1,6 @@
 import '../models/chat_event.dart';
 import '../models/llm/base_llm.dart';
+import '../models/llm/llm_config.dart';
 import '../models/tool/tool_invocation.dart';
 import 'prompt/prompt_locale.dart';
 import 'tool_call_service.dart';
@@ -9,11 +10,15 @@ class ChatConfig {
   String systemPrompt = "";
   String userSystemPrompt = "";
   PromptLocale promptLocale = PromptLocale.english;
+  final LLMConfig? runtimeConfigOverride;
+  final LLMConfig? sideRuntimeConfigOverride;
 
   ChatConfig({
     required this.systemPrompt,
     this.userSystemPrompt = '',
     this.promptLocale = PromptLocale.english,
+    this.runtimeConfigOverride,
+    this.sideRuntimeConfigOverride,
   });
 }
 
@@ -42,6 +47,7 @@ class ChatService {
     bool trustTool = false,
     String? turnId,
     List<ChatEvent> currentTurnEvents = const <ChatEvent>[],
+    LLMConfig? sideRuntimeConfigOverride,
     ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
     final toolCallService = _toolCallService;
@@ -56,6 +62,7 @@ class ChatService {
         trustTool: trustTool,
         turnId: turnId,
         currentTurnEvents: currentTurnEvents,
+        sideRuntimeConfigOverride: sideRuntimeConfigOverride,
         onExecutionStarted: onExecutionStarted,
       );
     } catch (e, stackTrace) {

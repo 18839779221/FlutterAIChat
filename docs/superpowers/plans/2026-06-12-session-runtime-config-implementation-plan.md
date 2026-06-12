@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace global active provider/model selection with a session-scoped runtime config layer, delete `lockedProviderStyle`, and make send/context/runtime flows read from the current session binding while keeping global defaults only for new-session initialization.
+**Goal:** Replace global active provider/model selection with a session-scoped runtime profile layer, delete `lockedProviderStyle`, and make send/context/runtime flows read from the current session binding while keeping global defaults only for new-session initialization.
 
-**Architecture:** Add a dedicated `SessionRuntimeConfig` model + repository/service as the single source of truth for each session's active provider/model/style. Keep `AppSettingsRepository` focused on provider catalog plus global defaults, bridge draft sessions through an in-memory runtime config, then switch send/UI/context consumers to the new resolver before deleting `lockedProviderStyle` and its repair patches.
+**Architecture:** Add a dedicated `SessionRuntimeConfig` model + repository/service as the single source of truth for each session's active runtime profile. The profile now carries `primary + side` slots: `primary` serves main send/planner paths, while `side` serves side-task routing such as summary and `fetch_webpage`, with `side -> primary` fallback when unset. Keep `AppSettingsRepository` focused on provider catalog plus global defaults, bridge draft sessions through an in-memory runtime config, then switch send/UI/context/tool consumers to the new resolver before deleting `lockedProviderStyle` and its repair patches.
 
 **Tech Stack:** Flutter, Riverpod, sqflite/shared_preferences storage, existing chat/session coordinators, targeted Flutter tests
 
@@ -14,10 +14,10 @@
 
 | Path | Responsibility |
 | --- | --- |
-| `lib/models/session/session_runtime_config.dart` | New persisted session runtime binding model |
+| `lib/models/session/session_runtime_config.dart` | New persisted session runtime profile model (`primary + side` slots) |
 | `lib/repositories/session_runtime_config_repository.dart` | CRUD/upsert access for `SessionRuntimeConfig` |
 | `lib/services/session_runtime_config_service.dart` | Current-session runtime orchestration, including draft-session binding |
-| `lib/services/session_llm_config_resolver.dart` | Builds `LLMConfig` from session runtime config + provider catalog |
+| `lib/services/session_llm_config_resolver.dart` | Builds slot-specific `LLMConfig` from session runtime profile + provider catalog |
 | `lib/providers/chat_dependency_providers.dart` | Wire new repository/service/resolver providers |
 | `lib/providers/chat_collection_providers.dart` or new provider file | Hold current draft runtime state if needed |
 | `lib/models/chat_group.dart` | Remove `lockedProviderStyle` from group model |
@@ -30,6 +30,7 @@
 | `lib/services/session_context_service.dart` | Resolve runtime config from current session before budget/context assembly |
 | `lib/services/turn_harness.dart` | Stop reading `group.lockedProviderStyle`; use turn/session runtime style |
 | `lib/models/llm/configurable_http_llm.dart` | Accept resolved session `LLMConfig` path instead of implicit global active config where necessary |
+| `lib/services/chat_service.dart` | Carry resolved primary and side `LLMConfig` overrides through runtime/tool execution |
 | `README.md` | Update architecture summary if runtime-selection ownership is described there |
 | `AGENTS.md` | Update repo guidance if session runtime rules replace old provider-lock assumptions |
 | `test/...` | Add focused unit/widget/integration tests and remove old `lockedProviderStyle` expectations |

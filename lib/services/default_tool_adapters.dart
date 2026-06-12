@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import '../models/llm/base_llm.dart';
+import '../models/llm/llm_config.dart';
+import 'chat_service.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
@@ -397,8 +399,10 @@ WebpageFetcher buildDefaultWebpageFetcher({
   final resolvedClient = client ?? http.Client();
 
   return ({
+    required int groupId,
     required String url,
     required String prompt,
+    LLMConfig? sideRuntimeConfigOverride,
   }) async {
     try {
       final requestUri = Uri.parse(url);
@@ -441,6 +445,7 @@ WebpageFetcher buildDefaultWebpageFetcher({
         sideModelLlm: sideModelLlm,
         prompt: prompt,
         content: content,
+        sideRuntimeConfigOverride: sideRuntimeConfigOverride,
       );
       final normalizedProcessedContent = processedContent.trim().isEmpty
           ? content.trim()
@@ -490,12 +495,24 @@ Future<String> _processFetchedWebpageContentWithSideModel({
   required BaseLLM? sideModelLlm,
   required String prompt,
   required String content,
+  LLMConfig? sideRuntimeConfigOverride,
 }) async {
   final llm = sideModelLlm;
   if (llm == null) {
     return content;
   }
   try {
+    if (llm is RuntimeConfigurableBaseLlm) {
+      return await (llm as RuntimeConfigurableBaseLlm)
+          .processWebpageContentWithConfig(
+        webpageContent: _truncateForSideModel(content),
+        prompt: prompt,
+        config: ChatConfig(
+          systemPrompt: '',
+          sideRuntimeConfigOverride: sideRuntimeConfigOverride,
+        ),
+      );
+    }
     return await llm.processWebpageContent(
       webpageContent: _truncateForSideModel(content),
       prompt: prompt,

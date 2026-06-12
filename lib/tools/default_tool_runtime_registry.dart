@@ -68,12 +68,16 @@ ToolRuntimeRegistry buildDefaultToolRuntimeRegistry({
       ),
       FetchWebpageToolHandler(
         webpageFetcher: ({
+          required groupId,
           required url,
           required prompt,
+          sideRuntimeConfigOverride,
         }) {
           return toolExecutor.executeFetchWebpage(
+            groupId: groupId,
             url: url,
             prompt: prompt,
+            sideRuntimeConfigOverride: sideRuntimeConfigOverride,
           );
         },
       ),

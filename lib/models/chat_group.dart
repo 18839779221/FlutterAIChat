@@ -1,5 +1,3 @@
-import 'chat_turn.dart';
-
 const Object _unsetWorkspaceId = Object();
 
 class ChatGroup {
@@ -11,10 +9,6 @@ class ChatGroup {
   final bool isSummarized;
   final String? workspaceId;
 
-  /// Provider style locked at group creation. A session may never switch
-  /// providers — see spec 2026-05-22 (Policy A).
-  final ChatTurnProviderStyle lockedProviderStyle;
-
   ChatGroup({
     this.id,
     required this.title,
@@ -23,7 +17,6 @@ class ChatGroup {
     this.systemPrompt,
     this.isSummarized = false,
     this.workspaceId,
-    required this.lockedProviderStyle,
   }) : createdAt = createdAt ?? DateTime.now(),
        lastMessageAt = lastMessageAt ?? DateTime.now();
 
@@ -36,7 +29,6 @@ class ChatGroup {
       'system_prompt': systemPrompt,
       'is_summarized': isSummarized ? 1 : 0,
       'workspace_id': workspaceId,
-      'locked_provider_style': lockedProviderStyle.name,
     };
   }
 
@@ -49,9 +41,6 @@ class ChatGroup {
       systemPrompt: map['system_prompt'],
       isSummarized: map['is_summarized'] == 1,
       workspaceId: map['workspace_id'] as String?,
-      lockedProviderStyle: ChatTurnProviderStyle.values.firstWhere(
-        (e) => e.name == map['locked_provider_style'],
-      ),
     );
   }
 
@@ -63,7 +52,6 @@ class ChatGroup {
     String? systemPrompt,
     bool? isSummarized,
     Object? workspaceId = _unsetWorkspaceId,
-    ChatTurnProviderStyle? lockedProviderStyle,
   }) {
     return ChatGroup(
       id: id ?? this.id,
@@ -75,7 +63,6 @@ class ChatGroup {
       workspaceId: identical(workspaceId, _unsetWorkspaceId)
           ? this.workspaceId
           : workspaceId as String?,
-      lockedProviderStyle: lockedProviderStyle ?? this.lockedProviderStyle,
     );
   }
 }

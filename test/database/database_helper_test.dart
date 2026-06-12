@@ -4,6 +4,7 @@ import 'package:ai_chat/database/database_helper.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
+import 'package:ai_chat/models/session/session_runtime_config.dart';
 import 'package:ai_chat/models/session/session_runtime_marker.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -16,11 +17,11 @@ void main() {
   });
 
   test(
-      'DatabaseHelper schema includes turn, step, event, snapshot and runtime marker tables in current version',
+      'DatabaseHelper schema includes turn, step, event, snapshot, runtime config and runtime marker tables in current version',
       () {
     final source = File('lib/database/database_helper.dart').readAsStringSync();
 
-    expect(source, contains('version: 16'));
+    expect(source, contains('version: 18'));
     expect(
       source,
       contains(RegExp(r'CREATE TABLE chat_turns \(')),
@@ -41,8 +42,14 @@ void main() {
     expect(
       source,
       contains(
+          RegExp(r'CREATE TABLE IF NOT EXISTS session_runtime_configs \(')),
+    );
+    expect(
+      source,
+      contains(
           RegExp(r'CREATE TABLE IF NOT EXISTS session_runtime_markers \(')),
     );
+    expect(source, isNot(contains('locked_provider_style')));
     expect(source, contains(RegExp(r'sequence INTEGER NOT NULL')));
     expect(source, contains(RegExp(r'provider_style TEXT')));
     expect(source, contains(RegExp(r'provider_state_json TEXT')));
@@ -58,14 +65,11 @@ void main() {
       source,
       contains(RegExp(r'CREATE UNIQUE INDEX idx_chat_events_turn_id_sequence')),
     );
-    expect(source, contains('if (oldVersion < 10)'));
-    expect(source, contains('if (oldVersion < 11)'));
-    expect(source, contains('if (oldVersion < 15)'));
-    expect(source, contains('if (oldVersion < 16)'));
+    expect(source, contains('if (oldVersion < 18)'));
   });
 
   test(
-      'DatabaseHelper creates turn, step, event, snapshot and runtime marker tables with required indexes',
+      'DatabaseHelper creates turn, step, event, snapshot, runtime config and runtime marker tables with required indexes',
       () async {
     final helper = DatabaseHelper(databaseName: 'database_helper_test_v11.db');
     final db = await helper.database;
@@ -73,7 +77,7 @@ void main() {
     final tables = await db.rawQuery('''
       SELECT name
       FROM sqlite_master
-      WHERE type = 'table' AND name IN ('chat_turns', 'chat_turn_steps', 'chat_events', 'session_context_snapshots', 'session_runtime_markers')
+      WHERE type = 'table' AND name IN ('chat_turns', 'chat_turn_steps', 'chat_events', 'session_context_snapshots', 'session_runtime_configs', 'session_runtime_markers')
       ORDER BY name
     ''');
 
@@ -84,6 +88,7 @@ void main() {
         'chat_turn_steps',
         'chat_turns',
         'session_context_snapshots',
+        'session_runtime_configs',
         'session_runtime_markers',
       ],
     );
@@ -96,6 +101,7 @@ void main() {
           'idx_chat_events_turn_id_sequence',
           'idx_chat_turn_steps_turn_id_step_index',
           'idx_session_context_snapshots_group_id_updated_at',
+          'idx_session_runtime_configs_group_id_updated_at',
           'idx_session_runtime_markers_group_id_updated_at'
         )
       ORDER BY name
@@ -107,12 +113,13 @@ void main() {
         'idx_chat_events_turn_id_sequence',
         'idx_chat_turn_steps_turn_id_step_index',
         'idx_session_context_snapshots_group_id_updated_at',
+        'idx_session_runtime_configs_group_id_updated_at',
         'idx_session_runtime_markers_group_id_updated_at',
       ],
     );
 
     final groupId =
-        await helper.insertGroup(ChatGroup(title: 'agent loop schema group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+        await helper.insertGroup(ChatGroup(title: 'agent loop schema group'));
     final turnId = await db.insert('chat_turns', {
       'group_id': groupId,
       'status': 'running',
@@ -180,7 +187,7 @@ void main() {
     final helper =
         DatabaseHelper(databaseName: 'database_helper_snapshot_roundtrip.db');
     final groupId =
-        await helper.insertGroup(ChatGroup(title: 'session snapshot group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+        await helper.insertGroup(ChatGroup(title: 'session snapshot group'));
 
     final snapshotId = await helper.insertSessionContextSnapshot(
       SessionContextSnapshot(
@@ -220,7 +227,7 @@ void main() {
     final helper =
         DatabaseHelper(databaseName: 'database_helper_runtime_marker.db');
     final groupId =
-        await helper.insertGroup(ChatGroup(title: 'runtime marker group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+        await helper.insertGroup(ChatGroup(title: 'runtime marker group'));
 
     final markerId = await helper.insertSessionRuntimeMarker(
       SessionRuntimeMarker(
@@ -247,10 +254,61 @@ void main() {
     await helper.deleteGroup(groupId);
   });
 
-  test(
-      'DatabaseHelper upgrades v9 db and adds session context snapshot and runtime marker tables',
+  test('DatabaseHelper can persist and update session runtime configs',
       () async {
-    const dbName = 'database_helper_upgrade_v9_to_v11.db';
+    final helper =
+        DatabaseHelper(databaseName: 'database_helper_runtime_config.db');
+    final groupId =
+        await helper.insertGroup(ChatGroup(title: 'runtime config group'));
+
+    final configId = await helper.insertSessionRuntimeConfig(
+      SessionRuntimeConfig(
+        groupId: groupId,
+        providerId: 'openai',
+        modelId: 'gpt-5.4',
+        providerStyle: ChatTurnProviderStyle.openaiResponses,
+        sideProviderId: 'anthropic',
+        sideModelId: 'claude-haiku',
+        sideProviderStyle: ChatTurnProviderStyle.anthropicMessages,
+      ),
+    );
+
+    final created = await helper.getSessionRuntimeConfigByGroup(groupId);
+    expect(created, isNotNull);
+    expect(created!.id, configId);
+    expect(created.providerId, 'openai');
+    expect(created.modelId, 'gpt-5.4');
+    expect(created.sideProviderId, 'anthropic');
+    expect(created.sideModelId, 'claude-haiku');
+    expect(created.sideProviderStyle, ChatTurnProviderStyle.anthropicMessages);
+
+    await helper.updateSessionRuntimeConfig(
+      created.copyWith(
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4-5',
+        providerStyle: ChatTurnProviderStyle.anthropicMessages,
+        clearSideProviderId: true,
+        clearSideModelId: true,
+        clearSideProviderStyle: true,
+      ),
+    );
+
+    final updated = await helper.getSessionRuntimeConfigByGroup(groupId);
+    expect(updated, isNotNull);
+    expect(updated!.providerId, 'anthropic');
+    expect(updated.modelId, 'claude-sonnet-4-5');
+    expect(updated.providerStyle, ChatTurnProviderStyle.anthropicMessages);
+    expect(updated.sideProviderId, isNull);
+    expect(updated.sideModelId, isNull);
+    expect(updated.sideProviderStyle, isNull);
+
+    await helper.deleteGroup(groupId);
+  });
+
+  test(
+      'DatabaseHelper upgrades v9 db with a hard reset and recreates runtime config tables',
+      () async {
+    const dbName = 'database_helper_upgrade_v9_to_v17.db';
     final dbPath = p.join(await getDatabasesPath(), dbName);
     await databaseFactory.deleteDatabase(dbPath);
 
@@ -350,21 +408,21 @@ void main() {
 
     final helper = DatabaseHelper(databaseName: dbName);
     final db = await helper.database;
-    final columns = await db.rawQuery('PRAGMA table_info(chat_turn_steps)');
-    final providerColumns = columns
-        .where((row) => row['name'] == 'provider_response_id')
-        .toList(growable: false);
-
-    expect(providerColumns, hasLength(1));
     final snapshotTables = await db.rawQuery("""
       SELECT name FROM sqlite_master
-      WHERE type = 'table' AND name = 'session_context_snapshots'
+      WHERE type = 'table' AND name IN ('session_context_snapshots', 'session_runtime_configs', 'session_runtime_markers')
+      ORDER BY name
     """);
-    expect(snapshotTables, hasLength(1));
-    final runtimeMarkerTables = await db.rawQuery("""
-      SELECT name FROM sqlite_master
-      WHERE type = 'table' AND name = 'session_runtime_markers'
-    """);
-    expect(runtimeMarkerTables, hasLength(1));
+    expect(
+      snapshotTables.map((row) => row['name']).toList(),
+      [
+        'session_context_snapshots',
+        'session_runtime_configs',
+        'session_runtime_markers',
+      ],
+    );
+
+    final groups = await db.query('chat_groups');
+    expect(groups, isEmpty);
   });
 }

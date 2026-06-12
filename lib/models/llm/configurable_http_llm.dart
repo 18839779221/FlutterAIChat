@@ -45,7 +45,11 @@ import 'runtime/openai_responses_runtime.dart';
 import 'runtime/protocol_request_spec.dart';
 import 'runtime/protocol_runtime_registry.dart';
 
-class ConfigurableHttpLLM implements BaseLLM, PlannerRuntimeStreamingCapable {
+class ConfigurableHttpLLM
+    implements
+        BaseLLM,
+        PlannerRuntimeStreamingCapable,
+        RuntimeConfigurableBaseLlm {
   static const String _tag = 'ConfigurableHttpLLM';
   // Architecture:
   // - docs/architecture/append-only-transcript.md
@@ -189,6 +193,10 @@ class ConfigurableHttpLLM implements BaseLLM, PlannerRuntimeStreamingCapable {
 
   @override
   String getModelName(ChatConfig config) {
+    final overrideModel = config.runtimeConfigOverride?.model.trim();
+    if (overrideModel != null && overrideModel.isNotEmpty) {
+      return overrideModel;
+    }
     return _settingsRepository.getSelectedModelIdSync() ?? 'deepseek-chat';
   }
 
@@ -201,15 +209,26 @@ class ConfigurableHttpLLM implements BaseLLM, PlannerRuntimeStreamingCapable {
 
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async {
+    return summarizeConversationWithConfig(
+      messages,
+      config: ChatConfig(systemPrompt: ''),
+    );
+  }
+
+  @override
+  Future<String> summarizeConversationWithConfig(
+    List<ChatMessage> messages, {
+    required ChatConfig config,
+  }) async {
     try {
       Logger.i(_tag, '开始生成对话摘要，消息数量: ${messages.length}');
-      final runtimeConfig = await _settingsRepository.getLlmConfig();
+      final runtimeConfig = await _resolveSideRuntimeConfigFor(config);
       _validateRuntimeConfig(runtimeConfig);
       final summaryPrompt = _normalizeSummaryMessages(messages);
 
       final summary = await _runSideModelTextTask(
         runtimeConfig,
-        config: ChatConfig(systemPrompt: ''),
+        config: config,
         messages: summaryPrompt,
         requestLabel: 'side_summary',
       );
@@ -271,8 +290,21 @@ class ConfigurableHttpLLM implements BaseLLM, PlannerRuntimeStreamingCapable {
     required String webpageContent,
     required String prompt,
   }) async {
+    return processWebpageContentWithConfig(
+      webpageContent: webpageContent,
+      prompt: prompt,
+      config: ChatConfig(systemPrompt: ''),
+    );
+  }
+
+  @override
+  Future<String> processWebpageContentWithConfig({
+    required String webpageContent,
+    required String prompt,
+    required ChatConfig config,
+  }) async {
     try {
-      final runtimeConfig = await _settingsRepository.getLlmConfig();
+      final runtimeConfig = await _resolveSideRuntimeConfigFor(config);
       _validateRuntimeConfig(runtimeConfig);
       final promptMessages = [
         ChatMessage(
@@ -292,7 +324,7 @@ class ConfigurableHttpLLM implements BaseLLM, PlannerRuntimeStreamingCapable {
       ];
       return (await _runSideModelTextTask(
         runtimeConfig,
-        config: ChatConfig(systemPrompt: ''),
+        config: config,
         messages: promptMessages,
         requestLabel: 'side_webpage',
       ))
@@ -313,15 +345,16 @@ class ConfigurableHttpLLM implements BaseLLM, PlannerRuntimeStreamingCapable {
     required List<PlannerToolOption> availableTools,
     void Function(LlmRetryProgress progress)? onRetryScheduled,
   }) async {
+    LLMConfig? runtimeConfig;
     try {
       const PlannerInvariantValidator().validate(
         carriers: carriers,
         activeApiStyle: activeApiStyle,
         currentTurnRunning: currentTurnRunning,
       );
-      final runtimeConfig = await _settingsRepository.getLlmConfig();
+      runtimeConfig = await _resolveRuntimeConfigFor(config);
       _validateRuntimeConfig(runtimeConfig);
-      final apiStyle = _protocolResolver.resolveStyle(runtimeConfig.apiUrl);
+      final apiStyle = _resolveApiStyle(runtimeConfig);
       if (_toProviderStyle(apiStyle) != activeApiStyle) {
         throw InconsistentProviderStateError(
           'runtime apiStyle=$apiStyle resolves to ${_toProviderStyle(apiStyle)} '
@@ -386,7 +419,7 @@ class ConfigurableHttpLLM implements BaseLLM, PlannerRuntimeStreamingCapable {
         onRetryScheduled: onRetryScheduled,
         operation: () => _runtimeRegistry.runtimeFor(apiStyle).execute(
               requestSpec: requestSpec,
-              runtimeConfig: runtimeConfig,
+              runtimeConfig: runtimeConfig!,
               timeout: _plannerRequestTimeout,
             ),
       );
@@ -446,12 +479,9 @@ class ConfigurableHttpLLM implements BaseLLM, PlannerRuntimeStreamingCapable {
         level: LogLevel.error,
         data: {
           'label': 'native_planner',
-          'apiStyle': _protocolResolver
-              .resolveStyle(
-                (await _settingsRepository.getLlmConfig()).apiUrl,
-              )
-              .name,
-          'model': (await _settingsRepository.getLlmConfig()).model,
+          if (runtimeConfig != null)
+            'apiStyle': _resolveApiStyle(runtimeConfig).name,
+          if (runtimeConfig != null) 'model': runtimeConfig.model,
           'purpose': LlmRequestPurpose.planner.name,
           'error': e.toString(),
         },
@@ -800,9 +830,9 @@ class ConfigurableHttpLLM implements BaseLLM, PlannerRuntimeStreamingCapable {
     required LlmRequestPurpose purpose,
     ChatConfig? config,
   }) async {
-    final runtimeConfig = await _settingsRepository.getLlmConfig();
     final effectiveConfig = config ?? ChatConfig(systemPrompt: '');
-    final apiStyle = _protocolResolver.resolveStyle(runtimeConfig.apiUrl);
+    final runtimeConfig = await _resolveRuntimeConfigFor(effectiveConfig);
+    final apiStyle = _resolveApiStyle(runtimeConfig);
     final modelName = _resolveModelName(runtimeConfig, effectiveConfig);
     return _requestOptionsFor(
       runtimeConfig: runtimeConfig,
@@ -810,6 +840,21 @@ class ConfigurableHttpLLM implements BaseLLM, PlannerRuntimeStreamingCapable {
       purpose: purpose,
       apiStyle: apiStyle,
     );
+  }
+
+  Future<LLMConfig> _resolveRuntimeConfigFor(ChatConfig config) async {
+    return config.runtimeConfigOverride ?? await _settingsRepository.getLlmConfig();
+  }
+
+  Future<LLMConfig> _resolveSideRuntimeConfigFor(ChatConfig config) async {
+    return config.sideRuntimeConfigOverride ??
+        config.runtimeConfigOverride ??
+        await _settingsRepository.getLlmConfig();
+  }
+
+  ApiStyle _resolveApiStyle(LLMConfig runtimeConfig) {
+    return runtimeConfig.apiStyle ??
+        _protocolResolver.resolveStyle(runtimeConfig.apiUrl);
   }
 
   _RequestTraceContext _requestTraceContext({

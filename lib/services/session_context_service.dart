@@ -14,6 +14,7 @@ import '../repositories/app_settings_repository.dart';
 import '../repositories/chat_event_repository.dart';
 import '../repositories/chat_turn_repository.dart';
 import '../repositories/session_context_snapshot_repository.dart';
+import '../repositories/session_runtime_config_repository.dart';
 import '../storage/chat_storage.dart';
 import '../utils/logger.dart';
 import 'chat_service.dart';
@@ -21,6 +22,7 @@ import 'prompt/runtime_user_context_service.dart';
 import 'prompt/user_context_message_builder.dart';
 import 'session_runtime_marker_service.dart';
 import 'session_context_projector.dart';
+import 'session_llm_config_resolver.dart';
 import 'session_summary_service.dart';
 import 'session_token_budget_service.dart';
 import 'tool_result_context_projector.dart';
@@ -143,6 +145,8 @@ class SessionContextService {
     UserContextMessageBuilder? userContextMessageBuilder,
     ToolResultContextProjector? toolResultContextProjector,
     AppSettingsRepository? settingsRepository,
+    SessionRuntimeConfigRepository? runtimeConfigRepository,
+    SessionLlmConfigResolver? runtimeConfigResolver,
   })  : _chatTurnRepository = chatTurnRepository,
         _chatEventRepository = chatEventRepository,
         _snapshotRepository = snapshotRepository,
@@ -157,7 +161,9 @@ class SessionContextService {
             userContextMessageBuilder ?? const UserContextMessageBuilder(),
         _toolResultContextProjector =
             toolResultContextProjector ?? const ToolResultContextProjector(),
-        _settingsRepository = settingsRepository;
+        _settingsRepository = settingsRepository,
+        _runtimeConfigRepository = runtimeConfigRepository,
+        _runtimeConfigResolver = runtimeConfigResolver;
 
   final ChatTurnRepository _chatTurnRepository;
   final ChatEventRepository _chatEventRepository;
@@ -171,6 +177,8 @@ class SessionContextService {
   final UserContextMessageBuilder _userContextMessageBuilder;
   final ToolResultContextProjector _toolResultContextProjector;
   final AppSettingsRepository? _settingsRepository;
+  final SessionRuntimeConfigRepository? _runtimeConfigRepository;
+  final SessionLlmConfigResolver? _runtimeConfigResolver;
 
   Future<ManualSessionCompactionResult> compactCompletedHistoryForGroup({
     required int groupId,
@@ -441,7 +449,7 @@ class SessionContextService {
   }) async {
     final snapshot = await _snapshotRepository.getLatestByGroup(groupId);
     final currentTurn = await _chatTurnRepository.getTurn(currentTurnId);
-    final runtimeConfig = await _resolveRuntimeConfig();
+    final runtimeConfig = await _resolveRuntimeConfig(groupId);
     final modelName = runtimeConfig?.model.trim().isNotEmpty == true
         ? runtimeConfig!.model.trim()
         : _chatService.getModelName(config);
@@ -866,7 +874,17 @@ class SessionContextService {
     );
   }
 
-  Future<LLMConfig?> _resolveRuntimeConfig() async {
+  Future<LLMConfig?> _resolveRuntimeConfig(int groupId) async {
+    final runtimeConfigRepository = _runtimeConfigRepository;
+    final runtimeConfigResolver = _runtimeConfigResolver;
+    if (runtimeConfigRepository != null && runtimeConfigResolver != null) {
+      try {
+        final runtime = await runtimeConfigRepository.getByGroup(groupId);
+        if (runtime != null) {
+          return await runtimeConfigResolver.resolve(runtime);
+        }
+      } catch (_) {}
+    }
     final repository = _settingsRepository;
     if (repository == null) {
       return null;

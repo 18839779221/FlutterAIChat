@@ -1,5 +1,6 @@
 import '../../models/chat_event.dart';
 import '../../models/chat_message.dart';
+import '../../models/llm/llm_config.dart';
 import '../../models/workspace/resolved_workspace.dart';
 import '../adapters/tool_host_adapters.dart';
 
@@ -35,6 +36,9 @@ class ToolExecutionContext {
   /// Resolved workspace for the active group when available.
   final ResolvedWorkspace? workspace;
 
+  /// Optional side-task runtime override forwarded from session runtime.
+  final LLMConfig? sideRuntimeConfigOverride;
+
   ToolExecutionContext({
     required this.groupId,
     required this.toolName,
@@ -45,6 +49,7 @@ class ToolExecutionContext {
     this.hostAdapters = const ToolHostAdapters(),
     this.cwd = '/',
     this.workspace,
+    this.sideRuntimeConfigOverride,
   })  : arguments = Map<String, dynamic>.unmodifiable(arguments),
         history = List<ChatMessage>.unmodifiable(history),
         currentTurnEvents = List<ChatEvent>.unmodifiable(currentTurnEvents);

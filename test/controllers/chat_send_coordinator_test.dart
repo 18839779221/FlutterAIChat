@@ -13,9 +13,12 @@ import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
+import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
+import 'package:ai_chat/models/llm/llm_config.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/models/llm/llm_provider_model.dart';
+import 'package:ai_chat/models/session/session_runtime_config.dart';
 import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/skill/skill_descriptor.dart';
@@ -29,6 +32,7 @@ import 'package:ai_chat/repositories/llm_local_defaults.dart';
 import 'package:ai_chat/services/agent_planner_service.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_timeline_projection_service.dart';
+import 'package:ai_chat/services/session_runtime_config_service.dart';
 import 'package:ai_chat/services/skills/skill_runtime_service.dart';
 import 'package:ai_chat/services/skills/skill_storage_service.dart';
 import 'package:ai_chat/services/turn_harness.dart';
@@ -79,13 +83,11 @@ void main() {
       final groupId = await databaseHelper.insertGroup(
         ChatGroup(
           title: 'group',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
             id: groupId,
             title: 'group',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
           );
 
       final previewNotifier =
@@ -170,9 +172,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId =
-          await databaseHelper.insertGroup(ChatGroup(title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'group');
 
       await container.read(chatSendCoordinatorProvider).sendMessage(
             '打一声招呼',
@@ -213,13 +215,11 @@ void main() {
       final groupId = await databaseHelper.insertGroup(
         ChatGroup(
           title: 'group',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
             id: groupId,
             title: 'group',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
           );
 
       await container.read(chatSendCoordinatorProvider).sendMessageRequest(
@@ -263,13 +263,11 @@ void main() {
       final groupId = await databaseHelper.insertGroup(
         ChatGroup(
           title: 'group',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
             id: groupId,
             title: 'group',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
           );
 
       await container.read(chatSendCoordinatorProvider).sendMessage(
@@ -305,13 +303,11 @@ void main() {
       final groupId = await databaseHelper.insertGroup(
         ChatGroup(
           title: 'group',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
             id: groupId,
             title: 'group',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
           );
 
       await container.read(chatSendCoordinatorProvider).sendMessageRequest(
@@ -384,6 +380,119 @@ void main() {
       expect(allMessages.where((message) => message.role == MessageRole.user), hasLength(1));
     });
 
+    test('persists current draft session runtime config when first send creates the group',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: const [],
+      );
+      final container = await _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      container.read(currentSessionRuntimeConfigProvider.notifier).state =
+          SessionRuntimeConfig(
+        groupId: SessionRuntimeConfigService.draftGroupId,
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4-5',
+        providerStyle: ChatTurnProviderStyle.anthropicMessages,
+      );
+
+      await container.read(chatSendCoordinatorProvider).sendMessage(
+            '打一声招呼',
+            scheduleAutoSummary: () {},
+            cancelActiveStream:
+                container.read(chatControllerProvider).cancelStreamSubscription,
+          );
+
+      final currentGroup = container.read(currentGroupProvider);
+      expect(currentGroup?.id, isNotNull);
+
+      final runtimeConfig = await databaseHelper.getSessionRuntimeConfigByGroup(
+        currentGroup!.id!,
+      );
+      expect(runtimeConfig, isNotNull);
+      expect(runtimeConfig!.providerId, 'anthropic');
+      expect(runtimeConfig.modelId, 'claude-sonnet-4-5');
+      expect(runtimeConfig.providerStyle, ChatTurnProviderStyle.anthropicMessages);
+    });
+
+    test('passes current session runtime override into turn config', () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: const [],
+      );
+      final settingsRepository = await _createSettingsRepository(
+        defaultProviderId: 'global-provider',
+        defaultModelId: 'global-model',
+        providers: [
+          LlmProviderConfig(
+            id: 'global-provider',
+            name: 'Global',
+            apiKey: 'global-key',
+            baseUrl: 'https://global.example/v1/chat/completions',
+            apiStyle: ApiStyle.chatCompletions,
+            models: const [
+              LlmProviderModel(
+                id: 'global-model',
+                name: 'global-model',
+              ),
+            ],
+          ),
+          LlmProviderConfig(
+            id: 'session-provider',
+            name: 'Session',
+            apiKey: 'session-key',
+            baseUrl: 'https://session.example/v1/chat/completions',
+            apiStyle: ApiStyle.chatCompletions,
+            models: const [
+              LlmProviderModel(
+                id: 'session-model',
+                name: 'session-model',
+              ),
+            ],
+          ),
+        ],
+      );
+      final container = await _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+        settingsRepository: settingsRepository,
+      );
+      addTearDown(container.dispose);
+
+      final groupId = await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+      container.read(currentSessionRuntimeConfigProvider.notifier).state =
+          SessionRuntimeConfig(
+        groupId: groupId,
+        providerId: 'session-provider',
+        modelId: 'session-model',
+        providerStyle: ChatTurnProviderStyle.openaiChatCompletions,
+      );
+
+      await container.read(chatSendCoordinatorProvider).sendMessage(
+            '使用当前会话模型',
+            scheduleAutoSummary: () {},
+            cancelActiveStream:
+                container.read(chatControllerProvider).cancelStreamSubscription,
+          );
+
+      expect(harness.recordedConfigs, hasLength(1));
+      final runtimeOverride =
+          harness.recordedConfigs.single.runtimeConfigOverride;
+      expect(runtimeOverride, isNotNull);
+      expect(runtimeOverride?.apiKey, 'session-key');
+      expect(runtimeOverride?.apiUrl, 'https://session.example/v1/chat/completions');
+      expect(runtimeOverride?.model, 'session-model');
+      expect(runtimeOverride?.apiStyle, ApiStyle.chatCompletions);
+    });
+
     test(
         'allows image attachments to continue when request explicitly overrides unsupported image guard',
         () async {
@@ -402,13 +511,11 @@ void main() {
       final groupId = await databaseHelper.insertGroup(
         ChatGroup(
           title: 'group',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
             id: groupId,
             title: 'group',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
           );
 
       await container.read(chatSendCoordinatorProvider).sendMessageRequest(
@@ -485,13 +592,11 @@ void main() {
       final groupId = await databaseHelper.insertGroup(
         ChatGroup(
           title: 'group',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
             id: groupId,
             title: 'group',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
           );
 
       await container.read(chatSendCoordinatorProvider).sendMessageRequest(
@@ -568,13 +673,11 @@ void main() {
       final groupId = await databaseHelper.insertGroup(
         ChatGroup(
           title: 'group',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
             id: groupId,
             title: 'group',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
           );
 
       final previewNotifier =
@@ -662,13 +765,11 @@ void main() {
       final groupId = await databaseHelper.insertGroup(
         ChatGroup(
           title: 'group',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
             id: groupId,
             title: 'group',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
           );
 
       final sendFuture = container.read(chatSendCoordinatorProvider).sendMessage(
@@ -753,13 +854,11 @@ void main() {
       final groupId = await databaseHelper.insertGroup(
         ChatGroup(
           title: 'group',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
             id: groupId,
             title: 'group',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
           );
 
       final previewNotifier =
@@ -848,9 +947,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId =
-          await databaseHelper.insertGroup(ChatGroup(title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'group');
 
       await container.read(chatSendCoordinatorProvider).sendMessage(
             '/verify 请检查这次改动',
@@ -940,9 +1039,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId =
-          await databaseHelper.insertGroup(ChatGroup(title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'group');
 
       await container.read(chatSendCoordinatorProvider).sendMessage(
             '帮我查一下',
@@ -1039,9 +1138,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId =
-          await databaseHelper.insertGroup(ChatGroup(title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'group');
 
       await container.read(chatSendCoordinatorProvider).sendMessage(
             '帮我查一下',
@@ -1124,9 +1223,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId =
-          await databaseHelper.insertGroup(ChatGroup(title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'group');
 
       await container.read(chatSendCoordinatorProvider).sendMessage(
             '开始回答',
@@ -1186,9 +1285,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId =
-          await databaseHelper.insertGroup(ChatGroup(title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'group');
 
       final sendFuture = container.read(chatControllerProvider).sendMessage(
             '开始生成',
@@ -1240,9 +1339,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId =
-          await databaseHelper.insertGroup(ChatGroup(title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'group');
 
       final sendFuture = container.read(chatControllerProvider).sendMessage(
             '请开始生成',
@@ -1300,13 +1399,11 @@ void main() {
       final groupId = await databaseHelper.insertGroup(
         ChatGroup(
           title: 'group',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
             id: groupId,
             title: 'group',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
           );
 
       final previewNotifier =
@@ -1377,9 +1474,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId =
-          await databaseHelper.insertGroup(ChatGroup(title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'group');
 
       final sendFuture = container.read(chatControllerProvider).sendMessage(
             '请开始处理',
@@ -1421,9 +1518,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId =
-          await databaseHelper.insertGroup(ChatGroup(title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'group');
 
       final sendFuture = container.read(chatControllerProvider).sendMessage(
             '先搜索',
@@ -1515,9 +1612,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId =
-          await databaseHelper.insertGroup(ChatGroup(title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'group');
       final turnId = await ChatTurnRepository(databaseHelper).createTurn(
         ChatTurn(
           groupId: groupId,
@@ -1611,9 +1708,9 @@ void main() {
       addTearDown(container.dispose);
 
       final groupId =
-          await databaseHelper.insertGroup(ChatGroup(title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       container.read(currentGroupProvider.notifier).state =
-          ChatGroup(id: groupId, title: 'group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+          ChatGroup(id: groupId, title: 'group');
       final turnId = await ChatTurnRepository(databaseHelper).createTurn(
         ChatTurn(
           groupId: groupId,
@@ -1750,6 +1847,23 @@ Future<ProviderContainer> _createContainer({
   );
 }
 
+Future<AppSettingsRepository> _createSettingsRepository({
+  required String defaultProviderId,
+  required String defaultModelId,
+  required List<LlmProviderConfig> providers,
+}) async {
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
+  return AppSettingsRepository(
+    preferences,
+    localDefaultsLoader: () async => LlmLocalDefaults(
+      defaultProviderId: defaultProviderId,
+      defaultModelId: defaultModelId,
+      providers: providers,
+    ),
+  );
+}
+
 Future<void> _waitForAssistantStatus(
   ProviderContainer container,
   MessageStatus status,
@@ -1783,6 +1897,7 @@ class _FakeTurnHarness extends TurnHarness {
   final DatabaseHelper databaseHelper;
   final List<ChatEvent> events;
   final List<ChatTurn> recordedTurns = [];
+  final List<ChatConfig> recordedConfigs = [];
   final Completer<void>? afterEventsGate;
   final String? runTurnFailureCode;
   final List<ChatEvent> resumeAfterConfirmationEvents;
@@ -1821,6 +1936,7 @@ class _FakeTurnHarness extends TurnHarness {
     required ChatConfig config,
   }) async* {
     recordedTurns.add(turn);
+    recordedConfigs.add(config);
     for (final event in events) {
       yield ChatEvent(
         turnId: turn.id ?? event.turnId,

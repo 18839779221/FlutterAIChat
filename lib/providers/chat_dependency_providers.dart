@@ -22,11 +22,14 @@ import 'package:ai_chat/services/model_capability_resolver.dart';
 import 'package:ai_chat/services/model_capability_sources/anthropic_model_capability_source.dart';
 import 'package:ai_chat/services/model_capability_sources/catalog_model_capability_source.dart';
 import 'package:ai_chat/services/model_capability_sources/gemini_model_capability_source.dart';
+import 'package:ai_chat/repositories/session_runtime_config_repository.dart';
 import 'package:ai_chat/repositories/session_runtime_marker_repository.dart';
 import 'package:ai_chat/services/prompt/runtime_user_context_service.dart';
 import 'package:ai_chat/services/session_context_projector.dart';
 import 'package:ai_chat/services/session_context_inspector_service.dart';
+import 'package:ai_chat/services/session_llm_config_resolver.dart';
 import 'package:ai_chat/services/session_context_service.dart';
+import 'package:ai_chat/services/session_runtime_config_service.dart';
 import 'package:ai_chat/services/session_runtime_marker_service.dart';
 import 'package:ai_chat/services/session_summary_service.dart';
 import 'package:ai_chat/services/session_token_budget_service.dart';
@@ -228,6 +231,36 @@ final sessionRuntimeMarkerRepositoryProvider =
   return SessionRuntimeMarkerRepository(ref.watch(databaseProvider));
 });
 
+final sessionRuntimeConfigRepositoryProvider =
+    Provider<SessionRuntimeConfigRepository>((ref) {
+  return SessionRuntimeConfigRepository(ref.watch(databaseProvider));
+});
+
+final sessionRuntimeConfigServiceProvider =
+    Provider<SessionRuntimeConfigService>((ref) {
+  AppSettingsRepository? settingsRepository;
+  SessionRuntimeConfigRepository? runtimeConfigRepository;
+  try {
+    settingsRepository = ref.watch(appSettingsRepositoryProvider);
+  } on UnimplementedError {
+    settingsRepository = null;
+  }
+  try {
+    runtimeConfigRepository = ref.watch(sessionRuntimeConfigRepositoryProvider);
+  } on UnimplementedError {
+    runtimeConfigRepository = null;
+  }
+  return SessionRuntimeConfigService(
+    settingsRepository: settingsRepository,
+    runtimeConfigRepository: runtimeConfigRepository,
+  );
+});
+
+final sessionLlmConfigResolverProvider =
+    Provider<SessionLlmConfigResolver>((ref) {
+  return SessionLlmConfigResolver(ref.watch(appSettingsRepositoryProvider));
+});
+
 final sessionContextProjectorProvider =
     Provider<SessionContextProjector>((ref) => SessionContextProjector());
 
@@ -337,6 +370,8 @@ final sessionContextServiceProvider = Provider<SessionContextService>((ref) {
     chatService: ref.watch(chatServiceProvider),
     runtimeUserContextService: ref.watch(runtimeUserContextServiceProvider),
     settingsRepository: ref.watch(appSettingsRepositoryProvider),
+    runtimeConfigRepository: ref.watch(sessionRuntimeConfigRepositoryProvider),
+    runtimeConfigResolver: ref.watch(sessionLlmConfigResolverProvider),
   );
 });
 

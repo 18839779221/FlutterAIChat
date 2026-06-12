@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../models/chat_event.dart';
+import '../models/llm/llm_config.dart';
 import '../models/tool/tool_access_snapshot.dart';
 import '../models/tool/tool_definition.dart';
 import '../models/tool/tool_invocation.dart';
@@ -78,6 +79,7 @@ class ToolCallService {
     bool trustTool = false,
     String? turnId,
     List<ChatEvent> currentTurnEvents = const <ChatEvent>[],
+    LLMConfig? sideRuntimeConfigOverride,
     ToolExecutionStartedCallback? onExecutionStarted,
   }) {
     return _orchestrator.executeToolInvocation(
@@ -86,6 +88,7 @@ class ToolCallService {
       trustTool: trustTool,
       turnId: turnId,
       currentTurnEvents: currentTurnEvents,
+      sideRuntimeConfigOverride: sideRuntimeConfigOverride,
       onExecutionStarted: onExecutionStarted,
     );
   }

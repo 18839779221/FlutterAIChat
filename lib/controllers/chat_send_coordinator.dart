@@ -17,6 +17,7 @@ import 'package:ai_chat/models/trace/chat_trace_event.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
 import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
+import 'package:ai_chat/models/llm/llm_config.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/providers/chat_send_state_providers.dart';
@@ -29,6 +30,7 @@ import 'package:ai_chat/services/debug/streaming_trace_recorder.dart';
 import 'package:ai_chat/services/agent_planner_service.dart'
     show PlannerRequestTraceEvent, PlannerRequestTraceStage;
 import 'package:ai_chat/services/session_runtime_marker_service.dart';
+import 'package:ai_chat/models/session/session_runtime_config.dart';
 import 'package:ai_chat/services/skills/explicit_skill_invocation_parser.dart';
 import 'package:ai_chat/services/skills/invoked_skill_reminder_builder.dart';
 import 'package:ai_chat/services/turn_harness.dart';
@@ -187,24 +189,9 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       Logger.w(
           _tag, 'current group missing before send, creating a draft group');
       final systemPrompt = _ref.read(systemPromptProvider);
-      ChatTurnProviderStyle lockedProviderStyle;
-      try {
-        final config =
-            await _ref.read(appSettingsRepositoryProvider).getLlmConfig();
-        lockedProviderStyle = (config.apiStyle ??
-                const ApiProtocolResolver().resolveStyle(config.apiUrl))
-            .toChatTurnProviderStyle();
-      } catch (error) {
-        Logger.w(
-          _tag,
-          'failed to resolve provider style before send, fallback to chat completions: $error',
-        );
-        lockedProviderStyle = ChatTurnProviderStyle.openaiChatCompletions;
-      }
       currentGroup = ChatGroup(
         title: '新对话',
         systemPrompt: systemPrompt,
-        lockedProviderStyle: lockedProviderStyle,
       );
       _ref.read(currentGroupProvider.notifier).state = currentGroup;
       _ref.read(messagesProvider.notifier).clearMessages();
@@ -270,6 +257,18 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         final dbHelper = _ref.read(databaseProvider);
         final newGroup = currentGroup.copyWith(title: text);
         final groupId = await dbHelper.insertGroup(newGroup);
+        final currentRuntime = _ref.read(currentSessionRuntimeConfigProvider);
+        if (currentRuntime != null) {
+          final persistedRuntime = SessionRuntimeConfig(
+            groupId: groupId,
+            providerId: currentRuntime.providerId,
+            modelId: currentRuntime.modelId,
+            providerStyle: currentRuntime.providerStyle,
+          );
+          await dbHelper.insertSessionRuntimeConfig(persistedRuntime);
+          _ref.read(currentSessionRuntimeConfigProvider.notifier).state =
+              persistedRuntime;
+        }
         Logger.runtime(
           _tag,
           'persisted draft group for send',
@@ -484,7 +483,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       groupId: currentGroupId,
       currentDate: runtimeMarkerPreparation.currentDate,
     );
-    final config = _buildChatConfig();
+    final config = await _buildChatConfig();
 
     final processor = AgentEventProcessor(
       ref: _ref,
@@ -701,10 +700,23 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     }
   }
 
-  ChatConfig _buildChatConfig() {
+  Future<ChatConfig> _buildChatConfig() async {
+    LLMConfig? runtimeConfigOverride;
+    LLMConfig? sideRuntimeConfigOverride;
+    final runtimeConfig = _ref.read(currentSessionRuntimeConfigProvider);
+    if (runtimeConfig != null) {
+      final resolver = _ref.read(sessionLlmConfigResolverProvider);
+      runtimeConfigOverride = await resolver.resolve(runtimeConfig);
+      sideRuntimeConfigOverride = await resolver.resolve(
+        runtimeConfig,
+        slot: SessionRuntimeSlot.side,
+      );
+    }
     return ChatConfig(
       systemPrompt: '',
       userSystemPrompt: _ref.read(systemPromptProvider) ?? '',
+      runtimeConfigOverride: runtimeConfigOverride,
+      sideRuntimeConfigOverride: sideRuntimeConfigOverride,
     );
   }
 
@@ -1077,18 +1089,17 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       return selectedModelSupport ? null : '当前模型不支持图片输入，请切换到支持多模态图片输入的模型后重试。';
     }
 
-    switch (currentGroup.lockedProviderStyle) {
-      case ChatTurnProviderStyle.openaiChatCompletions:
-      case ChatTurnProviderStyle.openaiResponses:
-      case ChatTurnProviderStyle.anthropicMessages:
-        return null;
-    }
+    return null;
   }
 
   Future<bool?> _resolveSelectedModelImageSupport() async {
     try {
-      final repository = _ref.read(appSettingsRepositoryProvider);
-      final config = await repository.getLlmConfig();
+      final runtime = _ref.read(currentSessionRuntimeConfigProvider);
+      if (runtime == null) {
+        return null;
+      }
+      final config =
+          await _ref.read(sessionLlmConfigResolverProvider).resolve(runtime);
       final raw =
           config.additionalConfig['llm.selected_model_supports_image_input'];
       if (raw is bool) {
@@ -1102,8 +1113,12 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
 
   Future<bool?> _resolveRuntimeSelectedModelImageSupport() async {
     try {
-      final repository = _ref.read(appSettingsRepositoryProvider);
-      final config = await repository.getLlmConfig();
+      final runtime = _ref.read(currentSessionRuntimeConfigProvider);
+      if (runtime == null) {
+        return null;
+      }
+      final config =
+          await _ref.read(sessionLlmConfigResolverProvider).resolve(runtime);
       final raw = config
           .additionalConfig['llm.runtime_selected_model_supports_image_input'];
       if (raw is bool) {
@@ -1123,11 +1138,9 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     }
     try {
       final repository = _ref.read(appSettingsRepositoryProvider);
-      final config = await repository.getLlmConfig();
-      final providerId =
-          config.additionalConfig['llm.selected_provider_id'] as String?;
-      final modelId =
-          config.additionalConfig['llm.selected_model_id'] as String?;
+      final runtime = _ref.read(currentSessionRuntimeConfigProvider);
+      final providerId = runtime?.providerId;
+      final modelId = runtime?.modelId;
       if (providerId == null || modelId == null) {
         return;
       }
@@ -1320,7 +1333,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         turnId: turnId,
         request: request,
         response: response,
-        config: _buildChatConfig(),
+        config: await _buildChatConfig(),
       ),
       onFinally: () async {
         _setIdleUnlessAwaitingConfirmation();
@@ -1361,7 +1374,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       stream: harness.resumeAfterConfirmation(
         turnId: turnId,
         invocation: invocation,
-        config: _buildChatConfig(),
+        config: await _buildChatConfig(),
         trustTool: trustTool,
       ),
       onFinally: () async {

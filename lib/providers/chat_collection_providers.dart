@@ -1,6 +1,7 @@
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
+import 'package:ai_chat/models/session/session_runtime_config.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -150,6 +151,10 @@ class GroupsNotifier extends StateNotifier<List<ChatGroup>> {
 
 // 当前分组提供者
 final currentGroupProvider = StateProvider<ChatGroup?>((ref) => null);
+
+// 当前 session runtime（草稿或已落库）的单一事实源。
+final currentSessionRuntimeConfigProvider =
+    StateProvider<SessionRuntimeConfig?>((ref) => null);
 
 // 系统提示词提供者
 final systemPromptProvider = StateProvider<String?>((ref) => null);

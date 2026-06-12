@@ -11,6 +11,7 @@ import '../models/response/message_content_type.dart';
 import '../models/chat_group.dart';
 import '../models/chat_turn.dart';
 import '../models/session/session_context_snapshot.dart';
+import '../models/session/session_runtime_config.dart';
 import '../models/session/session_runtime_marker.dart';
 import '../storage/chat_storage.dart';
 import '../utils/logger.dart';
@@ -46,7 +47,7 @@ class DatabaseHelper implements ChatStorage {
 
       return await openDatabase(
         path,
-        version: 16,
+        version: 18,
         onCreate: (Database db, int version) async {
           Logger.i(_tag, '创建数据库表...');
           // 创建分组表
@@ -58,8 +59,7 @@ class DatabaseHelper implements ChatStorage {
               last_message_at INTEGER NOT NULL,
               system_prompt TEXT,
               is_summarized INTEGER NOT NULL DEFAULT 0,
-              workspace_id TEXT,
-              locked_provider_style TEXT NOT NULL
+              workspace_id TEXT
             )
           ''');
 
@@ -82,171 +82,24 @@ class DatabaseHelper implements ChatStorage {
           await _createAgentLoopTables(db);
           await _createArtifactRegistryTable(db);
           await _createSessionContextSnapshotTable(db);
+          await _createSessionRuntimeConfigTable(db);
           await _createSessionRuntimeMarkerTable(db);
           await _createMessageAttachmentsTable(db);
           Logger.i(_tag, '数据库表创建成功');
         },
         onUpgrade: (Database db, int oldVersion, int newVersion) async {
-          if (oldVersion < 2) {
-            await db.execute('''
-              ALTER TABLE messages 
-              ADD COLUMN status TEXT NOT NULL DEFAULT 'initial'
-            ''');
-          }
-          if (oldVersion < 3) {
-            await db.execute('''
-              ALTER TABLE messages 
-              ADD COLUMN reasoning_content TEXT
-            ''');
-          }
-          if (oldVersion < 4) {
-            // 创建新表
-            await db.execute('''
-              CREATE TABLE chat_groups (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                last_message_at INTEGER NOT NULL,
-                system_prompt TEXT,
-                is_summarized INTEGER NOT NULL DEFAULT 0
-              )
-            ''');
-
-            // 创建临时消息表
-            await db.execute('''
-              CREATE TABLE messages_new (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                group_id INTEGER NOT NULL,
-                text TEXT NOT NULL,
-                role TEXT NOT NULL,
-                timestamp INTEGER NOT NULL,
-                status TEXT NOT NULL DEFAULT 'initial',
-                reasoning_content TEXT,
-                FOREIGN KEY (group_id) REFERENCES chat_groups (id) ON DELETE CASCADE
-              )
-            ''');
-
-            // 创建默认分组
-            final defaultGroupId = await db.insert('chat_groups', {
-              'title': '默认对话',
-              'created_at': DateTime.now().millisecondsSinceEpoch,
-              'last_message_at': DateTime.now().millisecondsSinceEpoch,
-            });
-
-            // 迁移现有消息到新表
-            await db.execute('''
-              INSERT INTO messages_new (group_id, text, role, timestamp, status, reasoning_content)
-              SELECT ?, text, role, timestamp, status, reasoning_content FROM messages
-            ''', [defaultGroupId]);
-
-            // 删除旧表
-            await db.execute('DROP TABLE messages');
-
-            // 重命名新表
-            await db.execute('ALTER TABLE messages_new RENAME TO messages');
-          }
-          if (oldVersion < 5) {
-            // 添加 is_summarized 字段
-            await db.execute('''
-              ALTER TABLE chat_groups
-              ADD COLUMN is_summarized INTEGER NOT NULL DEFAULT 0
-            ''');
-          }
-          if (oldVersion < 6) {
-            await db.execute('''
-              ALTER TABLE messages 
-              ADD COLUMN content_type TEXT NOT NULL DEFAULT 'plainText'
-            ''');
-            await db.execute('''
-              ALTER TABLE messages 
-              ADD COLUMN payload_json TEXT
-            ''');
-            await db.execute('''
-              ALTER TABLE messages 
-              ADD COLUMN reference_json TEXT
-            ''');
-          }
-          if (oldVersion < 7) {
-            await _createAgentLoopTables(db);
-          }
-          if (oldVersion < 8) {
-            await db.execute('''
-              ALTER TABLE chat_turns
-              ADD COLUMN goal_summary TEXT
-            ''');
-            await db.execute('''
-              ALTER TABLE chat_turns
-              ADD COLUMN provider_style TEXT
-            ''');
-            await db.execute('''
-              ALTER TABLE chat_turns
-              ADD COLUMN model_name TEXT
-            ''');
-            await db.execute('''
-              ALTER TABLE chat_turns
-              ADD COLUMN provider_state_json TEXT
-            ''');
-            await db.execute('''
-              ALTER TABLE chat_turns
-              ADD COLUMN final_response_text TEXT
-            ''');
-            await db.execute('''
-              CREATE TABLE IF NOT EXISTS chat_turn_steps (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                turn_id INTEGER NOT NULL,
-                step_index INTEGER NOT NULL,
-                provider_response_id TEXT,
-                provider_call_id TEXT,
-                tool_name TEXT NOT NULL,
-                tool_args_json TEXT NOT NULL,
-                status TEXT NOT NULL,
-                result_summary TEXT,
-                result_json TEXT,
-                error_code TEXT,
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL,
-                completed_at INTEGER,
-                FOREIGN KEY (turn_id) REFERENCES chat_turns (id) ON DELETE CASCADE
-              )
-            ''');
-            await db.execute('''
-              CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_turn_steps_turn_id_step_index
-              ON chat_turn_steps(turn_id, step_index)
-            ''');
-          }
-          if (oldVersion < 9) {
-            final hasProviderResponseId = await _tableHasColumn(
-              db,
-              tableName: 'chat_turn_steps',
-              columnName: 'provider_response_id',
-            );
-            if (!hasProviderResponseId) {
-              await db.execute('''
-                ALTER TABLE chat_turn_steps
-                ADD COLUMN provider_response_id TEXT
-              ''');
-            }
-          }
-          if (oldVersion < 10) {
-            await _createSessionContextSnapshotTable(db);
-          }
-          if (oldVersion < 11) {
-            await _createSessionRuntimeMarkerTable(db);
-          }
-          if (oldVersion < 12) {
-            await _createArtifactRegistryTable(db);
-          }
-          if (oldVersion < 13) {
-            // v13: drop all conversation tables and rebuild with
-            // locked_provider_style column + assistantTurnSnapshot event
-            // type support. App is pre-launch — no data preservation needed.
-            Logger.i(_tag, 'v13 migration: drop and recreate conversation tables');
+          if (oldVersion < 18) {
+            await db.execute('DROP TABLE IF EXISTS message_attachments');
+            await db.execute('DROP TABLE IF EXISTS session_runtime_markers');
+            await db.execute('DROP TABLE IF EXISTS session_runtime_configs');
+            await db.execute('DROP TABLE IF EXISTS session_context_snapshots');
+            await db.execute('DROP TABLE IF EXISTS artifact_registry');
             await db.execute('DROP TABLE IF EXISTS chat_events');
             await db.execute('DROP TABLE IF EXISTS chat_turn_steps');
             await db.execute('DROP TABLE IF EXISTS chat_turns');
             await db.execute('DROP TABLE IF EXISTS messages');
-            await db.execute('DROP TABLE IF EXISTS session_context_snapshots');
             await db.execute('DROP TABLE IF EXISTS chat_groups');
+
             await db.execute('''
               CREATE TABLE chat_groups (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -255,8 +108,7 @@ class DatabaseHelper implements ChatStorage {
                 last_message_at INTEGER NOT NULL,
                 system_prompt TEXT,
                 is_summarized INTEGER NOT NULL DEFAULT 0,
-                workspace_id TEXT,
-                locked_provider_style TEXT NOT NULL
+                workspace_id TEXT
               )
             ''');
             await db.execute('''
@@ -275,36 +127,12 @@ class DatabaseHelper implements ChatStorage {
               )
             ''');
             await _createAgentLoopTables(db);
+            await _createArtifactRegistryTable(db);
             await _createSessionContextSnapshotTable(db);
-          }
-          if (oldVersion < 14) {
+            await _createSessionRuntimeConfigTable(db);
+            await _createSessionRuntimeMarkerTable(db);
             await _createMessageAttachmentsTable(db);
-          }
-          if (oldVersion < 15) {
-            final hasWorkspaceId = await _tableHasColumn(
-              db,
-              tableName: 'chat_groups',
-              columnName: 'workspace_id',
-            );
-            if (!hasWorkspaceId) {
-              await db.execute('''
-                ALTER TABLE chat_groups
-                ADD COLUMN workspace_id TEXT
-              ''');
-            }
-          }
-          if (oldVersion < 16) {
-            final hasCoveredUntilEventId = await _tableHasColumn(
-              db,
-              tableName: 'session_context_snapshots',
-              columnName: 'covered_until_event_id',
-            );
-            if (!hasCoveredUntilEventId) {
-              await db.execute('''
-                ALTER TABLE session_context_snapshots
-                ADD COLUMN covered_until_event_id INTEGER
-              ''');
-            }
+            return;
           }
         },
       );
@@ -407,6 +235,27 @@ class DatabaseHelper implements ChatStorage {
     await db.execute('''
       CREATE INDEX IF NOT EXISTS idx_session_context_snapshots_group_id_updated_at
       ON session_context_snapshots(group_id, updated_at DESC)
+    ''');
+  }
+
+  Future<void> _createSessionRuntimeConfigTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS session_runtime_configs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id INTEGER NOT NULL UNIQUE,
+        provider_id TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        provider_style TEXT NOT NULL,
+        side_provider_id TEXT,
+        side_model_id TEXT,
+        side_provider_style TEXT,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (group_id) REFERENCES chat_groups (id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_session_runtime_configs_group_id_updated_at
+      ON session_runtime_configs(group_id, updated_at DESC)
     ''');
   }
 
@@ -1048,6 +897,63 @@ class DatabaseHelper implements ChatStorage {
       );
     } catch (e) {
       Logger.e(_tag, '更新 Session 上下文快照失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<int> insertSessionRuntimeConfig(SessionRuntimeConfig config) async {
+    try {
+      final db = await database;
+      return await db.insert(
+        'session_runtime_configs',
+        config.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (e) {
+      Logger.e(_tag, '插入 Session Runtime Config 失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<SessionRuntimeConfig?> getSessionRuntimeConfigByGroup(
+    int groupId,
+  ) async {
+    try {
+      final db = await database;
+      final maps = await db.query(
+        'session_runtime_configs',
+        where: 'group_id = ?',
+        whereArgs: [groupId],
+        orderBy: 'updated_at DESC, id DESC',
+        limit: 1,
+      );
+      if (maps.isEmpty) {
+        return null;
+      }
+      return SessionRuntimeConfig.fromMap(maps.first);
+    } catch (e) {
+      Logger.e(_tag, '获取 Session Runtime Config 失败', e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> updateSessionRuntimeConfig(SessionRuntimeConfig config) async {
+    try {
+      if (config.id == null) {
+        throw ArgumentError('SessionRuntimeConfig.id is required for update');
+      }
+      final db = await database;
+      await db.update(
+        'session_runtime_configs',
+        config.toMap(),
+        where: 'id = ?',
+        whereArgs: [config.id],
+      );
+    } catch (e) {
+      Logger.e(_tag, '更新 Session Runtime Config 失败', e);
       rethrow;
     }
   }

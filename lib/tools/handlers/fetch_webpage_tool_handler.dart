@@ -108,8 +108,10 @@ class FetchWebpageToolHandler extends ToolHandler {
   @override
   Future<ToolResult> execute(ToolExecutionContext context) {
     return _webpageFetcher(
+      groupId: context.groupId,
       url: context.arguments['url'] as String,
       prompt: context.arguments['prompt'] as String,
+      sideRuntimeConfigOverride: context.sideRuntimeConfigOverride,
     );
   }
 }

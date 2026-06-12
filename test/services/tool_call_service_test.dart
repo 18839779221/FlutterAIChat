@@ -7,6 +7,7 @@ import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/chat/chat_attachment.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
+import 'package:ai_chat/models/session/session_runtime_config.dart';
 import 'package:ai_chat/models/session/session_runtime_marker.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
@@ -223,6 +224,10 @@ class _FakeChatStorage implements ChatStorage {
       throw UnimplementedError();
 
   @override
+  Future<int> insertSessionRuntimeConfig(SessionRuntimeConfig config) =>
+      throw UnimplementedError();
+
+  @override
   Future<int> insertSessionRuntimeMarker(SessionRuntimeMarker marker) =>
       throw UnimplementedError();
 
@@ -230,6 +235,10 @@ class _FakeChatStorage implements ChatStorage {
   Future<SessionContextSnapshot?> getLatestSessionContextSnapshotByGroup(
     int groupId,
   ) =>
+      throw UnimplementedError();
+
+  @override
+  Future<SessionRuntimeConfig?> getSessionRuntimeConfigByGroup(int groupId) =>
       throw UnimplementedError();
 
   @override
@@ -284,6 +293,10 @@ class _FakeChatStorage implements ChatStorage {
   Future<void> updateSessionContextSnapshot(
     SessionContextSnapshot snapshot,
   ) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> updateSessionRuntimeConfig(SessionRuntimeConfig config) =>
       throw UnimplementedError();
 
   @override

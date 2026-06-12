@@ -22,6 +22,7 @@
 ## 功能特点
 
 - 多会话聊天：支持创建、切换、删除会话，并保留本地聊天记录
+- Session 级运行时配置：provider / model 选择按 session 持久化；切换会话时会同步恢复该会话的运行时绑定
 - 图片上传 V1：支持在输入区选择本地图片、随用户消息持久化，并以直连 provider 的多模态图片输入发送
 - 流式回复体验：支持流式生成、手动中断、生成中自动跟随与历史回看
 - 长对话上下文管理：不是简单拼接全部历史，而是按上下文预算保留近期内容并压缩较早历史
@@ -138,6 +139,11 @@ fvm flutter test
 ## 模型与运行时配置
 
 - 模型配置采用 provider-first 结构，可在设置页管理提供方和模型目录
+- 当前运行时选择已从“全局当前模型”改为“session runtime profile”：
+  - `primary` slot 用于主对话发送、planner 和主 turn loop
+  - `side` slot 用于 summary、`fetch_webpage` 等 side-task
+  - 当前如果 `side` 未单独配置，则默认回退到当前 session 的 `primary`
+- 新建 session 会从全局默认 provider / model 初始化 `primary`；在已有 session 中切换 provider / model 只影响当前 session
 - `ConfigurableHttpLLM` 现在只负责高层编排；协议语义映射由 `ApiStyleAdapter` 负责，请求执行由 `ProtocolExecutionRuntime` 负责，流式事件转换由 runtime 内部的 stream adapter 负责
 - 当前统一 runtime registry 已支持根据 Base URL 适配不同 API 风格，包括 OpenAI `responses`、OpenAI `chat/completions` 和 Anthropic `messages`
 - OpenAI `chat/completions`、`responses` 与 Anthropic `messages` 已进入统一 runtime registry；其中 OpenAI 两条协议与 Anthropic 非流请求都走 SDK-first 执行

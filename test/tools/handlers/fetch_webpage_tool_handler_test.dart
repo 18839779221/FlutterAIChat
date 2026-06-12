@@ -8,7 +8,12 @@ void main() {
   group('FetchWebpageToolHandler', () {
     test('definition exposes only url and prompt arguments', () {
       final handler = FetchWebpageToolHandler(
-        webpageFetcher: ({required url, required prompt}) async => ToolResult(
+        webpageFetcher: ({
+          required groupId,
+          required url,
+          required prompt,
+          sideRuntimeConfigOverride,
+        }) async => ToolResult(
           toolName: 'fetch_webpage',
           status: ToolExecutionStatus.success,
           summary: 'ok',
@@ -31,7 +36,12 @@ void main() {
         'descriptionForModel mentions internal side model and does not repeat Input section',
         () {
       final definition = FetchWebpageToolHandler(
-        webpageFetcher: ({required url, required prompt}) async =>
+        webpageFetcher: ({
+          required groupId,
+          required url,
+          required prompt,
+          sideRuntimeConfigOverride,
+        }) async =>
             const ToolResult(
           toolName: 'fetch_webpage',
           status: ToolExecutionStatus.success,
@@ -45,7 +55,12 @@ void main() {
 
     test('normalizeArguments requires both url and prompt', () async {
       final handler = FetchWebpageToolHandler(
-        webpageFetcher: ({required url, required prompt}) async =>
+        webpageFetcher: ({
+          required groupId,
+          required url,
+          required prompt,
+          sideRuntimeConfigOverride,
+        }) async =>
             const ToolResult(
           toolName: 'fetch_webpage',
           status: ToolExecutionStatus.success,
@@ -68,7 +83,12 @@ void main() {
       late String capturedUrl;
       late String capturedPrompt;
       final handler = FetchWebpageToolHandler(
-        webpageFetcher: ({required url, required prompt}) async {
+        webpageFetcher: ({
+          required groupId,
+          required url,
+          required prompt,
+          sideRuntimeConfigOverride,
+        }) async {
           capturedUrl = url;
           capturedPrompt = prompt;
           return ToolResult(
@@ -101,6 +121,5 @@ void main() {
       expect(capturedUrl, 'https://flutter.dev');
       expect(capturedPrompt, contains('TextField'));
     });
-
   });
 }

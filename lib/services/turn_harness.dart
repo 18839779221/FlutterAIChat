@@ -209,6 +209,7 @@ class TurnHarness {
           invocation: invocation,
           trustTool: trustTool,
           currentTurnEvents: await _eventRepository.listEventsByTurn(turnId),
+          sideRuntimeConfigOverride: config.sideRuntimeConfigOverride,
           onExecutionStarted: (
               {required invocation, required toolAccess}) async {
             final toolPayload = _buildToolInvocationPayload(
@@ -425,7 +426,8 @@ class TurnHarness {
             config: config,
             limits: _limits,
             carriers: carriers,
-            activeApiStyle: group.lockedProviderStyle,
+            activeApiStyle: currentTurn.providerStyle ??
+                ChatTurnProviderStyle.openaiChatCompletions,
             currentTurnRunning: true,
           ) ??
           const ModelTurnDecision(

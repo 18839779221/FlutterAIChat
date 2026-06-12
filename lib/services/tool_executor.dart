@@ -1,4 +1,5 @@
 import '../models/chat_message.dart';
+import '../models/llm/llm_config.dart';
 import '../models/tool/tool_result.dart';
 import '../storage/chat_storage.dart';
 
@@ -6,8 +7,10 @@ export '../models/tool/tool_result.dart';
 
 /// Fetches webpage content and returns a normalized tool result payload.
 typedef WebpageFetcher = Future<ToolResult> Function({
+  required int groupId,
   required String url,
   required String prompt,
+  LLMConfig? sideRuntimeConfigOverride,
 });
 
 /// Searches the web and returns a normalized result list payload.
@@ -126,14 +129,21 @@ class ToolExecutor {
   /// Loads webpage content through an injected fetcher to keep platform code out
   /// of the executor itself.
   Future<ToolResult> executeFetchWebpage({
+    required int groupId,
     required String url,
     required String prompt,
+    LLMConfig? sideRuntimeConfigOverride,
   }) async {
     final fetcher = _webpageFetcher;
     if (fetcher == null) {
       return _unsupportedToolResult('fetch_webpage');
     }
-    return fetcher(url: url, prompt: prompt);
+    return fetcher(
+      groupId: groupId,
+      url: url,
+      prompt: prompt,
+      sideRuntimeConfigOverride: sideRuntimeConfigOverride,
+    );
   }
 
   /// Creates a reminder through an injected platform adapter.

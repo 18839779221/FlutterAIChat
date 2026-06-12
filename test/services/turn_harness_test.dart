@@ -21,9 +21,11 @@ import 'package:ai_chat/models/context/planner_context_carrier.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/base_llm.dart';
+import 'package:ai_chat/models/llm/llm_config.dart';
 import 'package:ai_chat/models/session/context_compaction_config.dart';
 import 'package:ai_chat/models/session/model_budget_profile.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
+import 'package:ai_chat/models/session/session_runtime_config.dart';
 import 'package:ai_chat/models/session/session_runtime_marker.dart';
 import 'package:ai_chat/models/tool/tool_call.dart';
 import 'package:ai_chat/models/tool/tool_definition.dart';
@@ -84,8 +86,10 @@ void main() {
       }
 
       Future<ToolResult> fakeWebpageFetcher({
+        required int groupId,
         required String url,
         required String prompt,
+        LLMConfig? sideRuntimeConfigOverride,
       }) async {
         return const ToolResult(
           toolName: 'fetch_webpage',
@@ -3814,6 +3818,7 @@ class _FakeToolCallService extends ToolCallService {
     bool trustTool = false,
     String? turnId,
     List<ChatEvent> currentTurnEvents = const <ChatEvent>[],
+    LLMConfig? sideRuntimeConfigOverride,
     ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
     if (onExecutionStarted != null && executeResult.executionStarted) {
@@ -3852,6 +3857,7 @@ class _SequencedToolCallService extends ToolCallService {
     bool trustTool = false,
     String? turnId,
     List<ChatEvent> currentTurnEvents = const <ChatEvent>[],
+    LLMConfig? sideRuntimeConfigOverride,
     ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
     final result = executeResults.removeFirst();
@@ -3892,6 +3898,7 @@ class _ThrowingToolCallService extends ToolCallService {
     bool trustTool = false,
     String? turnId,
     List<ChatEvent> currentTurnEvents = const <ChatEvent>[],
+    LLMConfig? sideRuntimeConfigOverride,
     ToolExecutionStartedCallback? onExecutionStarted,
   }) async {
     if (onExecutionStarted != null) {
@@ -4600,8 +4607,19 @@ class _NoopChatStorage implements ChatStorage {
   Future<ChatGroup?> getGroupById(int id) async => ChatGroup(
         id: id,
         title: 'stub',
-        lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
       );
+
+  @override
+  Future<int> insertSessionRuntimeConfig(SessionRuntimeConfig config) async => 1;
+
+  @override
+  Future<SessionRuntimeConfig?> getSessionRuntimeConfigByGroup(
+    int groupId,
+  ) async =>
+      null;
+
+  @override
+  Future<void> updateSessionRuntimeConfig(SessionRuntimeConfig config) async {}
 
   @override
   Future<SessionContextSnapshot?> getLatestSessionContextSnapshotByGroup(
