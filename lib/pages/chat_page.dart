@@ -24,6 +24,8 @@ import '../services/workspace/workspace_binding_service.dart';
 import '../providers/streaming_trace_providers.dart';
 
 const double _bottomOverlayVeilHeadroom = 30;
+const double _floatingBottomControlsReservedTop = 18;
+const double _floatingBottomControlsOverlap = -1;
 
 class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({super.key, required this.title});
@@ -169,133 +171,148 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       alignment: Alignment.bottomCenter,
                       child: SizedBox(
                         width: double.infinity,
-                        child: _MeasuredBottomOverlayHost(
-                          child: Stack(
-                            children: [
-                              const Positioned.fill(
-                                child: IgnorePointer(
-                                  child: _BottomOverlayVeil(),
-                                ),
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                top: _floatingBottomControlsReservedTop,
                               ),
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  top: _bottomOverlayVeilHeadroom,
-                                ),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
+                              child: _MeasuredBottomOverlayHost(
+                                child: Stack(
                                   children: [
-                                    if (pendingConfirmation != null)
-                                      ToolConfirmationBottomBar(
-                                        message: pendingConfirmation.message,
-                                        invocation:
-                                            pendingConfirmation.invocation,
-                                        onContinue: () => chatController
-                                            .confirmToolInvocation(
-                                          pendingConfirmation.message,
-                                        ),
-                                        onCancel: () =>
-                                            chatController.cancelToolInvocation(
-                                          pendingConfirmation.message,
-                                        ),
-                                        onContinueAndTrust: () => chatController
-                                            .confirmToolInvocation(
-                                          pendingConfirmation.message,
-                                          trustTool: true,
-                                        ),
+                                    const Positioned.fill(
+                                      child: IgnorePointer(
+                                        child: _BottomOverlayVeil(),
                                       ),
-                                    if ((activeTurnStatus != null &&
-                                            activeTurnStatus.allowFloating &&
-                                            shouldShowFloatingActiveStatus) ||
-                                        shouldShowScrollToBottomButton)
-                                      Padding(
-                                        padding: EdgeInsets.fromLTRB(
-                                          spacing.md,
-                                          0,
-                                          spacing.md,
-                                          spacing.xs,
-                                        ),
-                                        child: Row(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.center,
-                                          children: [
-                                            if (activeTurnStatus != null &&
-                                                activeTurnStatus
-                                                    .allowFloating &&
-                                                shouldShowFloatingActiveStatus)
-                                              Expanded(
-                                                child: IgnorePointer(
-                                                  child: Align(
-                                                    alignment:
-                                                        Alignment.centerLeft,
-                                                    child: ConstrainedBox(
-                                                      constraints:
-                                                          const BoxConstraints(
-                                                        maxWidth: 320,
-                                                      ),
-                                                      child:
-                                                          Transform.translate(
-                                                        offset:
-                                                            const Offset(0, -2),
-                                                        child: KeyedSubtree(
-                                                          key: const ValueKey(
-                                                            'floating-turn-status-bar',
-                                                          ),
-                                                          child:
-                                                              UnifiedTurnStatusBar(
-                                                            status:
-                                                                activeTurnStatus,
-                                                            variant:
-                                                                UnifiedTurnStatusBarVariant
-                                                                    .floating,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              )
-                                            else
-                                              const Spacer(),
-                                            if (shouldShowScrollToBottomButton)
-                                              _ScrollToBottomButton(
-                                                onPressed: () {
-                                                  if (!scrollController
-                                                      .hasClients) {
-                                                    return;
-                                                  }
-                                                  scrollController.jumpTo(
-                                                    scrollController.position
-                                                        .maxScrollExtent,
-                                                  );
-                                                  WidgetsBinding.instance
-                                                      .addPostFrameCallback(
-                                                          (_) {
-                                                    if (!scrollController
-                                                        .hasClients) {
-                                                      return;
-                                                    }
-                                                    scrollController.jumpTo(
-                                                      scrollController.position
-                                                          .maxScrollExtent,
-                                                    );
-                                                  });
-                                                },
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                        top: _bottomOverlayVeilHeadroom,
+                                      ),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (pendingConfirmation != null)
+                                            ToolConfirmationBottomBar(
+                                              message:
+                                                  pendingConfirmation.message,
+                                              invocation: pendingConfirmation
+                                                  .invocation,
+                                              onContinue: () => chatController
+                                                  .confirmToolInvocation(
+                                                pendingConfirmation.message,
                                               ),
-                                          ],
-                                        ),
+                                              onCancel: () => chatController
+                                                  .cancelToolInvocation(
+                                                pendingConfirmation.message,
+                                              ),
+                                              onContinueAndTrust: () =>
+                                                  chatController
+                                                      .confirmToolInvocation(
+                                                pendingConfirmation.message,
+                                                trustTool: true,
+                                              ),
+                                            ),
+                                          ChatInput(
+                                            onContextWindowPressed: () {
+                                              unawaited(
+                                                _showContextWindowSheet(
+                                                  context,
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ],
                                       ),
-                                    ChatInput(
-                                      onContextWindowPressed: () {
-                                        unawaited(
-                                          _showContextWindowSheet(context),
-                                        );
-                                      },
                                     ),
                                   ],
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                            if ((activeTurnStatus != null &&
+                                    activeTurnStatus.allowFloating &&
+                                    shouldShowFloatingActiveStatus) ||
+                                shouldShowScrollToBottomButton)
+                              Positioned(
+                                left: 0,
+                                right: 0,
+                                top: _floatingBottomControlsOverlap,
+                                child: Padding(
+                                  key: const ValueKey(
+                                    'chat-bottom-floating-controls-row',
+                                  ),
+                                  padding: EdgeInsets.fromLTRB(
+                                    spacing.md,
+                                    0,
+                                    spacing.md,
+                                    spacing.xs,
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
+                                    children: [
+                                      if (activeTurnStatus != null &&
+                                          activeTurnStatus.allowFloating &&
+                                          shouldShowFloatingActiveStatus)
+                                        Expanded(
+                                          child: IgnorePointer(
+                                            child: Align(
+                                              alignment: Alignment.centerLeft,
+                                              child: ConstrainedBox(
+                                                constraints:
+                                                    const BoxConstraints(
+                                                  maxWidth: 320,
+                                                ),
+                                                child: Transform.translate(
+                                                  offset: const Offset(0, -2),
+                                                  child: KeyedSubtree(
+                                                    key: const ValueKey(
+                                                      'floating-turn-status-bar',
+                                                    ),
+                                                    child:
+                                                        UnifiedTurnStatusBar(
+                                                      status: activeTurnStatus,
+                                                      variant:
+                                                          UnifiedTurnStatusBarVariant
+                                                              .floating,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      else
+                                        const Spacer(),
+                                      if (shouldShowScrollToBottomButton)
+                                        _ScrollToBottomButton(
+                                          onPressed: () {
+                                            if (!scrollController.hasClients) {
+                                              return;
+                                            }
+                                            scrollController.jumpTo(
+                                              scrollController
+                                                  .position.maxScrollExtent,
+                                            );
+                                            WidgetsBinding.instance
+                                                .addPostFrameCallback((_) {
+                                              if (!scrollController
+                                                  .hasClients) {
+                                                return;
+                                              }
+                                              scrollController.jumpTo(
+                                                scrollController.position
+                                                    .maxScrollExtent,
+                                              );
+                                            });
+                                          },
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     ),
@@ -740,7 +757,7 @@ class _ScrollToBottomButton extends StatelessWidget {
       buttonKey: const ValueKey('scroll-to-bottom-button'),
       tooltip: '滑动到底部',
       onPressed: onPressed,
-      icon: Icons.keyboard_arrow_down_rounded,
+      icon: Icons.arrow_downward_rounded,
     );
   }
 }

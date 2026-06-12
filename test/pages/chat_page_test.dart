@@ -571,6 +571,56 @@ void main() {
     expect(combinedInputTop, closeTo(buttonOnlyInputTop, 8));
   });
 
+  testWidgets(
+      'floating bottom controls row sits flush with the composer top without stretching the bottom overlay veil',
+      (tester) async {
+    final buttonContainer = _createChatPageTestContainer(
+      showScrollToBottomButton: null,
+    );
+    addTearDown(() {
+      buttonContainer.dispose();
+    });
+    _seedShortChatHistory(buttonContainer);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: buttonContainer,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    buttonContainer.read(scrollToBottomButtonVisibleProvider.notifier).state =
+        true;
+    await tester.pump();
+
+    final buttonVeilBounds = tester.getRect(
+      find.byKey(const ValueKey('chat-bottom-overlay-veil')),
+    );
+    final controlsRowBounds = tester.getRect(
+      find.byKey(const ValueKey('chat-bottom-floating-controls-row')),
+    );
+    final dockBounds = tester.getRect(
+      find.byKey(const ValueKey('chat-input-dock')),
+    );
+
+    expect(
+      controlsRowBounds.top,
+      lessThan(dockBounds.top),
+    );
+    expect(
+      controlsRowBounds.bottom,
+      lessThanOrEqualTo(dockBounds.top + 1),
+    );
+    expect(
+      buttonVeilBounds.top,
+      greaterThan(controlsRowBounds.top),
+    );
+  });
+
   testWidgets('chat page renders a semi-transparent bottom overlay veil',
       (tester) async {
     final container = ProviderContainer(
