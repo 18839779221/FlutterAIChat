@@ -4,6 +4,8 @@ import 'package:ai_chat/models/chat/send_message_request.dart';
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
+import 'package:ai_chat/models/session/session_runtime_config.dart';
+import 'package:ai_chat/pages/debug_hub_page.dart';
 import 'package:ai_chat/pages/layout_debug_page.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/theme/app_theme.dart';
@@ -55,7 +57,7 @@ void main() {
     expect(gradientContainers, findsNothing);
   });
 
-  testWidgets('chat drawer shows each group locked provider label', (
+  testWidgets('chat drawer shows current session runtime label', (
     tester,
   ) async {
     final container = ProviderContainer(
@@ -76,14 +78,24 @@ void main() {
       ChatGroup(
         id: 1,
         title: 'Claude session',
-        lockedProviderStyle: ChatTurnProviderStyle.anthropicMessages,
       ),
       ChatGroup(
         id: 2,
         title: 'GPT session',
-        lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
       ),
     ]);
+    container.read(currentGroupProvider.notifier).state = ChatGroup(
+      id: 2,
+      title: 'GPT session',
+    );
+    container.read(currentSessionRuntimeConfigProvider.notifier).state =
+        SessionRuntimeConfig(
+      id: 2,
+      groupId: 2,
+      providerId: 'openai',
+      modelId: 'gpt-4.1',
+      providerStyle: ChatTurnProviderStyle.openaiResponses,
+    );
     addTearDown(container.dispose);
 
     await tester.pumpWidget(
@@ -98,7 +110,6 @@ void main() {
       ),
     );
 
-    expect(find.text('Claude'), findsOneWidget);
     expect(find.text('GPT'), findsOneWidget);
   });
 
@@ -127,7 +138,7 @@ void main() {
         child: MaterialApp(
           theme: AppTheme.light(),
           routes: {
-            RouteConstant.layoutDebugPage: (context) => const LayoutDebugPage(),
+            RouteConstant.debugHubPage: (context) => const DebugHubPage(),
           },
           home: const Scaffold(
             body: ChatDrawer(),
@@ -136,13 +147,13 @@ void main() {
       ),
     );
 
-    expect(find.text('调试界面'), findsOneWidget);
+    expect(find.byTooltip('调试中心'), findsOneWidget);
 
-    await tester.tap(find.text('调试界面'));
+    await tester.tap(find.byTooltip('调试中心'));
     await tester.pumpAndSettle();
 
-    expect(find.byType(LayoutDebugPage), findsOneWidget);
-    expect(find.text('文档排版调试'), findsOneWidget);
+    expect(find.byType(DebugHubPage), findsOneWidget);
+    expect(find.text('调试中心'), findsOneWidget);
   });
 }
 

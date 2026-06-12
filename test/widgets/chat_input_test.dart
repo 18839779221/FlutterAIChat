@@ -11,6 +11,7 @@ import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/models/llm/llm_provider_model.dart';
+import 'package:ai_chat/models/session/session_runtime_config.dart';
 import 'package:ai_chat/models/skill/skill_catalog_entry.dart';
 import 'package:ai_chat/models/speech/speech_input_config.dart';
 import 'package:ai_chat/models/session/context_window_segment.dart';
@@ -18,6 +19,7 @@ import 'package:ai_chat/models/session/context_window_snapshot.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
+import 'package:ai_chat/services/session_runtime_config_service.dart';
 import 'package:ai_chat/services/attachments/chat_attachment_picker_service.dart';
 import 'package:ai_chat/services/attachments/chat_attachment_storage_service.dart';
 import 'package:ai_chat/services/audio/audio_capture_service.dart';
@@ -578,10 +580,6 @@ void main() {
         ],
       ),
     );
-    await settingsRepository.selectProviderAndModel(
-      providerId: 'openai',
-      modelId: 'gpt-4.1',
-    );
     final container = ProviderContainer(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(preferences),
@@ -589,6 +587,13 @@ void main() {
       ],
     );
     addTearDown(container.dispose);
+    container.read(currentSessionRuntimeConfigProvider.notifier).state =
+        SessionRuntimeConfig(
+      groupId: SessionRuntimeConfigService.draftGroupId,
+      providerId: 'openai',
+      modelId: 'gpt-4.1',
+      providerStyle: ChatTurnProviderStyle.openaiResponses,
+    );
 
     await tester.pumpWidget(
       UncontrolledProviderScope(
@@ -653,7 +658,13 @@ void main() {
     addTearDown(container.dispose);
     container.read(currentGroupProvider.notifier).state = ChatGroup(
       title: '新对话 1',
-      lockedProviderStyle: ChatTurnProviderStyle.anthropicMessages,
+    );
+    container.read(currentSessionRuntimeConfigProvider.notifier).state =
+        SessionRuntimeConfig(
+      groupId: SessionRuntimeConfigService.draftGroupId,
+      providerId: 'claude',
+      modelId: 'claude-sonnet',
+      providerStyle: ChatTurnProviderStyle.anthropicMessages,
     );
 
     await tester.pumpWidget(
@@ -677,13 +688,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      container.read(currentGroupProvider)?.lockedProviderStyle,
+      container.read(currentSessionRuntimeConfigProvider)?.providerStyle,
       ChatTurnProviderStyle.openaiResponses,
     );
   });
 
   testWidgets(
-      'chat input does not sync persisted session provider style after switching model provider',
+      'chat input syncs persisted session runtime after switching model provider',
       (tester) async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
@@ -724,7 +735,14 @@ void main() {
     container.read(currentGroupProvider.notifier).state = ChatGroup(
       id: 1,
       title: '已有对话',
-      lockedProviderStyle: ChatTurnProviderStyle.anthropicMessages,
+    );
+    container.read(currentSessionRuntimeConfigProvider.notifier).state =
+        SessionRuntimeConfig(
+      id: 1,
+      groupId: 1,
+      providerId: 'claude',
+      modelId: 'claude-sonnet',
+      providerStyle: ChatTurnProviderStyle.anthropicMessages,
     );
 
     await tester.pumpWidget(
@@ -748,8 +766,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      container.read(currentGroupProvider)?.lockedProviderStyle,
-      ChatTurnProviderStyle.anthropicMessages,
+      container.read(currentSessionRuntimeConfigProvider)?.providerStyle,
+      ChatTurnProviderStyle.openaiResponses,
     );
   });
 
@@ -1404,6 +1422,13 @@ void main() {
       ],
     );
     addTearDown(container.dispose);
+    container.read(currentSessionRuntimeConfigProvider.notifier).state =
+        SessionRuntimeConfig(
+      groupId: SessionRuntimeConfigService.draftGroupId,
+      providerId: 'beehears-responses',
+      modelId: 'gpt-5.4',
+      providerStyle: ChatTurnProviderStyle.openaiResponses,
+    );
 
     await tester.pumpWidget(
       UncontrolledProviderScope(
