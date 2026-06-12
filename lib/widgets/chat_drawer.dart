@@ -5,9 +5,9 @@ import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../models/chat_turn.dart';
 import '../providers/chat_providers.dart';
 import '../services/workspace/workspace_binding_service.dart';
+import 'shared/app_bottom_sheet.dart';
 
 class ChatDrawer extends ConsumerWidget {
   const ChatDrawer({super.key});
@@ -17,6 +17,7 @@ class ChatDrawer extends ConsumerWidget {
     // 获取所需状态
     final groups = ref.watch(groupsProvider);
     final currentGroup = ref.watch(currentGroupProvider);
+    final currentRuntime = ref.watch(currentSessionRuntimeConfigProvider);
     final sendPhase = ref.watch(sendPhaseProvider);
     final isSendInFlight = sendPhase != ChatSendPhase.idle;
 
@@ -76,16 +77,22 @@ class ChatDrawer extends ConsumerWidget {
                     onTap: currentGroup == null || isSendInFlight
                         ? null
                         : () async {
-                            final selected = await showModalBottomSheet<String>(
+                            final selected = await showAppBottomSheet<String>(
                               context: context,
-                              isScrollControlled: true,
-                              backgroundColor: colors.chatBackground,
-                              builder: (sheetContext) => _WorkspacePickerSheet(
-                                title: '工作区',
+                              mode: AppBottomSheetMode.adaptive,
+                              title: '工作区',
+                              bodyPadding: EdgeInsets.fromLTRB(
+                                spacing.lg,
+                                spacing.sm,
+                                spacing.lg,
+                                spacing.lg,
+                              ),
+                              body: _WorkspacePickerSheet(
                                 items: workspaceChoices,
-                                currentWorkspaceId: resolvedWorkspace
-                                        ?.workspaceId ??
-                                    workspaceBindingService.defaultWorkspaceId,
+                                currentWorkspaceId:
+                                    resolvedWorkspace?.workspaceId ??
+                                        workspaceBindingService
+                                            .defaultWorkspaceId,
                                 labelBuilder: (workspaceId) => _workspaceLabel(
                                   workspaceBindingService,
                                   workspaceId,
@@ -132,7 +139,7 @@ class ChatDrawer extends ConsumerWidget {
                         title: currentGroup.title,
                         subtitle: '新对话',
                         providerLabel:
-                            _providerLabel(currentGroup.lockedProviderStyle),
+                            _runtimeLabelFromProviderId(currentRuntime?.providerId),
                         isSelected: true,
                         enabled: false,
                       );
@@ -145,7 +152,11 @@ class ChatDrawer extends ConsumerWidget {
                     return _DrawerGroupTile(
                       title: group.title,
                       subtitle: '最后消息：${_formatDateTime(group.lastMessageAt)}',
-                      providerLabel: _providerLabel(group.lockedProviderStyle),
+                      providerLabel: isSelected
+                          ? _runtimeLabelFromProviderId(
+                              currentRuntime?.providerId,
+                            )
+                          : 'Session',
                       isSelected: isSelected,
                       enabled: !isSendInFlight,
                       onTap: isSendInFlight
@@ -331,15 +342,23 @@ class ChatDrawer extends ConsumerWidget {
     }
   }
 
-  String _providerLabel(ChatTurnProviderStyle style) {
-    switch (style) {
-      case ChatTurnProviderStyle.anthropicMessages:
-        return 'Claude';
-      case ChatTurnProviderStyle.openaiResponses:
-        return 'GPT';
-      case ChatTurnProviderStyle.openaiChatCompletions:
-        return 'DeepSeek';
+  String _runtimeLabelFromProviderId(String? providerId) {
+    final normalized = providerId?.trim().toLowerCase() ?? '';
+    if (normalized.isEmpty) {
+      return 'Session';
     }
+    if (normalized.contains('anthropic') || normalized.contains('claude')) {
+      return 'Claude';
+    }
+    if (normalized.contains('deepseek')) {
+      return 'DeepSeek';
+    }
+    if (normalized.contains('openai') ||
+        normalized.contains('gpt') ||
+        normalized.contains('responses')) {
+      return 'GPT';
+    }
+    return 'Session';
   }
 }
 
@@ -534,13 +553,11 @@ class _DrawerGroupTile extends StatelessWidget {
 
 class _WorkspacePickerSheet extends StatelessWidget {
   const _WorkspacePickerSheet({
-    required this.title,
     required this.items,
     required this.currentWorkspaceId,
     required this.labelBuilder,
   });
 
-  final String title;
   final List<String> items;
   final String currentWorkspaceId;
   final String Function(String workspaceId) labelBuilder;
@@ -548,40 +565,25 @@ class _WorkspacePickerSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
-    final spacing = Theme.of(context).extension<AppSpacing>()!;
 
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.all(spacing.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: TextStyle(
-                color: colors.primaryText,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            SizedBox(height: spacing.md),
-            ...items.map(
-              (workspaceId) => ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(labelBuilder(workspaceId)),
-                trailing: workspaceId == currentWorkspaceId
-                    ? Icon(
-                        Icons.check_circle_rounded,
-                        color: colors.workflowRunning,
-                      )
-                    : null,
-                onTap: () => Navigator.of(context).pop(workspaceId),
-              ),
-            ),
-          ],
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ...items.map(
+          (workspaceId) => ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(labelBuilder(workspaceId)),
+            trailing: workspaceId == currentWorkspaceId
+                ? Icon(
+                    Icons.check_circle_rounded,
+                    color: colors.workflowRunning,
+                  )
+                : null,
+            onTap: () => Navigator.of(context).pop(workspaceId),
+          ),
         ),
-      ),
+      ],
     );
   }
 }

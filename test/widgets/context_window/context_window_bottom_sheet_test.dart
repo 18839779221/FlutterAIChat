@@ -7,6 +7,7 @@ import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/widgets/context_window/context_window_bottom_sheet.dart';
 import 'package:ai_chat/widgets/context_window/context_window_usage_indicator.dart';
+import 'package:ai_chat/widgets/shared/app_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -75,9 +76,10 @@ void main() {
             builder: (context) => ContextWindowUsageIndicator(
               snapshot: snapshot,
               onTap: () {
-                showModalBottomSheet<void>(
+                showAppBottomSheet<void>(
                   context: context,
-                  builder: (_) => ContextWindowBottomSheet(snapshot: snapshot),
+                  mode: AppBottomSheetMode.fixed80,
+                  body: ContextWindowBottomSheet(snapshot: snapshot),
                 );
               },
             ),
@@ -115,10 +117,10 @@ void main() {
           body: Builder(
             builder: (context) => TextButton(
               onPressed: () {
-                showModalBottomSheet<void>(
+                showAppBottomSheet<void>(
                   context: context,
-                  isScrollControlled: true,
-                  builder: (_) => ContextWindowBottomSheet(snapshot: snapshot),
+                  mode: AppBottomSheetMode.fixed80,
+                  body: ContextWindowBottomSheet(snapshot: snapshot),
                 );
               },
               child: const Text('open'),
@@ -134,7 +136,17 @@ void main() {
     final rect = tester.getRect(
       find.byKey(const ValueKey('context-window-bottom-sheet')),
     );
-    expect(rect.top, greaterThan(40));
+    final sheetRect = tester.getRect(
+      find.byKey(const ValueKey('app-bottom-sheet')),
+    );
+    final windowHeight =
+        tester.view.physicalSize.height / tester.view.devicePixelRatio;
+    expect(sheetRect.height, closeTo(windowHeight * 0.8, 2));
+    expect(rect.top, greaterThan(sheetRect.top));
+    expect(
+      find.byKey(const ValueKey('app-bottom-sheet-drag-handle')),
+      findsOneWidget,
+    );
   });
 }
 

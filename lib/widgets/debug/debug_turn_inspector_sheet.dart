@@ -159,68 +159,58 @@ class _DebugTurnInspectorSheetState extends ConsumerState<DebugTurnInspectorShee
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final overview = _projection.activeTurnOverview;
-    return SafeArea(
-      child: Column(
-        children: [
-          const SizedBox(height: 12),
-          Container(
-            width: 42,
-            height: 4,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(999),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Debug Turn Inspector',
-                    style: theme.textTheme.titleMedium,
-                  ),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Debug Turn Inspector',
+                  style: theme.textTheme.titleMedium,
                 ),
-                IconButton(
-                  tooltip: '刷新',
-                  onPressed: _isRefreshing ? null : _refresh,
-                  icon: _isRefreshing
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.refresh, size: 18),
+              ),
+              IconButton(
+                tooltip: '刷新',
+                onPressed: _isRefreshing ? null : _refresh,
+                icon: _isRefreshing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh, size: 18),
+              ),
+              if (_projection.turnOptions.isNotEmpty)
+                DropdownButton<int>(
+                  value: _projection.selectedTurnId,
+                  items: _projection.turnOptions
+                      .map(
+                        (turn) => DropdownMenuItem<int>(
+                          value: turn.turnId,
+                          child: Text('#${turn.turnId} ${turn.status}'),
+                        ),
+                      )
+                      .toList(growable: false),
+                  onChanged: _changeTurn,
                 ),
-                if (_projection.turnOptions.isNotEmpty)
-                  DropdownButton<int>(
-                    value: _projection.selectedTurnId,
-                    items: _projection.turnOptions
-                        .map(
-                          (turn) => DropdownMenuItem<int>(
-                            value: turn.turnId,
-                            child: Text('#${turn.turnId} ${turn.status}'),
-                          ),
-                        )
-                        .toList(growable: false),
-                    onChanged: _changeTurn,
-                  ),
-              ],
-            ),
-          ),
-          TabBar(
-            controller: _tabController,
-            tabs: const [
-              Tab(text: 'Overview'),
-              Tab(text: 'Timeline'),
-              Tab(text: 'Context'),
-              Tab(text: 'Cache'),
             ],
           ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
+        ),
+        TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Overview'),
+            Tab(text: 'Timeline'),
+            Tab(text: 'Context'),
+            Tab(text: 'Cache'),
+          ],
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
                 ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
@@ -311,11 +301,10 @@ class _DebugTurnInspectorSheetState extends ConsumerState<DebugTurnInspectorShee
                   theme: theme,
                   cachePanel: _projection.cachePanel,
                 ),
-              ],
-            ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

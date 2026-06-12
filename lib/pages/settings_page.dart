@@ -15,6 +15,7 @@ import '../widgets/settings/settings_group_section.dart';
 import '../widgets/settings/settings_row.dart';
 import '../widgets/settings/settings_segmented_control.dart';
 import '../widgets/settings/skill_install_sheet.dart';
+import '../widgets/shared/app_bottom_sheet.dart';
 import 'model_management_page.dart';
 import '../theme/app_theme_controller.dart';
 
@@ -190,12 +191,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _openSkillInstallSheet() async {
-    final result = await showModalBottomSheet<String>(
+    final result = await showAppBottomSheet<String>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor:
-          Theme.of(context).extension<AppThemeSpec>()!.chatBackground,
-      builder: (_) => SkillInstallSheet(initialUrl: _latestSkillInstallUrl),
+      mode: AppBottomSheetMode.adaptive,
+      title: '安装 Skill',
+      subtitle: '输入公开 GitHub 仓库或 tree 子目录 URL。推荐直接填写 skill 子目录地址。',
+      bodyPadding: EdgeInsets.fromLTRB(
+        Theme.of(context).extension<AppSpacing>()!.lg,
+        Theme.of(context).extension<AppSpacing>()!.sm,
+        Theme.of(context).extension<AppSpacing>()!.lg,
+        Theme.of(context).extension<AppSpacing>()!.lg,
+      ),
+      body: SkillInstallSheet(initialUrl: _latestSkillInstallUrl),
     );
     if (result == null || result.trim().isEmpty) {
       return;

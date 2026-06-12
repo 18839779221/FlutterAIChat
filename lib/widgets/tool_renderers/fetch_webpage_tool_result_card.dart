@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../models/tool/tool_result.dart';
-import '../../theme/app_theme_spec.dart';
-import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import '../markdown/flutter_markdown_impl.dart';
+import '../shared/app_bottom_sheet.dart';
 import 'research_tool_card_shell.dart';
 
 class FetchWebpageToolResultCard extends StatelessWidget {
@@ -66,66 +65,25 @@ class FetchWebpageToolResultCard extends StatelessWidget {
     required Map<String, dynamic> data,
     required String url,
   }) async {
-    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
-    final radius = Theme.of(context).extension<AppRadius>()!;
 
-    await showModalBottomSheet<void>(
+    await showAppBottomSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: colors.chatBackground,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(radius.lg)),
+      mode: AppBottomSheetMode.fixed80,
+      title: _sheetTitle(data, url),
+      bodyPadding: EdgeInsets.fromLTRB(
+        spacing.md,
+        spacing.sm,
+        spacing.md,
+        spacing.lg,
       ),
-      builder: (sheetContext) {
-        return SafeArea(
-          top: false,
-          child: FractionallySizedBox(
-            heightFactor: 0.82,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                spacing.md,
-                spacing.sm,
-                spacing.md,
-                spacing.lg,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 36,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: colors.secondaryText.withValues(alpha: 0.24),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: spacing.md),
-                  Text(
-                    _sheetTitle(data, url),
-                    style:
-                        Theme.of(sheetContext).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                  ),
-                  SizedBox(height: spacing.md),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: _buildExpandedContent(
-                        sheetContext,
-                        data: data,
-                        url: url,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+      body: SingleChildScrollView(
+        child: _buildExpandedContent(
+          context,
+          data: data,
+          url: url,
+        ),
+      ),
     );
   }
 

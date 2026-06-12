@@ -9,6 +9,7 @@ import '../services/llm_model_test_service.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_theme_spec.dart';
+import '../widgets/shared/app_bottom_sheet.dart';
 
 class ProviderFormPage extends StatefulWidget {
   final LlmProviderConfig? initialProvider;
@@ -166,12 +167,19 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
   }
 
   Future<void> _selectApiStyle() async {
-    final selected = await showModalBottomSheet<ApiStyle>(
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final selected = await showAppBottomSheet<ApiStyle>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor:
-          Theme.of(context).extension<AppThemeSpec>()!.chatBackground,
-      builder: (context) => _ApiStyleSelectionSheet(
+      mode: AppBottomSheetMode.adaptive,
+      title: '选择 API Style',
+      subtitle: '最终会根据你选择的风格，把 Base URL 规范成对应的 endpoint。',
+      bodyPadding: EdgeInsets.fromLTRB(
+        spacing.lg,
+        spacing.sm,
+        spacing.lg,
+        spacing.lg,
+      ),
+      body: _ApiStyleSelectionSheet(
         selectedStyle: _selectedApiStyle,
       ),
     );
@@ -1154,70 +1162,36 @@ class _ApiStyleSelectionSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final spacing = Theme.of(context).extension<AppSpacing>()!;
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
-    final maxHeight = MediaQuery.of(context).size.height * 0.7;
     const styles = <ApiStyle>[
       ApiStyle.responses,
       ApiStyle.chatCompletions,
       ApiStyle.anthropicMessages,
     ];
 
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.all(spacing.lg),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: maxHeight),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '选择 API Style',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: colors.primaryText,
-                    ),
-              ),
-              SizedBox(height: spacing.xs),
-              Text(
-                '最终会根据你选择的风格，把 Base URL 规范成对应的 endpoint。',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: colors.secondaryText,
-                      height: 1.45,
-                    ),
-              ),
-              SizedBox(height: spacing.md),
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: styles.length,
-                  itemBuilder: (context, index) {
-                    final style = styles[index];
-                    final selected = style == selectedStyle;
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: selected
-                          ? Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: colors.workflowRunning,
-                                shape: BoxShape.circle,
-                              ),
-                            )
-                          : const SizedBox(width: 8, height: 8),
-                      title: Text(style.displayTitle),
-                      subtitle: Text(style.protocolStyle),
-                      onTap: () => Navigator.of(context).pop(style),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return ListView.builder(
+      shrinkWrap: true,
+      itemCount: styles.length,
+      itemBuilder: (context, index) {
+        final style = styles[index];
+        final selected = style == selectedStyle;
+        return ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: selected
+              ? Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: colors.workflowRunning,
+                    shape: BoxShape.circle,
+                  ),
+                )
+              : const SizedBox(width: 8, height: 8),
+          title: Text(style.displayTitle),
+          subtitle: Text(style.protocolStyle),
+          onTap: () => Navigator.of(context).pop(style),
+        );
+      },
     );
   }
 }

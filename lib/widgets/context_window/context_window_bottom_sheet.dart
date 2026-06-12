@@ -19,79 +19,52 @@ class ContextWindowBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
-    final radius = Theme.of(context).extension<AppRadius>()!;
-    final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.78;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
 
-    return SafeArea(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: maxSheetHeight,
-        ),
-        child: Container(
-          key: const ValueKey('context-window-bottom-sheet'),
-          decoration: BoxDecoration(
-            color: colors.chatBackground,
-            borderRadius:
-                BorderRadius.vertical(top: Radius.circular(radius.lg)),
-          ),
-          child: ListView(
-            shrinkWrap: true,
-            padding: EdgeInsets.fromLTRB(
-              spacing.lg,
-              spacing.md,
-              spacing.lg,
-              spacing.lg,
-            ),
-            children: [
-              Center(
-                child: Container(
-                  width: 42,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: colors.secondaryText.withValues(alpha: 0.28),
-                    borderRadius: BorderRadius.circular(radius.pill),
-                  ),
-                ),
-              ),
-              SizedBox(height: spacing.md),
-              Text(
-                snapshot.modelName,
-                style: AppTypography.uiStyle(
-                  color: colors.secondaryText,
-                  fontSize: 12.5,
-                  height: 1.2,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              SizedBox(height: spacing.xs),
-              _OverviewCard(snapshot: snapshot),
-              SizedBox(height: spacing.md),
-              _CardSection(
-                title: '分类占用',
-                child: Column(
-                  children: snapshot.categories
-                      .map((category) => _CategoryRow(category: category))
-                      .toList(growable: false),
-                ),
-              ),
-              SizedBox(height: spacing.md),
-              if (snapshot.topItems.isNotEmpty)
-                _CardSection(
-                  title: 'Top 5',
-                  child: Column(
-                    children: snapshot.topItems
-                        .map((item) => _TopItemRow(item: item))
-                        .toList(growable: false),
-                  ),
-                ),
-              SizedBox(height: spacing.md),
-              _TechnicalDetailsCard(snapshot: snapshot),
-            ],
-          ),
-        ),
+    return ListView(
+      key: const ValueKey('context-window-bottom-sheet'),
+      shrinkWrap: true,
+      padding: EdgeInsets.fromLTRB(
+        spacing.lg,
+        spacing.md,
+        spacing.lg,
+        spacing.lg,
       ),
+      children: [
+        Text(
+          snapshot.modelName,
+          style: AppTypography.uiStyle(
+            color: colors.secondaryText,
+            fontSize: 12.5,
+            height: 1.2,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        SizedBox(height: spacing.xs),
+        _OverviewCard(snapshot: snapshot),
+        SizedBox(height: spacing.md),
+        _CardSection(
+          title: '分类占用',
+          child: Column(
+            children: snapshot.categories
+                .map((category) => _CategoryRow(category: category))
+                .toList(growable: false),
+          ),
+        ),
+        SizedBox(height: spacing.md),
+        if (snapshot.topItems.isNotEmpty)
+          _CardSection(
+            title: 'Top 5',
+            child: Column(
+              children: snapshot.topItems
+                  .map((item) => _TopItemRow(item: item))
+                  .toList(growable: false),
+            ),
+          ),
+        SizedBox(height: spacing.md),
+        _TechnicalDetailsCard(snapshot: snapshot),
+      ],
     );
   }
 }

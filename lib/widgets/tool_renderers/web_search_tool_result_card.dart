@@ -5,6 +5,7 @@ import '../../models/tool/tool_result.dart';
 import '../../theme/app_theme_spec.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
+import '../shared/app_bottom_sheet.dart';
 import 'research_tool_card_shell.dart';
 
 class WebSearchToolResultCard extends StatelessWidget {
@@ -62,72 +63,26 @@ class WebSearchToolResultCard extends StatelessWidget {
     String query,
     List<Map<String, dynamic>> results,
   ) async {
-    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
-    final radius = Theme.of(context).extension<AppRadius>()!;
 
-    await showModalBottomSheet<void>(
+    await showAppBottomSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: colors.chatBackground,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(radius.lg)),
+      mode: AppBottomSheetMode.fixed80,
+      title: query.trim().isEmpty ? '联网搜索结果' : query.trim(),
+      subtitle: '${results.length} 个来源',
+      bodyPadding: EdgeInsets.fromLTRB(
+        spacing.md,
+        spacing.sm,
+        spacing.md,
+        spacing.lg,
       ),
-      builder: (sheetContext) {
-        return SafeArea(
-          top: false,
-          child: FractionallySizedBox(
-            heightFactor: 0.78,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                spacing.md,
-                spacing.sm,
-                spacing.md,
-                spacing.lg,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 36,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: colors.secondaryText.withValues(alpha: 0.24),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: spacing.md),
-                  Text(
-                    query.trim().isEmpty ? '联网搜索结果' : query.trim(),
-                    style:
-                        Theme.of(sheetContext).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                  ),
-                  SizedBox(height: spacing.xxs),
-                  Text(
-                    '${results.length} 个来源',
-                    style: Theme.of(sheetContext).textTheme.bodySmall,
-                  ),
-                  SizedBox(height: spacing.md),
-                  Expanded(
-                    child: ListView.separated(
-                      itemCount: results.length,
-                      separatorBuilder: (context, index) =>
-                          SizedBox(height: spacing.sm),
-                      itemBuilder: (itemContext, index) => _SearchResultItem(
-                        item: results[index],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+      body: ListView.separated(
+        itemCount: results.length,
+        separatorBuilder: (context, index) => SizedBox(height: spacing.sm),
+        itemBuilder: (itemContext, index) => _SearchResultItem(
+          item: results[index],
+        ),
+      ),
     );
   }
 }

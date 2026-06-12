@@ -254,6 +254,7 @@ To add or extend provider support:
 - Prefer continuing on the current `main` branch and in the current workspace unless the user explicitly requests a different branch or a separate worktree.
 - New or updated spec/design/plan docs under `docs/superpowers/` must be written in Chinese.
 - When adding a new feature, explicitly consider whether logging coverage, automated tests, `README.md`, `AGENTS.md`, and backlog/todo docs also need updates.
+- New modal bottom sheet UI should default to the shared `showAppBottomSheet` entry and shared outer shell unless the task explicitly requires a different presentation primitive.
 - For agent-loop regression coverage, prefer simulated integration tests built around fake planner/tool services plus real `TurnHarness`, `AgentEventProcessor`, and projection providers before reaching for heavier e2e flows.
 - For new interaction checkpoints, prefer message-card interactions over modal-only state and keep turn status, event payload, message payload, and step ledger aligned.
 - Keep the chat timeline under a single vertical scroll owner; avoid nested vertical scroll containers in timeline cards by default.

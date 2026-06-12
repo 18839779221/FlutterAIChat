@@ -18,6 +18,7 @@ import '../widgets/debug/debug_test_case_sheet.dart';
 import '../widgets/debug/streaming_trace_overlay_card.dart';
 import '../widgets/debug/debug_turn_inspector_sheet.dart';
 import '../widgets/context_window/context_window_bottom_sheet.dart';
+import '../widgets/shared/app_bottom_sheet.dart';
 import '../widgets/tool_confirmation/tool_confirmation_bottom_bar.dart';
 import '../services/debug/debug_turn_inspector_projection_service.dart';
 import '../services/workspace/workspace_binding_service.dart';
@@ -391,12 +392,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       return;
     }
 
-    await showModalBottomSheet<void>(
+    await showAppBottomSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor:
-          Theme.of(context).extension<AppThemeSpec>()!.chatBackground,
-      builder: (sheetContext) => DebugTestCaseSheet(
+      mode: AppBottomSheetMode.fixed80,
+      body: DebugTestCaseSheet(
         cases: library.allCases,
         onShowIdleStatus: () {
           ref.read(chatSendStateProvider.notifier).update(
@@ -404,7 +403,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 isGenerating: false,
                 statusText: _debugIdleStatusText,
               );
-          Navigator.of(sheetContext).pop();
+          Navigator.of(context).pop();
         },
         onClearIdleStatus: () {
           ref.read(chatSendStateProvider.notifier).update(
@@ -412,7 +411,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 isGenerating: false,
                 clearStatusText: true,
               );
-          Navigator.of(sheetContext).pop();
+          Navigator.of(context).pop();
         },
         onSelected: (item) {
           final textController = ref.read(textControllerProvider);
@@ -421,7 +420,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             text: item.prompt,
             selection: TextSelection.collapsed(offset: item.prompt.length),
           );
-          Navigator.of(sheetContext).pop();
+          Navigator.of(context).pop();
           focusNode.requestFocus();
         },
       ),
@@ -434,12 +433,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       return;
     }
 
-    await showModalBottomSheet<void>(
+    await showAppBottomSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor:
-          Theme.of(context).extension<AppThemeSpec>()!.chatBackground,
-      builder: (_) => ContextWindowBottomSheet(snapshot: snapshot),
+      mode: AppBottomSheetMode.fixed80,
+      body: ContextWindowBottomSheet(snapshot: snapshot),
     );
   }
 
@@ -466,17 +463,13 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     if (!context.mounted) {
       return;
     }
-    await showModalBottomSheet<void>(
+    await showAppBottomSheet<void>(
       context: context,
-      isScrollControlled: true,
+      mode: AppBottomSheetMode.fixed80,
       useSafeArea: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      builder: (_) => FractionallySizedBox(
-        heightFactor: 0.92,
-        child: DebugTurnInspectorSheet(
-          groupId: groupId,
-          initialProjection: projection,
-        ),
+      body: DebugTurnInspectorSheet(
+        groupId: groupId,
+        initialProjection: projection,
       ),
     );
   }
