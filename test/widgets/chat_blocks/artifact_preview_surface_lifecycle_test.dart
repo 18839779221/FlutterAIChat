@@ -1,4 +1,3 @@
-import 'package:ai_chat/models/artifact/artifact_render_session_snapshot.dart';
 import 'package:ai_chat/services/artifact/artifact_render_session_recorder.dart';
 import 'package:ai_chat/utils/logger.dart';
 import 'package:ai_chat/widgets/chat_blocks/artifact_preview_surface.dart';
@@ -28,10 +27,16 @@ void main() {
 
     await tester.pump();
 
-    expect(recorder.surfaceLifecycleEvents, hasLength(1));
-    expect(recorder.surfaceLifecycleEvents.first.event, 'initState');
+    // Lease coordination emits its own lifecycle events; this test only
+    // asserts the core init/update/dispose sequence.
+    List<_SurfaceLifecycleEvent> coreEvents() => recorder.surfaceLifecycleEvents
+        .where((event) => !event.event.startsWith('lease_'))
+        .toList(growable: false);
+
+    expect(coreEvents(), hasLength(1));
+    expect(coreEvents().first.event, 'initState');
     expect(
-      recorder.surfaceLifecycleEvents.first.data,
+      coreEvents().first.data,
       containsPair('sourceLength', 0),
     );
 
@@ -53,14 +58,14 @@ void main() {
 
     await tester.pump();
 
-    expect(recorder.surfaceLifecycleEvents, hasLength(2));
-    expect(recorder.surfaceLifecycleEvents[1].event, 'didUpdateWidget');
+    expect(coreEvents(), hasLength(2));
+    expect(coreEvents()[1].event, 'didUpdateWidget');
     expect(
-      recorder.surfaceLifecycleEvents[1].data,
+      coreEvents()[1].data,
       containsPair('oldSourceLength', 0),
     );
     expect(
-      recorder.surfaceLifecycleEvents[1].data,
+      coreEvents()[1].data,
       containsPair('newSourceLength', '<div>Updated</div>'.length),
     );
 
@@ -74,10 +79,10 @@ void main() {
 
     await tester.pump();
 
-    expect(recorder.surfaceLifecycleEvents, hasLength(3));
-    expect(recorder.surfaceLifecycleEvents.last.event, 'dispose');
+    expect(coreEvents(), hasLength(3));
+    expect(coreEvents().last.event, 'dispose');
     expect(
-      recorder.surfaceLifecycleEvents.last.data,
+      coreEvents().last.data,
       containsPair('hasRenderedVisibleContent', false),
     );
   });

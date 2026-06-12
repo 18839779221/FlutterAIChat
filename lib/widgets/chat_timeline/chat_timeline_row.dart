@@ -26,6 +26,7 @@ import 'package:ai_chat/widgets/chat_message_image_attachments.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_card.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_result_card.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_timeline_card.dart';
+import 'package:ai_chat/widgets/chat_timeline/artifact_keep_alive.dart';
 import 'package:ai_chat/widgets/chat_timeline/context_boundary_divider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -260,15 +261,17 @@ class ChatTimelineRow extends ConsumerWidget {
         );
         break;
       case AssistantTurnBlockType.artifact:
-        blockWidget = GestureDetector(
-          key: ValueKey('gesture_${block.artifactProjection?.artifactId}'),
-          onLongPress: sourceMessage == null
-              ? null
-              : () => onLongPressMessage(sourceMessage),
-          child: ArtifactBlock(
-            key: ValueKey(block.artifactProjection?.artifactId),
-            projection: block.artifactProjection,
-            logicalId: block.logicalId,
+        blockWidget = ArtifactKeepAlive(
+          child: GestureDetector(
+            key: ValueKey('gesture_${block.artifactProjection?.artifactId}'),
+            onLongPress: sourceMessage == null
+                ? null
+                : () => onLongPressMessage(sourceMessage),
+            child: ArtifactBlock(
+              key: ValueKey(block.artifactProjection?.artifactId),
+              projection: block.artifactProjection,
+              logicalId: block.logicalId,
+            ),
           ),
         );
         break;

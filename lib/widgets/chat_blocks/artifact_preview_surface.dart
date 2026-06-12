@@ -4,6 +4,7 @@ import 'package:ai_chat/models/artifact/artifact_render_session_snapshot.dart';
 import 'package:ai_chat/providers/streaming_trace_providers.dart';
 import 'package:ai_chat/services/artifact/artifact_render_session_recorder.dart';
 import 'package:ai_chat/services/artifact/artifact_host_style_builder.dart';
+import 'package:ai_chat/services/artifact/artifact_webview_lease_coordinator.dart';
 import 'package:ai_chat/services/debug/streaming_visibility_reporter.dart';
 import 'package:ai_chat/services/artifact/artifact_theme_token_mapper.dart';
 import 'package:ai_chat/theme/app_theme_spec.dart';
@@ -12,6 +13,8 @@ import 'package:ai_chat/widgets/chat_blocks/artifact_preview_page_storage.dart';
 import 'package:ai_chat/widgets/tool_renderers/tool_running_effects.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderAbstractViewport;
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' show ProviderScope;
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -23,6 +26,40 @@ const Duration _streamingDebounceDelay = Duration(milliseconds: 1000);
 const Duration _heightUpdateDebounceDelay = Duration(milliseconds: 100);
 const String _artifactPreviewLogTag = 'ArtifactPreviewSurface';
 const String _artifactPreviewSweepShellKey = 'artifact-preview-sweep-shell';
+const int _maxRuntimeApplyRetries = 3;
+
+/// Upper bound for waiting on the host document before a runtime apply.
+/// Mutable so tests can shorten it; production code never reassigns it.
+@visibleForTesting
+Duration artifactControllerReadyTimeout = const Duration(seconds: 8);
+
+/// How long a prepared final controller may stay un-promoted before the
+/// surface falls back to reloading the final document on the active
+/// controller.
+@visibleForTesting
+Duration artifactTakeoverFallbackDelay = const Duration(seconds: 10);
+
+/// Delay before probing a re-attached WebView (controllerOnly → mounted).
+/// iOS may have killed the suspended content process while the view was
+/// off-screen; the probe detects that and triggers a full reload.
+@visibleForTesting
+Duration artifactLeaseReattachProbeDelay = const Duration(milliseconds: 300);
+
+/// Upper bound for the re-attach probe JavaScript round trip.
+@visibleForTesting
+Duration artifactLeaseReattachProbeTimeout = const Duration(seconds: 2);
+
+const Key artifactPreviewLeasePlaceholderKey =
+    Key('artifact-preview-lease-placeholder');
+
+void _defaultLeaseObservationSink(String event, Map<String, Object?> data) {
+  Logger.temp(
+    'ArtifactWebViewLease',
+    event,
+    reason: 'artifact webview lease coordination',
+    data: Map<String, dynamic>.from(data),
+  );
+}
 
 double clampArtifactPreviewHeight(
   double rawHeight, {
@@ -99,6 +136,28 @@ bool shouldReloadArtifactHostDocumentForThemeChange({
   required String? source,
 }) {
   return source != null && source.trim().isNotEmpty;
+}
+
+/// Sub-resource failures (images, fonts, blocked requests) must not replace
+/// the whole preview; only main-frame errors should surface. Platforms that
+/// don't report the frame (`null`) are treated as main-frame to stay safe.
+@visibleForTesting
+bool shouldSurfaceArtifactWebResourceError({required bool? isForMainFrame}) {
+  return isForMainFrame != false;
+}
+
+/// `runJavaScriptReturningResult` wraps string results in JSON quotes on
+/// Android but returns them raw on iOS, so both forms must be accepted.
+@visibleForTesting
+bool isArtifactApplyResultSuccess(Object? rawResult) {
+  if (rawResult == null) {
+    return false;
+  }
+  var text = rawResult.toString().trim();
+  if (text.length >= 2 && text.startsWith('"') && text.endsWith('"')) {
+    text = text.substring(1, text.length - 1);
+  }
+  return text == 'success';
 }
 
 enum ArtifactHostViewportProbeStatus {
@@ -657,6 +716,7 @@ class ArtifactPreviewSurface extends StatefulWidget {
     this.isRuntimePreview = false,
     this.enableInternalScroll = false,
     this.sessionRecorder,
+    this.leaseCoordinator,
     this.turnId,
     this.providerCallId,
   });
@@ -667,6 +727,11 @@ class ArtifactPreviewSurface extends StatefulWidget {
   final bool isRuntimePreview;
   final bool enableInternalScroll;
   final ArtifactRenderSessionRecorder? sessionRecorder;
+
+  /// Budget manager for live WebViews; defaults to the process-wide
+  /// [ArtifactWebViewLeaseCoordinator.instance].
+  final ArtifactWebViewLeaseCoordinator? leaseCoordinator;
+
   final String? turnId;
   final String? providerCallId;
 
@@ -674,7 +739,8 @@ class ArtifactPreviewSurface extends StatefulWidget {
   State<ArtifactPreviewSurface> createState() => _ArtifactPreviewSurfaceState();
 }
 
-class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
+class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface>
+    implements ArtifactWebViewLeaseClient {
   final GlobalKey _previewViewportKey = GlobalKey(
     debugLabel: 'artifactPreviewViewport',
   );
@@ -702,6 +768,13 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   String? _lastThemeSignature;
   bool _isControllerReady = false;
   Completer<void>? _controllerReadyCompleter;
+  // Incremented whenever the active controller (or its document) is replaced;
+  // in-flight applies compare generations after each await and abandon
+  // silently when superseded.
+  int _controllerGeneration = 0;
+  int _runtimeApplyRetryCount = 0;
+  bool _hasRebuiltControllerForApplyFailure = false;
+  Timer? _takeoverFallbackTimer;
 
   // Height update debouncing
   Timer? _heightDebounceTimer;
@@ -715,6 +788,21 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   int _lastObservedSourceLength = 0;
   int _controllerOrdinal = 0;
   bool _previousWidgetWasRuntimePreview = false;
+
+  // WebView lease state.
+  ArtifactWebViewLeaseHandle? _leaseHandle;
+  bool _isResidentLease = false;
+  bool _pendingThemeReload = false;
+  bool _holdsStreamingPin = false;
+  bool _holdsTakeoverPin = false;
+  ArtifactWebViewLeaseState _lastAppliedLeaseState =
+      ArtifactWebViewLeaseState.released;
+  ArtifactLeaseVisibilitySample _lastLeaseSample =
+      const ArtifactLeaseVisibilitySample.attached(distanceToViewportPx: 0);
+
+  bool get _leaseAllowsWebView =>
+      _leaseHandle == null ||
+      _leaseHandle!.state == ArtifactWebViewLeaseState.mounted;
 
   @override
   void initState() {
@@ -733,19 +821,46 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _restorePreviewStateFromPageStorage();
+    _syncLeaseRegistration();
     final nextSignature = _currentThemeSignature();
     if (_lastThemeSignature == nextSignature) {
-      _controller ??= _createController();
+      if (_leaseAllowsWebView) {
+        _controller ??= _createController();
+      }
       return;
     }
     final didThemeChange = _lastThemeSignature != null;
     _lastThemeSignature = nextSignature;
-    _controller ??= _createController();
+    if (_leaseAllowsWebView) {
+      _controller ??= _createController();
+    }
     final source = widget.source;
     if (didThemeChange &&
         shouldReloadArtifactHostDocumentForThemeChange(source: source)) {
-      _reloadHostDocumentForThemeChange(source!);
+      if (_leaseAllowsWebView) {
+        _reloadHostDocumentForThemeChange(source!);
+      } else {
+        // Reloading every kept-alive off-screen surface on a theme switch
+        // would recreate all their documents at once; defer until regrant.
+        _pendingThemeReload = true;
+      }
     }
+  }
+
+  void _syncLeaseRegistration() {
+    final scrollable =
+        widget.enableInternalScroll ? null : Scrollable.maybeOf(context);
+    _isResidentLease = widget.enableInternalScroll || scrollable == null;
+    if (_leaseHandle == null) {
+      final coordinator =
+          widget.leaseCoordinator ?? ArtifactWebViewLeaseCoordinator.instance;
+      coordinator.observationSink ??= _defaultLeaseObservationSink;
+      _leaseHandle = coordinator.register(this);
+      _lastAppliedLeaseState = _leaseHandle!.state;
+    }
+    _leaseHandle!.attachScrollPosition(
+      _isResidentLease ? null : scrollable?.position,
+    );
   }
 
   @override
@@ -782,6 +897,8 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         },
       );
       _recordSourceProgress(widget.source);
+      // Each new source gets a fresh retry budget.
+      _runtimeApplyRetryCount = 0;
 
       final source = widget.source;
       if (source == null || source.trim().isEmpty) {
@@ -800,6 +917,11 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   }
 
   void _ensureStreamingUpdateLoop() {
+    if (!_holdsStreamingPin && _leaseHandle != null) {
+      // Active streaming must not lose its live webview to the budget.
+      _holdsStreamingPin = true;
+      _leaseHandle!.acquirePin();
+    }
     _streamingUpdateTimer ??= Timer.periodic(_streamingDebounceDelay, (_) {
       _drainPendingSource();
     });
@@ -811,10 +933,18 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     }
     _streamingUpdateTimer?.cancel();
     _streamingUpdateTimer = null;
+    _releaseStreamingPin();
   }
 
   Future<void> _drainPendingSource() async {
     if (!mounted || _isStreamingUpdateInFlight) {
+      return;
+    }
+    if (!_leaseAllowsWebView) {
+      // Keep the newest pending source for the regrant; ticking while the
+      // webview is unmounted only burns cycles.
+      _streamingUpdateTimer?.cancel();
+      _streamingUpdateTimer = null;
       return;
     }
     final newSource = _pendingSource;
@@ -874,12 +1004,22 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   void _reloadHostDocumentForThemeChange(String source) {
     _streamingUpdateTimer?.cancel();
     _streamingUpdateTimer = null;
+    _takeoverFallbackTimer?.cancel();
+    _takeoverFallbackTimer = null;
+    _releaseTakeoverPin();
+    _releaseStreamingPin();
     _pendingSource = null;
     _pendingFinalController = null;
     _pendingFinalSource = null;
     _lastRenderedSource = null;
+    // Release any apply awaiting the old document before swapping controllers
+    // so the streaming loop's in-flight flag cannot get stuck.
+    _controllerGeneration += 1;
+    _abandonControllerReadyWaiters();
     _isControllerReady = false;
     _controllerReadyCompleter = null;
+    _runtimeApplyRetryCount = 0;
+    _hasRebuiltControllerForApplyFailure = false;
     _errorText = null;
     _previewHeight = _defaultArtifactPreviewHeight;
     _controller = _createController();
@@ -889,6 +1029,10 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   }
 
   void _loadFinalSource(String source) {
+    if (!_leaseAllowsWebView) {
+      // Deferred: `_handleLeaseMountGranted` re-runs the takeover on regrant.
+      return;
+    }
     if (!shouldPrepareFinalArtifactTakeover(
       source: source,
       lastRenderedSource: _lastRenderedSource,
@@ -913,6 +1057,66 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
       _pendingFinalSource = source;
       _pendingFinalController = controller;
     });
+    if (!_holdsTakeoverPin && _leaseHandle != null) {
+      // Both controllers must stay mounted until the takeover resolves; the
+      // fallback timer bounds the pin's lifetime.
+      _holdsTakeoverPin = true;
+      _leaseHandle!.acquirePin();
+    }
+    _takeoverFallbackTimer?.cancel();
+    _takeoverFallbackTimer = Timer(
+      artifactTakeoverFallbackDelay,
+      _handleTakeoverFallback,
+    );
+  }
+
+  /// Bounded recovery for a pending final controller that never promoted
+  /// (onPageFinished lost, source mismatch, controller replaced): drop the
+  /// hidden controller and load the final document on the active one.
+  void _handleTakeoverFallback() {
+    _takeoverFallbackTimer = null;
+    _releaseTakeoverPin();
+    if (!mounted || _pendingFinalController == null) {
+      return;
+    }
+    final source = widget.source;
+    _recordSurfaceLifecycle(
+      'takeover_fallback',
+      data: <String, dynamic>{
+        'pendingFinalSourceLength': _pendingFinalSource?.length ?? 0,
+        'currentSourceLength': source?.length ?? 0,
+      },
+    );
+    if (widget.isRuntimePreview || source == null || source.trim().isEmpty) {
+      setState(() {
+        _pendingFinalController = null;
+        _pendingFinalSource = null;
+      });
+      return;
+    }
+    final activeController = _controller;
+    if (activeController == null) {
+      _lastRenderedSource = null;
+      setState(() {
+        _pendingFinalController = null;
+        _pendingFinalSource = null;
+        _controller = _createController();
+      });
+      return;
+    }
+    _beginControllerDocumentLoad();
+    activeController.loadHtmlString(
+      buildFinalArtifactPreviewDocument(
+        source,
+        lockScroll: !widget.enableInternalScroll,
+        hostCssVariables: _resolveHostCssVariables(),
+      ),
+    );
+    _lastRenderedSource = source;
+    setState(() {
+      _pendingFinalController = null;
+      _pendingFinalSource = null;
+    });
   }
 
   void _promotePendingFinalController(
@@ -930,13 +1134,17 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
       sourceLength: source.length,
       timestamp: DateTime.now(),
     );
+    _takeoverFallbackTimer?.cancel();
+    _takeoverFallbackTimer = null;
+    _releaseTakeoverPin();
+    // Abandon applies still targeting the superseded runtime controller.
+    _controllerGeneration += 1;
     setState(() {
       _controller = controller;
       _pendingFinalController = null;
       _pendingFinalSource = null;
       _lastRenderedSource = source;
-      _isControllerReady = true;
-      _controllerReadyCompleter?.complete();
+      _markControllerReady();
     });
     _markVisibleContentReady();
   }
@@ -945,6 +1153,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     WebViewController controller,
     String source,
   ) async {
+    final generation = _controllerGeneration;
     try {
       _sessionRecorder.recordRuntimeApplyStarted(
         sessionId: _sessionId,
@@ -963,6 +1172,10 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
       );
 
       await _awaitControllerReady();
+      if (!mounted || generation != _controllerGeneration) {
+        _recordRuntimeApplyAbandoned(generation, source);
+        return;
+      }
       final encodedPayload = base64Encode(utf8.encode(source));
       final payloadJson = jsonEncode(encodedPayload);
       final updateScript = '''
@@ -980,14 +1193,26 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
 
       final result =
           await controller.runJavaScriptReturningResult(updateScript);
-      _lastRenderedSource = source;
+      if (!mounted || generation != _controllerGeneration) {
+        _recordRuntimeApplyAbandoned(generation, source);
+        return;
+      }
+      final applySucceeded = isArtifactApplyResultSuccess(result);
+      if (applySucceeded) {
+        _lastRenderedSource = source;
+        _runtimeApplyRetryCount = 0;
+      } else {
+        _handleRuntimeApplyFailure(source: source, result: result.toString());
+      }
       _sessionRecorder.recordRuntimeApplyCompleted(
         sessionId: _sessionId,
         sourceLength: source.length,
         result: result.toString(),
         timestamp: DateTime.now(),
       );
-      if (widget.enableInternalScroll && source.trim().isNotEmpty) {
+      if (applySucceeded &&
+          widget.enableInternalScroll &&
+          source.trim().isNotEmpty) {
         _markVisibleContentReady();
       }
       Logger.temp(
@@ -1000,6 +1225,10 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         },
       );
     } catch (error) {
+      if (!mounted || generation != _controllerGeneration) {
+        _recordRuntimeApplyAbandoned(generation, source);
+        return;
+      }
       Logger.temp(
         _artifactPreviewLogTag,
         'runtime apply exception',
@@ -1010,18 +1239,71 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
           'error': error.toString(),
         },
       );
-      if (mounted) {
-        setState(() {
-          _errorText = '$error';
-        });
-      }
+      setState(() {
+        _errorText = '$error';
+      });
     }
+  }
+
+  void _recordRuntimeApplyAbandoned(int staleGeneration, String source) {
+    _recordSurfaceLifecycle(
+      'runtime_apply_abandoned',
+      data: <String, dynamic>{
+        'staleGeneration': staleGeneration,
+        'currentGeneration': _controllerGeneration,
+        'abandonedSourceLength': source.length,
+      },
+    );
+  }
+
+  /// A failed apply must not be book-kept as rendered, otherwise the same
+  /// source is skipped as "unchanged" forever. Retries go through the regular
+  /// streaming loop; a broken host document gets one full controller rebuild.
+  void _handleRuntimeApplyFailure({
+    required String source,
+    required String result,
+  }) {
+    _runtimeApplyRetryCount += 1;
+    final isHostDocumentBroken =
+        result.contains('no-root') || result.contains('no-apply-function');
+    _recordSurfaceLifecycle(
+      'runtime_apply_failed',
+      data: <String, dynamic>{
+        'result': result,
+        'retryCount': _runtimeApplyRetryCount,
+        'hostDocumentBroken': isHostDocumentBroken,
+      },
+    );
+    if (_runtimeApplyRetryCount <= _maxRuntimeApplyRetries) {
+      _pendingSource ??= source;
+      _ensureStreamingUpdateLoop();
+      return;
+    }
+    _runtimeApplyRetryCount = 0;
+    if (isHostDocumentBroken &&
+        !_hasRebuiltControllerForApplyFailure &&
+        mounted) {
+      _hasRebuiltControllerForApplyFailure = true;
+      _recordSurfaceLifecycle('runtime_apply_controller_rebuild');
+      _lastRenderedSource = null;
+      setState(() {
+        _controller = _createController();
+      });
+      return;
+    }
+    _recordSurfaceLifecycle(
+      'runtime_apply_gave_up',
+      data: <String, dynamic>{'result': result},
+    );
   }
 
   @override
   void dispose() {
     _streamingUpdateTimer?.cancel();
     _heightDebounceTimer?.cancel();
+    _takeoverFallbackTimer?.cancel();
+    _leaseHandle?.unregister();
+    _leaseHandle = null;
     _recordSurfaceLifecycle(
       'dispose',
       data: <String, dynamic>{
@@ -1039,9 +1321,9 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     }
 
     try {
-      _isControllerReady = false;
-      _controllerReadyCompleter = Completer<void>();
-      final controller = WebViewController()
+      _beginControllerDocumentLoad();
+      late final WebViewController controller;
+      controller = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
         ..enableZoom(false)
         ..setNavigationDelegate(
@@ -1053,11 +1335,12 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
               return NavigationDecision.prevent;
             },
             onPageFinished: (_) {
-              if (_isControllerReady) {
+              // A superseded controller (theme reload, apply-failure rebuild)
+              // must not complete the ready gate of its replacement.
+              if (!identical(controller, _controller) || _isControllerReady) {
                 return;
               }
-              _isControllerReady = true;
-              _controllerReadyCompleter?.complete();
+              _markControllerReady();
               if (!widget.isRuntimePreview &&
                   widget.source != null &&
                   widget.source!.trim().isNotEmpty) {
@@ -1065,12 +1348,10 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
               }
             },
             onWebResourceError: (error) {
-              if (!mounted) {
+              if (!identical(controller, _controller)) {
                 return;
               }
-              setState(() {
-                _errorText = error.description;
-              });
+              _handleWebResourceError(error);
             },
           ),
         );
@@ -1129,12 +1410,11 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
               _promotePendingFinalController(controller, source);
             },
             onWebResourceError: (error) {
-              if (!mounted) {
+              if (!identical(controller, _pendingFinalController) &&
+                  !identical(controller, _controller)) {
                 return;
               }
-              setState(() {
-                _errorText = error.description;
-              });
+              _handleWebResourceError(error);
             },
           ),
         );
@@ -1159,6 +1439,258 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
       _errorText = '$error';
       return null;
     }
+  }
+
+  // --- ArtifactWebViewLeaseClient ---
+
+  @override
+  String get debugLabel => '${widget.artifactId}:${widget.sourcePath}';
+
+  @override
+  bool get isResident => _isResidentLease;
+
+  @override
+  bool get allowsMountGrantNow {
+    if (!mounted) {
+      return false;
+    }
+    try {
+      return !Scrollable.recommendDeferredLoadingForContext(context);
+    } catch (_) {
+      return true;
+    }
+  }
+
+  @override
+  ArtifactLeaseVisibilitySample sampleVisibility() {
+    if (!mounted) {
+      return const ArtifactLeaseVisibilitySample.detached();
+    }
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      // Mid-frame pass (a sibling registering during build): probing the
+      // render tree is not allowed here, reuse the last settled sample.
+      return _lastLeaseSample;
+    }
+    final renderObject = context.findRenderObject();
+    if (renderObject == null ||
+        !renderObject.attached ||
+        renderObject is! RenderBox ||
+        !renderObject.hasSize) {
+      _lastLeaseSample = const ArtifactLeaseVisibilitySample.detached();
+      return _lastLeaseSample;
+    }
+    final scrollPosition = widget.enableInternalScroll
+        ? null
+        : Scrollable.maybeOf(context)?.position;
+    final viewport = RenderAbstractViewport.maybeOf(renderObject);
+    if (scrollPosition == null ||
+        viewport == null ||
+        !scrollPosition.hasPixels ||
+        !scrollPosition.hasViewportDimension) {
+      _lastLeaseSample =
+          const ArtifactLeaseVisibilitySample.attached(distanceToViewportPx: 0);
+      return _lastLeaseSample;
+    }
+    final leadingOffset = viewport.getOffsetToReveal(renderObject, 0).offset;
+    final trailingOffset = leadingOffset + renderObject.size.height;
+    final visibleStart = scrollPosition.pixels;
+    final visibleEnd = visibleStart + scrollPosition.viewportDimension;
+    double distance = 0;
+    if (trailingOffset < visibleStart) {
+      distance = visibleStart - trailingOffset;
+    } else if (leadingOffset > visibleEnd) {
+      distance = leadingOffset - visibleEnd;
+    }
+    _lastLeaseSample = ArtifactLeaseVisibilitySample.attached(
+      distanceToViewportPx: distance,
+    );
+    return _lastLeaseSample;
+  }
+
+  @override
+  void onLeaseStateChanged(ArtifactWebViewLeaseState state) {
+    _recordSurfaceLifecycle(
+      'lease_state_changed',
+      data: <String, dynamic>{'leaseState': state.name},
+    );
+    if (!mounted) {
+      return;
+    }
+    // The coordinator may emit this synchronously while a sibling surface is
+    // registering inside its own build; rebuilding now is forbidden.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _applyLeaseState(_leaseHandle?.state ?? state);
+    });
+    WidgetsBinding.instance.scheduleFrame();
+  }
+
+  void _applyLeaseState(ArtifactWebViewLeaseState state) {
+    final previous = _lastAppliedLeaseState;
+    _lastAppliedLeaseState = state;
+    setState(() {});
+    switch (state) {
+      case ArtifactWebViewLeaseState.mounted:
+        _handleLeaseMountGranted(
+          wasControllerOnly: previous == ArtifactWebViewLeaseState.controllerOnly,
+        );
+        break;
+      case ArtifactWebViewLeaseState.controllerOnly:
+        // The build branch unmounts the WebViewWidget; the controller and its
+        // loaded document stay alive for a cheap re-attach.
+        break;
+      case ArtifactWebViewLeaseState.released:
+        _releaseControllerResources();
+        break;
+    }
+  }
+
+  void _handleLeaseMountGranted({required bool wasControllerOnly}) {
+    final source = widget.source;
+    if (_pendingThemeReload) {
+      _pendingThemeReload = false;
+      if (shouldReloadArtifactHostDocumentForThemeChange(source: source)) {
+        // The retained document still carries the old theme CSS.
+        _reloadHostDocumentForThemeChange(source!);
+        return;
+      }
+    }
+    final controller = _controller;
+    if (controller == null) {
+      if (source != null && source.trim().isNotEmpty) {
+        setState(() {
+          _controller = _createController();
+        });
+      }
+    } else {
+      if (wasControllerOnly) {
+        _scheduleLeaseReattachProbe(controller);
+      }
+      if (!widget.isRuntimePreview &&
+          source != null &&
+          source.trim().isNotEmpty &&
+          _lastRenderedSource != source &&
+          _pendingFinalController == null) {
+        // A final source arrived while the webview was unmounted.
+        _loadFinalSource(source);
+      }
+    }
+    if (_pendingSource != null) {
+      _ensureStreamingUpdateLoop();
+    }
+  }
+
+  /// Released tier: drop the controller and every piece of bookkeeping that
+  /// would make a later regrant skip work (`_lastRenderedSource` in
+  /// particular — keeping it would skip the source as "unchanged" → blank).
+  /// `_previewHeight` survives so the placeholder keeps the row's extent.
+  void _releaseControllerResources() {
+    if (_controller == null && _pendingFinalController == null) {
+      return;
+    }
+    _streamingUpdateTimer?.cancel();
+    _streamingUpdateTimer = null;
+    _takeoverFallbackTimer?.cancel();
+    _takeoverFallbackTimer = null;
+    _releaseTakeoverPin();
+    _controllerGeneration += 1;
+    _abandonControllerReadyWaiters();
+    _isControllerReady = false;
+    _controllerReadyCompleter = null;
+    _lastRenderedSource = null;
+    _pendingFinalController = null;
+    _pendingFinalSource = null;
+    _controller = null;
+    _runtimeApplyRetryCount = 0;
+    _hasRebuiltControllerForApplyFailure = false;
+    _recordSurfaceLifecycle('lease_released_cleanup');
+  }
+
+  /// iOS may terminate the content process of a WKWebView that sat detached;
+  /// verify the document still responds after re-attach, reload otherwise.
+  void _scheduleLeaseReattachProbe(WebViewController controller) {
+    Future<void>.delayed(artifactLeaseReattachProbeDelay, () async {
+      if (!mounted ||
+          !identical(controller, _controller) ||
+          !_leaseAllowsWebView) {
+        return;
+      }
+      var healthy = false;
+      String probeResult;
+      try {
+        final result = await controller
+            .runJavaScriptReturningResult(
+              "(document.readyState || 'unknown') + ':' + (!!window.__artifactHeight__)",
+            )
+            .timeout(artifactLeaseReattachProbeTimeout);
+        probeResult = result.toString();
+        healthy = probeResult.contains(':true');
+      } catch (error) {
+        probeResult = 'error:$error';
+      }
+      _recordSurfaceLifecycle(
+        'lease_reattach_probe',
+        data: <String, dynamic>{
+          'result': probeResult,
+          'healthy': healthy,
+        },
+      );
+      if (healthy ||
+          !mounted ||
+          !identical(controller, _controller) ||
+          !_leaseAllowsWebView) {
+        return;
+      }
+      _recordSurfaceLifecycle('lease_reattach_reload');
+      final source = widget.source;
+      _lastRenderedSource = null;
+      if (source == null || source.trim().isEmpty) {
+        return;
+      }
+      setState(() {
+        _controller = _createController();
+      });
+    });
+  }
+
+  void _releaseStreamingPin() {
+    if (_holdsStreamingPin) {
+      _holdsStreamingPin = false;
+      _leaseHandle?.releasePin();
+    }
+  }
+
+  void _releaseTakeoverPin() {
+    if (_holdsTakeoverPin) {
+      _holdsTakeoverPin = false;
+      _leaseHandle?.releasePin();
+    }
+  }
+
+  void _handleWebResourceError(WebResourceError error) {
+    if (!mounted) {
+      return;
+    }
+    if (!shouldSurfaceArtifactWebResourceError(
+      isForMainFrame: error.isForMainFrame,
+    )) {
+      _recordSurfaceLifecycle(
+        'subresource_error',
+        data: <String, dynamic>{
+          'errorCode': error.errorCode,
+          'errorType': error.errorType?.toString(),
+          'description': error.description,
+          'url': error.url,
+        },
+      );
+      return;
+    }
+    setState(() {
+      _errorText = error.description;
+    });
   }
 
   void _addArtifactHeightChannel(WebViewController controller) {
@@ -1291,7 +1823,37 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
     if (completer == null) {
       return;
     }
-    await completer.future;
+    // The timeout keeps `_drainPendingSource`'s in-flight flag from getting
+    // stuck forever when onPageFinished never arrives; callers re-check the
+    // controller generation after this await.
+    await completer.future.timeout(
+      artifactControllerReadyTimeout,
+      onTimeout: () {},
+    );
+  }
+
+  /// Releases anything awaiting the current ready completer. Callers that
+  /// resume will see a bumped generation and abandon their work.
+  void _abandonControllerReadyWaiters() {
+    final completer = _controllerReadyCompleter;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete();
+    }
+  }
+
+  void _beginControllerDocumentLoad() {
+    _controllerGeneration += 1;
+    _abandonControllerReadyWaiters();
+    _isControllerReady = false;
+    _controllerReadyCompleter = Completer<void>();
+  }
+
+  void _markControllerReady() {
+    _isControllerReady = true;
+    final completer = _controllerReadyCompleter;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete();
+    }
   }
 
   void _markVisibleContentReady() {
@@ -1350,6 +1912,23 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
       return _buildInfoMessage(
         context,
         'Preview unavailable\n${widget.sourcePath}',
+      );
+    }
+    assert(
+      _controller == null ||
+          !identical(_controller, _pendingFinalController),
+      'The same WebViewController must never be mounted twice.',
+    );
+    if (!_leaseAllowsWebView) {
+      // Lease revoked: same height and chrome as the live preview so the
+      // timeline layout does not shift while the webview is unmounted.
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: _buildPreviewShell(
+          context,
+          isRunning: false,
+          shellKey: artifactPreviewLeasePlaceholderKey,
+        ),
       );
     }
     if (_controller == null) {
@@ -1554,6 +2133,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
   Widget _buildPreviewShell(
     BuildContext context, {
     required bool isRunning,
+    Key? shellKey,
   }) {
     final theme = Theme.of(context);
     final spec = theme.extension<AppThemeSpec>();
@@ -1565,7 +2145,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface> {
         .withValues(alpha: 0.97);
     final borderColor = spec?.divider ?? theme.colorScheme.outlineVariant;
     return Container(
-      key: const Key(_artifactPreviewSweepShellKey),
+      key: shellKey ?? const Key(_artifactPreviewSweepShellKey),
       width: double.infinity,
       height: _previewHeight,
       decoration: BoxDecoration(

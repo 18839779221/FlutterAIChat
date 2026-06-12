@@ -61,6 +61,9 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   sqflite_common_ffi: ^2.3.3
+  # Already a transitive dependency of webview_flutter; surfaced here so tests
+  # can register a scriptable fake WebViewPlatform.
+  webview_flutter_platform_interface: ^2.14.0
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
