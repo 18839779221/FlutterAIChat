@@ -13,14 +13,16 @@ class StreamingTurnTimelineBuilder {
     DateTime? now,
   }) {
     final resolvedNow = now ?? DateTime.now();
+    final isCompleted =
+        snapshot.status == StreamingTraceLifecycleStatus.completed;
     final entries = [...snapshot.entries]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
     final turnStart = _resolveTurnStart(snapshot, entries);
     final finalAnswerStart = _resolveFinalAnswerStart(entries);
     final finalAnswerPreview = _resolveLatestPreviewText(entries);
     final modelPhases = _resolveModelPhases(entries, resolvedNow);
     final toolSpans = _resolveToolSpans(entries, resolvedNow);
-    final completedEnd = snapshot.takeoverAt;
-    final timelineEnd = completedEnd ?? resolvedNow;
+    final completedEnd = _resolveCompletedEnd(snapshot, entries);
+    final timelineEnd = isCompleted ? completedEnd : resolvedNow;
 
     final segments = <StreamingTurnTimelineSegment>[];
     var cursor = turnStart;
@@ -64,7 +66,7 @@ class StreamingTurnTimelineBuilder {
           ),
         );
       }
-      final answerEnd = completedEnd ?? resolvedNow;
+      final answerEnd = timelineEnd;
       final effectiveFinalAnswerStart =
           finalAnswerStart.isAfter(cursor) ? finalAnswerStart : cursor;
       final finalAnswerModelPhase = _matchFinalAnswerModelPhase(
@@ -76,15 +78,18 @@ class StreamingTurnTimelineBuilder {
         StreamingTurnTimelineSegment(
           id: 'final_${segments.length}',
           type: StreamingTurnTimelineSegmentType.finalAnswer,
-          title: '回复生成中',
-          detail: _buildFinalAnswerDetail(finalAnswerPreview),
+          title: isCompleted ? '回复已生成' : '回复生成中',
+          detail: _buildFinalAnswerDetail(
+            finalAnswerPreview,
+            completed: isCompleted,
+          ),
           startedAt: effectiveFinalAnswerStart,
           endedAt: answerEnd,
           durationMs:
               answerEnd.difference(effectiveFinalAnswerStart).inMilliseconds,
           modelFirstChunkDelayMs: finalAnswerModelPhase?.firstChunkDelayMs,
           modelStreamingDurationMs: finalAnswerModelPhase?.streamingDurationMs,
-          isOngoing: completedEnd == null,
+          isOngoing: !isCompleted,
         ),
       );
       cursor = answerEnd;
@@ -109,18 +114,16 @@ class StreamingTurnTimelineBuilder {
           endedAt: timelineEnd,
           previousToolName: null,
           isFirstGap: true,
-          ongoing: completedEnd == null,
+          ongoing: !isCompleted,
         ),
       );
     }
 
     final totalElapsedMs = timelineEnd.difference(turnStart).inMilliseconds;
     final currentSegment = segments.last;
-    final currentStatusTitle = snapshot.status == StreamingTraceLifecycleStatus.completed
-        ? '已完成'
-        : currentSegment.title;
-    final currentStatusDetail = snapshot.status == StreamingTraceLifecycleStatus.completed
-        ? 'final answer 已完整显示'
+    final currentStatusTitle = isCompleted ? '已完成' : currentSegment.title;
+    final currentStatusDetail = isCompleted
+        ? _buildCompletedStatusDetail(currentSegment)
         : currentSegment.detail;
 
     return StreamingTurnTimeline(
@@ -142,6 +145,20 @@ class StreamingTurnTimelineBuilder {
       if (entry.stage == StreamingTraceStage.turnStarted) {
         return entry.timestamp;
       }
+    }
+    return snapshot.startedAt;
+  }
+
+  DateTime _resolveCompletedEnd(
+    StreamingTraceSnapshot snapshot,
+    List<StreamingTraceEntry> entries,
+  ) {
+    final takeoverAt = snapshot.takeoverAt;
+    if (takeoverAt != null) {
+      return takeoverAt;
+    }
+    if (entries.isNotEmpty) {
+      return entries.last.timestamp;
     }
     return snapshot.startedAt;
   }
@@ -594,12 +611,25 @@ class StreamingTurnTimelineBuilder {
     );
   }
 
-  String _buildFinalAnswerDetail(String? previewText) {
+  String _buildFinalAnswerDetail(
+    String? previewText, {
+    required bool completed,
+  }) {
     final normalized = previewText?.replaceAll(RegExp(r'\s+'), ' ').trim() ?? '';
     if (normalized.isEmpty) {
-      return '正在生成回复';
+      return completed ? '最终回复已完整显示' : '正在生成回复';
     }
-    return '正在生成：${_truncate(normalized, 18)}';
+    final prefix = completed ? '最终回复：' : '正在生成：';
+    return '$prefix${_truncate(normalized, 18)}';
+  }
+
+  String _buildCompletedStatusDetail(
+    StreamingTurnTimelineSegment currentSegment,
+  ) {
+    if (currentSegment.type == StreamingTurnTimelineSegmentType.finalAnswer) {
+      return '最终回复已完整显示';
+    }
+    return '本轮已完成';
   }
 
   String _truncate(String value, int maxChars) {

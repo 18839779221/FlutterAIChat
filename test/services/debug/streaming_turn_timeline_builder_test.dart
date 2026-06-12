@@ -120,19 +120,69 @@ void main() {
 
       expect(timeline.totalElapsedMs, 6200);
       expect(timeline.currentStatusTitle, '已完成');
+      expect(timeline.currentStatusDetail, '最终回复已完整显示');
       expect(
         timeline.segments.map((segment) => segment.title).toList(),
-        ['等待模型响应', '调用 web_search', '步骤间等待', '回复生成中'],
+        ['等待模型响应', '调用 web_search', '步骤间等待', '回复已生成'],
       );
       expect(
         timeline.segments.map((segment) => segment.durationMs).toList(),
         [1200, 1900, 1200, 1900],
       );
-      expect(timeline.segments.last.detail, '正在生成：今天的主要变化是');
+      expect(timeline.segments.last.detail, '最终回复：今天的主要变化是');
       expect(timeline.segments[1].modelFirstChunkDelayMs, 700);
       expect(timeline.segments[1].modelStreamingDurationMs, 2500);
       expect(timeline.segments.last.modelFirstChunkDelayMs, 700);
       expect(timeline.segments.last.modelStreamingDurationMs, 1900);
+    });
+
+    test('completed snapshot without takeoverAt still uses completed semantics', () {
+      final startedAt = DateTime(2026, 5, 31, 12, 0, 0);
+      final snapshot = StreamingTraceSnapshot(
+        traceId: 'trace_completed_without_takeover',
+        turnId: 'turn_completed_without_takeover',
+        status: StreamingTraceLifecycleStatus.completed,
+        currentStage: StreamingTraceStage.modelRequestCompleted,
+        summaryText: 'done',
+        startedAt: startedAt,
+        entries: [
+          StreamingTraceEntry(
+            eventId: 'e0',
+            traceId: 'trace_completed_without_takeover',
+            stage: StreamingTraceStage.turnStarted,
+            timestamp: startedAt,
+            elapsedMsFromStart: 0,
+            title: 'turnStarted',
+          ),
+          StreamingTraceEntry(
+            eventId: 'e1',
+            traceId: 'trace_completed_without_takeover',
+            stage: StreamingTraceStage.uiFirstVisible,
+            timestamp: startedAt.add(const Duration(milliseconds: 800)),
+            elapsedMsFromStart: 800,
+            title: 'uiFirstVisible',
+            details: const {'previewText': '最终答案主体'},
+          ),
+          StreamingTraceEntry(
+            eventId: 'e2',
+            traceId: 'trace_completed_without_takeover',
+            stage: StreamingTraceStage.modelRequestCompleted,
+            timestamp: startedAt.add(const Duration(milliseconds: 1400)),
+            elapsedMsFromStart: 1400,
+            title: 'modelRequestCompleted',
+            details: const {'phase': 'final_answer'},
+          ),
+        ],
+      );
+
+      final timeline = const StreamingTurnTimelineBuilder().build(snapshot);
+
+      expect(timeline.currentStatusTitle, '已完成');
+      expect(timeline.currentStatusDetail, '最终回复已完整显示');
+      expect(timeline.totalElapsedMs, 1400);
+      expect(timeline.segments.last.title, '回复已生成');
+      expect(timeline.segments.last.detail, '最终回复：最终答案主体');
+      expect(timeline.segments.last.isOngoing, isFalse);
     });
 
     test('attaches model metrics to ongoing tool and final answer segments', () {
@@ -456,7 +506,7 @@ void main() {
 
       expect(
         timeline.segments.map((segment) => segment.title).toList(),
-        ['等待模型响应', '调用 create_artifact', '步骤间等待', '回复生成中'],
+        ['等待模型响应', '调用 create_artifact', '步骤间等待', '回复已生成'],
       );
       expect(
         timeline.segments.map((segment) => segment.durationMs).toList(),

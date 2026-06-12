@@ -1051,6 +1051,8 @@ void main() {
     await tester.longPress(debugButton);
     await tester.pumpAndSettle();
     expect(find.text('Streaming Timeline'), findsOneWidget);
+    expect(find.textContaining('status='), findsNothing);
+    expect(find.textContaining('epoch='), findsNothing);
 
     await tester.tapAt(const Offset(16, 220));
     await tester.pumpAndSettle();

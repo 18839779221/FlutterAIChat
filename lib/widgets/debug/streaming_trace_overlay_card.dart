@@ -4,7 +4,6 @@ import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_typography.dart';
-import 'package:ai_chat/utils/logger.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -111,8 +110,6 @@ class StreamingTraceOverlayCard extends StatelessWidget {
                   ),
                 ),
               ),
-              // TEMP DEBUG: 原始 entries 时间戳转储，用于定位时钟倒挂来源，定位后删除
-              _DebugEntriesDump(snapshot: snapshot),
             ],
           ),
         ),
@@ -277,96 +274,5 @@ class _TimelineSegmentRow extends StatelessWidget {
       case StreamingTurnTimelineSegmentType.finalAnswer:
         return colors.workflowSuccess.withValues(alpha: isOngoing ? 0.94 : 0.84);
     }
-  }
-}
-
-// TEMP DEBUG: 用无歧义的 epoch 毫秒 + isUtc 转储结构性阶段，定位时间戳异常来源。
-// 同步打到 Logger 便于从 logcat 复制文本。定位后整体删除。
-class _DebugEntriesDump extends StatelessWidget {
-  const _DebugEntriesDump({required this.snapshot});
-
-  final StreamingTraceSnapshot snapshot;
-
-  // 每 token 的高频噪声阶段，转储时跳过，只看结构性阶段。
-  static const _noisyStages = <StreamingTraceStage>{
-    StreamingTraceStage.streamEventReceived,
-    StreamingTraceStage.previewEventConsumed,
-    StreamingTraceStage.previewStateCommitted,
-    StreamingTraceStage.timelineProjectionBuilt,
-    StreamingTraceStage.uiUpdated,
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final spacing = Theme.of(context).extension<AppSpacing>()!;
-    final colors = Theme.of(context).extension<AppThemeSpec>()!;
-    final now = DateTime.now();
-    final startedAt = snapshot.startedAt;
-    final startEpoch = startedAt.millisecondsSinceEpoch;
-
-    String stamp(DateTime dt) =>
-        'epoch=${dt.millisecondsSinceEpoch} utc=${dt.isUtc} ${dt.toIso8601String()}';
-
-    final header = <String>[
-      'now    ${stamp(now)}',
-      'started ${stamp(startedAt)}',
-      'takeover ${snapshot.takeoverAt == null ? '-' : stamp(snapshot.takeoverAt!)}',
-      'status=${snapshot.status.name} '
-          'nowMinusStarted=${now.millisecondsSinceEpoch - startEpoch}ms '
-          'entries=${snapshot.entries.length}',
-    ];
-
-    final structural = <String>[];
-    for (var i = 0; i < snapshot.entries.length; i += 1) {
-      final entry = snapshot.entries[i];
-      if (_noisyStages.contains(entry.stage)) {
-        continue;
-      }
-      final deltaMs = entry.timestamp.millisecondsSinceEpoch - startEpoch;
-      final details = entry.details;
-      final tags = <String>[
-        if (details['requestId'] != null) 'req=${details['requestId']}',
-        if (details['phase'] != null) 'phase=${details['phase']}',
-        if (details['toolName'] != null) 'tool=${details['toolName']}',
-      ].join(' ');
-      structural.add(
-        '$i ${entry.stage.name} Δ=${deltaMs}ms '
-        'epoch=${entry.timestamp.millisecondsSinceEpoch} '
-        'utc=${entry.timestamp.isUtc}${tags.isEmpty ? '' : '  $tags'}',
-      );
-    }
-
-    final lines = [...header, ...structural];
-    Logger.trace(
-      'StreamingTraceOverlayCard',
-      'timeline-dump',
-      data: {'lines': lines},
-    );
-
-    return Padding(
-      padding: EdgeInsets.only(top: spacing.sm),
-      child: Container(
-        width: double.infinity,
-        padding: EdgeInsets.all(spacing.xs),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (final line in lines)
-              Text(
-                line,
-                style: AppTypography.codeStyle(
-                  color: colors.secondaryText,
-                  fontSize: 9,
-                  height: 1.3,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
   }
 }
