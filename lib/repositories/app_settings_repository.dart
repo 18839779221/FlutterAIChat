@@ -67,16 +67,12 @@ class AppSettingsRepository {
 
     await _writeProviders(defaults.providers);
     final defaultProvider = defaults.providers.first;
-    final seededDefaultModelId = defaults.defaultModelId ??
-        (defaultProvider.models.isEmpty
-            ? null
-            : defaultProvider.models.first.id);
+    final seededModelId = defaults.defaultModelId ??
+        (defaultProvider.models.isEmpty ? null : defaultProvider.models.first.id);
     await _writeSelection(
       LlmSelectionState(
         selectedProviderId: defaults.defaultProviderId ?? defaultProvider.id,
-        selectedModelId: seededDefaultModelId,
-        defaultProviderId: defaults.defaultProviderId ?? defaultProvider.id,
-        defaultModelId: seededDefaultModelId,
+        selectedModelId: seededModelId,
       ),
     );
     await _preferences.setBool(_providersSeededKey, true);
@@ -299,7 +295,6 @@ class AppSettingsRepository {
     final resolvedProvider = _resolveProvider(
       providers,
       selection.selectedProviderId,
-      fallbackProviderId: selection.defaultProviderId,
     );
     if (resolvedProvider == null) {
       return null;
@@ -307,7 +302,6 @@ class AppSettingsRepository {
     final resolvedModel = _resolveModel(
       resolvedProvider,
       selection.selectedModelId,
-      fallbackModelId: selection.defaultModelId,
     );
     return resolvedModel?.capabilityOverride;
   }
@@ -330,7 +324,6 @@ class AppSettingsRepository {
     final resolvedProvider = _resolveProvider(
       providers,
       selection.selectedProviderId,
-      fallbackProviderId: selection.defaultProviderId,
     );
     if (resolvedProvider == null) {
       return null;
@@ -338,7 +331,6 @@ class AppSettingsRepository {
     final resolvedModel = _resolveModel(
       resolvedProvider,
       selection.selectedModelId,
-      fallbackModelId: selection.defaultModelId,
     );
     return resolvedModel?.capabilityOverride;
   }
@@ -361,7 +353,6 @@ class AppSettingsRepository {
     final resolvedProvider = _resolveProvider(
       providers,
       selection.selectedProviderId,
-      fallbackProviderId: selection.defaultProviderId,
     );
     if (resolvedProvider == null) {
       return null;
@@ -369,7 +360,6 @@ class AppSettingsRepository {
     final resolvedModel = _resolveModel(
       resolvedProvider,
       selection.selectedModelId,
-      fallbackModelId: selection.defaultModelId,
     );
     final modelId = resolvedModel?.id.trim();
     if (modelId == null || modelId.isEmpty) {
@@ -423,19 +413,6 @@ class AppSettingsRepository {
     );
   }
 
-  Future<void> setDefaultProviderAndModel({
-    required String providerId,
-    required String modelId,
-  }) async {
-    final current = await getSelectionState();
-    await saveSelectionState(
-      current.copyWith(
-        defaultProviderId: providerId,
-        defaultModelId: modelId,
-      ),
-    );
-  }
-
   Future<String> getApiKey() async {
     final config = await getLlmConfig();
     return config.apiKey;
@@ -473,7 +450,6 @@ class AppSettingsRepository {
     final resolvedProvider = _resolveProvider(
       providers,
       selection.selectedProviderId,
-      fallbackProviderId: selection.defaultProviderId,
     );
     if (resolvedProvider == null) {
       throw Exception('请先在设置中新增提供方');
@@ -482,7 +458,6 @@ class AppSettingsRepository {
     final resolvedModel = _resolveModel(
       resolvedProvider,
       selection.selectedModelId,
-      fallbackModelId: selection.defaultModelId,
     );
     if (resolvedModel == null) {
       throw Exception('请先在设置中为当前提供方配置模型');
@@ -527,7 +502,6 @@ class AppSettingsRepository {
     final provider = _resolveProvider(
           providers,
           selection.selectedProviderId,
-          fallbackProviderId: selection.defaultProviderId,
         ) ??
         LlmProviderConfig(
           id: _defaultProviderId,
@@ -566,8 +540,6 @@ class AppSettingsRepository {
         selectedProviderId: updatedProvider.id,
         selectedModelId:
             trimmedModel.isEmpty ? _defaultModelName : trimmedModel,
-        defaultProviderId: selection.defaultProviderId ?? updatedProvider.id,
-        defaultModelId: selection.defaultModelId ?? trimmedModel,
       ),
     );
 
@@ -769,35 +741,19 @@ class AppSettingsRepository {
     if (availableProviders.isEmpty) {
       return const LlmSelectionState();
     }
-
-    final defaultProvider = _resolveProvider(
-          availableProviders,
-          selection.defaultProviderId,
-        ) ??
-        availableProviders.first;
-    final defaultModel = _resolveModel(
-      defaultProvider,
-      selection.defaultModelId,
-    );
-
     final selectedProvider = _resolveProvider(
           availableProviders,
           selection.selectedProviderId,
-          fallbackProviderId: defaultProvider.id,
         ) ??
-        defaultProvider;
+        availableProviders.first;
     final selectedModel = _resolveModel(
       selectedProvider,
       selection.selectedModelId,
-      fallbackModelId:
-          selectedProvider.id == defaultProvider.id ? defaultModel?.id : null,
     );
 
     return LlmSelectionState(
       selectedProviderId: selectedProvider.id,
       selectedModelId: selectedModel?.id,
-      defaultProviderId: defaultProvider.id,
-      defaultModelId: defaultModel?.id,
     );
   }
 

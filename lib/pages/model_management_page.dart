@@ -100,22 +100,22 @@ class _ModelManagementPageState extends State<ModelManagementPage> {
     await _load();
   }
 
-  LlmProviderConfig? get _defaultProvider {
+  LlmProviderConfig? get _currentProvider {
     for (final provider in _providers) {
-      if (provider.id == _selection.defaultProviderId) {
+      if (provider.id == _selection.selectedProviderId) {
         return provider;
       }
     }
     return _providers.isEmpty ? null : _providers.first;
   }
 
-  LlmProviderModel? get _defaultModel {
-    final provider = _defaultProvider;
+  LlmProviderModel? get _currentModel {
+    final provider = _currentProvider;
     if (provider == null) {
       return null;
     }
     for (final model in provider.models) {
-      if (model.id == _selection.defaultModelId) {
+      if (model.id == _selection.selectedModelId) {
         return model;
       }
     }
@@ -123,11 +123,11 @@ class _ModelManagementPageState extends State<ModelManagementPage> {
   }
 
   Future<void> _testCurrentModel() async {
-    final provider = _defaultProvider;
-    final model = _defaultModel;
+    final provider = _currentProvider;
+    final model = _currentModel;
     if (provider == null || model == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先完成 Provider 与默认模型配置')),
+        const SnackBar(content: Text('请先完成 Provider 与模型配置')),
       );
       return;
     }
@@ -165,8 +165,8 @@ class _ModelManagementPageState extends State<ModelManagementPage> {
   Widget build(BuildContext context) {
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
-    final defaultProvider = _defaultProvider;
-    final defaultModel = _defaultModel;
+    final currentProvider = _currentProvider;
+    final currentModel = _currentModel;
 
     return Scaffold(
       appBar: _buildTintedHeader(context, '模型配置'),
@@ -176,8 +176,8 @@ class _ModelManagementPageState extends State<ModelManagementPage> {
               padding: EdgeInsets.all(spacing.lg),
               children: [
                 _ManagementOverviewCard(
-                  defaultProvider: defaultProvider,
-                  defaultModel: defaultModel,
+                  currentProvider: currentProvider,
+                  currentModel: currentModel,
                   providerCount: _providers.length,
                   onCreateProvider: _openProviderForm,
                   isTestingCurrentModel: _isTestingCurrentModel,
@@ -202,7 +202,7 @@ class _ModelManagementPageState extends State<ModelManagementPage> {
                       padding: EdgeInsets.only(bottom: spacing.md),
                       child: _ProviderListTile(
                         provider: provider,
-                        isDefault: provider.id == _selection.defaultProviderId,
+                        isDefault: provider.id == _selection.selectedProviderId,
                         onEdit: () => _openProviderForm(provider),
                         onDelete: () => _deleteProvider(provider),
                       ),
@@ -217,16 +217,16 @@ class _ModelManagementPageState extends State<ModelManagementPage> {
 
 class _ManagementOverviewCard extends StatelessWidget {
   const _ManagementOverviewCard({
-    required this.defaultProvider,
-    required this.defaultModel,
+    required this.currentProvider,
+    required this.currentModel,
     required this.providerCount,
     required this.onCreateProvider,
     required this.isTestingCurrentModel,
     required this.onTestCurrentModel,
   });
 
-  final LlmProviderConfig? defaultProvider;
-  final LlmProviderModel? defaultModel;
+  final LlmProviderConfig? currentProvider;
+  final LlmProviderModel? currentModel;
   final int providerCount;
   final VoidCallback onCreateProvider;
   final bool isTestingCurrentModel;
@@ -273,7 +273,7 @@ class _ManagementOverviewCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(radius.pill),
               ),
               child: Text(
-                providerCount == 0 ? '准备接入' : '默认对话模型',
+                providerCount == 0 ? '准备接入' : '当前会话候选',
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
                       color: colors.workflowRunning,
                       fontWeight: FontWeight.w700,
@@ -282,14 +282,14 @@ class _ManagementOverviewCard extends StatelessWidget {
             ),
             SizedBox(height: spacing.md),
             Text(
-              '当前默认模型',
+              '当前选中模型',
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
                     color: colors.secondaryText,
                   ),
             ),
             SizedBox(height: spacing.xs),
             Text(
-              defaultModel?.displayName ?? '尚未完成模型接入',
+              currentModel?.displayName ?? '尚未完成模型接入',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                     height: 1.15,
@@ -297,7 +297,7 @@ class _ManagementOverviewCard extends StatelessWidget {
             ),
             SizedBox(height: spacing.xs),
             Text(
-              defaultProvider?.name ?? '请先新增 Provider 并选择默认模型',
+              currentProvider?.name ?? '请先新增 Provider 并补充模型',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: colors.secondaryText,
                     height: 1.45,

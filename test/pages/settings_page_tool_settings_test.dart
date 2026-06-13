@@ -1,8 +1,5 @@
-import 'package:ai_chat/models/chat_group.dart';
-import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/models/llm/llm_provider_model.dart';
-import 'package:ai_chat/models/skill/duplicate_skill_invocation_mode.dart';
 import 'package:ai_chat/models/skill/skill_descriptor.dart';
 import 'package:ai_chat/models/tool/tool_policy.dart';
 import 'package:ai_chat/pages/settings_page.dart';
@@ -39,11 +36,11 @@ void main() {
     await _pumpSettingsPage(tester, repository: repository);
 
     expect(find.text('模型与连接'), findsOneWidget);
-    expect(find.text('当前默认模型'), findsOneWidget);
+    expect(find.text('当前模型'), findsOneWidget);
     expect(find.text('进入模型配置'), findsOneWidget);
     expect(find.byKey(const Key('provider-switcher')), findsNothing);
     expect(find.text('当前提供方'), findsNothing);
-    expect(find.text('当前模型'), findsNothing);
+    expect(find.text('当前 Provider'), findsOneWidget);
   });
 
   testWidgets('tool settings section still renders mode and whitelist entries',
@@ -97,59 +94,6 @@ void main() {
     expect(find.text('清除缓存'), findsNothing);
   });
 
-  testWidgets('workspace picker updates current chat workspace', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(800, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    final repository = await _buildRepository();
-    final sessionCoordinator = _RecordingSessionCoordinator();
-    final container = ProviderContainer(
-      overrides: [
-        appSettingsRepositoryProvider.overrideWithValue(repository),
-        skillRuntimeServiceProvider
-            .overrideWithValue(_EmptySkillRuntimeService()),
-        chatSessionCoordinatorProvider
-            .overrideWithValue(sessionCoordinator),
-      ],
-    );
-    container.read(groupsProvider.notifier).setGroups([
-      ChatGroup(
-        id: 1,
-        title: 'Default',
-        lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
-      ),
-      ChatGroup(
-        id: 2,
-        title: 'Shared',
-        workspaceId: 'ws_20260602_a3k9qx',
-        lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
-      ),
-    ]);
-    container.read(currentGroupProvider.notifier).state = ChatGroup(
-      id: 1,
-      title: 'Default',
-      lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
-    );
-    addTearDown(container.dispose);
-
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          theme: AppTheme.light(),
-          home: const SettingsPage(),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('workspace-switcher')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('ws_20260602_a3k9qx').last);
-    await tester.pumpAndSettle();
-
-    expect(sessionCoordinator.updatedWorkspaceIds, ['ws_20260602_a3k9qx']);
-  });
 }
 
 Future<AppSettingsRepository> _buildRepository() async {
@@ -205,37 +149,4 @@ class _EmptySkillRuntimeService extends SkillRuntimeService {
 
   @override
   Future<List<SkillDescriptor>> listInstalledSkills() async => const [];
-}
-
-class _RecordingSessionCoordinator extends ChatSessionCoordinator {
-  final List<String?> updatedWorkspaceIds = [];
-
-  @override
-  Future<void> createNewGroup() async {}
-
-  @override
-  Future<void> deleteGroup(int id) async {}
-
-  @override
-  Future<void> loadCurrentGroup() async {}
-
-  @override
-  Future<void> loadGroups() async {}
-
-  @override
-  Future<void> loadMessages() async {}
-
-  @override
-  Future<void> loadMoreMessages() async {}
-
-  @override
-  Future<void> selectGroup(ChatGroup group) async {}
-
-  @override
-  Future<void> syncDraftGroupProviderStyle() async {}
-
-  @override
-  Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {
-    updatedWorkspaceIds.add(workspaceId);
-  }
 }

@@ -450,12 +450,10 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
       return const _EmptyStateModelSetupState(requiresSetup: true);
     }
     final selectedProviderId = selection.selectedProviderId;
-    final defaultProviderId = selection.defaultProviderId;
     final selectedModelId = selection.selectedModelId;
-    final defaultModelId = selection.defaultModelId;
 
     LlmProviderConfig? provider;
-    for (final candidateId in [selectedProviderId, defaultProviderId]) {
+    for (final candidateId in [selectedProviderId]) {
       if (candidateId == null) {
         continue;
       }
@@ -473,7 +471,7 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     if (provider.models.isEmpty) {
       return const _EmptyStateModelSetupState(requiresSetup: true);
     }
-    for (final candidateId in [selectedModelId, defaultModelId]) {
+    for (final candidateId in [selectedModelId]) {
       if (candidateId == null) {
         continue;
       }

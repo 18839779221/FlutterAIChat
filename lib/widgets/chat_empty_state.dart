@@ -133,7 +133,7 @@ class ChatEmptyState extends StatelessWidget {
                             ),
                             SizedBox(height: spacing.sm),
                             Text(
-                              '当前首页推荐案例已被配置提醒替代。完成 Provider 和默认模型配置后，才能开始新的对话。',
+                              '当前首页推荐案例已被配置提醒替代。完成 Provider 和模型配置后，才能开始新的对话。',
                               style: Theme.of(context)
                                   .textTheme
                                   .bodyMedium
@@ -157,7 +157,7 @@ class ChatEmptyState extends StatelessWidget {
                             Wrap(
                               spacing: spacing.sm,
                               runSpacing: spacing.sm,
-                              children: [
+                              children: const [
                                 _SetupHintChip(
                                   label: '统一在模型配置页完成设置',
                                 ),

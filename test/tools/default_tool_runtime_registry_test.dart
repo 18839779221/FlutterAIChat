@@ -57,7 +57,7 @@ void main() {
     );
   });
 
-  test('generate_image uses configured image provider instead of chat provider',
+  test('generate_image uses configured image provider instead of the seeded chat provider',
       () async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();

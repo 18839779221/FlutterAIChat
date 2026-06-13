@@ -37,8 +37,6 @@ void main() {
       const LlmSelectionState(
         selectedProviderId: 'aigocode',
         selectedModelId: 'gpt-5.4',
-        defaultProviderId: 'aigocode',
-        defaultModelId: 'gpt-5.4',
       ),
     );
 
@@ -50,14 +48,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('当前默认模型'), findsOneWidget);
+    expect(find.text('当前选中模型'), findsOneWidget);
     expect(find.text('gpt-5.4'), findsOneWidget);
     expect(find.text('新增 Provider'), findsOneWidget);
     expect(find.text('AIGoCode'), findsWidgets);
     expect(find.text('2 个模型'), findsOneWidget);
     expect(find.text('编辑'), findsWidgets);
     expect(find.text('删除'), findsWidgets);
-    expect(find.text('使用此模型'), findsNothing);
+    expect(find.text('用于当前会话'), findsNothing);
   });
 
   testWidgets('provider detail promotes discover models and fallback manual add',
@@ -95,10 +93,10 @@ void main() {
     expect(find.text('手动新增模型'), findsOneWidget);
     expect(find.text('Provider 名称'), findsOneWidget);
     expect(find.text('模型列表'), findsOneWidget);
-    expect(find.text('使用此模型'), findsNothing);
+    expect(find.text('用于当前会话'), findsNothing);
   });
 
-  testWidgets('discovered models are persisted and can become default',
+  testWidgets('discovered models are persisted and can become current session selection',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -144,13 +142,13 @@ void main() {
     expect(find.text('gpt-4o-mini'), findsWidgets);
     expect(find.text('gpt-4.1'), findsWidgets);
 
-    await tester.tap(find.text('设为默认').first);
+    await tester.tap(find.text('用于当前会话').first);
     await tester.pumpAndSettle();
 
     final providers = await repository.getProviders();
     final selection = await repository.getSelectionState();
     expect(providers.single.models, hasLength(2));
-    expect(selection.defaultModelId, 'gpt-4o-mini');
+    expect(selection.selectedModelId, 'gpt-4o-mini');
   });
 }
 

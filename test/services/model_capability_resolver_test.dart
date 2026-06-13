@@ -18,7 +18,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('prefers local override over fallback capability and policy', () async {
+  test('prefers local override over fallback capability and policy from seeded provider config',
+      () async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
     final repository = AppSettingsRepository(
@@ -112,8 +113,8 @@ void main() {
       settingsRepository: repository,
       budgetRegistry: ModelBudgetRegistry(),
       providerSources: [
-        _StaticCapabilitySource(
-          const ResolvedModelCapability(
+        const _StaticCapabilitySource(
+          ResolvedModelCapability(
             providerId: 'anthropic',
             providerStyle: ApiStyle.anthropicMessages,
             baseUrlFingerprint: 'https://api.anthropic.com/v1/messages',

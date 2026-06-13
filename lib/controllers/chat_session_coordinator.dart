@@ -85,8 +85,10 @@ class DefaultChatSessionCoordinator implements ChatSessionCoordinator {
       );
 
       _ref.read(currentGroupProvider.notifier).state = newGroup;
-      final draftRuntime =
-          await _ref.read(sessionRuntimeConfigServiceProvider).createDraftRuntime();
+      final currentRuntime = _ref.read(currentSessionRuntimeConfigProvider);
+      final draftRuntime = await _ref
+          .read(sessionRuntimeConfigServiceProvider)
+          .createDraftRuntime(currentRuntime: currentRuntime);
       _ref.read(currentSessionRuntimeConfigProvider.notifier).state =
           draftRuntime;
       _ref.read(messagesProvider.notifier).clearMessages();
