@@ -20,6 +20,9 @@ class LlmProviderConfig {
   /// Models currently exposed by this provider configuration.
   final List<LlmProviderModel> models;
 
+  /// Optional side-model override used when this provider runs side tasks.
+  final String? sideModelId;
+
   const LlmProviderConfig({
     required this.id,
     required this.name,
@@ -27,6 +30,7 @@ class LlmProviderConfig {
     required this.baseUrl,
     this.apiStyle,
     required this.models,
+    this.sideModelId,
   });
 
   factory LlmProviderConfig.fromJson(Map<String, dynamic> json) {
@@ -49,6 +53,9 @@ class LlmProviderConfig {
           .trim(),
       apiStyle: _readApiStyle(json['apiStyle'] ?? json['api_style']),
       models: models,
+      sideModelId: _normalizeOptional(
+        json['sideModelId'] ?? json['side_model_id'],
+      ),
     );
   }
 
@@ -59,6 +66,7 @@ class LlmProviderConfig {
       'apiKey': apiKey,
       'baseUrl': baseUrl,
       if (apiStyle != null) 'apiStyle': apiStyle!.name,
+      if (sideModelId != null) 'sideModelId': sideModelId,
       'models': models.map((item) => item.toJson()).toList(growable: false),
     };
   }
@@ -74,5 +82,13 @@ class LlmProviderConfig {
       }
     }
     return null;
+  }
+
+  static String? _normalizeOptional(dynamic value) {
+    if (value is! String) {
+      return null;
+    }
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 }

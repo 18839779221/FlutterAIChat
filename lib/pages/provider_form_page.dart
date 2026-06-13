@@ -39,6 +39,7 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
   late List<_EditableModelRow> _models;
   late ApiStyle _selectedApiStyle;
   late String _apiKeyValue;
+  String? _selectedSideModelId;
 
   bool _isDiscovering = false;
   bool _isSaving = false;
@@ -58,6 +59,7 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
         TextEditingController(text: _maskedApiKey(_apiKeyValue));
     _apiKeyFocusNode = FocusNode()..addListener(_handleApiKeyFocusChange);
     _selectedApiStyle = _resolvedApiStyleForInput(provider?.baseUrl ?? '');
+    _selectedSideModelId = provider?.sideModelId;
     _baseUrlController.addListener(_syncApiStyleFromBaseUrlInput);
     _models = provider?.models
             .map(
@@ -240,7 +242,21 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
       baseUrl: _normalizedBaseUrlForSelectedStyle(),
       apiStyle: _selectedApiStyle,
       models: models,
+      sideModelId: _resolveValidSideModelId(models),
     );
+  }
+
+  String? _resolveValidSideModelId(List<LlmProviderModel> models) {
+    final candidate = _selectedSideModelId?.trim();
+    if (candidate == null || candidate.isEmpty) {
+      return null;
+    }
+    for (final model in models) {
+      if (model.id == candidate) {
+        return candidate;
+      }
+    }
+    return null;
   }
 
   void _replaceModelRows(List<LlmProviderModel> models) {
@@ -371,17 +387,13 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
     }
   }
 
-  Future<void> _setDefaultModel(_EditableModelRow row) async {
+  Future<void> _useModelNow(_EditableModelRow row) async {
     final provider = _buildProvider();
     final modelId = row.idController.text.trim();
     if (modelId.isEmpty) {
       return;
     }
     await widget.repository.saveProvider(provider);
-    await widget.repository.setDefaultProviderAndModel(
-      providerId: provider.id,
-      modelId: modelId,
-    );
     await widget.repository.selectProviderAndModel(
       providerId: provider.id,
       modelId: modelId,
@@ -675,7 +687,7 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
                           child: _ModelEditorCard(
                             index: index,
                             row: row,
-                            onSetDefault: () => _setDefaultModel(row),
+                            onUseModelNow: () => _useModelNow(row),
                             onDelete: () => _removeModelRow(index),
                             onImageGenerationChanged: (value) {
                               setState(() {
@@ -697,6 +709,39 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
                 ],
               ),
             ),
+            if (hasModels) ...[
+              SizedBox(height: spacing.lg),
+              _SectionCard(
+                title: 'Side Model',
+                subtitle: '默认不单独指定。留空时，side model 会跟随当前主模型。',
+                child: DropdownButtonFormField<String>(
+                  initialValue:
+                      _resolveValidSideModelId(_buildProvider().models) ?? '',
+                  decoration: const InputDecoration(
+                    labelText: '当前 Provider 的 Side Model',
+                  ),
+                  items: [
+                    const DropdownMenuItem<String>(
+                      value: '',
+                      child: Text('与主模型一致'),
+                    ),
+                    ..._buildProvider().models.map(
+                      (model) => DropdownMenuItem<String>(
+                        value: model.id,
+                        child: Text(model.displayName),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      final trimmed = value?.trim();
+                      _selectedSideModelId =
+                          (trimmed == null || trimmed.isEmpty) ? null : trimmed;
+                    });
+                  },
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -766,7 +811,7 @@ class _ProviderHeroCard extends StatelessWidget {
             ),
             SizedBox(height: spacing.xs),
             Text(
-              '每个 Provider 独立管理连接信息与模型列表。默认建议先探测模型，再手动兜底编辑。',
+              '每个 Provider 独立管理连接信息与模型列表。建议先探测模型，再按需手动补充。',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: colors.secondaryText,
                     height: 1.5,
@@ -925,7 +970,7 @@ class _ModelEditorCard extends StatelessWidget {
   const _ModelEditorCard({
     required this.index,
     required this.row,
-    required this.onSetDefault,
+    required this.onUseModelNow,
     required this.onDelete,
     required this.onImageGenerationChanged,
     required this.onTestImageGeneration,
@@ -935,7 +980,7 @@ class _ModelEditorCard extends StatelessWidget {
 
   final int index;
   final _EditableModelRow row;
-  final VoidCallback onSetDefault;
+  final VoidCallback onUseModelNow;
   final VoidCallback onDelete;
   final ValueChanged<bool> onImageGenerationChanged;
   final VoidCallback onTestImageGeneration;
@@ -969,8 +1014,8 @@ class _ModelEditorCard extends StatelessWidget {
                 ),
                 const Spacer(),
                 TextButton(
-                  onPressed: onSetDefault,
-                  child: const Text('设为默认'),
+                  onPressed: onUseModelNow,
+                  child: const Text('用于当前会话'),
                 ),
               ],
             ),

@@ -167,7 +167,7 @@ void main() {
     });
   });
 
-  test('createNewGroup initializes draft runtime from current defaults',
+  test('createNewGroup initializes draft runtime from seeded provider settings',
       () async {
     SharedPreferences.setMockInitialValues({});
     final settingsRepository = AppSettingsRepository(

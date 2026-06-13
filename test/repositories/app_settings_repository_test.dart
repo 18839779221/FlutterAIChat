@@ -220,8 +220,6 @@ void main() {
       expect(providers.single.models, isEmpty);
       expect(selection.selectedProviderId, 'openai');
       expect(selection.selectedModelId, isNull);
-      expect(selection.defaultProviderId, 'openai');
-      expect(selection.defaultModelId, isNull);
     });
 
     test('falls back to first provider model when selected model disappears',

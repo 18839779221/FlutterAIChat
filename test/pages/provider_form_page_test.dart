@@ -100,7 +100,6 @@ void main() {
     ]);
     expect(providers.single.apiKey, 'test-key');
     expect(selection.selectedModelId, 'gpt-4o-mini');
-    expect(selection.defaultModelId, 'gpt-4o-mini');
   });
 
   testWidgets('saving with existing models skips auto-discovery',

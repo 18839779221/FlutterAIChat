@@ -13,7 +13,6 @@ import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
 import 'package:ai_chat/models/llm/configurable_http_llm.dart';
-import 'package:ai_chat/models/llm/llm_factory.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/providers/streaming_trace_providers.dart';
@@ -108,30 +107,26 @@ class ChatSendLiveTestHarness {
       for (final provider in localDefaults.providers) {
         await settingsRepository.saveProvider(provider);
       }
-      final defaultProviderId = localDefaults.defaultProviderId;
+      final seededProviderId = localDefaults.defaultProviderId;
       LlmProviderConfig? defaultProvider;
-      if (defaultProviderId == null) {
+      if (seededProviderId == null) {
         if (localDefaults.providers.isNotEmpty) {
           defaultProvider = localDefaults.providers.first;
         }
       } else {
         for (final provider in localDefaults.providers) {
-          if (provider.id == defaultProviderId) {
+          if (provider.id == seededProviderId) {
             defaultProvider = provider;
             break;
           }
         }
       }
       if (defaultProvider != null) {
-        final defaultModelId =
+        final seededModelId =
             localDefaults.defaultModelId ?? defaultProvider.models.first.id;
-        await settingsRepository.setDefaultProviderAndModel(
-          providerId: defaultProvider.id,
-          modelId: defaultModelId,
-        );
         await settingsRepository.selectProviderAndModel(
           providerId: defaultProvider.id,
-          modelId: defaultModelId,
+          modelId: seededModelId,
         );
       }
     }
@@ -153,10 +148,6 @@ class ChatSendLiveTestHarness {
       selectionReason = selection.selectionReason;
     }
     if (selectedProvider != null) {
-      await settingsRepository.setDefaultProviderAndModel(
-        providerId: selectedProvider.id,
-        modelId: selectedProvider.models.first.id,
-      );
       await settingsRepository.selectProviderAndModel(
         providerId: selectedProvider.id,
         modelId: selectedProvider.models.first.id,
@@ -170,7 +161,7 @@ class ChatSendLiveTestHarness {
         providerStyle ??
         (selectedProvider == null
             ? ChatTurnProviderStyle.openaiChatCompletions
-            : ApiProtocolResolver()
+            : const ApiProtocolResolver()
                 .resolveStyle(selectedProvider.baseUrl)
                 .toChatTurnProviderStyle());
     final providerProfile =

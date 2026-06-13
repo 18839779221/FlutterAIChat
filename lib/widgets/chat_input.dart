@@ -531,7 +531,6 @@ class _ChatInputState extends ConsumerState<ChatInput> {
           providers: providers,
           initialProviderId: provider.id,
           selectedModelId: runtime?.modelId,
-          defaultModelId: runtime?.modelId,
         ),
         transitionBuilder: (context, animation, _, child) {
           return FadeTransition(
@@ -560,7 +559,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
           );
       ref.read(currentSessionRuntimeConfigProvider.notifier).state =
           updatedRuntime;
-      await repository.setDefaultProviderAndModel(
+      await repository.selectProviderAndModel(
         providerId: result.providerId,
         modelId: result.modelId,
       );
@@ -1499,14 +1498,12 @@ class _AnchoredModelMenuDialog extends StatefulWidget {
     required this.providers,
     required this.initialProviderId,
     required this.selectedModelId,
-    required this.defaultModelId,
   });
 
   final Rect anchorRect;
   final List<LlmProviderConfig> providers;
   final String initialProviderId;
   final String? selectedModelId;
-  final String? defaultModelId;
 
   @override
   State<_AnchoredModelMenuDialog> createState() =>

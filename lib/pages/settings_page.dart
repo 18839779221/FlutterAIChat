@@ -302,7 +302,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SettingsRow(
-                        title: '当前默认模型',
+                        title: '当前模型',
                         subtitle: model?.displayName ?? '尚未完成模型接入',
                         trailing: const SizedBox.shrink(),
                       ),

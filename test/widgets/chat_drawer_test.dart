@@ -6,7 +6,6 @@ import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/session/session_runtime_config.dart';
 import 'package:ai_chat/pages/debug_hub_page.dart';
-import 'package:ai_chat/pages/layout_debug_page.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/widgets/chat_drawer.dart';
@@ -155,6 +154,62 @@ void main() {
     expect(find.byType(DebugHubPage), findsOneWidget);
     expect(find.text('调试中心'), findsOneWidget);
   });
+
+  testWidgets('chat drawer workspace picker updates current chat workspace', (
+    tester,
+  ) async {
+    final sessionCoordinator = _RecordingSessionCoordinator();
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => sessionCoordinator),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+      ],
+    );
+    container.read(groupsProvider.notifier).setGroups([
+      ChatGroup(
+        id: 1,
+        title: 'Default',
+      ),
+      ChatGroup(
+        id: 2,
+        title: 'Shared',
+        workspaceId: 'ws_20260602_a3k9qx',
+      ),
+    ]);
+    container.read(currentGroupProvider.notifier).state = ChatGroup(
+      id: 1,
+      title: 'Default',
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: ChatDrawer(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('工作区'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ws_20260602_a3k9qx').last);
+    await tester.pumpAndSettle();
+
+    expect(sessionCoordinator.updatedWorkspaceIds, ['ws_20260602_a3k9qx']);
+  });
 }
 
 class _StubSendCoordinator implements ChatSendCoordinator {
@@ -210,11 +265,19 @@ class _StubSessionCoordinator implements ChatSessionCoordinator {
   @override
   Future<void> selectGroup(ChatGroup group) async {}
 
-  @override
   Future<void> syncDraftGroupProviderStyle() async {}
 
   @override
   Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {}
+}
+
+class _RecordingSessionCoordinator extends _StubSessionCoordinator {
+  final List<String?> updatedWorkspaceIds = [];
+
+  @override
+  Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {
+    updatedWorkspaceIds.add(workspaceId);
+  }
 }
 
 class _StubSummaryController implements ChatSummaryController {
