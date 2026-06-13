@@ -49,40 +49,22 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
     final spec = requestSpec as ResponsesRequestSpec;
     final client = _buildClient(runtimeConfig, timeout: timeout);
     try {
-      try {
-        final response = await client.responses.create(spec.request);
-        final responseJson = response.toJson();
-        final extractedUsage = LlmUsageExtractor.extract(responseJson);
-        Logger.trace('OpenAiResponsesRuntime', 'responseJson.usage: ${responseJson['usage']}');
-        Logger.trace('OpenAiResponsesRuntime', 'extractedUsage: inputTokens=${extractedUsage?.inputTokens}, '
-            'cachedInputTokens=${extractedUsage?.cachedInputTokens}');
-        return ProtocolExecutionResult(
-          rawResponseJson: responseJson,
-          cacheUsage: extractedUsage,
-        );
-      } catch (error, stackTrace) {
-        Logger.w(
-          'OpenAiResponsesRuntime',
-          'responses sdk execution failed, falling back to raw http: $error',
-        );
-        Logger.trace(
-          'OpenAiResponsesRuntime',
-          'responses sdk failure stack: $stackTrace',
-        );
-        final fallback = await _executeFallbackJson(
-          payload: spec.request.toJson(),
-          runtimeConfig: runtimeConfig,
-          timeout: timeout,
-        );
-        final extractedUsage = LlmUsageExtractor.extract(fallback);
-        Logger.trace('OpenAiResponsesRuntime', 'fallback.usage: ${fallback['usage']}');
-        Logger.trace('OpenAiResponsesRuntime', 'fallback extractedUsage: inputTokens=${extractedUsage?.inputTokens}, '
-            'cachedInputTokens=${extractedUsage?.cachedInputTokens}');
-        return ProtocolExecutionResult(
-          rawResponseJson: fallback,
-          cacheUsage: extractedUsage,
-        );
-      }
+      final response = await client.responses.create(spec.request);
+      final responseJson = response.toJson();
+      final extractedUsage = LlmUsageExtractor.extract(responseJson);
+      Logger.trace(
+        'OpenAiResponsesRuntime',
+        'responseJson.usage: ${responseJson['usage']}',
+      );
+      Logger.trace(
+        'OpenAiResponsesRuntime',
+        'extractedUsage: inputTokens=${extractedUsage?.inputTokens}, '
+        'cachedInputTokens=${extractedUsage?.cachedInputTokens}',
+      );
+      return ProtocolExecutionResult(
+        rawResponseJson: responseJson,
+        cacheUsage: extractedUsage,
+      );
     } finally {
       client.close();
     }
@@ -184,21 +166,6 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
     );
   }
 
-  oai.OpenAIClient _buildClient(
-    LLMConfig runtimeConfig, {
-    required Duration timeout,
-  }) {
-    return oai.OpenAIClient(
-      config: oai.OpenAIConfig(
-        authProvider: oai.ApiKeyProvider(runtimeConfig.apiKey),
-        baseUrl: _normalizeBaseUrl(runtimeConfig.apiUrl),
-        timeout: timeout,
-      ),
-      httpClient: _httpClient,
-      streamClientFactory: _streamClientFactory,
-    );
-  }
-
   String _normalizeBaseUrl(String apiUrl) {
     final uri = Uri.parse(apiUrl.trim());
     if (uri.path.endsWith('/responses')) {
@@ -212,6 +179,23 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
           .replaceFirst(RegExp(r'/$'), '');
     }
     return apiUrl.trim().replaceFirst(RegExp(r'/$'), '');
+  }
+
+  oai.OpenAIClient _buildClient(
+    LLMConfig runtimeConfig, {
+    required Duration timeout,
+  }) {
+    return oai.OpenAIClient(
+      config: oai.OpenAIConfig(
+        authProvider: oai.ApiKeyProvider(runtimeConfig.apiKey),
+        baseUrl: _normalizeBaseUrl(runtimeConfig.apiUrl),
+        timeout: timeout,
+      ),
+      httpClient: _SdkCompatibleResponsesHttpClient(
+        inner: _httpClient ?? http.Client(),
+      ),
+      streamClientFactory: _streamClientFactory,
+    );
   }
 
   Future<Map<String, dynamic>> _executeFallbackJson({
@@ -303,15 +287,7 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
           'normalizedEvent=${_previewJson(normalizedJson)}',
           error,
         );
-        if (_canSkipTypedEventParseFailure(type, normalizedJson)) {
-          Logger.w(
-            'OpenAiResponsesRuntime',
-            'skip provider-incompatible responses stream event '
-            'type=${type ?? 'unknown'} error=$error',
-          );
-        } else {
-          rethrow;
-        }
+        rethrow;
       }
 
       final rawOutputIndex = rawEvent['output_index'];
@@ -344,27 +320,6 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
     );
   }
 
-  bool _canSkipTypedEventParseFailure(
-    dynamic type,
-    Map<String, dynamic> normalizedJson,
-  ) {
-    if (type != 'response.completed' && type != 'response.done') {
-      return false;
-    }
-    final response = normalizedJson['response'];
-    if (response is! Map<String, dynamic>) {
-      return false;
-    }
-    // Provider-specific final summary payloads are not on the critical path for
-    // streaming preview adaptation. We already capture usage from raw
-    // `response.done` and adapt visible preview from incremental stream events
-    // plus `response.output_item.done`. Some providers emit a `response`
-    // summary whose nested `output` items are incomplete for the strict SDK
-    // model (for example missing `role`, `content`, or even `output` itself),
-    // which should not abort an otherwise healthy stream.
-    return true;
-  }
-
   Map<String, dynamic> _normalizeStreamingEventJson(
     Map<String, dynamic> rawEvent, {
     required int fallbackOutputIndex,
@@ -372,6 +327,18 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
   }) {
     final normalized = Map<String, dynamic>.from(rawEvent)..remove('_event');
     final type = normalized['type'];
+
+    if (type == 'response.completed' ||
+        type == 'response.done' ||
+        type == 'response.failed') {
+      final response = normalized['response'];
+      if (response is Map<String, dynamic>) {
+        normalized['response'] =
+            _SdkCompatibleResponsesNormalizer.normalizeResponseJsonForSdk(
+          response,
+        );
+      }
+    }
 
     if (_requiresOutputIndex(type)) {
       normalized['output_index'] = normalized['output_index'] is int
@@ -441,4 +408,158 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
     return '${encoded.substring(0, _streamEventPreviewMaxChars - 3)}...';
   }
 
+}
+
+class _SdkCompatibleResponsesHttpClient extends http.BaseClient {
+  _SdkCompatibleResponsesHttpClient({required this.inner});
+
+  final http.Client inner;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final response = await inner.send(request);
+    if (!_shouldNormalize(request, response)) {
+      return response;
+    }
+
+    final bodyBytes = await response.stream.toBytes();
+    final normalizedBytes = _normalizeBodyBytes(bodyBytes);
+    return http.StreamedResponse(
+      Stream<List<int>>.fromIterable([normalizedBytes]),
+      response.statusCode,
+      contentLength: normalizedBytes.length,
+      request: request,
+      headers: response.headers,
+      isRedirect: response.isRedirect,
+      persistentConnection: response.persistentConnection,
+      reasonPhrase: response.reasonPhrase,
+    );
+  }
+
+  @override
+  void close() {
+    inner.close();
+  }
+
+  bool _shouldNormalize(
+    http.BaseRequest request,
+    http.StreamedResponse response,
+  ) {
+    if (request.method.toUpperCase() != 'POST') {
+      return false;
+    }
+    final contentType = response.headers['content-type'] ?? '';
+    if (!contentType.toLowerCase().contains('application/json')) {
+      return false;
+    }
+    return request.url.path.endsWith('/responses');
+  }
+
+  List<int> _normalizeBodyBytes(List<int> bodyBytes) {
+    final decoded = jsonDecode(utf8.decode(bodyBytes));
+    if (decoded is! Map<String, dynamic>) {
+      return bodyBytes;
+    }
+    final normalized =
+        _SdkCompatibleResponsesNormalizer.normalizeResponseJsonForSdk(decoded);
+    return utf8.encode(jsonEncode(normalized));
+  }
+}
+
+class _SdkCompatibleResponsesNormalizer {
+  static Map<String, dynamic> normalizeResponseJsonForSdk(
+    Map<String, dynamic> json,
+  ) {
+    final normalized = Map<String, dynamic>.from(json);
+    normalized['object'] = normalized['object'] ?? 'response';
+    normalized['created_at'] = _coerceCreatedAt(normalized['created_at']);
+    normalized['status'] = _normalizeResponseStatus(normalized['status']);
+
+    final rawOutput = normalized['output'];
+    if (rawOutput is List) {
+      normalized['output'] = rawOutput
+          .map((item) => _normalizeOutputItem(item))
+          .toList(growable: false);
+    } else {
+      normalized['output'] = const <Map<String, dynamic>>[];
+    }
+    return normalized;
+  }
+
+  static Map<String, dynamic> _normalizeOutputItem(dynamic rawItem) {
+    if (rawItem is! Map) {
+      return const <String, dynamic>{'type': 'unknown'};
+    }
+    final item = Map<String, dynamic>.from(rawItem);
+    if (item['type'] == 'message') {
+      item['id'] = _nonEmptyString(item['id']) ?? _syntheticMessageId(item);
+      item['role'] = _nonEmptyString(item['role']) ?? 'assistant';
+      item['status'] = _nonEmptyString(item['status']) ?? 'completed';
+      final rawContent = item['content'];
+      if (rawContent is List) {
+        item['content'] = rawContent
+            .map((entry) => _normalizeMessageContent(entry))
+            .toList(growable: false);
+      } else {
+        item['content'] = const <Map<String, dynamic>>[];
+      }
+    }
+    return item;
+  }
+
+  static Map<String, dynamic> _normalizeMessageContent(dynamic rawEntry) {
+    if (rawEntry is! Map) {
+      return const <String, dynamic>{
+        'type': 'output_text',
+        'text': '',
+      };
+    }
+    final entry = Map<String, dynamic>.from(rawEntry);
+    final type = _nonEmptyString(entry['type']) ?? 'output_text';
+    entry['type'] = type;
+    if ((type == 'output_text' ||
+            type == 'reasoning_text' ||
+            type == 'summary_text' ||
+            type == 'input_text') &&
+        entry['text'] is! String) {
+      entry['text'] = '';
+    }
+    if (type == 'refusal' && entry['refusal'] is! String) {
+      entry['refusal'] = '';
+    }
+    return entry;
+  }
+
+  static int _coerceCreatedAt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      final parsed = int.tryParse(value);
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+    return 0;
+  }
+
+  static String _normalizeResponseStatus(dynamic value) {
+    return _nonEmptyString(value) ?? 'completed';
+  }
+
+  static String? _nonEmptyString(dynamic value) {
+    if (value is! String) {
+      return null;
+    }
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  static String _syntheticMessageId(Map<String, dynamic> item) {
+    final textHash = item['content'].hashCode.toUnsigned(20).toRadixString(16);
+    return 'msg_$textHash';
+  }
 }

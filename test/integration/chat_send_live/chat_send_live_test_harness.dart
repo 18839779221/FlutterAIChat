@@ -12,6 +12,7 @@ import 'package:ai_chat/models/debug/debug_cache_panel_projection.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_request.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
+import 'package:ai_chat/models/llm/configurable_http_llm.dart';
 import 'package:ai_chat/models/llm/llm_factory.dart';
 import 'package:ai_chat/models/llm/llm_provider_config.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
@@ -72,6 +73,7 @@ class ChatSendLiveTestHarness {
   final ChatTurnProviderStyle activeProviderStyle;
   final HeadlessLiveProviderProfile providerProfile;
   final List<Directory> _workspaceRoots;
+  final List<Map<String, dynamic>> _llmTraceEntries;
 
   ChatSendLiveTestHarness._({
     required this.container,
@@ -84,7 +86,9 @@ class ChatSendLiveTestHarness {
     required this.activeProviderStyle,
     required this.providerProfile,
     required List<Directory> workspaceRoots,
-  }) : _workspaceRoots = workspaceRoots;
+    required List<Map<String, dynamic>> llmTraceEntries,
+  })  : _workspaceRoots = workspaceRoots,
+        _llmTraceEntries = llmTraceEntries;
 
   static Future<ChatSendLiveTestHarness> bootstrap({
     String? providerId,
@@ -149,6 +153,10 @@ class ChatSendLiveTestHarness {
       selectionReason = selection.selectionReason;
     }
     if (selectedProvider != null) {
+      await settingsRepository.setDefaultProviderAndModel(
+        providerId: selectedProvider.id,
+        modelId: selectedProvider.models.first.id,
+      );
       await settingsRepository.selectProviderAndModel(
         providerId: selectedProvider.id,
         modelId: selectedProvider.models.first.id,
@@ -183,9 +191,18 @@ class ChatSendLiveTestHarness {
     await databaseHelper.testDatabaseConnection();
 
     final traceRecorder = ChatTraceRecorder();
-    final llm = LLMFactory.createLLM(
-      LLMType.configurable,
+    final llmTraceEntries = <Map<String, dynamic>>[];
+    final llm = ConfigurableHttpLLM(
       settingsRepository: settingsRepository,
+      traceEmitter: (tag, message, {level = LogLevel.info, data}) {
+        llmTraceEntries.add({
+          'tag': tag,
+          'message': message,
+          'level': level.name,
+          'data': data == null ? null : Map<String, dynamic>.from(data),
+        });
+        Logger.trace(tag, message, level: level, data: data);
+      },
     );
     final fixtureBuilder = ChatSendLiveFixtureBuilder();
     final workspaceRoot = await fixtureBuilder.createWorkspaceRoot(
@@ -295,6 +312,12 @@ class ChatSendLiveTestHarness {
       ],
     );
 
+    final draftRuntime = await container
+        .read(sessionRuntimeConfigServiceProvider)
+        .createDraftRuntime();
+    container.read(currentSessionRuntimeConfigProvider.notifier).state =
+        draftRuntime;
+
     return ChatSendLiveTestHarness._(
       container: container,
       databaseHelper: databaseHelper,
@@ -306,6 +329,7 @@ class ChatSendLiveTestHarness {
       activeProviderStyle: activeProviderStyle,
       providerProfile: providerProfile,
       workspaceRoots: <Directory>[workspaceRoot],
+      llmTraceEntries: llmTraceEntries,
     );
   }
 
@@ -567,6 +591,32 @@ class ChatSendLiveTestHarness {
     return chatService.llm.summarizeConversation(messages);
   }
 
+  void clearLlmTraceEntries() {
+    _llmTraceEntries.clear();
+  }
+
+  List<Map<String, dynamic>> llmRequestDoneEvents({
+    String? label,
+    String? apiStyle,
+  }) {
+    return _llmTraceEntries.where((entry) {
+      if (entry['message'] != 'llm.request.done') {
+        return false;
+      }
+      final data = entry['data'];
+      if (data is! Map<String, dynamic>) {
+        return false;
+      }
+      if (label != null && data['label'] != label) {
+        return false;
+      }
+      if (apiStyle != null && data['apiStyle'] != apiStyle) {
+        return false;
+      }
+      return true;
+    }).map(Map<String, dynamic>.from).toList(growable: false);
+  }
+
   Future<void> clearLogFile() async {
     final logFilePath = Logger.logFilePath;
     if (logFilePath == null || logFilePath.trim().isEmpty) {
@@ -629,14 +679,20 @@ class ChatSendLiveTestHarness {
     final groupId = await databaseHelper.insertGroup(
       ChatGroup(
         title: 'Headless Live Test',
-        lockedProviderStyle: activeProviderStyle,
       ),
     );
     container.read(currentGroupProvider.notifier).state = ChatGroup(
       id: groupId,
       title: 'Headless Live Test',
-      lockedProviderStyle: activeProviderStyle,
     );
+    final currentRuntime = container.read(currentSessionRuntimeConfigProvider) ??
+        await container
+            .read(sessionRuntimeConfigServiceProvider)
+            .createDraftRuntime();
+    final persistedRuntime = currentRuntime.copyWith(groupId: groupId);
+    await databaseHelper.insertSessionRuntimeConfig(persistedRuntime);
+    container.read(currentSessionRuntimeConfigProvider.notifier).state =
+        persistedRuntime;
   }
 
   AskUserQuestionResponse _buildFirstOptionResponse(ChatMessage message) {

@@ -493,6 +493,64 @@ void main() {
       expect(runtimeOverride?.apiStyle, ApiStyle.chatCompletions);
     });
 
+    test('persists current session provider style onto created turn', () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: const [],
+      );
+      final settingsRepository = await _createSettingsRepository(
+        defaultProviderId: 'responses-provider',
+        defaultModelId: 'responses-model',
+        providers: [
+          LlmProviderConfig(
+            id: 'responses-provider',
+            name: 'Responses',
+            apiKey: 'responses-key',
+            baseUrl: 'https://responses.example/v1/responses',
+            apiStyle: ApiStyle.responses,
+            models: const [
+              LlmProviderModel(
+                id: 'responses-model',
+                name: 'responses-model',
+              ),
+            ],
+          ),
+        ],
+      );
+      final container = await _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+        settingsRepository: settingsRepository,
+      );
+      addTearDown(container.dispose);
+
+      final groupId = await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+      container.read(currentSessionRuntimeConfigProvider.notifier).state =
+          SessionRuntimeConfig(
+        groupId: groupId,
+        providerId: 'responses-provider',
+        modelId: 'responses-model',
+        providerStyle: ChatTurnProviderStyle.openaiResponses,
+      );
+
+      await container.read(chatSendCoordinatorProvider).sendMessage(
+            '继续当前响应风格',
+            scheduleAutoSummary: () {},
+            cancelActiveStream:
+                container.read(chatControllerProvider).cancelStreamSubscription,
+          );
+
+      expect(harness.recordedTurns, hasLength(1));
+      expect(
+        harness.recordedTurns.single.providerStyle,
+        ChatTurnProviderStyle.openaiResponses,
+      );
+      expect(harness.recordedTurns.single.modelName, 'responses-model');
+    });
+
     test(
         'allows image attachments to continue when request explicitly overrides unsupported image guard',
         () async {

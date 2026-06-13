@@ -456,10 +456,13 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     final dbHelper = _ref.read(databaseProvider);
     final traceRecorder = _ref.read(traceRecorderProvider);
     final turnRepository = ChatTurnRepository(dbHelper);
+    final runtimeConfig = _ref.read(currentSessionRuntimeConfigProvider);
     final createdTurn = ChatTurn(
       groupId: currentGroupId,
       status: ChatTurnStatus.running,
       userInput: text,
+      providerStyle: runtimeConfig?.providerStyle,
+      modelName: runtimeConfig?.modelId,
       providerStateJson: _buildTurnRuntimeContext(
         runtimeMarkerService: runtimeMarkerService,
         runtimeMarkerPreparation: runtimeMarkerPreparation,

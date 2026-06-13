@@ -44,6 +44,67 @@ void main() {
     expect(result.rawResponseJson['id'], 'resp_1');
   });
 
+  test(
+    'executes non-stream responses through sdk after normalizing provider message shape',
+    () async {
+      final runtime = OpenAiResponsesRuntime(
+        httpClient: _FakeHttpClient(
+          response: http.Response(
+            jsonEncode({
+              'id': 'resp_provider_shape',
+              'object': 'response',
+              'status': 'completed',
+              'model': 'gpt-5.4',
+              'output': [
+                {
+                  'type': 'message',
+                  'role': 'assistant',
+                  'content': [
+                    {
+                      'type': 'output_text',
+                      'text': 'provider-compatible raw response',
+                    },
+                  ],
+                },
+              ],
+              'usage': {
+                'input_tokens': 12,
+                'input_tokens_details': {'cached_tokens': 8},
+                'output_tokens': 4,
+                'total_tokens': 16,
+              },
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          ),
+        ),
+      );
+
+      final result = await runtime.execute(
+        requestSpec: ResponsesRequestSpec(
+          request: oai.CreateResponseRequest(
+            model: 'gpt-5.4',
+            input: const oai.ResponseInput.text('hello'),
+          ),
+        ),
+        runtimeConfig: const LLMConfig(
+          apiKey: 'k',
+          apiUrl: 'https://responses.example/v1',
+          model: 'gpt-5.4',
+        ),
+        timeout: const Duration(seconds: 1),
+      );
+
+      expect(result.rawResponseJson['id'], 'resp_provider_shape');
+      final output = result.rawResponseJson['output'] as List<dynamic>;
+      final message = output.single as Map<String, dynamic>;
+      expect(message['id'], isNotEmpty);
+      expect(message['role'], 'assistant');
+      expect(message['status'], 'completed');
+      expect(result.cacheUsage?.cachedInputTokens, 8);
+    },
+  );
+
   test('streams responses preview events through typed event adapter', () async {
     final capturedRequests = <oai.CreateResponseRequest>[];
     final runtime = OpenAiResponsesRuntime(
@@ -347,6 +408,57 @@ void main() {
         events.whereType<StreamingContentBlockDeltaEvent>().map((e) => e.value),
         contains('Hello'),
       );
+      expect(events.last, isA<StreamingMessageStopEvent>());
+    },
+  );
+
+  test(
+    'normalizes response.failed payload when provider omits strict sdk integer fields',
+    () async {
+      final runtime = OpenAiResponsesRuntime(
+        httpClient: _FakeHttpClient(
+          response: http.Response(
+            [
+              'data: ${jsonEncode({
+                'type': 'response.failed',
+                'response': {
+                  'id': 'resp_failed',
+                  'object': 'response',
+                  'model': 'gpt-5.4',
+                  'status': 'failed',
+                  'output': [],
+                  'error': {
+                    'code': 'rate_limit_exceeded',
+                    'message': 'retry later',
+                  },
+                },
+              })}\n',
+              '\n',
+              'data: [DONE]\n',
+            ].join(),
+            200,
+            headers: {'content-type': 'text/event-stream; charset=utf-8'},
+          ),
+        ),
+      );
+
+      final result = await runtime.streamExecute(
+        requestSpec: ResponsesRequestSpec(
+          request: oai.CreateResponseRequest(
+            model: 'gpt-5.4',
+            input: const oai.ResponseInput.text('hello'),
+          ),
+        ),
+        runtimeConfig: const LLMConfig(
+          apiKey: 'k',
+          apiUrl: 'https://responses.example/v1',
+          model: 'gpt-5.4',
+        ),
+        idleTimeout: const Duration(seconds: 1),
+        overallTimeout: const Duration(seconds: 3),
+      );
+
+      final events = await result.events.toList();
       expect(events.last, isA<StreamingMessageStopEvent>());
     },
   );
