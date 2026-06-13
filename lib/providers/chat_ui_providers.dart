@@ -12,6 +12,8 @@ import 'package:ai_chat/models/llm/streaming_message_event.dart';
 import 'package:ai_chat/utils/logger.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
 import 'package:ai_chat/controllers/voice_input_controller.dart';
+import 'package:ai_chat/controllers/composer_document_controller.dart';
+import 'package:ai_chat/controllers/composer_text_editing_controller.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/providers/chat_send_state_providers.dart';
@@ -46,8 +48,15 @@ final scrollControllerProvider = Provider<ScrollController>((ref) {
 
 // 文本控制器提供者
 final textControllerProvider = Provider<TextEditingController>((ref) {
-  final controller = TextEditingController();
+  final controller = ComposerTextEditingController();
   ref.onDispose(() => controller.dispose());
+  return controller;
+});
+
+final composerDocumentControllerProvider =
+    Provider<ComposerDocumentController>((ref) {
+  final controller = ComposerDocumentController();
+  ref.onDispose(controller.dispose);
   return controller;
 });
 

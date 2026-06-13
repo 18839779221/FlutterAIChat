@@ -1,5 +1,9 @@
 import 'dart:ui';
 
+import 'package:ai_chat/models/composer/composer_node.dart';
+import 'package:ai_chat/controllers/composer_text_editing_controller.dart';
+import 'package:ai_chat/controllers/composer_voice_sync_controller.dart';
+import 'package:ai_chat/controllers/voice_input_controller.dart';
 import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
@@ -12,9 +16,9 @@ import 'chat_input_attachment_strip.dart';
 import 'context_window/context_window_usage_indicator.dart';
 import '../models/chat/send_message_request.dart';
 import '../models/chat/chat_attachment.dart';
-import '../models/session/session_runtime_config.dart';
 import '../models/llm/llm_provider_config.dart';
 import '../models/llm/llm_provider_model.dart';
+import '../models/skill/skill_catalog_entry.dart';
 import '../repositories/app_settings_repository.dart';
 import '../services/session_runtime_config_service.dart';
 import '../utils/logger.dart';
@@ -41,6 +45,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       title: '/compact',
       subtitle: '压缩当前会话的历史上下文。',
       insertText: '/compact',
+      promotesToCommandNode: true,
     ),
   ];
   TextEditingController? _listenedController;
@@ -50,11 +55,17 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   List<_SlashSuggestionItem> _activeSlashSuggestions =
       const <_SlashSuggestionItem>[];
   String? _selectedModelChipLabel;
+  String? _slashSuggestionsDismissedText;
 
   @override
   void initState() {
     super.initState();
     _listenedController = ref.read(textControllerProvider);
+    if (_listenedController != null) {
+      ref
+          .read(composerDocumentControllerProvider)
+          .setPlainText(_listenedController!.text);
+    }
     _listenedController?.addListener(_handleTextChanged);
     _listenedVoiceController = ref.read(voiceInputControllerProvider);
     _listenedVoiceController?.addListener(_handleVoiceStateChanged);
@@ -72,18 +83,56 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   }
 
   void _handleTextChanged() {
+    final controller = _listenedController;
+    if (controller != null) {
+      final voiceController = _listenedVoiceController;
+      final isVoiceSessionActive = voiceController is VoiceInputController
+          ? voiceController.state.isSessionActive
+          : false;
+      if (!isVoiceSessionActive) {
+        ref.read(composerDocumentControllerProvider).setPlainText(controller.text);
+      }
+      _activeSlashSuggestions = _resolveActiveSlashSuggestions(
+        text: controller.text,
+        isVoiceSessionActive: isVoiceSessionActive,
+      );
+      if (_slashSuggestionsDismissedText != controller.text) {
+        _slashSuggestionsDismissedText = null;
+      }
+    }
     if (mounted) {
       setState(() {});
     }
+    _syncSlashSuggestionsOverlay();
   }
 
   void _handleVoiceStateChanged() {
+    final controller = _listenedController;
+    if (controller is ComposerTextEditingController) {
+      final voiceController = _listenedVoiceController;
+      if (voiceController is VoiceInputController) {
+        ComposerVoiceSyncController(
+          composerController: ref.read(composerDocumentControllerProvider),
+          textController: controller,
+          voiceController: voiceController,
+        ).syncFromVoiceState();
+      }
+    }
     if (mounted) {
       setState(() {});
     }
   }
 
   void _handleFocusChanged() {
+    final controller = _listenedController;
+    final voiceController = _listenedVoiceController;
+    final isVoiceSessionActive = voiceController is VoiceInputController
+        ? voiceController.state.isSessionActive
+        : false;
+    _activeSlashSuggestions = _resolveActiveSlashSuggestions(
+      text: controller?.text ?? '',
+      isVoiceSessionActive: isVoiceSessionActive,
+    );
     _syncSlashSuggestionsOverlay();
   }
 
@@ -137,6 +186,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   }
 
   void _dismissSlashSuggestions() {
+    _slashSuggestionsDismissedText = _listenedController?.text;
     _listenedFocusNode?.unfocus();
     _removeSlashSuggestionsOverlay();
   }
@@ -146,8 +196,10 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       return;
     }
     final focusNode = _listenedFocusNode;
-    final shouldShow =
-        focusNode?.hasFocus == true && _activeSlashSuggestions.isNotEmpty;
+    final shouldShow = _activeSlashSuggestions.isNotEmpty &&
+        _slashSuggestionsDismissedText != (_listenedController?.text ?? '') &&
+        ((focusNode?.hasFocus == true) ||
+            _extractSlashQuery(_listenedController?.text ?? '') != null);
     if (!shouldShow) {
       _removeSlashSuggestionsOverlay();
       return;
@@ -191,15 +243,20 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   }
 
   void _handleSlashSuggestionSelected(_SlashSuggestionItem item) {
-    final selection = '${item.insertText} ';
     final controller = _listenedController;
     if (controller == null) {
       return;
     }
-    controller.value = TextEditingValue(
-      text: selection,
-      selection: TextSelection.collapsed(offset: selection.length),
-    );
+    if (item.promotesToCommandNode) {
+      ref.read(composerDocumentControllerProvider).insertCommand(item.insertText);
+      controller.clear();
+    } else {
+      final selection = '${item.insertText} ';
+      controller.value = TextEditingValue(
+        text: selection,
+        selection: TextSelection.collapsed(offset: selection.length),
+      );
+    }
     _removeSlashSuggestionsOverlay();
   }
 
@@ -210,6 +267,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final focusNode = ref.watch(focusNodeProvider);
     final chatController = ref.read(chatControllerProvider);
     final voiceInputController = ref.watch(voiceInputControllerProvider);
+    final composerDocumentController =
+        ref.watch(composerDocumentControllerProvider);
     final attachmentPicker = ref.watch(chatAttachmentPickerServiceProvider);
     final attachmentStorage = ref.watch(chatAttachmentStorageServiceProvider);
     final composerAttachments = ref.watch(composerAttachmentsProvider);
@@ -235,6 +294,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final voiceState = voiceInputController?.state;
     final hasVoiceInput = voiceInputController != null;
     final isVoiceListening = voiceState?.isListening ?? false;
+    final isVoiceSessionActive = voiceState?.isSessionActive ?? false;
 
     final bottomSafeArea = MediaQuery.of(context).padding.bottom;
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
@@ -245,9 +305,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         sendPhase == ChatSendPhase.executingTool ||
         sendPhase == ChatSendPhase.streamingResponse;
     final isBlockingPhase = isCancellablePhase;
-    final isComposerLocked = sendPhase != ChatSendPhase.idle;
+    final isComposerLocked =
+        sendPhase != ChatSendPhase.idle || isVoiceSessionActive;
+    final composerPreviewText = composerDocumentController.exportPlainText();
     final composerValue =
-        textController.text.trim().isEmpty ? '空白' : textController.text;
+        composerPreviewText.trim().isEmpty ? '空白' : composerPreviewText;
     final sendButtonLabel = isCancellablePhase
         ? '停止生成'
         : isAwaitingConfirmation
@@ -255,36 +317,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
             : '发送消息';
     final isSendButtonEnabled =
         isCancellablePhase || (!isBlockingPhase && !isAwaitingConfirmation);
-    final slashQuery = _extractSlashQuery(textController.text);
-    final commandSuggestions = _resolveSlashCommandSuggestions(slashQuery);
-    final slashSuggestions = skillCatalog.maybeWhen<List<_SlashSuggestionItem>>(
-      data: (skills) {
-        if (slashQuery == null) {
-          return const <_SlashSuggestionItem>[];
-        }
-        return skills
-            .where((skill) {
-              final query = slashQuery.toLowerCase();
-              return skill.id.toLowerCase().contains(query) ||
-                  skill.name.toLowerCase().contains(query) ||
-                  skill.description.toLowerCase().contains(query);
-            })
-            .take(5)
-            .map(
-              (skill) => _SlashSuggestionItem.skill(
-                title: skill.id,
-                subtitle: skill.description,
-                insertText: '/${skill.id}',
-              ),
-            )
-            .toList(growable: false);
-      },
-      orElse: () => const <_SlashSuggestionItem>[],
+    _activeSlashSuggestions = _resolveActiveSlashSuggestions(
+      text: textController.text,
+      isVoiceSessionActive: isVoiceSessionActive,
+      skillCatalog: skillCatalog,
     );
-    _activeSlashSuggestions = <_SlashSuggestionItem>[
-      ...commandSuggestions,
-      ...slashSuggestions,
-    ];
     if (!identical(_listenedVoiceController, voiceInputController)) {
       _listenedVoiceController?.removeListener(_handleVoiceStateChanged);
       _listenedVoiceController = voiceInputController;
@@ -300,7 +337,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     });
 
     Future<bool> handleSlashCommand() async {
-      final command = _extractSlashCommand(textController.text);
+      final command =
+          _extractSlashCommand(composerDocumentController.exportPlainText());
       if (command == null) {
         return false;
       }
@@ -319,6 +357,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         return true;
       }
       textController.clear();
+      ref.read(composerDocumentControllerProvider).setPlainText('');
       try {
         await chatController.compactCurrentSession();
       } catch (error) {
@@ -338,7 +377,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     }
 
     Future<void> submitCurrentInput() async {
-      final pendingText = textController.text;
+      final pendingText = composerDocumentController.exportPlainText();
       final pendingAttachments = List<ChatAttachment>.from(composerAttachments);
       Logger.runtime(
         'ChatInput',
@@ -399,6 +438,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
           return;
         }
         textController.clear();
+        ref.read(composerDocumentControllerProvider).setPlainText('');
         ref.read(composerAttachmentsProvider.notifier).state =
             const <ChatAttachment>[];
         await chatController.sendMessageRequest(
@@ -544,9 +584,20 @@ class _ChatInputState extends ConsumerState<ChatInput> {
           keyboardHeight > 0 ? spacing.xxs : spacing.xs + bottomSafeArea,
         ),
         child: DecoratedBox(
+          key: const ValueKey('chat-input-dock'),
           // 阴影承载层：必须位于 ClipRRect 之外，否则会被裁剪掉，
           // 失去悬浮感（这正是之前“贴在背景上”的根因）。
           decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                colors.assistantSurface.withValues(alpha: 0.28),
+                colors.assistantSurface.withValues(alpha: 0.52),
+                colors.assistantSurface.withValues(alpha: 0.7),
+              ],
+              stops: const [0, 0.42, 1],
+            ),
             borderRadius: BorderRadius.circular(radius.lg + 8),
             boxShadow: [
               // 远环境阴影：大范围柔和，营造漂浮高度
@@ -554,12 +605,13 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                 color:
                     colors.core.elevation.shadowColor.withValues(alpha: 0.13),
                 blurRadius: 48,
-                spreadRadius: -8,
+                spreadRadius: 6,
                 offset: const Offset(0, 26),
               ),
               // 近接触阴影：定义底部边界、增加厚度
               BoxShadow(
-                color: colors.core.elevation.shadowColor.withValues(alpha: 0.1),
+                color:
+                    colors.core.elevation.shadowColor.withValues(alpha: 0.18),
                 blurRadius: 18,
                 spreadRadius: -4,
                 offset: const Offset(0, 9),
@@ -577,18 +629,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 38, sigmaY: 38),
               child: DecoratedBox(
-                key: const ValueKey('chat-input-dock'),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      colors.assistantSurface.withValues(alpha: 0.28),
-                      colors.assistantSurface.withValues(alpha: 0.52),
-                      colors.assistantSurface.withValues(alpha: 0.7),
-                    ],
-                    stops: const [0, 0.42, 1],
-                  ),
                   borderRadius: BorderRadius.circular(radius.lg + 8),
                   border: Border.all(
                     color: colors.semantic.text.inverse.withValues(alpha: 0.55),
@@ -630,6 +671,38 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                                   mainAxisSize: MainAxisSize.min,
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
+                                    if (composerDocumentController.nodes
+                                        .whereType<CommandComposerNode>()
+                                        .isNotEmpty)
+                                      Padding(
+                                        padding: EdgeInsets.fromLTRB(
+                                          spacing.xs,
+                                          spacing.xxs + 2,
+                                          spacing.xs,
+                                          0,
+                                        ),
+                                        child: Wrap(
+                                          spacing: spacing.xxs + 2,
+                                          runSpacing: spacing.xxs + 2,
+                                          children: composerDocumentController.nodes
+                                              .whereType<CommandComposerNode>()
+                                              .map(
+                                                (node) => _CommandChip(
+                                                  commandText: node.commandText,
+                                                  onDeleted: () {
+                                                    ref
+                                                        .read(
+                                                          composerDocumentControllerProvider,
+                                                        )
+                                                        .removeCommand(
+                                                          node.commandText,
+                                                        );
+                                                  },
+                                                ),
+                                              )
+                                              .toList(growable: false),
+                                        ),
+                                      ),
                                     if (isVoiceListening)
                                       Padding(
                                         padding: EdgeInsets.fromLTRB(
@@ -923,20 +996,19 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                                     child: GestureDetector(
                                       key: const ValueKey(
                                           'chat-input-voice-button'),
-                                      onLongPressStart: (_) {
+                                      onTap: () async {
+                                        if (isVoiceSessionActive) {
+                                          await voiceInputController.releaseStop();
+                                          return;
+                                        }
                                         if (isComposerLocked) {
                                           return;
                                         }
-                                        voiceInputController.pressStart();
-                                      },
-                                      onLongPressEnd: (_) {
-                                        if (isComposerLocked) {
-                                          return;
-                                        }
-                                        voiceInputController.releaseStop();
+                                        await voiceInputController.pressStart();
                                       },
                                       child: _PressableScale(
-                                        enabled: !isComposerLocked,
+                                        enabled:
+                                            !isComposerLocked || isVoiceSessionActive,
                                         child: Container(
                                           key: const ValueKey(
                                               'chat-input-voice-button-shell'),
@@ -1180,6 +1252,46 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         .toList(growable: false);
   }
 
+  List<_SlashSuggestionItem> _resolveActiveSlashSuggestions({
+    required String text,
+    required bool isVoiceSessionActive,
+    AsyncValue<List<SkillCatalogEntry>>? skillCatalog,
+  }) {
+    final AsyncValue<List<SkillCatalogEntry>> resolvedSkillCatalog =
+        skillCatalog ?? ref.read(enabledSkillCatalogProvider);
+    final slashQuery = isVoiceSessionActive ? null : _extractSlashQuery(text);
+    final commandSuggestions = _resolveSlashCommandSuggestions(slashQuery);
+    final slashSuggestions = resolvedSkillCatalog
+        .maybeWhen<List<_SlashSuggestionItem>>(
+          data: (skills) {
+            if (slashQuery == null) {
+              return const <_SlashSuggestionItem>[];
+            }
+            return skills
+                .where((skill) {
+                  final query = slashQuery.toLowerCase();
+                  return skill.id.toLowerCase().contains(query) ||
+                      skill.name.toLowerCase().contains(query) ||
+                      skill.description.toLowerCase().contains(query);
+                })
+                .take(5)
+                .map(
+                  (skill) => _SlashSuggestionItem.skill(
+                    title: skill.id,
+                    subtitle: skill.description,
+                    insertText: '/${skill.id}',
+                  ),
+                )
+                .toList(growable: false);
+          },
+          orElse: () => const <_SlashSuggestionItem>[],
+        );
+    return <_SlashSuggestionItem>[
+      ...commandSuggestions,
+      ...slashSuggestions,
+    ];
+  }
+
   Future<bool?> _confirmUnsupportedImageInputIfNeeded({
     required BuildContext context,
     required List<ChatAttachment> attachments,
@@ -1188,7 +1300,6 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       return false;
     }
 
-    final repository = ref.read(appSettingsRepositoryProvider);
     final runtime = ref.read(currentSessionRuntimeConfigProvider);
     if (runtime == null) {
       return false;
@@ -1299,6 +1410,7 @@ class _SlashSuggestionItem {
     required this.title,
     required this.subtitle,
     required this.insertText,
+    this.promotesToCommandNode = false,
   });
 
   const _SlashSuggestionItem.skill({
@@ -1314,6 +1426,7 @@ class _SlashSuggestionItem {
   final String title;
   final String subtitle;
   final String insertText;
+  final bool promotesToCommandNode;
 }
 
 class _ModelSelectionResult {
@@ -1324,6 +1437,60 @@ class _ModelSelectionResult {
 
   final String providerId;
   final String modelId;
+}
+
+class _CommandChip extends StatelessWidget {
+  const _CommandChip({
+    required this.commandText,
+    required this.onDeleted,
+  });
+
+  final String commandText;
+  final VoidCallback onDeleted;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+    final radius = Theme.of(context).extension<AppRadius>()!;
+    return Container(
+      key: ValueKey('chat-input-command-chip-$commandText'),
+      padding: EdgeInsets.symmetric(
+        horizontal: spacing.xs,
+        vertical: spacing.xxs + 1,
+      ),
+      decoration: BoxDecoration(
+        color: colors.chatBackground.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(radius.pill),
+        border: Border.all(
+          color: colors.semantic.text.inverse.withValues(alpha: 0.16),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            commandText,
+            style: AppTypography.uiStyle(
+              color: colors.primaryText,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              height: 1.2,
+            ),
+          ),
+          SizedBox(width: spacing.xxs + 1),
+          GestureDetector(
+            onTap: onDeleted,
+            child: Icon(
+              Icons.close_rounded,
+              size: 14,
+              color: colors.secondaryText,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _AnchoredModelMenuDialog extends StatefulWidget {

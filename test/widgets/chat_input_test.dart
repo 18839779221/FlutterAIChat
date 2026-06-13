@@ -3,6 +3,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ai_chat/controllers/voice_input_controller.dart';
+import 'package:ai_chat/controllers/composer_text_editing_controller.dart';
+import 'package:ai_chat/models/composer/composer_node.dart';
 import 'package:ai_chat/models/chat/chat_attachment.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat/send_message_request.dart';
@@ -157,6 +159,46 @@ void main() {
         find.byKey(const ValueKey('chat-input-voice-button')), findsOneWidget);
   });
 
+  testWidgets('chat input starts voice capture on tap and locks text editing',
+      (tester) async {
+    final harness = _VoiceControllerHarness.create();
+    final container = ProviderContainer(
+      overrides: [
+        textControllerProvider.overrideWithValue(
+          harness.controller.textController,
+        ),
+        voiceInputControllerProvider.overrideWithValue(
+          harness.controller,
+        ),
+      ],
+    );
+    addTearDown(() async {
+      container.dispose();
+      harness.controller.dispose();
+      await harness.controller.close();
+    });
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('chat-input-voice-button')));
+    await tester.pumpAndSettle();
+
+    expect(harness.speech.startCallCount, 1);
+    expect(
+      tester.widget<TextField>(find.byKey(const ValueKey('chat-input-field'))).enabled,
+      isFalse,
+    );
+
+  });
+
   testWidgets('chat input updates the shared text field while listening', (
     tester,
   ) async {
@@ -195,6 +237,154 @@ void main() {
     );
     expect(textField.controller!.text, '明天上午十点');
     expect(find.byKey(const ValueKey('chat-input-voice-draft')), findsNothing);
+  });
+
+  testWidgets('chat input underlines the active speech draft range inline', (
+    tester,
+  ) async {
+    final harness = _VoiceControllerHarness.create();
+    final textController = ComposerTextEditingController();
+    final container = ProviderContainer(
+      overrides: [
+        textControllerProvider.overrideWithValue(textController),
+        voiceInputControllerProvider.overrideWithValue(
+          harness.controller,
+        ),
+      ],
+    );
+    addTearDown(() async {
+      container.dispose();
+      textController.dispose();
+      harness.controller.dispose();
+      await harness.controller.close();
+    });
+
+    textController.text = '帮我安排一下今天';
+    textController.selection = const TextSelection.collapsed(offset: 6);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+
+    await harness.controller.pressStart();
+    harness.speech.emitPartial('明天下午三点');
+    await tester.pump();
+
+    final widget = tester.widget<TextField>(
+      find.byKey(const ValueKey('chat-input-field')),
+    );
+    final controller = widget.controller! as ComposerTextEditingController;
+    final voiceState = harness.controller.state;
+    late TextSpan span;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            span = controller.buildTextSpan(
+              context: context,
+              style: widget.style,
+              withComposing: false,
+            );
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    );
+
+    expect(span.children, isNotNull);
+    final underlinedSpans = span.children!
+        .whereType<TextSpan>()
+        .where((item) => item.style?.decoration == TextDecoration.underline)
+        .toList(growable: false);
+    expect(underlinedSpans, hasLength(1));
+    expect(voiceState.draftRangeStart, isNotNull);
+    expect(voiceState.draftRangeEnd, isNotNull);
+    final expectedDraft = controller.text.substring(
+      voiceState.draftRangeStart!,
+      voiceState.draftRangeEnd!,
+    );
+    expect(underlinedSpans.single.text, expectedDraft);
+  });
+
+  testWidgets('chat input syncs active speech node into composer document',
+      (tester) async {
+    final harness = _VoiceControllerHarness.create();
+    final textController = ComposerTextEditingController()..text = '帮我安排一下今天';
+    textController.selection = const TextSelection.collapsed(offset: 6);
+    final container = ProviderContainer(
+      overrides: [
+        textControllerProvider.overrideWithValue(textController),
+        voiceInputControllerProvider.overrideWithValue(
+          harness.controller,
+        ),
+      ],
+    );
+    addTearDown(() async {
+      container.dispose();
+      textController.dispose();
+      harness.controller.dispose();
+      await harness.controller.close();
+    });
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+
+    await harness.controller.pressStart();
+    harness.speech.emitPartial('明天下午三点');
+    await tester.pump();
+
+    final duringSpeech = container.read(composerDocumentControllerProvider);
+    expect(duringSpeech.nodes.whereType<SpeechComposerNode>(), hasLength(1));
+    expect(duringSpeech.plainText, '帮我安排一下今天');
+  });
+
+  testWidgets('chat input promotes selected slash command into a command chip',
+      (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('chat-input-field')));
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey('chat-input-field')),
+      '/comp',
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.text('/compact'));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('chat-input-command-chip-/compact')),
+        findsOneWidget);
+    final textField = tester.widget<TextField>(
+      find.byKey(const ValueKey('chat-input-field')),
+    );
+    expect(textField.controller?.text, isEmpty);
   });
 
   testWidgets('chat input shows active recording visuals while listening', (
@@ -1711,6 +1901,9 @@ class _FakeSpeechToTextService implements SpeechToTextService {
   final StreamController<Object> _errorController =
       StreamController<Object>.broadcast();
 
+  int startCallCount = 0;
+  int finishCallCount = 0;
+
   @override
   Stream<Object> get errors => _errorController.stream;
 
@@ -1727,14 +1920,22 @@ class _FakeSpeechToTextService implements SpeechToTextService {
     _partialController.add(text);
   }
 
+  void emitFinal(String text) {
+    _finalController.add(text);
+  }
+
   @override
-  Future<void> finishSession() async {}
+  Future<void> finishSession() async {
+    finishCallCount += 1;
+  }
 
   @override
   Future<void> sendAudioFrame(Uint8List frame) async {}
 
   @override
-  Future<void> startSession() async {}
+  Future<void> startSession() async {
+    startCallCount += 1;
+  }
 }
 
 class _FakeAudioCaptureService implements AudioCaptureService {

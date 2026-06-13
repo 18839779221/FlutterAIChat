@@ -80,7 +80,9 @@ class VoiceInputController extends ChangeNotifier {
     _state = _state.copyWith(
       phase: SpeechInputPhase.requestingPermission,
       clearErrorMessage: true,
+      clearDraftRange: true,
       draftText: '',
+      committedText: '',
       isConfigured: true,
     );
     notifyListeners();
@@ -189,6 +191,8 @@ class VoiceInputController extends ChangeNotifier {
     _state = _state.copyWith(
       phase: SpeechInputPhase.idle,
       draftText: '',
+      committedText: finalText,
+      clearDraftRange: true,
       clearErrorMessage: true,
     );
     notifyListeners();
@@ -235,6 +239,10 @@ class VoiceInputController extends ChangeNotifier {
     final nextText =
         _speechOriginalText.replaceRange(normalizedStart, normalizedEnd, speechText);
     final caretOffset = normalizedStart + speechText.length;
+    _state = _state.copyWith(
+      draftRangeStart: normalizedStart,
+      draftRangeEnd: normalizedStart + speechText.length,
+    );
     textController.value = TextEditingValue(
       text: nextText,
       selection: TextSelection.collapsed(offset: caretOffset),
