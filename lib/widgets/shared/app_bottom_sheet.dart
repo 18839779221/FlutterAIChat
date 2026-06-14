@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../theme/app_radius.dart';
@@ -65,6 +67,12 @@ class AppBottomSheetScaffold extends StatelessWidget {
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final screenHeight = MediaQuery.sizeOf(context).height;
     final viewInsets = MediaQuery.viewInsetsOf(context);
+    final viewPadding = MediaQuery.viewPaddingOf(context);
+    final bottomInset = useSafeArea
+        ? math.max(viewInsets.bottom, viewPadding.bottom)
+        : viewInsets.bottom;
+    final hasHeader =
+        (title ?? '').trim().isNotEmpty || (subtitle ?? '').trim().isNotEmpty;
     final content = bodyPadding == null
         ? body
         : Padding(
@@ -78,7 +86,7 @@ class AppBottomSheetScaffold extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(radius.lg)),
       ),
       child: Padding(
-        padding: EdgeInsets.only(bottom: viewInsets.bottom),
+        padding: EdgeInsets.only(bottom: bottomInset),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -94,8 +102,7 @@ class AppBottomSheetScaffold extends StatelessWidget {
                 ),
               ),
             ),
-            if ((title ?? '').trim().isNotEmpty ||
-                (subtitle ?? '').trim().isNotEmpty)
+            if (hasHeader)
               Padding(
                 padding: EdgeInsets.fromLTRB(
                   spacing.lg,
@@ -128,6 +135,7 @@ class AppBottomSheetScaffold extends StatelessWidget {
                   ],
                 ),
               ),
+            if (!hasHeader) SizedBox(height: spacing.md),
             Flexible(
               fit: mode == AppBottomSheetMode.fixed80
                   ? FlexFit.tight
@@ -158,9 +166,6 @@ class AppBottomSheetScaffold extends StatelessWidget {
     if (!useSafeArea) {
       return aligned;
     }
-    return SafeArea(
-      top: false,
-      child: aligned,
-    );
+    return aligned;
   }
 }

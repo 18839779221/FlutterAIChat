@@ -5,6 +5,33 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('AppBottomSheet', () {
+    testWidgets('sheet extends through the bottom safe area', (tester) async {
+      const simulatedBottomInset = 34.0;
+
+      await tester.pumpWidget(
+        _Harness(
+          mode: AppBottomSheetMode.fixed80,
+          mediaQueryData: const MediaQueryData(
+            size: Size(390, 844),
+            viewPadding: EdgeInsets.only(bottom: simulatedBottomInset),
+          ),
+          body: const SizedBox.expand(
+            child: Text('long content'),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      final windowHeight =
+          tester.view.physicalSize.height / tester.view.devicePixelRatio;
+      final sheetBottom = tester
+          .getBottomRight(find.byKey(const ValueKey('app-bottom-sheet')))
+          .dy;
+      expect(sheetBottom, closeTo(windowHeight, 1));
+    });
+
     testWidgets('adaptive sheet keeps short content below the 80 percent cap', (
       tester,
     ) async {
@@ -85,6 +112,38 @@ void main() {
       expect(after.dy, closeTo(before.dy, 1));
     });
 
+    testWidgets(
+      'scrollable body keeps spacing below drag handle without title',
+      (tester) async {
+        await tester.pumpWidget(
+          _Harness(
+            mode: AppBottomSheetMode.fixed80,
+            title: null,
+            subtitle: null,
+            body: ListView.builder(
+              itemCount: 20,
+              itemBuilder: (_, index) => SizedBox(
+                height: 56,
+                child: Text('item $index'),
+              ),
+            ),
+          ),
+        );
+
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+
+        final handleBottom = tester
+            .getBottomLeft(
+              find.byKey(const ValueKey('app-bottom-sheet-drag-handle')),
+            )
+            .dy;
+        final firstItemTop = tester.getTopLeft(find.text('item 0')).dy;
+
+        expect(firstItemTop - handleBottom, greaterThan(0));
+      },
+    );
+
     testWidgets('tapping barrier dismisses sheet', (tester) async {
       await tester.pumpWidget(
         _Harness(
@@ -138,29 +197,38 @@ class _Harness extends StatelessWidget {
   const _Harness({
     required this.mode,
     required this.body,
+    this.title = 'Title',
+    this.subtitle = 'Subtitle',
+    this.mediaQueryData,
   });
 
   final AppBottomSheetMode mode;
   final Widget body;
+  final String? title;
+  final String? subtitle;
+  final MediaQueryData? mediaQueryData;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       theme: AppTheme.light(),
-      home: Scaffold(
-        body: Builder(
-          builder: (context) => Center(
-            child: TextButton(
-              onPressed: () {
-                showAppBottomSheet<void>(
-                  context: context,
-                  mode: mode,
-                  title: 'Title',
-                  subtitle: 'Subtitle',
-                  body: body,
-                );
-              },
-              child: const Text('open'),
+      home: MediaQuery(
+        data: mediaQueryData ?? const MediaQueryData(),
+        child: Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: TextButton(
+                onPressed: () {
+                  showAppBottomSheet<void>(
+                    context: context,
+                    mode: mode,
+                    title: title,
+                    subtitle: subtitle,
+                    body: body,
+                  );
+                },
+                child: const Text('open'),
+              ),
             ),
           ),
         ),
