@@ -1,11 +1,7 @@
-import 'dart:io';
-import 'dart:convert';
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/chat/chat_attachment.dart';
-import '../utils/logger.dart';
+import 'chat_attachment_image_content.dart';
 import 'chat_attachment_image_preview_dialog.dart';
 
 class ChatInputAttachmentStrip extends StatelessWidget {
@@ -49,10 +45,14 @@ class ChatInputAttachmentStrip extends StatelessWidget {
                       onTap: () => showChatAttachmentImagePreview(
                         context,
                         attachment,
+                        heroTag: _heroTagFor(attachment),
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: _buildAttachmentPreview(context, attachment),
+                        child: Hero(
+                          tag: _heroTagFor(attachment),
+                          child: _buildAttachmentPreview(context, attachment),
+                        ),
                       ),
                     ),
                   ),
@@ -89,45 +89,20 @@ class ChatInputAttachmentStrip extends StatelessWidget {
     BuildContext context,
     ChatAttachment attachment,
   ) {
-    final dataUrl = attachment.providerFileRefJson?['data_url'];
-    if (dataUrl is String && dataUrl.trim().isNotEmpty) {
-      final match = RegExp(
-        r'^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$',
-      ).firstMatch(dataUrl.trim());
-      if (match != null) {
-        final bytes = base64Decode(match.group(2)!);
-        return Image.memory(
-          bytes,
-          fit: BoxFit.cover,
-        );
-      }
-    }
-    final localPath = attachment.localPath;
-    if (!kIsWeb &&
-        localPath != null &&
-        localPath.trim().isNotEmpty &&
-        !localPath.startsWith('/attachments/')) {
-      return Image.file(
-        File(localPath),
-        fit: BoxFit.cover,
-        errorBuilder: (_, error, stackTrace) {
-          Logger.e(
-            'ChatInputAttachmentStrip',
-            'failed to render attachment preview path=$localPath',
-            error,
-          );
-          return _fallbackPreview(context);
-        },
-      );
-    }
-    return _fallbackPreview(context);
+    return ChatAttachmentImageContent(
+      attachment: attachment,
+      fit: BoxFit.cover,
+      invalidPlaceholder: _fallbackPreview(context),
+    );
   }
 
   Widget _fallbackPreview(BuildContext context) {
-    return Container(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      alignment: Alignment.center,
-      child: const Icon(Icons.image_outlined, size: 20),
+    return const InvalidImagePlaceholder(
+      iconSize: 20,
     );
+  }
+
+  String _heroTagFor(ChatAttachment attachment) {
+    return 'chat-attachment-hero-${attachment.localId}';
   }
 }

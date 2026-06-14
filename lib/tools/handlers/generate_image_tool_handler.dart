@@ -3,6 +3,7 @@ import '../../models/tool/localized_tool_text.dart';
 import '../../models/tool/tool_argument_property.dart';
 import '../../models/tool/tool_argument_schema.dart';
 import '../../models/tool/tool_definition.dart';
+import '../../services/image_generation_config_resolver.dart';
 import '../../services/tool_executor.dart';
 import '../core/tool_argument_resolution.dart';
 import '../core/tool_execution_context.dart';
@@ -12,9 +13,12 @@ import '../core/tool_handler.dart';
 class GenerateImageToolHandler extends ToolHandler {
   GenerateImageToolHandler({
     required ImageGenerator imageGenerator,
-  }) : _imageGenerator = imageGenerator;
+    ImageGenerationRuntimeConfigResolver? resolveRuntimeConfig,
+  })  : _imageGenerator = imageGenerator,
+        _resolveRuntimeConfig = resolveRuntimeConfig;
 
   final ImageGenerator _imageGenerator;
+  final ImageGenerationRuntimeConfigResolver? _resolveRuntimeConfig;
 
   @override
   ToolDefinition get definition => const ToolDefinition(
@@ -92,13 +96,19 @@ class GenerateImageToolHandler extends ToolHandler {
       );
     }
 
+    final runtimeConfig = await _resolveRuntimeConfig?.call();
+    final resolvedModel =
+        _readOptionalString(rawArguments['model']) ?? runtimeConfig?.model;
+    final resolvedQuality = _readOptionalString(rawArguments['quality']) ??
+        runtimeConfig?.qualityDefault;
+    final resolvedProvider = runtimeConfig?.providerId;
+
     return ToolArgumentResolution.valid({
       'prompt': prompt.trim(),
-      if (_readOptionalString(rawArguments['model']) != null)
-        'model': _readOptionalString(rawArguments['model']),
+      if (resolvedModel != null) 'model': resolvedModel,
       'size': _readOptionalString(rawArguments['size']) ?? '1024x1024',
-      if (_readOptionalString(rawArguments['quality']) != null)
-        'quality': _readOptionalString(rawArguments['quality']),
+      if (resolvedQuality != null) 'quality': resolvedQuality,
+      if (resolvedProvider != null) 'provider': resolvedProvider,
     });
   }
 
@@ -109,6 +119,7 @@ class GenerateImageToolHandler extends ToolHandler {
       model: context.arguments['model'] as String?,
       size: context.arguments['size'] as String,
       quality: context.arguments['quality'] as String?,
+      provider: context.arguments['provider'] as String?,
       apiKey: context.arguments['apiKey'] as String?,
       baseUrl: context.arguments['baseUrl'] as String?,
     );
@@ -122,3 +133,6 @@ class GenerateImageToolHandler extends ToolHandler {
     return trimmed.isEmpty ? null : trimmed;
   }
 }
+
+typedef ImageGenerationRuntimeConfigResolver =
+    Future<ImageGenerationRuntimeConfig?> Function();

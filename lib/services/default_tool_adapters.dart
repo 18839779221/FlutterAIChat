@@ -104,6 +104,7 @@ ImageGenerator buildOpenAIImageGenerator({
     required String? model,
     required String size,
     required String? quality,
+    String? provider,
     String? apiKey,
     String? baseUrl,
   }) async {
@@ -216,6 +217,8 @@ ImageGenerator buildOpenAIImageGenerator({
         data: {
           'prompt': prompt,
           'model': resolvedModel,
+          if (provider != null && provider.trim().isNotEmpty)
+            'provider': provider.trim(),
           'size': size,
           'quality': resolvedQuality,
           'generatedImages': images,

@@ -1,10 +1,14 @@
 package com.example.ai_chat
 
+import android.content.ContentValues
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.util.Log
 import android.provider.AlarmClock
 import android.provider.CalendarContract
+import android.provider.MediaStore
+import android.util.Log
+import java.io.File
+import java.io.FileInputStream
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -33,6 +37,7 @@ class MainActivity : FlutterActivity() {
             val launchResult = when (action) {
                 "create_reminder" -> launchReminderIntent(arguments)
                 "create_calendar_event" -> launchCalendarEventIntent(arguments)
+                "save_image_to_gallery" -> saveImageToGallery(arguments)
                 else -> mapOf(
                     "status" to "failed",
                     "message" to "unsupported_action"
@@ -121,6 +126,52 @@ class MainActivity : FlutterActivity() {
         }
 
         return launchIntent(intent)
+    }
+
+    private fun saveImageToGallery(arguments: Map<*, *>): Map<String, String> {
+        val sourcePath = arguments["sourcePath"] as? String
+            ?: return mapOf("status" to "failed", "message" to "missing_source_path")
+        val fileName = arguments["fileName"] as? String
+            ?: return mapOf("status" to "failed", "message" to "missing_file_name")
+        val mimeType = arguments["mimeType"] as? String ?: "image/png"
+
+        val sourceFile = File(sourcePath)
+        if (!sourceFile.exists()) {
+            return mapOf("status" to "failed", "message" to "source_file_missing")
+        }
+
+        return try {
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                put(MediaStore.Images.Media.MIME_TYPE, mimeType)
+            }
+
+            val resolver = applicationContext.contentResolver
+            val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            val targetUri = resolver.insert(collection, values)
+                ?: return mapOf("status" to "failed", "message" to "insert_failed")
+
+            resolver.openOutputStream(targetUri)?.use { outputStream ->
+                FileInputStream(sourceFile).use { inputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+            } ?: return mapOf("status" to "failed", "message" to "open_output_stream_failed")
+
+            Log.i(
+                HOST_TOOLS_LOG_TAG,
+                "saveImageToGallery success source=$sourcePath target=$targetUri"
+            )
+            mapOf(
+                "status" to "launched",
+                "message" to "image_saved"
+            )
+        } catch (error: Exception) {
+            Log.e(HOST_TOOLS_LOG_TAG, "saveImageToGallery failed source=$sourcePath", error)
+            mapOf(
+                "status" to "failed",
+                "message" to (error.message ?: "gallery_save_failed")
+            )
+        }
     }
 
     private fun launchIntent(intent: Intent): Map<String, String> {

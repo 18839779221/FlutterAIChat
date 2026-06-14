@@ -306,6 +306,9 @@ void main() async {
         ),
         artifactFileStorageServiceProvider
             .overrideWithValue(artifactFileStorageService),
+        fileToolRootServiceProvider.overrideWithValue(
+          fileToolAdapters?.rootService,
+        ),
         skillStorageServiceProvider.overrideWithValue(skillStorageService),
         gitHubSkillSourceResolverProvider
             .overrideWithValue(gitHubSkillSourceResolver),

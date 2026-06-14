@@ -14,7 +14,6 @@ import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/providers/chat_send_state_providers.dart';
 import 'package:ai_chat/providers/chat_ui_providers.dart';
-import 'package:ai_chat/services/attachments/chat_attachment_storage_service.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

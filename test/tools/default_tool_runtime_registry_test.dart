@@ -105,6 +105,7 @@ void main() {
           required model,
           required size,
           required quality,
+          provider,
           apiKey,
           baseUrl,
         }) async {
@@ -113,6 +114,7 @@ void main() {
             'model': model,
             'size': size,
             'quality': quality,
+            'provider': provider,
             'apiKey': apiKey,
             'baseUrl': baseUrl,
           };
@@ -146,6 +148,7 @@ void main() {
       'model': 'gpt-image-2',
       'size': '1024x1024',
       'quality': 'low',
+      'provider': 'beehears',
       'apiKey': 'image-key',
       'baseUrl': 'https://ai.beehears.com/v1',
     });
@@ -185,6 +188,7 @@ void main() {
           required model,
           required size,
           required quality,
+          provider,
           apiKey,
           baseUrl,
         }) async {

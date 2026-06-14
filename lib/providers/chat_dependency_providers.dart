@@ -6,6 +6,8 @@ import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/services/audio/audio_capture_service.dart';
 import 'package:ai_chat/services/audio/record_audio_capture_service.dart';
 import 'package:ai_chat/services/attachments/chat_attachment_picker_service.dart';
+import 'package:ai_chat/services/attachments/chat_attachment_gallery_save_service.dart';
+import 'package:ai_chat/services/attachments/chat_attachment_host_file_resolver.dart';
 import 'package:ai_chat/services/attachments/chat_attachment_storage_service.dart';
 import 'package:ai_chat/services/artifact/artifact_file_storage_service.dart';
 import 'package:ai_chat/services/artifact/artifact_guideline_contract_builder.dart';
@@ -45,6 +47,7 @@ import 'package:ai_chat/services/speech/speech_to_text_service.dart';
 import 'package:ai_chat/services/tool_presentation_block_projector.dart';
 import 'package:ai_chat/services/tool_ui_renderer_registry.dart';
 import 'package:ai_chat/services/turn_harness.dart';
+import 'package:ai_chat/services/file_tools/file_tool_root_service.dart';
 import 'package:ai_chat/services/workspace/workspace_binding_service.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:ai_chat/widgets/tool_renderers/compact_tool_row_renderer.dart';
@@ -52,6 +55,7 @@ import 'package:ai_chat/widgets/tool_renderers/create_artifact_guideline_tool_re
 import 'package:ai_chat/widgets/tool_renderers/create_artifact_tool_renderer.dart';
 import 'package:ai_chat/widgets/tool_renderers/edit_tool_renderer.dart';
 import 'package:ai_chat/widgets/tool_renderers/fetch_webpage_tool_workflow_card.dart';
+import 'package:ai_chat/widgets/tool_renderers/generate_image_tool_renderer.dart';
 import 'package:ai_chat/widgets/tool_renderers/web_search_tool_workflow_card.dart';
 import 'package:ai_chat/widgets/tool_renderers/write_tool_renderer.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -94,6 +98,26 @@ final chatAttachmentPickerServiceProvider =
 
 final chatAttachmentStorageServiceProvider =
     Provider<ChatAttachmentStorageService?>((ref) => null);
+
+final fileToolRootServiceProvider = Provider<FileToolRootService?>((ref) => null);
+
+final chatAttachmentHostFileResolverProvider =
+    Provider<ChatAttachmentHostFileResolver?>((ref) {
+  final rootService = ref.watch(fileToolRootServiceProvider);
+  if (rootService == null) {
+    return null;
+  }
+  return ChatAttachmentHostFileResolver(rootService: rootService);
+});
+
+final chatAttachmentGallerySaveServiceProvider =
+    Provider<ChatAttachmentGallerySaveService?>((ref) {
+  final resolver = ref.watch(chatAttachmentHostFileResolverProvider);
+  if (resolver == null) {
+    return null;
+  }
+  return ChatAttachmentGallerySaveService(hostFileResolver: resolver);
+});
 
 final aliyunRealtimeAsrClientProvider = Provider<AliyunRealtimeAsrClient?>(
   (ref) {
@@ -169,6 +193,7 @@ final toolUiRendererRegistryProvider = Provider<ToolUiRendererRegistry>((ref) {
       CreateArtifactToolUiRenderer(),
       WebSearchToolUiRenderer(),
       FetchWebpageToolUiRenderer(),
+      GenerateImageToolUiRenderer(),
     ],
   );
 });

@@ -1,10 +1,7 @@
-import 'dart:io';
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 
 import '../models/chat/chat_attachment.dart';
+import 'chat_attachment_image_content.dart';
 import 'chat_attachment_image_preview_dialog.dart';
 
 class ChatMessageImageAttachments extends StatelessWidget {
@@ -38,10 +35,14 @@ class ChatMessageImageAttachments extends StatelessWidget {
                 onTap: () => showChatAttachmentImagePreview(
                   context,
                   attachment,
+                  heroTag: _heroTagFor(attachment),
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
-                  child: _buildAttachmentPreview(context, attachment),
+                  child: Hero(
+                    tag: _heroTagFor(attachment),
+                    child: _buildAttachmentPreview(context, attachment),
+                  ),
                 ),
               ),
             ),
@@ -55,44 +56,24 @@ class ChatMessageImageAttachments extends StatelessWidget {
     BuildContext context,
     ChatAttachment attachment,
   ) {
-    final dataUrl = attachment.providerFileRefJson?['data_url'];
-    if (dataUrl is String && dataUrl.trim().isNotEmpty) {
-      final match = RegExp(
-        r'^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$',
-      ).firstMatch(dataUrl.trim());
-      if (match != null) {
-        final bytes = base64Decode(match.group(2)!);
-        return Image.memory(
-          bytes,
-          width: 168,
-          height: 168,
-          fit: BoxFit.cover,
-        );
-      }
-    }
-    final localPath = attachment.localPath;
-    if (!kIsWeb &&
-        localPath != null &&
-        localPath.trim().isNotEmpty &&
-        !localPath.startsWith('/attachments/')) {
-      return Image.file(
-        File(localPath),
-        width: 168,
-        height: 168,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _fallbackPreview(context),
-      );
-    }
-    return _fallbackPreview(context);
+    return ChatAttachmentImageContent(
+      attachment: attachment,
+      width: 168,
+      height: 168,
+      fit: BoxFit.cover,
+      invalidPlaceholder: _fallbackPreview(context),
+    );
   }
 
   Widget _fallbackPreview(BuildContext context) {
-    return Container(
+    return const InvalidImagePlaceholder(
       width: 168,
       height: 168,
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      alignment: Alignment.center,
-      child: const Icon(Icons.image_outlined, size: 28),
+      iconSize: 28,
     );
+  }
+
+  String _heroTagFor(ChatAttachment attachment) {
+    return 'chat-attachment-hero-${attachment.localId}';
   }
 }

@@ -1,5 +1,6 @@
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
+import 'package:ai_chat/services/image_generation_config_resolver.dart';
 import 'package:ai_chat/services/tool_executor.dart';
 import 'package:ai_chat/tools/core/tool_execution_context.dart';
 import 'package:ai_chat/tools/handlers/generate_image_tool_handler.dart';
@@ -9,6 +10,13 @@ void main() {
   test('normalizes prompt with optional image generation options', () async {
     final handler = GenerateImageToolHandler(
       imageGenerator: _unusedImageGenerator,
+      resolveRuntimeConfig: () async => const ImageGenerationRuntimeConfig(
+        providerId: 'beehears',
+        apiKey: 'key',
+        baseUrl: 'https://example.com/v1',
+        model: 'gpt-image-2',
+        qualityDefault: 'low',
+      ),
     );
 
     final resolution = await handler.normalizeArguments(
@@ -23,9 +31,10 @@ void main() {
       resolution.normalizedArguments['prompt'],
       'A small brass robot painting clouds',
     );
-    expect(resolution.normalizedArguments, isNot(contains('model')));
+    expect(resolution.normalizedArguments['model'], 'gpt-image-2');
+    expect(resolution.normalizedArguments['provider'], 'beehears');
     expect(resolution.normalizedArguments['size'], '1024x1024');
-    expect(resolution.normalizedArguments, isNot(contains('quality')));
+    expect(resolution.normalizedArguments['quality'], 'low');
   });
 
   test('tool description tells planner to use low quality by default', () {
@@ -86,6 +95,7 @@ void main() {
         required model,
         required size,
         required quality,
+        provider,
         apiKey,
         baseUrl,
       }) async {
@@ -94,6 +104,7 @@ void main() {
           'model': model,
           'size': size,
           'quality': quality,
+          'provider': provider,
           'apiKey': apiKey,
           'baseUrl': baseUrl,
         };
@@ -114,6 +125,7 @@ void main() {
           'model': 'gpt-image-2',
           'size': '1024x1024',
           'quality': 'high',
+          'provider': 'beehears',
           'apiKey': 'key-1',
           'baseUrl': 'https://api.openai.com/v1',
         },
@@ -129,6 +141,7 @@ void main() {
       'model': 'gpt-image-2',
       'size': '1024x1024',
       'quality': 'high',
+      'provider': 'beehears',
       'apiKey': 'key-1',
       'baseUrl': 'https://api.openai.com/v1',
     });
@@ -140,6 +153,7 @@ Future<ToolResult> _unusedImageGenerator({
   required String? model,
   required String size,
   required String? quality,
+  String? provider,
   String? apiKey,
   String? baseUrl,
 }) async {

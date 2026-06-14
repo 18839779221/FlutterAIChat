@@ -47,6 +47,7 @@ typedef ImageGenerator = Future<ToolResult> Function({
   required String? model,
   required String size,
   required String? quality,
+  String? provider,
   String? apiKey,
   String? baseUrl,
 });
@@ -198,6 +199,7 @@ class ToolExecutor {
     required String? model,
     required String size,
     required String? quality,
+    String? provider,
     String? apiKey,
     String? baseUrl,
   }) async {
@@ -210,6 +212,7 @@ class ToolExecutor {
       model: model,
       size: size,
       quality: quality,
+      provider: provider,
       apiKey: apiKey,
       baseUrl: baseUrl,
     );

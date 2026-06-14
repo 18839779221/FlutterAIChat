@@ -87,6 +87,7 @@ ToolRuntimeRegistry buildDefaultToolRuntimeRegistry({
           required model,
           required size,
           required quality,
+          provider,
           apiKey,
           baseUrl,
         }) async {
@@ -113,8 +114,19 @@ ToolRuntimeRegistry buildDefaultToolRuntimeRegistry({
             size: size,
             quality:
                 _resolveOptionalString(quality) ?? imageConfig.qualityDefault,
+            provider: _resolveOptionalString(provider) ?? imageConfig.providerId,
             apiKey: apiKey ?? imageConfig.apiKey,
             baseUrl: baseUrl ?? imageConfig.baseUrl,
+          );
+        },
+        resolveRuntimeConfig: () async {
+          final providers =
+              await appSettingsRepository?.getProviders() ?? const [];
+          final additionalConfig =
+              await appSettingsRepository?.getAdditionalConfig() ?? const {};
+          return const ImageGenerationConfigResolver().resolve(
+            providers: providers,
+            additionalConfig: additionalConfig,
           );
         },
       ),
