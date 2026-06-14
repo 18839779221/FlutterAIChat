@@ -481,6 +481,74 @@ void main() {
   );
 
   test(
+    'keeps preview deltas when response.completed function_call item misses strict sdk id field',
+    () async {
+      final runtime = OpenAiResponsesRuntime(
+        httpClient: _FakeHttpClient(
+          response: http.Response(
+            [
+              'data: ${jsonEncode({
+                'type': 'response.output_text.delta',
+                'response': {'id': 'resp_partial'},
+                'output_index': 0,
+                'content_index': 0,
+                'delta': 'Hello',
+              })}\n',
+              '\n',
+              'data: ${jsonEncode({
+                'type': 'response.completed',
+                'response': {
+                  'id': 'resp_partial',
+                  'object': 'response',
+                  'created_at': 123,
+                  'status': 'completed',
+                  'output': [
+                    {
+                      'id': null,
+                      'type': 'function_call',
+                      'status': 'completed',
+                      'call_id': 'call_1',
+                      'name': 'generate_image',
+                      'arguments': '{"prompt":"x"}',
+                    },
+                  ],
+                },
+              })}\n',
+              '\n',
+              'data: [DONE]\n',
+            ].join(),
+            200,
+            headers: {'content-type': 'text/event-stream; charset=utf-8'},
+          ),
+        ),
+      );
+
+      final result = await runtime.streamExecute(
+        requestSpec: ResponsesRequestSpec(
+          request: oai.CreateResponseRequest(
+            model: 'gpt-5.4',
+            input: const oai.ResponseInput.text('hello'),
+          ),
+        ),
+        runtimeConfig: const LLMConfig(
+          apiKey: 'k',
+          apiUrl: 'https://responses.example/v1',
+          model: 'gpt-5.4',
+        ),
+        idleTimeout: const Duration(seconds: 1),
+        overallTimeout: const Duration(seconds: 3),
+      );
+
+      final events = await result.events.toList();
+      expect(
+        events.whereType<StreamingContentBlockDeltaEvent>().map((e) => e.value),
+        contains('Hello'),
+      );
+      expect(events.last, isA<StreamingMessageStopEvent>());
+    },
+  );
+
+  test(
     'normalizes response.failed payload when provider omits strict sdk integer fields',
     () async {
       final runtime = OpenAiResponsesRuntime(

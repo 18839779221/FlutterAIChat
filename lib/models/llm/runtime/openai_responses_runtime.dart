@@ -504,6 +504,18 @@ class _SdkCompatibleResponsesNormalizer {
         item['content'] = const <Map<String, dynamic>>[];
       }
     }
+    if (item['type'] == 'function_call') {
+      final callId =
+          _nonEmptyString(item['call_id']) ?? _nonEmptyString(item['id']);
+      final syntheticId = callId == null ? 'fc_0' : 'fc_$callId';
+      item['id'] = _nonEmptyString(item['id']) ?? syntheticId;
+      item['call_id'] = callId ?? item['id'];
+      item['name'] = _nonEmptyString(item['name']) ?? '';
+      if (item['arguments'] is! String) {
+        item['arguments'] = '';
+      }
+      item['status'] = _nonEmptyString(item['status']) ?? 'completed';
+    }
     return item;
   }
 
