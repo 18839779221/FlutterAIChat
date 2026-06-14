@@ -34,7 +34,6 @@ void main() {
     final groupId = await helper.insertGroup(
       ChatGroup(
         title: 'Workspace group',
-        lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
         workspaceId: 'ws_20260602_a3k9qx',
       ),
     );
@@ -44,7 +43,7 @@ void main() {
     expect(stored!.workspaceId, 'ws_20260602_a3k9qx');
   });
 
-  test('upgrade from v14 adds nullable workspace_id to chat_groups', () async {
+  test('upgrade from v14 recreates chat_groups with nullable workspace_id', () async {
     const dbName = 'database_helper_upgrade_v14_to_v15_workspace.db';
     final dbPath = p.join(await getDatabasesPath(), dbName);
     await databaseFactory.deleteDatabase(dbPath);
@@ -84,10 +83,9 @@ void main() {
     final workspaceColumn = tableInfo.firstWhere(
       (row) => row['name'] == 'workspace_id',
     );
-    final rows = await db.query('chat_groups');
-
     expect(workspaceColumn['type'], 'TEXT');
-    expect(rows.single['workspace_id'], isNull);
+    expect(workspaceColumn['notnull'], 0);
+    expect(await db.query('chat_groups'), isEmpty);
   });
 
   tearDown(() async {

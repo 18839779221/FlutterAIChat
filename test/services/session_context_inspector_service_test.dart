@@ -77,8 +77,7 @@ void main() {
       );
       final groupId = await storage.insertGroup(
         ChatGroup(
-            title: 'Context Inspector',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+            title: 'Context Inspector'),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -226,8 +225,7 @@ void main() {
       );
       final groupId = await storage.insertGroup(
         ChatGroup(
-            title: 'Context Inspector Compaction',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+            title: 'Context Inspector Compaction'),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);

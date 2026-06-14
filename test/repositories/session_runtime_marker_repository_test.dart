@@ -19,7 +19,7 @@ void main() {
       );
       final repository = SessionRuntimeMarkerRepository(storage);
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Date Aware Session', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+        ChatGroup(title: 'Date Aware Session'),
       );
 
       await repository.upsertLatest(

@@ -20,7 +20,7 @@ void main() {
       final turnRepository = ChatTurnRepository(storage);
       final stepRepository = ChatTurnStepRepository(storage);
       final groupId =
-          await storage.insertGroup(ChatGroup(title: 'turn step repo group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await storage.insertGroup(ChatGroup(title: 'turn step repo group'));
       final turnId = await turnRepository.createTurn(
         ChatTurn(
           groupId: groupId,
@@ -91,7 +91,7 @@ void main() {
       final turnRepository = ChatTurnRepository(storage);
       final stepRepository = ChatTurnStepRepository(storage);
       final groupId =
-          await storage.insertGroup(ChatGroup(title: 'turn step repo group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await storage.insertGroup(ChatGroup(title: 'turn step repo group'));
       final turnId = await turnRepository.createTurn(
         ChatTurn(
           groupId: groupId,

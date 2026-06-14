@@ -20,7 +20,7 @@ void main() {
       );
       final repository = SessionContextSnapshotRepository(storage);
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+        ChatGroup(title: 'Session Context'),
       );
 
       final id = await repository.upsertLatest(
@@ -49,7 +49,7 @@ void main() {
       );
       final repository = SessionContextSnapshotRepository(storage);
       final groupId = await storage.insertGroup(
-        ChatGroup(title: 'Session Context Upsert', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+        ChatGroup(title: 'Session Context Upsert'),
       );
 
       final firstId = await repository.upsertLatest(
@@ -88,8 +88,7 @@ void main() {
       final repository = SessionContextSnapshotRepository(storage);
       final groupId = await storage.insertGroup(
         ChatGroup(
-            title: 'Session Context Partial Turn',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+            title: 'Session Context Partial Turn'),
       );
 
       final id = await repository.upsertLatest(

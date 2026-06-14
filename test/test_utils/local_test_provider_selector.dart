@@ -314,6 +314,7 @@ List<String> _preferredProviderIds(ChatTurnProviderStyle style) {
   switch (style) {
     case ChatTurnProviderStyle.openaiResponses:
       return const [
+        'codex',
         'codex-custom-responses',
         'beehears-responses',
         'minimax-responses',

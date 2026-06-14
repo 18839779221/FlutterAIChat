@@ -35,7 +35,6 @@ void main() {
       final groupId = await storage.insertGroup(
         ChatGroup(
           title: 'Active Turn Compaction Plan',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
       );
       final turnRepository = ChatTurnRepository(storage);
@@ -129,7 +128,6 @@ void main() {
       final groupId = await storage.insertGroup(
         ChatGroup(
           title: 'Active Turn Compaction Apply',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
       );
       final turnRepository = ChatTurnRepository(storage);

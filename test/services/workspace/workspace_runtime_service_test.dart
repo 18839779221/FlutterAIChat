@@ -12,7 +12,6 @@ void main() {
           1: ChatGroup(
             id: 1,
             title: 'Draft',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
           ),
         },
       );
@@ -30,7 +29,6 @@ void main() {
         ChatGroup(
           id: 1,
           title: 'Draft',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
         ),
       );
       var groups = <ChatGroup>[
@@ -71,7 +69,6 @@ void main() {
         id: 1,
         title: 'Existing',
         workspaceId: 'ws_20260602_a3k9qx',
-        lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
       );
       final storage = _FakeChatStorage(groups: {1: group});
       final service = WorkspaceRuntimeService(storage: storage);

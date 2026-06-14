@@ -19,7 +19,7 @@ void main() {
       final storage = DatabaseHelper(databaseName: 'chat_event_repository_test.db');
       final turnRepository = ChatTurnRepository(storage);
       final repository = ChatEventRepository(storage);
-      final groupId = await storage.insertGroup(ChatGroup(title: 'event repo group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+      final groupId = await storage.insertGroup(ChatGroup(title: 'event repo group'));
       final turnId = await turnRepository.createTurn(
         ChatTurn(
           groupId: groupId,
@@ -59,7 +59,7 @@ void main() {
       final turnRepository = ChatTurnRepository(storage);
       final repository = ChatEventRepository(storage);
       final groupId =
-          await storage.insertGroup(ChatGroup(title: 'concurrent event group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await storage.insertGroup(ChatGroup(title: 'concurrent event group'));
       final turnId = await turnRepository.createTurn(
         ChatTurn(
           groupId: groupId,
@@ -163,7 +163,6 @@ void main() {
       final groupId = await storage.insertGroup(
         ChatGroup(
           title: 'snapshot group',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
       );
       final turnId = await turnRepository.createTurn(

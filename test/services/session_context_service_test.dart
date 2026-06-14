@@ -38,8 +38,7 @@ void main() {
       );
       final groupId = await storage.insertGroup(
         ChatGroup(
-            title: 'Session Context Date Reminder',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+            title: 'Session Context Date Reminder'),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -106,7 +105,6 @@ void main() {
       final groupId = await storage.insertGroup(
         ChatGroup(
           title: 'Session Context Workspace Reminder',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
           workspaceId: 'ws_20260602_a3k9qx',
         ),
       );
@@ -177,8 +175,7 @@ void main() {
       );
       final groupId = await storage.insertGroup(
         ChatGroup(
-            title: 'Session Context No Eager Summary',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+            title: 'Session Context No Eager Summary'),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -271,8 +268,7 @@ void main() {
       );
       final groupId = await storage.insertGroup(
         ChatGroup(
-            title: 'Session Context Compress',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+            title: 'Session Context Compress'),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -381,7 +377,6 @@ void main() {
       final groupId = await storage.insertGroup(
         ChatGroup(
           title: 'Session Context Manual Compact',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
       );
       final turnRepository = ChatTurnRepository(storage);
@@ -466,7 +461,6 @@ void main() {
       final groupId = await storage.insertGroup(
         ChatGroup(
           title: 'Session Context Partial Turn Suffix',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
       );
       final turnRepository = ChatTurnRepository(storage);
@@ -578,8 +572,7 @@ void main() {
       );
       final groupId = await storage.insertGroup(
         ChatGroup(
-            title: 'Session Context Recent Working Set',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+            title: 'Session Context Recent Working Set'),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -726,8 +719,7 @@ void main() {
       );
       final groupId = await storage.insertGroup(
         ChatGroup(
-            title: 'Session Context Current Turn Boundary',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+            title: 'Session Context Current Turn Boundary'),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -810,8 +802,7 @@ void main() {
       );
       final groupId = await storage.insertGroup(
         ChatGroup(
-            title: 'Session Context Recent Ratio Limit',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+            title: 'Session Context Recent Ratio Limit'),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -929,8 +920,7 @@ void main() {
       );
       final groupId = await storage.insertGroup(
         ChatGroup(
-            title: 'Session Context Summary Failure Fallback',
-            lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+            title: 'Session Context Summary Failure Fallback'),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -1021,7 +1011,6 @@ void main() {
       final groupId = await storage.insertGroup(
         ChatGroup(
           title: 'carriers',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
       );
       final turnRepository = ChatTurnRepository(storage);
@@ -1126,7 +1115,6 @@ void main() {
       final groupId = await storage.insertGroup(
         ChatGroup(
           title: 'web search carrier',
-          lockedProviderStyle: ChatTurnProviderStyle.anthropicMessages,
         ),
       );
       final turnRepository = ChatTurnRepository(storage);
@@ -1250,7 +1238,6 @@ void main() {
       final groupId = await storage.insertGroup(
         ChatGroup(
           title: 'chat completions pairing',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
       );
       final turnRepository = ChatTurnRepository(storage);
@@ -1361,7 +1348,6 @@ void main() {
       final groupId = await storage.insertGroup(
         ChatGroup(
           title: 'attachment reminder carrier',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
         ),
       );
       final turnRepository = ChatTurnRepository(storage);
@@ -1455,7 +1441,6 @@ void main() {
       final groupId = await storage.insertGroup(
         ChatGroup(
           title: 'empty tool result carrier',
-          lockedProviderStyle: ChatTurnProviderStyle.anthropicMessages,
         ),
       );
       final turnRepository = ChatTurnRepository(storage);
@@ -1558,7 +1543,6 @@ void main() {
       final groupId = await storage.insertGroup(
         ChatGroup(
           title: 'carriers-noraw',
-          lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
         ),
       );
       final turnRepository = ChatTurnRepository(storage);

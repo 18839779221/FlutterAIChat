@@ -197,7 +197,6 @@ void main() {
       container.read(currentGroupProvider.notifier).state = ChatGroup(
         id: 1,
         title: 'group',
-        lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
       );
       // Seed a user message so the preview projection resolves to the same
       // `<groupId>_<userMessageId>` turn id the persisted final answer ends

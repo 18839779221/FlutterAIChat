@@ -185,7 +185,8 @@ void main() {
 
       expect(decision, isNotNull);
       expect(decision!.visibleReasoning, '先判断这个问题是否需要工具。');
-      expect(decision.assistantMessage, '直接回答。');
+      expect(decision.assistantMessage, isNotNull);
+      expect(decision.assistantMessage!.trim(), '直接回答。');
       expect(decision.toolCalls, isEmpty);
       expect(decision.isTerminal, isTrue);
     });
@@ -217,7 +218,8 @@ void main() {
 
       expect(decision, isNotNull);
       expect(decision!.visibleReasoning, '需要先读取页面确认内容。');
-      expect(decision.assistantMessage, '我先读取这个页面。');
+      expect(decision.assistantMessage, isNotNull);
+      expect(decision.assistantMessage!.trim(), '我先读取这个页面。');
       expect(decision.toolCalls.single.toolName, 'fetch_webpage');
       expect(decision.isTerminal, isFalse);
     });

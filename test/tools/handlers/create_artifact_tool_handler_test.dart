@@ -153,7 +153,7 @@ void main() {
         databaseName: 'create_artifact_handler_test_v12.db',
       );
       final groupId =
-          await storage.insertGroup(ChatGroup(title: 'artifact handler group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await storage.insertGroup(ChatGroup(title: 'artifact handler group'));
       final repository = ArtifactRepository(storage);
       final handler = CreateArtifactToolHandler(
         artifactRepository: repository,

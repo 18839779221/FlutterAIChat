@@ -40,7 +40,7 @@ void main() {
     final snapshotRepository = SessionContextSnapshotRepository(storage);
     final traceRecorder = ChatTraceRecorder();
     final groupId = await storage.insertGroup(
-      ChatGroup(title: 'Debug Trace Inspector', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions),
+      ChatGroup(title: 'Debug Trace Inspector'),
     );
     final turnId = await turnRepository.createTurn(
       ChatTurn(
@@ -122,7 +122,6 @@ void main() {
     final groupId = await storage.insertGroup(
       ChatGroup(
         title: 'Debug Runtime Trace Inspector',
-        lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
       ),
     );
     final turnId = await turnRepository.createTurn(
@@ -235,7 +234,6 @@ void main() {
     final groupId = await storage.insertGroup(
       ChatGroup(
         title: 'Debug Cache Inspector',
-        lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
       ),
     );
     final turnId = await turnRepository.createTurn(

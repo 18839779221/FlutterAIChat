@@ -58,7 +58,7 @@ void main() {
       final state = await harness.snapshotState();
       expect(state.groupId, isNotNull);
       expect(
-        harness.container.read(currentGroupProvider)?.lockedProviderStyle,
+        state.latestTurn?.providerStyle,
         ChatTurnProviderStyle.anthropicMessages,
       );
       await harness.dispose();

@@ -512,7 +512,6 @@ void main() {
     container.read(currentGroupProvider.notifier).state = ChatGroup(
       id: 1,
       title: 'First group',
-      lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
     );
     container.read(messagesProvider.notifier).setMessages([
       for (var i = 0; i < 30; i++) ...[
@@ -553,7 +552,6 @@ void main() {
     container.read(currentGroupProvider.notifier).state = ChatGroup(
       id: 2,
       title: 'Second group',
-      lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions,
     );
     await tester.pumpAndSettle();
 

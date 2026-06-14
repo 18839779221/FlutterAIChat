@@ -13,6 +13,7 @@ import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/skill/skill_catalog_entry.dart';
 import 'package:ai_chat/models/speech/speech_input_config.dart';
 import 'package:ai_chat/models/session/session_context_snapshot.dart';
+import 'package:ai_chat/models/session/session_runtime_config.dart';
 import 'package:ai_chat/models/session/session_runtime_marker.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
@@ -87,8 +88,7 @@ void main() {
 
     container.read(currentGroupProvider.notifier).state = ChatGroup(
         id: 1,
-        title: 'Context Group',
-        lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions);
+        title: 'Context Group');
     container.read(systemPromptProvider.notifier).state = '你是一个助手';
 
     final snapshot = await container.read(contextWindowSnapshotProvider.future);
@@ -315,6 +315,12 @@ class _NoopChatStorage implements ChatStorage {
       null;
 
   @override
+  Future<SessionRuntimeConfig?> getSessionRuntimeConfigByGroup(
+    int groupId,
+  ) async =>
+      null;
+
+  @override
   Future<List<ChatMessage>> getMessagesByGroup(int groupId) async => const [];
 
   @override
@@ -353,6 +359,9 @@ class _NoopChatStorage implements ChatStorage {
   Future<int> insertSessionContextSnapshot(
           SessionContextSnapshot snapshot) async =>
       1;
+
+  @override
+  Future<int> insertSessionRuntimeConfig(SessionRuntimeConfig config) async => 1;
 
   @override
   Future<int> insertSessionRuntimeMarker(SessionRuntimeMarker marker) async =>
@@ -394,6 +403,9 @@ class _NoopChatStorage implements ChatStorage {
   Future<void> updateSessionContextSnapshot(
     SessionContextSnapshot snapshot,
   ) async {}
+
+  @override
+  Future<void> updateSessionRuntimeConfig(SessionRuntimeConfig config) async {}
 
   @override
   Future<void> updateSessionRuntimeMarker(SessionRuntimeMarker marker) async {}

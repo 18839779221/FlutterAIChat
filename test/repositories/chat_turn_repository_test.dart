@@ -17,7 +17,7 @@ void main() {
           DatabaseHelper(databaseName: 'chat_turn_repository_test_v8.db');
       final repository = ChatTurnRepository(storage);
       final groupId =
-          await storage.insertGroup(ChatGroup(title: 'turn repo group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await storage.insertGroup(ChatGroup(title: 'turn repo group'));
 
       final turn = ChatTurn(
         groupId: groupId,
@@ -61,7 +61,7 @@ void main() {
           databaseName: 'chat_turn_repository_cancel_test_v8.db');
       final repository = ChatTurnRepository(storage);
       final groupId =
-          await storage.insertGroup(ChatGroup(title: 'turn repo group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await storage.insertGroup(ChatGroup(title: 'turn repo group'));
 
       final turn = ChatTurn(
         groupId: groupId,
@@ -88,7 +88,7 @@ void main() {
           databaseName: 'chat_turn_repository_running_test_v8.db');
       final repository = ChatTurnRepository(storage);
       final groupId =
-          await storage.insertGroup(ChatGroup(title: 'turn repo group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await storage.insertGroup(ChatGroup(title: 'turn repo group'));
 
       final turnId = await repository.createTurn(
         ChatTurn(
@@ -112,7 +112,7 @@ void main() {
           databaseName: 'chat_turn_repository_user_interaction_test_v8.db');
       final repository = ChatTurnRepository(storage);
       final groupId =
-          await storage.insertGroup(ChatGroup(title: 'turn repo group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await storage.insertGroup(ChatGroup(title: 'turn repo group'));
 
       final turnId = await repository.createTurn(
         ChatTurn(
@@ -135,7 +135,7 @@ void main() {
           databaseName: 'chat_turn_repository_runtime_state_test_v8.db');
       final repository = ChatTurnRepository(storage);
       final groupId =
-          await storage.insertGroup(ChatGroup(title: 'turn repo group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await storage.insertGroup(ChatGroup(title: 'turn repo group'));
 
       final turnId = await repository.createTurn(
         ChatTurn(

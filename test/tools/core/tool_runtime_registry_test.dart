@@ -159,8 +159,10 @@ Future<ToolResult> _noopWebSearch({
 }
 
 Future<ToolResult> _noopFetchWebpage({
+  required int groupId,
   required String url,
   required String prompt,
+  dynamic sideRuntimeConfigOverride,
 }) async {
   return const ToolResult(
     toolName: 'fetch_webpage',

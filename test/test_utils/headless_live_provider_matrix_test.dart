@@ -102,13 +102,16 @@ void main() {
     expect(selection.selectionReason, contains('alias=minimax-openai'));
   });
 
-  test('loadInjectedLocalDefaults prepends codex custom responses provider when available', () {
+  test('loadInjectedLocalDefaults includes current codex provider when available', () {
     final defaults = loadInjectedLocalDefaults(
       fallbackRelativePaths: const ['config/local_defaults.json'],
     );
 
     expect(defaults, isNotNull);
-    expect(defaults!.providers.first.id, 'codex-custom-responses');
+    expect(
+      defaults!.providers.map((provider) => provider.id),
+      contains('codex'),
+    );
   });
 
   test('matrix marks codex custom responses tool confirmation as opportunistic', () {

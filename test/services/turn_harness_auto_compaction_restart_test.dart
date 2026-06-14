@@ -46,7 +46,6 @@ void main() {
     final groupId = await storage.insertGroup(
       ChatGroup(
         title: 'Turn Harness Auto Compaction Restart',
-        lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
       ),
     );
     final turnRepository = ChatTurnRepository(storage);

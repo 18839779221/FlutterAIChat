@@ -140,7 +140,6 @@ void main() {
       id: 1,
       title: 'Workspace chat',
       workspaceId: 'ws_20260602_a3k9qx',
-      lockedProviderStyle: ChatTurnProviderStyle.openaiResponses,
     );
     addTearDown(container.dispose);
 

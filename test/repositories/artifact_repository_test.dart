@@ -20,7 +20,7 @@ void main() {
           DatabaseHelper(databaseName: 'artifact_repository_test_v12.db');
       final repository = ArtifactRepository(storage);
       final groupId =
-          await storage.insertGroup(ChatGroup(title: 'artifact repo group', lockedProviderStyle: ChatTurnProviderStyle.openaiChatCompletions));
+          await storage.insertGroup(ChatGroup(title: 'artifact repo group'));
 
       await repository.upsertRecord(
         ArtifactRecord(
