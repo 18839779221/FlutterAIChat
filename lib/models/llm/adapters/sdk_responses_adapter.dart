@@ -521,14 +521,7 @@ class SdkResponsesAdapter extends ApiStyleAdapter {
           });
 
         case RawAssistantCarrier(:final rawJson):
-          final outputs = rawJson['output'];
-          if (outputs is List) {
-            for (final item in outputs) {
-              if (item is Map) {
-                input.add(Map<String, dynamic>.from(item));
-              }
-            }
-          }
+          input.addAll(_buildReplayableInputItemsFromRawOutput(rawJson));
       }
     }
 
@@ -550,6 +543,109 @@ class SdkResponsesAdapter extends ApiStyleAdapter {
     };
     _applyCacheHints(payload, requestOptions.cache);
     return payload;
+  }
+
+  List<Map<String, dynamic>> _buildReplayableInputItemsFromRawOutput(
+    Map<String, dynamic> rawJson,
+  ) {
+    final outputs = rawJson['output'];
+    if (outputs is! List) {
+      return const <Map<String, dynamic>>[];
+    }
+
+    final replayable = <Map<String, dynamic>>[];
+    for (final item in outputs) {
+      if (item is! Map) {
+        continue;
+      }
+      final normalizedItem = Map<String, dynamic>.from(item);
+      final type = normalizeText(normalizedItem['type']);
+      switch (type) {
+        case 'message':
+          final replayedMessage = _buildReplayableAssistantMessage(normalizedItem);
+          if (replayedMessage != null) {
+            replayable.add(replayedMessage);
+          }
+
+        case 'function_call':
+          final replayedCall = _buildReplayableFunctionCall(normalizedItem);
+          if (replayedCall != null) {
+            replayable.add(replayedCall);
+          }
+
+        case 'reasoning':
+          Logger.temp(
+            _tag,
+            'responses.replay_item_skipped',
+            reason: 'reasoning_output_is_not_a_supported_request_input_item',
+            data: {'type': type},
+          );
+
+        default:
+          Logger.temp(
+            _tag,
+            'responses.replay_item_skipped',
+            reason: 'unknown_or_non_replayable_output_item_type',
+            data: {'type': type ?? 'unknown'},
+          );
+      }
+    }
+    return replayable;
+  }
+
+  Map<String, dynamic>? _buildReplayableAssistantMessage(
+    Map<String, dynamic> item,
+  ) {
+    final content = item['content'];
+    if (content is! List) {
+      return null;
+    }
+
+    final replayableContent = <Map<String, dynamic>>[];
+    for (final part in content) {
+      if (part is! Map) {
+        continue;
+      }
+      final normalizedPart = Map<String, dynamic>.from(part);
+      if (normalizedPart['type'] != 'output_text') {
+        continue;
+      }
+      final text = _nonBlankTextPreserveWhitespace(normalizedPart['text']);
+      if (text == null) {
+        continue;
+      }
+      replayableContent.add({
+        'type': 'output_text',
+        'text': text,
+      });
+    }
+
+    if (replayableContent.isEmpty) {
+      return null;
+    }
+
+    return {
+      'type': 'message',
+      'role': 'assistant',
+      'content': replayableContent,
+    };
+  }
+
+  Map<String, dynamic>? _buildReplayableFunctionCall(
+    Map<String, dynamic> item,
+  ) {
+    final callId = normalizeText(item['call_id'] ?? item['id']);
+    final name = normalizeText(item['name']);
+    final arguments = _nonBlankTextPreserveWhitespace(item['arguments']);
+    if (callId == null || name == null || arguments == null) {
+      return null;
+    }
+    return {
+      'type': 'function_call',
+      'call_id': callId,
+      'name': name,
+      'arguments': arguments,
+    };
   }
 
   List<Map<String, dynamic>> _buildPlannerUserContentParts({

@@ -2319,6 +2319,61 @@ void main() {
     });
   });
 
+  group('responses continuation builder', () {
+    test(
+        'sdk responses adapter request spec tolerates raw assistant reasoning items',
+        () {
+      const adapter = SdkResponsesAdapter();
+
+      expect(
+        () => adapter.buildPlannerRequestSpecFromCarriers(
+          carriers: const [
+            SyntheticCarrier.system('agent'),
+            SyntheticCarrier.user('继续'),
+            RawAssistantCarrier(
+              apiStyle: ChatTurnProviderStyle.openaiResponses,
+              rawJson: {
+                'output': [
+                  {
+                    'type': 'reasoning',
+                    'id': 'rs_1',
+                    'summary': [
+                      {'type': 'summary_text', 'text': '先思考一下'},
+                    ],
+                  },
+                  {
+                    'type': 'message',
+                    'role': 'assistant',
+                    'content': [
+                      {'type': 'output_text', 'text': 'Let me search'},
+                    ],
+                  },
+                  {
+                    'type': 'function_call',
+                    'call_id': 'call_1',
+                    'name': 'search',
+                    'arguments': '{"q":"x"}',
+                  },
+                ],
+              },
+            ),
+            SyntheticCarrier.toolResult(toolCallId: 'call_1', content: 'OK'),
+          ],
+          config: ChatConfig(systemPrompt: ''),
+          modelName: 'gpt-5',
+          availableTools: const [],
+          parallelToolCalls: false,
+          runtimeConfig: const LLMConfig(
+            apiKey: 'key',
+            apiUrl: 'https://api.example.com/v1/responses',
+            model: 'gpt-5',
+          ),
+        ),
+        returnsNormally,
+      );
+    });
+  });
+
   group('ConfigurableHttpLLM.summarizeConversation', () {
     test('uses runtime config override for summary request', () async {
       final client = _RecordingHttpClient(
