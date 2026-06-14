@@ -104,7 +104,7 @@ class SdkChatCompletionsAdapter extends ApiStyleAdapter {
           ChatAttachmentPayloadCodec.imageAttachments(m.attachments);
       final imageReference = imageAttachments.isEmpty
           ? null
-          : ChatAttachmentPayloadCodec.resolveImageReference(
+          : ChatAttachmentPayloadCodec.resolveImageReferenceForRuntime(
               imageAttachments.first,
             );
       if (m.role == MessageRole.system) {

@@ -194,6 +194,29 @@ void main() {
       expect(config.model, 'gpt-5-mini');
     });
 
+    test('persists user additional config over local defaults', () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final repository = AppSettingsRepository(
+        preferences,
+        localDefaultsLoader: () async => const LlmLocalDefaults(
+          additionalConfig: {
+            'image_generation.quality_default': 'low',
+          },
+        ),
+      );
+
+      await repository.saveImageGenerationSelection(
+        providerId: 'beehears',
+        modelId: 'gpt-image-2',
+      );
+
+      final config = await repository.getAdditionalConfig();
+      expect(config['image_generation.default_provider_id'], 'beehears');
+      expect(config['image_generation.default_model_id'], 'gpt-image-2');
+      expect(config['image_generation.quality_default'], 'low');
+    });
+
     test('allows saving provider before models are discovered', () async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();

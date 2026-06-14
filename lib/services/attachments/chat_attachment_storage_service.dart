@@ -80,8 +80,6 @@ class ChatAttachmentStorageService {
     final persistedPath = p.join(persistedDir.path, storedFileName);
     await sourceFile.copy(persistedPath);
     final bytes = await sourceFile.readAsBytes();
-    final dataUrl =
-        'data:${attachment.mimeType};base64,${base64Encode(bytes)}';
     Logger.runtime(
       'ChatAttachmentStorageService',
       'persistSelectedImage completed',
@@ -89,7 +87,6 @@ class ChatAttachmentStorageService {
         'localId': attachment.localId,
         'persistedPath': persistedPath,
         'byteCount': bytes.length,
-        'dataUrlLength': dataUrl.length,
       },
     );
 
@@ -103,11 +100,60 @@ class ChatAttachmentStorageService {
       status: ChatAttachmentStatus.ready,
       providerFileRefJson: {
         ...?attachment.providerFileRefJson,
-        'data_url': dataUrl,
-        'data_url_length': dataUrl.length,
-        'send_mime_type': attachment.mimeType,
       },
       updatedAt: DateTime.now(),
+    );
+  }
+
+  Future<ChatAttachment> persistGeneratedImageDataUrl({
+    required String localId,
+    required String fileName,
+    required String mimeType,
+    required String dataUrl,
+    Map<String, dynamic>? providerFileRefJson,
+  }) async {
+    final match = RegExp(
+      r'^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$',
+    ).firstMatch(dataUrl.trim());
+    if (match == null) {
+      throw ArgumentError('generated image dataUrl is invalid');
+    }
+    final decodedMimeType = match.group(1)!.trim();
+    final bytes = base64Decode(match.group(2)!);
+
+    final root = await _resolveRootDirectory();
+    final resolvedWorkspace = _workspaceBindingService.resolveWorkspaceId(
+      await _resolveWorkspaceId(),
+    );
+    final generatedDir = Directory(
+      p.join(
+        root.path,
+        'workspaces',
+        resolvedWorkspace.workspaceId,
+        'attachments',
+        'generated',
+      ),
+    );
+    await generatedDir.create(recursive: true);
+
+    final storedFileName = '${localId}_$fileName';
+    final persistedPath = p.join(generatedDir.path, storedFileName);
+    await File(persistedPath).writeAsBytes(bytes, flush: true);
+
+    return ChatAttachment(
+      localId: localId,
+      kind: ChatAttachmentKind.image,
+      source: ChatAttachmentSource.providerFile,
+      fileName: fileName,
+      mimeType: mimeType.isNotEmpty ? mimeType : decodedMimeType,
+      byteSize: bytes.length,
+      localPath: _agentPathFor(
+        'workspaces/${resolvedWorkspace.workspaceId}/attachments/generated/$storedFileName',
+      ),
+      status: ChatAttachmentStatus.ready,
+      providerFileRefJson: {
+        ...?providerFileRefJson,
+      },
     );
   }
 

@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import '../../models/chat/chat_attachment.dart';
 
 /// Shared image attachment helpers for provider payload assembly.
@@ -30,5 +33,37 @@ class ChatAttachmentPayloadCodec {
       }
     }
     return null;
+  }
+
+  static String? resolveImageReferenceForRuntime(ChatAttachment attachment) {
+    final providerRef = attachment.providerFileRefJson;
+    final dataUrl = providerRef?['data_url'];
+    if (dataUrl is String && dataUrl.trim().isNotEmpty) {
+      return dataUrl.trim();
+    }
+
+    final localPath = attachment.localPath;
+    if (localPath != null && localPath.trim().isNotEmpty) {
+      final trimmed = localPath.trim();
+      if (trimmed.startsWith('/workspaces/')) {
+        return null;
+      }
+      if (trimmed.startsWith('file://')) {
+        final file = File(Uri.parse(trimmed).toFilePath());
+        if (file.existsSync()) {
+          final bytes = file.readAsBytesSync();
+          return 'data:${attachment.mimeType};base64,${base64Encode(bytes)}';
+        }
+      }
+      if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+        final file = File(trimmed);
+        if (file.existsSync()) {
+          final bytes = file.readAsBytesSync();
+          return 'data:${attachment.mimeType};base64,${base64Encode(bytes)}';
+        }
+      }
+    }
+
+    return resolveImageReference(attachment);
   }
 }

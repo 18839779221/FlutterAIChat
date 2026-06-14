@@ -2172,7 +2172,8 @@ void main() {
       expect(jsonEncode(payload), contains('input_image'));
     });
 
-    test('responses adapter prefers data url image references for local images',
+    test(
+        'responses adapter can serialize local file image attachments without persisted data urls',
         () {
       final payload = const SdkResponsesAdapter().buildChatPayload(
         messages: [
@@ -2184,11 +2185,8 @@ void main() {
                 localId: 'att-1',
                 fileName: 'demo.png',
                 mimeType: 'image/png',
-                localPath: '/managed/demo.png',
+                localPath: 'file:///managed/demo.png',
                 status: ChatAttachmentStatus.ready,
-                providerFileRefJson: const {
-                  'data_url': 'data:image/png;base64,AAAA',
-                },
               ),
             ],
           ),
@@ -2198,7 +2196,8 @@ void main() {
         stream: false,
       );
 
-      expect(jsonEncode(payload), contains('data:image/png;base64,AAAA'));
+      expect(jsonEncode(payload), contains('input_image'));
+      expect(jsonEncode(payload), contains('file:///managed/demo.png'));
     });
 
     test(

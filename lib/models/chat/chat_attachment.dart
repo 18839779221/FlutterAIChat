@@ -204,10 +204,22 @@ class ChatAttachment {
       'error_code': errorCode,
       'error_message': errorMessage,
       'provider_file_ref_json':
-          providerFileRefJson == null ? null : jsonEncode(providerFileRefJson),
+          providerFileRefJson == null
+              ? null
+              : jsonEncode(_databaseProviderFileRefJson(providerFileRefJson!)),
       'created_at': createdAt.millisecondsSinceEpoch,
       'updated_at': updatedAt.millisecondsSinceEpoch,
     };
+  }
+
+  static Map<String, dynamic> _databaseProviderFileRefJson(
+    Map<String, dynamic> providerFileRefJson,
+  ) {
+    final sanitized = Map<String, dynamic>.from(providerFileRefJson);
+    sanitized.remove('data_url');
+    sanitized.remove('data_url_length');
+    sanitized.remove('send_mime_type');
+    return sanitized;
   }
 
   factory ChatAttachment.fromDatabaseMap(Map<String, dynamic> map) {

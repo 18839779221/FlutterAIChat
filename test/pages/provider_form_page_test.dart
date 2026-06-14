@@ -356,6 +356,58 @@ void main() {
 
     expect(testService.imageGenerationTestCallCount, 1);
     expect(find.text('支持生图'), findsOneWidget);
+    final additionalConfig = await repository.getAdditionalConfig();
+    expect(
+      additionalConfig['image_generation.default_provider_id'],
+      'beehears',
+    );
+    expect(
+      additionalConfig['image_generation.default_model_id'],
+      'gpt-image-2',
+    );
+  });
+
+  testWidgets('set as global image generation model persists independent config',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = await _createRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ProviderFormPage(
+          initialProvider: const LlmProviderConfig(
+            id: 'beehears',
+            name: 'Beehears',
+            apiKey: 'image-key',
+            baseUrl: 'https://ai.beehears.com/v1',
+            models: [
+              LlmProviderModel(id: 'gpt-image-2', name: 'GPT Image 2'),
+            ],
+          ),
+          repository: repository,
+          discoveryService: _FakeDiscoveryService(),
+          testService: _FakeModelTestService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('设为全局生图模型'));
+    await tester.pumpAndSettle();
+
+    final providers = await repository.getProviders();
+    expect(providers.single.models.single.supportsImageGeneration, isTrue);
+    final additionalConfig = await repository.getAdditionalConfig();
+    expect(
+      additionalConfig['image_generation.default_provider_id'],
+      'beehears',
+    );
+    expect(
+      additionalConfig['image_generation.default_model_id'],
+      'gpt-image-2',
+    );
   });
 
   testWidgets('base url with explicit endpoint auto-selects matching api style',

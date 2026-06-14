@@ -522,10 +522,33 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
       setState(() {
         row.supportsImageGeneration = true;
       });
+      final provider = _buildProvider();
+      await widget.repository.saveProvider(provider);
+      final additionalConfig = await widget.repository.getAdditionalConfig();
+      final hasExplicitImageGenerationDefault =
+          (additionalConfig['image_generation.default_provider_id'] as String?)
+                  ?.trim()
+                  .isNotEmpty ==
+              true &&
+          (additionalConfig['image_generation.default_model_id'] as String?)
+                  ?.trim()
+                  .isNotEmpty ==
+              true;
+      if (!hasExplicitImageGenerationDefault) {
+        await widget.repository.saveImageGenerationSelection(
+          providerId: provider.id,
+          modelId: modelId,
+        );
+      }
+      if (!mounted) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '生图测试完成：${result.latency.inMilliseconds}ms，已勾选支持生图',
+            hasExplicitImageGenerationDefault
+                ? '生图测试完成：${result.latency.inMilliseconds}ms，已勾选支持生图'
+                : '生图测试完成：${result.latency.inMilliseconds}ms，已勾选支持生图并设为全局生图模型',
           ),
         ),
       );
@@ -543,6 +566,31 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
         });
       }
     }
+  }
+
+  Future<void> _setAsGlobalImageGenerationModel(_EditableModelRow row) async {
+    final modelId = row.idController.text.trim();
+    if (modelId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先填写模型 ID')),
+      );
+      return;
+    }
+
+    row.supportsImageGeneration = true;
+    final provider = _buildProvider();
+    await widget.repository.saveProvider(provider);
+    await widget.repository.saveImageGenerationSelection(
+      providerId: provider.id,
+      modelId: modelId,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已设为全局生图模型')),
+    );
   }
 
   @override
@@ -689,6 +737,8 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
                             row: row,
                             onUseModelNow: () => _useModelNow(row),
                             onDelete: () => _removeModelRow(index),
+                            onSetAsGlobalImageGenerationModel: () =>
+                                _setAsGlobalImageGenerationModel(row),
                             onImageGenerationChanged: (value) {
                               setState(() {
                                 row.supportsImageGeneration = value;
@@ -972,6 +1022,7 @@ class _ModelEditorCard extends StatelessWidget {
     required this.row,
     required this.onUseModelNow,
     required this.onDelete,
+    required this.onSetAsGlobalImageGenerationModel,
     required this.onImageGenerationChanged,
     required this.onTestImageGeneration,
     required this.isImageGenerationTesting,
@@ -982,6 +1033,7 @@ class _ModelEditorCard extends StatelessWidget {
   final _EditableModelRow row;
   final VoidCallback onUseModelNow;
   final VoidCallback onDelete;
+  final VoidCallback onSetAsGlobalImageGenerationModel;
   final ValueChanged<bool> onImageGenerationChanged;
   final VoidCallback onTestImageGeneration;
   final bool isImageGenerationTesting;
@@ -1057,6 +1109,10 @@ class _ModelEditorCard extends StatelessWidget {
                 spacing: spacing.sm,
                 alignment: WrapAlignment.end,
                 children: [
+                  TextButton(
+                    onPressed: onSetAsGlobalImageGenerationModel,
+                    child: const Text('设为全局生图模型'),
+                  ),
                   OutlinedButton.icon(
                     onPressed: isAnyImageGenerationTesting
                         ? null

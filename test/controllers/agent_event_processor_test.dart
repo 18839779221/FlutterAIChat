@@ -5,9 +5,12 @@ import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
+import 'package:ai_chat/services/attachments/chat_attachment_storage_service.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'dart:io';
+import 'package:path/path.dart' as p;
 
 void main() {
   final refProvider = Provider<Ref>((ref) => ref);
@@ -136,12 +139,26 @@ void main() {
   test('generate_image tool result persists generated image attachments',
       () async {
     final storage = _RecordingChatStorage();
+    final tempRoot = await Directory.systemTemp.createTemp(
+      'agent_event_processor_image_test',
+    );
     final container = ProviderContainer(
       overrides: [
         databaseProvider.overrideWithValue(storage),
+        chatAttachmentStorageServiceProvider.overrideWithValue(
+          ChatAttachmentStorageService(
+            resolveRootDirectory: () async => tempRoot,
+            resolveWorkspaceId: () async => '.default',
+          ),
+        ),
       ],
     );
-    addTearDown(container.dispose);
+    addTearDown(() async {
+      container.dispose();
+      if (await tempRoot.exists()) {
+        await tempRoot.delete(recursive: true);
+      }
+    });
 
     final processor = AgentEventProcessor(
       ref: container.read(refProvider),
@@ -182,6 +199,27 @@ void main() {
     expect(
       storage.insertedMessages.single.attachments.single.source,
       ChatAttachmentSource.providerFile,
+    );
+    expect(
+      storage.insertedMessages.single.attachments.single.localPath,
+      '/workspaces/.default/attachments/generated/generated-1_generated.png',
+    );
+    expect(
+      storage.insertedMessages.single.attachments.single.providerFileRefJson?['data_url'],
+      isNull,
+    );
+    expect(
+      await File(
+        p.join(
+          tempRoot.path,
+          'workspaces',
+          '.default',
+          'attachments',
+          'generated',
+          'generated-1_generated.png',
+        ),
+      ).exists(),
+      isTrue,
     );
     expect(storage.insertedAttachments.single.messageId, 1);
     expect(storage.insertedAttachments.single.attachments, hasLength(1));

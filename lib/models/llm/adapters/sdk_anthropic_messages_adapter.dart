@@ -189,7 +189,9 @@ class SdkAnthropicMessagesAdapter extends ApiStyleAdapter {
         ...ChatAttachmentPayloadCodec.imageAttachments(message.attachments)
             .map((attachment) {
           final imageReference =
-              ChatAttachmentPayloadCodec.resolveImageReference(attachment);
+              ChatAttachmentPayloadCodec.resolveImageReferenceForRuntime(
+            attachment,
+          );
           if (imageReference == null) {
             return null;
           }
@@ -542,7 +544,9 @@ class SdkAnthropicMessagesAdapter extends ApiStyleAdapter {
       ChatAttachmentPayloadCodec.imageAttachments(attachments)
           .map((attachment) {
         final imageReference =
-            ChatAttachmentPayloadCodec.resolveImageReference(attachment);
+            ChatAttachmentPayloadCodec.resolveImageReferenceForRuntime(
+          attachment,
+        );
         if (imageReference == null) {
           return null;
         }

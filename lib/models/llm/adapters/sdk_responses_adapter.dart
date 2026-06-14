@@ -147,7 +147,7 @@ class SdkResponsesAdapter extends ApiStyleAdapter {
     final imageAttachments =
         ChatAttachmentPayloadCodec.imageAttachments(message.attachments);
     final resolvedImageReferences = imageAttachments
-        .map(ChatAttachmentPayloadCodec.resolveImageReference)
+        .map(ChatAttachmentPayloadCodec.resolveImageReferenceForRuntime)
         .toList(growable: false);
     final imageParts = resolvedImageReferences
         .map((imageReference) {

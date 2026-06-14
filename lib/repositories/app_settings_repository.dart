@@ -27,6 +27,7 @@ class AppSettingsRepository {
   static const String _duplicateSkillInvocationModeKey =
       'skills.duplicate_invocation_mode';
   static const String _themeIdKey = 'appearance.theme_id';
+  static const String _additionalConfigJsonKey = 'llm.additional_config_json';
   static const String _runtimeImageInputSupportKey =
       'llm.runtime_image_input_support_json';
   static const String _modelCapabilityCacheKey =
@@ -435,9 +436,63 @@ class AppSettingsRepository {
 
   Future<Map<String, dynamic>> getAdditionalConfig() async {
     final localDefaults = await _getLocalDefaults();
+    final stored = _readStoredAdditionalConfig();
     return <String, dynamic>{
       ...?localDefaults?.additionalConfig,
+      ...stored,
     };
+  }
+
+  Map<String, dynamic> _readStoredAdditionalConfig() {
+    final raw = _preferences.getString(_additionalConfigJsonKey);
+    if (raw == null || raw.trim().isEmpty) {
+      return <String, dynamic>{};
+    }
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map<String, dynamic>) {
+      return <String, dynamic>{};
+    }
+    return Map<String, dynamic>.from(decoded);
+  }
+
+  Future<void> _writeStoredAdditionalConfig(Map<String, dynamic> config) async {
+    if (config.isEmpty) {
+      await _preferences.remove(_additionalConfigJsonKey);
+      return;
+    }
+    await _preferences.setString(
+      _additionalConfigJsonKey,
+      jsonEncode(config),
+    );
+  }
+
+  Future<void> saveAdditionalConfigValue({
+    required String key,
+    required String? value,
+  }) async {
+    final config = _readStoredAdditionalConfig();
+    final trimmedKey = key.trim();
+    final trimmedValue = value?.trim();
+    if (trimmedValue == null || trimmedValue.isEmpty) {
+      config.remove(trimmedKey);
+    } else {
+      config[trimmedKey] = trimmedValue;
+    }
+    await _writeStoredAdditionalConfig(config);
+  }
+
+  Future<void> saveImageGenerationSelection({
+    required String providerId,
+    required String modelId,
+  }) async {
+    await saveAdditionalConfigValue(
+      key: 'image_generation.default_provider_id',
+      value: providerId,
+    );
+    await saveAdditionalConfigValue(
+      key: 'image_generation.default_model_id',
+      value: modelId,
+    );
   }
 
   Future<LLMConfig> getLlmConfig() async {

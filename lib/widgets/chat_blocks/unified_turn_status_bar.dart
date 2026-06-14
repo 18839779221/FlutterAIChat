@@ -49,7 +49,7 @@ class UnifiedTurnStatusBar extends StatelessWidget {
           .withValues(alpha: _isFloating ? 0.84 : 0.88),
       fontSize: _isFloating ? 12 : 11.5,
       fontWeight: FontWeight.w700,
-      height: 1.18,
+      height: 1.26,
     );
 
     return AnimatedOpacity(

@@ -52,13 +52,10 @@ void main() {
       isTrue,
     );
     expect(stored.status, ChatAttachmentStatus.ready);
-    expect(
-      stored.providerFileRefJson?['data_url'],
-      startsWith('data:image/png;base64,'),
-    );
+    expect(stored.providerFileRefJson?['data_url'], isNull);
   });
 
-  test('storage service records send-ready payload metadata', () async {
+  test('storage service does not persist inline data url metadata', () async {
     final tempRoot = await Directory.systemTemp.createTemp(
       'chat_attachment_storage_test_meta',
     );
@@ -85,9 +82,9 @@ void main() {
       ),
     );
 
-    expect(stored.providerFileRefJson?['data_url'], isA<String>());
-    expect(stored.providerFileRefJson?['data_url_length'], greaterThan(0));
-    expect(stored.providerFileRefJson?['send_mime_type'], isNotEmpty);
+    expect(stored.providerFileRefJson?['data_url'], isNull);
+    expect(stored.providerFileRefJson?['data_url_length'], isNull);
+    expect(stored.providerFileRefJson?['send_mime_type'], isNull);
   });
 
   test('storage service persists selected image into explicit workspace directory',

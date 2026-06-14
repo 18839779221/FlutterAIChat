@@ -136,6 +136,7 @@ void main() {
         find.byType(RunningSweepText),
       );
       expect(sweepText.style.fontWeight, FontWeight.w700);
+      expect(sweepText.style.height, greaterThanOrEqualTo(1.24));
       expect(
         sweepText.visibleSweepDuration,
         const Duration(milliseconds: 2500),
@@ -185,6 +186,7 @@ void main() {
         find.byType(RunningSweepText),
       );
       expect(sweepText.style.fontWeight, FontWeight.w700);
+      expect(sweepText.style.height, greaterThanOrEqualTo(1.24));
       expect(
         sweepText.visibleSweepDuration,
         const Duration(milliseconds: 2500),

@@ -14,6 +14,7 @@ import 'package:ai_chat/providers/chat_collection_providers.dart';
 import 'package:ai_chat/providers/chat_dependency_providers.dart';
 import 'package:ai_chat/providers/chat_send_state_providers.dart';
 import 'package:ai_chat/providers/chat_ui_providers.dart';
+import 'package:ai_chat/services/attachments/chat_attachment_storage_service.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -342,7 +343,9 @@ class AgentEventProcessor {
     required String fallbackText,
     required Map<String, dynamic>? payloadJson,
   }) async {
-    final attachments = _generatedImageAttachmentsFromToolResult(payloadJson);
+    final attachments = await _generatedImageAttachmentsFromToolResult(
+      payloadJson,
+    );
     final message = ChatMessage(
       text: event.content ?? fallbackText,
       role: MessageRole.assistant,
@@ -359,9 +362,9 @@ class AgentEventProcessor {
     _ref.read(messagesProvider.notifier).addMessage(message);
   }
 
-  List<ChatAttachment> _generatedImageAttachmentsFromToolResult(
+  Future<List<ChatAttachment>> _generatedImageAttachmentsFromToolResult(
     Map<String, dynamic>? payloadJson,
-  ) {
+  ) async {
     if (payloadJson?['toolName'] != 'generate_image') {
       return const <ChatAttachment>[];
     }
@@ -375,16 +378,22 @@ class AgentEventProcessor {
     }
     final model = data['model']?.toString().trim();
     final prompt = data['prompt']?.toString().trim();
-    return images
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .where((item) => (item['dataUrl']?.toString().trim() ?? '').isNotEmpty)
-        .map((item) {
-      final dataUrl = item['dataUrl']!.toString().trim();
+    final attachmentStorage = _ref.read(chatAttachmentStorageServiceProvider);
+    if (attachmentStorage == null) {
+      return const <ChatAttachment>[];
+    }
+
+    final attachments = <ChatAttachment>[];
+    for (final rawItem in images.whereType<Map>()) {
+      final item = Map<String, dynamic>.from(rawItem);
+      final dataUrl = item['dataUrl']?.toString().trim() ?? '';
+      if (dataUrl.isEmpty) {
+        continue;
+      }
       final localId = item['localId']?.toString().trim();
       final fileName = item['fileName']?.toString().trim();
       final mimeType = item['mimeType']?.toString().trim();
-      return ChatAttachment.generatedImage(
+      final attachment = await attachmentStorage.persistGeneratedImageDataUrl(
         localId: localId?.isNotEmpty == true
             ? localId!
             : 'generated-image-${DateTime.now().microsecondsSinceEpoch}',
@@ -398,7 +407,9 @@ class AgentEventProcessor {
             'revised_prompt': (item['revisedPrompt'] as String).trim(),
         },
       );
-    }).toList(growable: false);
+      attachments.add(attachment);
+    }
+    return attachments;
   }
 
   Map<String, dynamic> _buildToolFailurePayload(ChatEvent event) {
