@@ -23,7 +23,7 @@ void main() {
       'AAAADUlEQVR42mP8z8BQDwAFgwJ/lXc1PwAAAABJRU5ErkJggg==';
 
   testWidgets(
-    'tool workflow row renders from typed projection without payload step parsing',
+    'tool workflow row renders as compact inline step when no workflow renderer is registered',
     (tester) async {
       final sourceMessage = ChatMessage(
         id: 1,
@@ -76,7 +76,8 @@ void main() {
         ),
       );
 
-      expect(find.byType(ToolWorkflowCard), findsOneWidget);
+      expect(find.byType(ToolWorkflowCard), findsNothing);
+      expect(find.byType(ToolInlineStepRow), findsOneWidget);
     },
   );
 

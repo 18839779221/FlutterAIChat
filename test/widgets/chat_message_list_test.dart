@@ -1876,7 +1876,7 @@ void main() {
     });
 
     testWidgets(
-        'unregistered tool invocation still renders fallback workflow card',
+        'unregistered tool invocation renders compact fallback workflow row',
         (tester) async {
       await _pumpMessageList(
         tester,
@@ -1897,7 +1897,8 @@ void main() {
         registry: const ToolUiRendererRegistry(renderers: []),
       );
 
-      expect(find.byType(ToolWorkflowCard), findsOneWidget);
+      expect(find.byType(ToolWorkflowCard), findsNothing);
+      expect(find.byType(ToolInlineStepRow), findsOneWidget);
       expect(find.text('正在执行工具：读取文件'), findsWidgets);
     });
 

@@ -9,8 +9,8 @@ import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/services/chat_block_builder.dart';
-import 'package:ai_chat/services/tool_presentation_block_projector.dart';
 import 'package:ai_chat/services/tool_card_presentation_mapper.dart';
+import 'package:ai_chat/services/tool_presentation_block_projector.dart';
 import 'package:ai_chat/theme/app_motion.dart';
 import 'package:ai_chat/widgets/animations/message_growth_animation.dart';
 import 'package:ai_chat/widgets/chat_blocks/assistant_doc_block.dart';
@@ -19,7 +19,6 @@ import 'package:ai_chat/widgets/chat_blocks/final_response_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/reasoning_section.dart';
 import 'package:ai_chat/widgets/chat_blocks/structured_output_block.dart';
 import 'package:ai_chat/widgets/chat_blocks/tool_inline_step_row.dart';
-import 'package:ai_chat/widgets/chat_blocks/tool_workflow_card.dart';
 import 'package:ai_chat/widgets/chat_blocks/unified_turn_status_bar.dart';
 import 'package:ai_chat/widgets/chat_blocks/user_anchor_bubble.dart';
 import 'package:ai_chat/widgets/chat_message_image_attachments.dart';
@@ -374,18 +373,11 @@ class ChatTimelineRow extends ConsumerWidget {
     if (customWorkflowWidget != null) {
       return customWorkflowWidget;
     }
-    return ToolWorkflowCard(
-      title: block.title ?? 'Tool Workflow',
-      steps: steps,
-      expandedStepId: expandedStepId,
-      onStepTapped: (stepId) {
-        ref.read(toolWorkflowExpansionProvider.notifier).toggleExpandedStep(
-              turnId: block.turnId,
-              stepId: stepId,
-            );
-        onActiveStatusLayoutChanged?.call();
-      },
-    );
+    if (latestStep == null) {
+      return const SizedBox.shrink();
+    }
+    final presentation = ToolCardPresentationMapper.mapStep(latestStep);
+    return ToolInlineStepRow(model: presentation);
   }
 
   _DelayedWorkflowPreview? _resolveDelayedWorkflowPreview({
