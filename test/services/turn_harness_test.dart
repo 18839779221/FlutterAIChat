@@ -903,6 +903,66 @@ void main() {
     });
 
     test(
+        'fallback planner carriers drop assistant-projected context instead of '
+        'downgrading it to user carriers', () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          id: 44,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '继续',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+      final harness = TurnHarness(
+        plannerService: _NativeDecisionPlannerService(const []),
+        turnRepository: turnRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        turnVerifier: _AlwaysStopVerifier(),
+        toolCallService: _FakeToolCallService(
+          executeResult: const ToolPreparationResult.noTool(),
+        ),
+        limits: const AgentLoopLimits(maxIterations: 1),
+        chatStorage: _NoopChatStorage(),
+      );
+
+      final carriers = harness.debugFallbackPlannerCarriersForTest([
+        ChatEvent(
+          turnId: turn.id!,
+          groupId: turn.groupId,
+          sequence: 1,
+          eventType: ChatEventType.userMessage,
+          role: MessageRole.user,
+          content: '继续',
+        ),
+        ChatEvent(
+          turnId: turn.id!,
+          groupId: turn.groupId,
+          sequence: 2,
+          eventType: ChatEventType.assistantPlannerMessage,
+          role: MessageRole.assistant,
+          content: '我先看一下上一步输出。',
+        ),
+      ]);
+
+      final userCarriers = carriers
+          .whereType<SyntheticCarrier>()
+          .where((carrier) => carrier.role == SyntheticRole.user)
+          .toList();
+      expect(userCarriers, hasLength(1));
+      expect(userCarriers.single.content, '继续');
+      expect(
+        userCarriers.any((carrier) => carrier.content == '我先看一下上一步输出。'),
+        isFalse,
+      );
+    });
+
+    test(
         'continues repeated retrieval steps based on loop state rather than planner patching',
         () async {
       final eventRepository = _InMemoryChatEventRepository();
@@ -2216,10 +2276,14 @@ void main() {
           userInput: '上一轮确认数据库版本',
         ),
       );
-      await eventRepository.appendAssistantPlannerMessage(
+      await eventRepository.appendAssistantTurnSnapshot(
         turnId: previousTurnId,
         groupId: 1,
-        content: '历史结论：数据库版本线索在发布记录里。',
+        apiStyle: ChatTurnProviderStyle.openaiResponses,
+        rawAssistantMessageJson: const {
+          'role': 'assistant',
+          'content': '历史结论：数据库版本线索在发布记录里。',
+        },
       );
 
       final turnId = await turnRepository.createTurn(
@@ -3591,7 +3655,6 @@ class _AssertingLoopPlannerLLM implements BaseLLM {
     }
 
     if (planCalls == 2) {
-      expect(joinedText, contains('我先检索历史记录。'));
       expect(joinedText, contains('search_chat_history'));
       expect(joinedText, contains('数据库版本'));
       expect(joinedText, contains('search_chat_history query: 数据库版本'));
@@ -3618,7 +3681,6 @@ class _AssertingLoopPlannerLLM implements BaseLLM {
     }
 
     expect(planCalls, 3);
-    expect(joinedText, contains('我把确认结果写入文件。'));
     expect(joinedText, contains('Write'));
     expect(joinedText, contains('notes/version.md'));
     expect(joinedText, contains('Write path: notes/version.md'));
@@ -4331,6 +4393,26 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
       role: MessageRole.assistant,
       content: content,
       payloadJson: payloadJson,
+    );
+  }
+
+  @override
+  Future<ChatEvent> appendAssistantTurnSnapshot({
+    required int turnId,
+    required int groupId,
+    required ChatTurnProviderStyle apiStyle,
+    required Map<String, dynamic> rawAssistantMessageJson,
+  }) async {
+    return _append(
+      turnId: turnId,
+      groupId: groupId,
+      eventType: ChatEventType.assistantTurnSnapshot,
+      role: MessageRole.assistant,
+      content: '',
+      payloadJson: {
+        'apiStyle': apiStyle.name,
+        'rawAssistantMessage': rawAssistantMessageJson,
+      },
     );
   }
 

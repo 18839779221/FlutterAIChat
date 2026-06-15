@@ -305,14 +305,14 @@ void main() {
       expect(item?.text, contains('Android'));
     });
 
-    test('projects snapshot text as a system context message', () {
+    test('projects snapshot text as a user context message', () {
       final projector = SessionContextProjector();
 
       final message = projector.projectSnapshotToContext(
         '当前目标：完成 Session 上下文管理',
       );
 
-      expect(message.role, MessageRole.system);
+      expect(message.role, MessageRole.user);
       expect(message.text, contains('当前目标'));
       expect(message.status, MessageStatus.completed);
     });

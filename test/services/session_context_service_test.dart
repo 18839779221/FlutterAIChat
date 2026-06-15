@@ -1611,6 +1611,143 @@ void main() {
 
       await storage.deleteGroup(groupId);
     });
+
+    test(
+        'buildPlannerCarriers keeps assistant snapshot but skips current-turn '
+        'assistantPlannerMessage before toolResult continuation', () async {
+      final storage = DatabaseHelper(
+        databaseName:
+            'session_context_service_skip_current_turn_planner_message_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(title: 'carriers-current-turn-planner-message'),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final eventRepository = ChatEventRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '可视化iOS架构',
+        ),
+      );
+
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        chatStorage: storage,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw UnimplementedError(),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      );
+
+      final carriers = await service.buildPlannerCarriers(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: [
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '可视化iOS架构',
+          ),
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 2,
+            eventType: ChatEventType.assistantTurnSnapshot,
+            role: MessageRole.assistant,
+            payloadJson: const {
+              'apiStyle': 'anthropicMessages',
+              'rawAssistantMessage': {
+                'role': 'assistant',
+                'content': [
+                  {
+                    'type': 'text',
+                    'text':
+                        'I\'ll create an interactive visualization of the iOS architecture. Let me first get the design contract.',
+                  },
+                  {
+                    'type': 'tool_use',
+                    'id': 'call_00_Wb4vfroJvsouMPg95VfJ6175',
+                    'name': 'create_artifact__guideline',
+                    'input': {},
+                  },
+                ],
+              },
+            },
+          ),
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 3,
+            eventType: ChatEventType.assistantPlannerMessage,
+            role: MessageRole.assistant,
+            content:
+                'I\'ll create an interactive visualization of the iOS architecture. Let me first get the design contract.',
+          ),
+          ChatEvent(
+            turnId: currentTurnId,
+            groupId: groupId,
+            sequence: 4,
+            eventType: ChatEventType.toolResult,
+            role: MessageRole.system,
+            content: 'create_artifact__guideline returned structured result',
+            payloadJson: const {
+              'toolName': 'create_artifact__guideline',
+              'status': 'success',
+              'summary':
+                  'create_artifact__guideline returned structured result',
+              'providerCallId': 'call_00_Wb4vfroJvsouMPg95VfJ6175',
+              'data': {
+                'structured': true,
+              },
+            },
+          ),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+      );
+
+      expect(carriers.whereType<RawAssistantCarrier>(), hasLength(1));
+      final syntheticUsers = carriers
+          .whereType<SyntheticCarrier>()
+          .where((carrier) => carrier.role == SyntheticRole.user)
+          .toList();
+      expect(
+        syntheticUsers.any((carrier) => carrier.content == '可视化iOS架构'),
+        isTrue,
+      );
+      expect(
+        syntheticUsers.any(
+          (carrier) => carrier.content ==
+              'I\'ll create an interactive visualization of the iOS architecture. Let me first get the design contract.',
+        ),
+        isFalse,
+      );
+
+      final toolResults = carriers
+          .whereType<SyntheticCarrier>()
+          .where((carrier) => carrier.role == SyntheticRole.toolResult)
+          .toList();
+      expect(toolResults, hasLength(1));
+      expect(
+        toolResults.single.toolCallId,
+        'call_00_Wb4vfroJvsouMPg95VfJ6175',
+      );
+
+      await storage.deleteGroup(groupId);
+    });
   });
 }
 

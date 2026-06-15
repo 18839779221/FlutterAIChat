@@ -654,11 +654,7 @@ class SessionContextService {
           );
 
         case ChatEventType.assistantPlannerMessage:
-          final content = (event.content ?? '').trim();
-          if (content.isEmpty) {
-            break;
-          }
-          carriers.add(SyntheticCarrier.user(content));
+          break;
 
         case ChatEventType.toolResult:
         case ChatEventType.toolError:

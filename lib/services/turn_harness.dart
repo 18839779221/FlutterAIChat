@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import '../models/agent/chat_turn_step.dart';
 import '../models/agent/model_turn_decision.dart';
 import '../models/agent/agent_loop_limits.dart';
@@ -790,6 +792,10 @@ class TurnHarness {
   List<PlannerContextCarrier> _fallbackPlannerCarriers(
     List<ChatEvent> transcript,
   ) {
+    Logger.w(
+      _tag,
+      'sessionContextService unavailable, using fallback planner carriers',
+    );
     final projector = SessionContextProjector();
     final carriers = <PlannerContextCarrier>[];
     for (final event in transcript) {
@@ -823,11 +829,21 @@ class TurnHarness {
           carriers.add(SyntheticCarrier.user(message.text));
           break;
         case MessageRole.assistant:
-          carriers.add(SyntheticCarrier.user(message.text));
+          Logger.w(
+            _tag,
+            'dropping assistant-projected fallback carrier',
+          );
           break;
       }
     }
     return carriers;
+  }
+
+  @visibleForTesting
+  List<PlannerContextCarrier> debugFallbackPlannerCarriersForTest(
+    List<ChatEvent> transcript,
+  ) {
+    return _fallbackPlannerCarriers(transcript);
   }
 
   Future<void> _persistDecisionRuntimeState({
