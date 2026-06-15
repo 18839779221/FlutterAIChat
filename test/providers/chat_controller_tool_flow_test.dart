@@ -953,6 +953,16 @@ void main() {
       final orchestrator = _FakeTurnHarness(
         databaseHelper: databaseHelper,
         events: [],
+        // Mirror a real resume turn: streamed text deltas followed by the
+        // terminal finalAnswer that carries the complete answer text.
+        //
+        // Note on the truth path: `assistantTextDelta` content is intentionally
+        // discarded by `AgentEventProcessor` (the visible streaming text is
+        // owned by the runtime preview channel, fed by `StreamingMessageEvent`s
+        // — see turn_projection_dispatcher_test for that merge/dedup coverage).
+        // Here we assert the ChatController-level invariant the fake harness
+        // can actually drive: a resume turn promotes exactly ONE persisted
+        // assistant message, never a duplicated streamed answer.
         resumedEvents: [
           ChatEvent(
             turnId: 11,
@@ -969,6 +979,14 @@ void main() {
             eventType: ChatEventType.assistantTextDelta,
             role: MessageRole.assistant,
             content: '，再总结',
+          ),
+          ChatEvent(
+            turnId: 11,
+            groupId: 1,
+            sequence: 3,
+            eventType: ChatEventType.finalAnswer,
+            role: MessageRole.assistant,
+            content: '我先搜索，再总结',
           ),
         ],
       );
@@ -1018,6 +1036,8 @@ void main() {
           .map((message) => message.text)
           .where((text) => text.isNotEmpty)
           .toList();
+      // Exactly one persisted assistant answer — the streamed deltas must not
+      // produce a second, duplicated assistant message alongside finalAnswer.
       expect(
         assistantTexts.where((text) => text == '我先搜索，再总结'),
         hasLength(1),
@@ -2001,6 +2021,7 @@ class _FakeTurnHarness extends TurnHarness {
   final List<bool> resumedTrustFlags = [];
   final Completer<void>? runTurnGate;
   final Completer<void>? resumeQuestionGate;
+  final Completer<void>? resumeGate;
   final Object? runTurnError;
   final String? runTurnFailureCode;
 
@@ -2011,6 +2032,7 @@ class _FakeTurnHarness extends TurnHarness {
     this.resumedQuestionEvents = const [],
     this.runTurnGate,
     this.resumeQuestionGate,
+    this.resumeGate,
     this.runTurnError,
     this.runTurnFailureCode,
   }) : super(
@@ -2072,6 +2094,10 @@ class _FakeTurnHarness extends TurnHarness {
   }) async* {
     resumedTurnIds.add(turnId);
     resumedTrustFlags.add(trustTool);
+    final gate = resumeGate;
+    if (gate != null) {
+      await gate.future;
+    }
     for (final event in resumedEvents) {
       yield ChatEvent(
         turnId: turnId,
