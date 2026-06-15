@@ -1,5 +1,9 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
+import 'package:ai_chat/models/llm/api_protocol_resolver.dart';
 
 import 'headless_live_provider_matrix.dart';
 import 'local_test_provider_selector.dart';
@@ -102,15 +106,52 @@ void main() {
     expect(selection.selectionReason, contains('alias=minimax-openai'));
   });
 
-  test('loadInjectedLocalDefaults includes current codex provider when available', () {
+  test(
+      'loadInjectedLocalDefaults selects a valid responses provider from injected defaults',
+      () {
+    final tempDir = Directory.systemTemp.createTempSync(
+      'headless_live_provider_matrix_test.',
+    );
+    addTearDown(() => tempDir.deleteSync(recursive: true));
+    final defaultsFile = File('${tempDir.path}/local_defaults.json');
+    defaultsFile.writeAsStringSync(
+      jsonEncode({
+        'default_provider_id': 'test-responses',
+        'providers': [
+          {
+            'id': 'test-responses',
+            'name': 'Test Responses',
+            'api_key': 'sk-test',
+            'base_url': 'https://example.com/v1/responses',
+            'models': [
+              {'id': 'test-model', 'name': 'Test Model'},
+            ],
+          },
+        ],
+      }),
+    );
+
     final defaults = loadInjectedLocalDefaults(
-      fallbackRelativePaths: const ['config/local_defaults.json'],
+      environment: {'LIVE_LLM_LOCAL_DEFAULTS_PATH': defaultsFile.path},
+      fallbackRelativePaths: const [],
     );
 
     expect(defaults, isNotNull);
+    expect(defaults!.providers.map((provider) => provider.id), contains('test-responses'));
+
+    final selection = selectHeadlessLiveProvider(
+      defaults: defaults,
+      style: ChatTurnProviderStyle.openaiResponses,
+      environment: const {},
+    );
+
     expect(
-      defaults!.providers.map((provider) => provider.id),
-      contains('codex'),
+      defaults.providers.map((provider) => provider.id),
+      contains(selection.provider.id),
+    );
+    expect(
+      const ApiProtocolResolver().resolveStyle(selection.provider.baseUrl),
+      ApiStyle.responses,
     );
   });
 
