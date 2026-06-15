@@ -14,7 +14,7 @@ void main() {
         'artifact-resolver-',
       );
       final storage = ArtifactFileStorageService(rootDirectory: tempDirectory);
-      await storage.saveArtifactSource(
+      final savedArtifact = await storage.saveArtifactSource(
         groupId: 7,
         artifactId: 'portfolio-pie',
         title: '投资组合饼图',
@@ -35,7 +35,7 @@ void main() {
           text: '已创建 artifact',
           role: MessageRole.assistant,
           contentType: MessageContentType.toolResult,
-          payloadJson: const {
+          payloadJson: {
             'toolName': 'create_artifact',
             'status': 'success',
             'summary': '已创建 artifact：portfolio-pie',
@@ -43,7 +43,7 @@ void main() {
               'artifactId': 'portfolio-pie',
               'title': '投资组合饼图',
               'type': 'html',
-              'sourcePath': '/artifacts/7/portfolio-pie.html',
+              'sourcePath': savedArtifact.sourcePath,
             },
           },
           timestamp: DateTime(2026, 4, 30, 10, 0, 1),
