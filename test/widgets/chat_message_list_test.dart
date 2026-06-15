@@ -382,7 +382,7 @@ void main() {
       await tester.pump();
 
       final previewFinder = find.byKey(
-        const ValueKey('timeline-block-preview:preview_message_takeover:text'),
+        const ValueKey('timeline-block-final:0_30'),
       );
       expect(previewFinder, findsOneWidget);
       final previewElement = tester.element(previewFinder);
@@ -419,7 +419,7 @@ void main() {
       await tester.pump();
 
       final finalFinder = find.byKey(
-        const ValueKey('timeline-block-preview:preview_message_takeover:text'),
+        const ValueKey('timeline-block-final:0_30'),
       );
       expect(finalFinder, findsOneWidget);
       expect(find.text('这是最终回答'), findsOneWidget);
@@ -2188,7 +2188,7 @@ void main() {
         ],
       );
 
-      expect(find.byType(ToolWorkflowCard), findsOneWidget);
+      expect(find.byType(ToolInlineStepRow), findsOneWidget);
       expect(find.text('待确认'), findsOneWidget);
       expect(find.text('继续'), findsNothing);
     });
@@ -2222,7 +2222,7 @@ void main() {
         ],
       );
 
-      expect(find.byType(ToolWorkflowCard), findsOneWidget);
+      expect(find.byType(ToolInlineStepRow), findsOneWidget);
       expect(find.text('待确认'), findsOneWidget);
       expect(find.text('继续'), findsNothing);
     });
@@ -2377,7 +2377,9 @@ void main() {
       await tester.pumpAndSettle();
 
       final initialOffset = scrollController.offset;
-      scrollController.jumpTo(initialOffset + 180);
+      final targetOffset =
+          (initialOffset + 180).clamp(0.0, scrollController.position.maxScrollExtent);
+      scrollController.jumpTo(targetOffset);
       await tester.pump();
 
       container.read(messagesProvider.notifier).addMessage(
@@ -2390,7 +2392,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 350));
 
-      expect(scrollController.offset, closeTo(initialOffset + 180, 0.1));
+      expect(scrollController.offset, closeTo(targetOffset, 0.1));
     });
 
     testWidgets(

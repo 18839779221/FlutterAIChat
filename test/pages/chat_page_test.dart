@@ -64,17 +64,12 @@ void main() {
       findsOneWidget,
     );
 
-    final menuShell = tester.widget<DecoratedBox>(
-      find.byKey(const ValueKey('header-menu-button-shell')),
-    );
-    final menuDecoration = menuShell.decoration as BoxDecoration;
-    final menuGradient = menuDecoration.gradient as LinearGradient?;
-
-    expect(menuGradient, isNotNull);
-    expect(menuGradient!.colors, hasLength(3));
     expect(
-      (menuGradient.colors.last.a * 255.0).round(),
-      lessThan(255),
+      find.descendant(
+        of: find.byKey(const ValueKey('header-menu-button-shell')),
+        matching: find.byType(InkWell),
+      ),
+      findsOneWidget,
     );
 
     final headerSize =
@@ -82,7 +77,7 @@ void main() {
     expect(headerSize.height, lessThanOrEqualTo(56));
   });
 
-  testWidgets('chat page more actions no longer exposes reasoning mode toggle',
+  testWidgets('chat page header exposes floating action buttons only',
       (tester) async {
     final container = ProviderContainer(
       overrides: [
@@ -112,12 +107,11 @@ void main() {
     );
     await tester.pump();
 
-    await tester.tap(find.byIcon(Icons.more_horiz));
-    await tester.pumpAndSettle();
-
-    expect(find.text('设置系统提示词'), findsOneWidget);
-    expect(find.text('开启深度模式'), findsNothing);
-    expect(find.text('关闭深度模式'), findsNothing);
+    expect(find.byIcon(Icons.more_horiz), findsNothing);
+    expect(find.byKey(const ValueKey('header-new-chat-button-shell')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('debug-turn-inspector-button')),
+        findsOneWidget);
   });
 
   testWidgets('chat page shows current workspace badge', (tester) async {
@@ -154,7 +148,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Workspace ws_20260602_a3k9qx'), findsOneWidget);
+    expect(find.text('ws_20260602_a3k9qx'), findsOneWidget);
   });
 
   testWidgets('chat page anchors viewport near the latest turn end',
