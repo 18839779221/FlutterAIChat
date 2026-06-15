@@ -256,6 +256,31 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
     final latestTailStableKey =
         timelineItems.isEmpty ? null : timelineItems.last.stableKey;
     final itemCount = timelineItems.length + 1;
+    // Maps each child's ValueKey to its index so the SliverList can relocate
+    // (and reuse) a kept-alive child whose index shifted between builds — e.g.
+    // the streaming assistant tail when earlier history is prepended.
+    //
+    // findChildIndexCallback resolves an element by key, so a duplicated key
+    // would make the sliver reuse the wrong element and corrupt child ordering
+    // (RenderSliverMultiBoxAdaptor child-integrity assertion). Stable keys are
+    // expected to be unique, but we degrade safely if they are not: any key
+    // that collides is dropped from the lookup so the callback returns null for
+    // it and the sliver falls back to default index reconciliation.
+    final childIndexByKey = <String, int>{
+      'chat-message-list-load-older-slot': 0,
+    };
+    final collidingChildKeys = <String>{};
+    for (var index = 0; index < timelineItems.length; index += 1) {
+      final key = 'timeline-block-${timelineItems[index].stableKey}';
+      if (childIndexByKey.containsKey(key)) {
+        collidingChildKeys.add(key);
+      } else {
+        childIndexByKey[key] = index + 1;
+      }
+    }
+    for (final key in collidingChildKeys) {
+      childIndexByKey.remove(key);
+    }
     final currentGroupId = ref.read(currentGroupProvider)?.id;
     // Detect if new items were added (only animate the last item if count increased)
     final previousItemCount = _previousItemCount;
@@ -430,6 +455,13 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
                       ),
                     ),
                   );
+                },
+                findChildIndexCallback: (key) {
+                  final keyValue = _stringValueKey(key);
+                  if (keyValue == null) {
+                    return null;
+                  }
+                  return childIndexByKey[keyValue];
                 },
                 childCount: itemCount,
               ),
@@ -894,6 +926,14 @@ class _ChatMessageListState extends ConsumerState<ChatMessageList> {
         ),
       ],
     );
+  }
+
+  String? _stringValueKey(Key key) {
+    if (key is! ValueKey) {
+      return null;
+    }
+    final value = key.value;
+    return value is String ? value : null;
   }
 
   void _showMessageOptionMenu(ChatMessage message) {
