@@ -328,9 +328,7 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
     final normalized = Map<String, dynamic>.from(rawEvent)..remove('_event');
     final type = normalized['type'];
 
-    if (type == 'response.completed' ||
-        type == 'response.done' ||
-        type == 'response.failed') {
+    if (_shouldNormalizeResponsePayload(type, normalized['response'])) {
       final response = normalized['response'];
       if (response is Map<String, dynamic>) {
         normalized['response'] =
@@ -354,15 +352,47 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
 
     if (type == 'response.output_item.added') {
       final item = normalized['item'];
-      if (item is Map<String, dynamic> && item['type'] == 'function_call') {
+      if (item is Map<String, dynamic>) {
+        normalized['item'] =
+            _SdkCompatibleResponsesNormalizer.normalizeOutputItemJsonForSdk(
+          item,
+        );
+      }
+      final normalizedItem = normalized['item'];
+      if (normalizedItem is Map<String, dynamic> &&
+          normalizedItem['type'] == 'function_call') {
         final outputIndex = normalized['output_index'] as int? ?? fallbackOutputIndex;
         normalized['item'] = <String, dynamic>{
-          'id': item['id'] ?? 'fc_$outputIndex',
-          'call_id': item['call_id'] ?? item['id'] ?? 'fc_$outputIndex',
-          'name': item['name'] ?? '',
-          'arguments': item['arguments'] ?? '',
-          ...item,
+          'id': normalizedItem['id'] ?? 'fc_$outputIndex',
+          'call_id':
+              normalizedItem['call_id'] ??
+              normalizedItem['id'] ??
+              'fc_$outputIndex',
+          'name': normalizedItem['name'] ?? '',
+          'arguments': normalizedItem['arguments'] ?? '',
+          ...normalizedItem,
         };
+      }
+    }
+
+    if (type == 'response.output_item.done') {
+      final item = normalized['item'];
+      if (item is Map<String, dynamic>) {
+        normalized['item'] =
+            _SdkCompatibleResponsesNormalizer.normalizeOutputItemJsonForSdk(
+          item,
+        );
+      }
+    }
+
+    if (type == 'response.content_part.added' ||
+        type == 'response.content_part.done') {
+      final part = normalized['part'];
+      if (part is Map<String, dynamic>) {
+        normalized['part'] =
+            _SdkCompatibleResponsesNormalizer.normalizeMessageContentJsonForSdk(
+          part,
+        );
       }
     }
 
@@ -383,6 +413,12 @@ class OpenAiResponsesRuntime extends ProtocolExecutionRuntime {
         type == 'response.output_text.done' ||
         type == 'response.function_call_arguments.delta' ||
         type == 'response.function_call_arguments.done';
+  }
+
+  bool _shouldNormalizeResponsePayload(dynamic type, dynamic response) {
+    return type is String &&
+        type.startsWith('response.') &&
+        response is Map<String, dynamic>;
   }
 
   String? _extractResponseId(Map<String, dynamic> rawEvent) {
@@ -478,7 +514,7 @@ class _SdkCompatibleResponsesNormalizer {
     final rawOutput = normalized['output'];
     if (rawOutput is List) {
       normalized['output'] = rawOutput
-          .map((item) => _normalizeOutputItem(item))
+          .map((item) => normalizeOutputItemJsonForSdk(item))
           .toList(growable: false);
     } else {
       normalized['output'] = const <Map<String, dynamic>>[];
@@ -486,7 +522,7 @@ class _SdkCompatibleResponsesNormalizer {
     return normalized;
   }
 
-  static Map<String, dynamic> _normalizeOutputItem(dynamic rawItem) {
+  static Map<String, dynamic> normalizeOutputItemJsonForSdk(dynamic rawItem) {
     if (rawItem is! Map) {
       return const <String, dynamic>{'type': 'unknown'};
     }
@@ -498,7 +534,7 @@ class _SdkCompatibleResponsesNormalizer {
       final rawContent = item['content'];
       if (rawContent is List) {
         item['content'] = rawContent
-            .map((entry) => _normalizeMessageContent(entry))
+            .map((entry) => normalizeMessageContentJsonForSdk(entry))
             .toList(growable: false);
       } else {
         item['content'] = const <Map<String, dynamic>>[];
@@ -516,10 +552,39 @@ class _SdkCompatibleResponsesNormalizer {
       }
       item['status'] = _nonEmptyString(item['status']) ?? 'completed';
     }
+    if (item['type'] == 'reasoning') {
+      item['id'] = _nonEmptyString(item['id']) ?? 'reasoning_0';
+      final rawSummary = item['summary'];
+      if (rawSummary is List) {
+        item['summary'] = rawSummary
+            .map((entry) => _normalizeReasoningSummary(entry))
+            .whereType<Map<String, dynamic>>()
+            .toList(growable: false);
+      } else {
+        item['summary'] = const <Map<String, dynamic>>[];
+      }
+    }
+    if (item['type'] == 'web_search_call' ||
+        item['type'] == 'file_search_call' ||
+        item['type'] == 'code_interpreter_call' ||
+        item['type'] == 'image_generation_call' ||
+        item['type'] == 'local_shell_call' ||
+        item['type'] == 'shell_call' ||
+        item['type'] == 'mcp_call' ||
+        item['type'] == 'tool_search_call' ||
+        item['type'] == 'computer_call' ||
+        item['type'] == 'custom_tool_call') {
+      item['id'] = _nonEmptyString(item['id']) ?? _syntheticItemId(item);
+    }
+    if (item['type'] == 'local_shell_call' || item['type'] == 'shell_call') {
+      item['status'] = _nonEmptyString(item['status']) ?? 'completed';
+    }
     return item;
   }
 
-  static Map<String, dynamic> _normalizeMessageContent(dynamic rawEntry) {
+  static Map<String, dynamic> normalizeMessageContentJsonForSdk(
+    dynamic rawEntry,
+  ) {
     if (rawEntry is! Map) {
       return const <String, dynamic>{
         'type': 'output_text',
@@ -538,6 +603,63 @@ class _SdkCompatibleResponsesNormalizer {
     }
     if (type == 'refusal' && entry['refusal'] is! String) {
       entry['refusal'] = '';
+    }
+    if (type == 'output_text' && entry['annotations'] is List) {
+      entry['annotations'] = (entry['annotations'] as List)
+          .map((annotation) => _normalizeAnnotation(annotation))
+          .whereType<Map<String, dynamic>>()
+          .toList(growable: false);
+    }
+    return entry;
+  }
+
+  static Map<String, dynamic> _normalizeReasoningSummary(dynamic rawEntry) {
+    if (rawEntry is! Map) {
+      return const <String, dynamic>{'text': ''};
+    }
+    final entry = Map<String, dynamic>.from(rawEntry);
+    if (entry['text'] is! String) {
+      entry['text'] = '';
+    }
+    return entry;
+  }
+
+  static Map<String, dynamic> _normalizeAnnotation(dynamic rawEntry) {
+    if (rawEntry is! Map) {
+      return const <String, dynamic>{'type': 'url_citation', 'start_index': 0, 'end_index': 0, 'url': '', 'title': ''};
+    }
+    final entry = Map<String, dynamic>.from(rawEntry);
+    final type = _nonEmptyString(entry['type']) ?? 'url_citation';
+    entry['type'] = type;
+    if ((type == 'url_citation' ||
+            type == 'file_citation' ||
+            type == 'container_file_citation' ||
+            type == 'file_path') &&
+        entry['start_index'] is! int) {
+      entry['start_index'] = 0;
+    }
+    if ((type == 'url_citation' ||
+            type == 'file_citation' ||
+            type == 'container_file_citation' ||
+            type == 'file_path') &&
+        entry['end_index'] is! int) {
+      entry['end_index'] = 0;
+    }
+    if (type == 'url_citation') {
+      if (entry['url'] is! String) entry['url'] = '';
+      if (entry['title'] is! String) entry['title'] = '';
+    }
+    if (type == 'file_citation') {
+      if (entry['file_id'] is! String) entry['file_id'] = '';
+      if (entry['filename'] is! String) entry['filename'] = '';
+    }
+    if (type == 'container_file_citation') {
+      if (entry['container_id'] is! String) entry['container_id'] = '';
+      if (entry['file_id'] is! String) entry['file_id'] = '';
+      if (entry['filename'] is! String) entry['filename'] = '';
+    }
+    if (type == 'file_path' && entry['file_path'] is! String) {
+      entry['file_path'] = '';
     }
     return entry;
   }
@@ -568,6 +690,12 @@ class _SdkCompatibleResponsesNormalizer {
     }
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
+  }
+
+  static String _syntheticItemId(Map<String, dynamic> item) {
+    final type = _nonEmptyString(item['type']) ?? 'item';
+    final hash = item.hashCode.toUnsigned(20).toRadixString(16);
+    return '${type}_$hash';
   }
 
   static String _syntheticMessageId(Map<String, dynamic> item) {

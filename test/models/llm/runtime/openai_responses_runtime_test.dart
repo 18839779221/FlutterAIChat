@@ -284,6 +284,87 @@ void main() {
   });
 
   test(
+    'normalizes slim response lifecycle events before sdk parsing',
+    () async {
+      final runtime = OpenAiResponsesRuntime(
+        httpClient: _FakeHttpClient(
+          response: http.Response(
+            [
+              'data: ${jsonEncode({
+                'type': 'response.created',
+                'response': {
+                  'id': 'resp_lifecycle',
+                  'object': 'response',
+                  'model': 'gpt-5.4',
+                  'status': 'in_progress',
+                  'output': [],
+                },
+              })}\n',
+              '\n',
+              'data: ${jsonEncode({
+                'type': 'response.in_progress',
+                'response': {
+                  'id': 'resp_lifecycle',
+                  'object': 'response',
+                  'model': 'gpt-5.4',
+                  'status': 'in_progress',
+                  'output': [],
+                },
+              })}\n',
+              '\n',
+              'data: ${jsonEncode({
+                'type': 'response.output_text.delta',
+                'response': {'id': 'resp_lifecycle'},
+                'output_index': 0,
+                'content_index': 0,
+                'delta': 'Hello',
+              })}\n',
+              '\n',
+              'data: ${jsonEncode({
+                'type': 'response.completed',
+                'response': {
+                  'id': 'resp_lifecycle',
+                  'object': 'response',
+                  'model': 'gpt-5.4',
+                  'status': 'completed',
+                  'output': [],
+                },
+              })}\n',
+              '\n',
+              'data: [DONE]\n',
+            ].join(),
+            200,
+            headers: {'content-type': 'text/event-stream; charset=utf-8'},
+          ),
+        ),
+      );
+
+      final result = await runtime.streamExecute(
+        requestSpec: ResponsesRequestSpec(
+          request: oai.CreateResponseRequest(
+            model: 'gpt-5.4',
+            input: const oai.ResponseInput.text('hello'),
+          ),
+        ),
+        runtimeConfig: const LLMConfig(
+          apiKey: 'k',
+          apiUrl: 'https://responses.example/v1',
+          model: 'gpt-5.4',
+        ),
+        idleTimeout: const Duration(seconds: 1),
+        overallTimeout: const Duration(seconds: 3),
+      );
+
+      final events = await result.events.toList();
+      expect(
+        events.whereType<StreamingContentBlockDeltaEvent>().map((e) => e.value),
+        contains('Hello'),
+      );
+      expect(events.last, isA<StreamingMessageStopEvent>());
+    },
+  );
+
+  test(
     'keeps preview deltas when response.completed payload is provider-incompatible',
     () async {
       final runtime = OpenAiResponsesRuntime(
@@ -595,6 +676,137 @@ void main() {
       );
 
       final events = await result.events.toList();
+      expect(events.last, isA<StreamingMessageStopEvent>());
+    },
+  );
+
+  test(
+    'normalizes reasoning response output when sdk-required text fields are missing',
+    () async {
+      final runtime = OpenAiResponsesRuntime(
+        httpClient: _FakeHttpClient(
+          response: http.Response(
+            [
+              'data: ${jsonEncode({
+                'type': 'response.output_item.added',
+                'item': {
+                  'id': 'rs_1',
+                  'type': 'reasoning',
+                  'summary': [
+                    {'text': null},
+                  ],
+                },
+                'output_index': 0,
+              })}\n',
+              '\n',
+              'data: ${jsonEncode({
+                'type': 'response.completed',
+                'response': {
+                  'id': 'resp_reasoning',
+                  'object': 'response',
+                  'status': 'completed',
+                  'output': [],
+                },
+              })}\n',
+              '\n',
+              'data: [DONE]\n',
+            ].join(),
+            200,
+            headers: {'content-type': 'text/event-stream; charset=utf-8'},
+          ),
+        ),
+      );
+
+      final result = await runtime.streamExecute(
+        requestSpec: ResponsesRequestSpec(
+          request: oai.CreateResponseRequest(
+            model: 'gpt-5.4',
+            input: const oai.ResponseInput.text('hello'),
+          ),
+        ),
+        runtimeConfig: const LLMConfig(
+          apiKey: 'k',
+          apiUrl: 'https://responses.example/v1',
+          model: 'gpt-5.4',
+        ),
+        idleTimeout: const Duration(seconds: 1),
+        overallTimeout: const Duration(seconds: 3),
+      );
+
+      final events = await result.events.toList();
+      expect(events, isNotEmpty);
+      expect(events.last, isA<StreamingMessageStopEvent>());
+    },
+  );
+
+  test(
+    'normalizes output text content when sdk-required text fields are missing',
+    () async {
+      final runtime = OpenAiResponsesRuntime(
+        httpClient: _FakeHttpClient(
+          response: http.Response(
+            [
+              'data: ${jsonEncode({
+                'type': 'response.output_item.added',
+                'item': {
+                  'id': 'msg_1',
+                  'type': 'message',
+                  'role': 'assistant',
+                  'content': [
+                    {
+                      'type': 'output_text',
+                      'text': null,
+                      'annotations': [
+                        {
+                          'type': 'url_citation',
+                          'start_index': null,
+                          'end_index': null,
+                          'url': 'https://example.com',
+                          'title': 'Example',
+                        },
+                      ],
+                    },
+                  ],
+                },
+                'output_index': 0,
+              })}\n',
+              '\n',
+              'data: ${jsonEncode({
+                'type': 'response.completed',
+                'response': {
+                  'id': 'resp_message',
+                  'object': 'response',
+                  'status': 'completed',
+                  'output': [],
+                },
+              })}\n',
+              '\n',
+              'data: [DONE]\n',
+            ].join(),
+            200,
+            headers: {'content-type': 'text/event-stream; charset=utf-8'},
+          ),
+        ),
+      );
+
+      final result = await runtime.streamExecute(
+        requestSpec: ResponsesRequestSpec(
+          request: oai.CreateResponseRequest(
+            model: 'gpt-5.4',
+            input: const oai.ResponseInput.text('hello'),
+          ),
+        ),
+        runtimeConfig: const LLMConfig(
+          apiKey: 'k',
+          apiUrl: 'https://responses.example/v1',
+          model: 'gpt-5.4',
+        ),
+        idleTimeout: const Duration(seconds: 1),
+        overallTimeout: const Duration(seconds: 3),
+      );
+
+      final events = await result.events.toList();
+      expect(events, isNotEmpty);
       expect(events.last, isA<StreamingMessageStopEvent>());
     },
   );
