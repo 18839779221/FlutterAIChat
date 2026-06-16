@@ -13,6 +13,7 @@ import 'package:ai_chat/models/agent/stop_verification_result.dart';
 import 'package:ai_chat/models/agent/chat_turn_step.dart';
 import 'package:ai_chat/models/artifact/artifact_record.dart';
 import 'package:ai_chat/models/chat/chat_attachment.dart';
+import 'package:ai_chat/models/chat/send_message_request.dart';
 import 'package:ai_chat/models/chat_event.dart';
 import 'package:ai_chat/models/chat_group.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -39,6 +40,7 @@ import 'package:ai_chat/repositories/session_context_snapshot_repository.dart';
 import 'package:ai_chat/services/agent_planner_service.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/decision_tool_call_executor.dart';
+import 'package:ai_chat/services/follow_up_dispatch_queue.dart';
 import 'package:ai_chat/services/model_budget_registry.dart';
 import 'package:ai_chat/services/session_context_projector.dart';
 import 'package:ai_chat/services/session_context_service.dart';
@@ -171,7 +173,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -192,6 +194,169 @@ void main() {
         (event) => event.eventType == ChatEventType.finalAnswer,
       );
       expect(finalAnswer.content, '我是你的 AI 助手。');
+    });
+
+    test('planner boundary drains steer follow-up as additional start input',
+        () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      final followUpQueue = FollowUpDispatchQueue();
+      final planner = _RecordingDecisionPlannerService([
+        const ModelTurnDecision(
+          toolCalls: [],
+          assistantMessage: '收到补充输入。',
+          diagnosticCode: 'planner_action_respond',
+          providerState: {'response_id': 'resp_follow_up_start'},
+          providerStyle: ChatTurnProviderStyle.openaiResponses,
+          modelName: 'gpt-5.4',
+          isTerminal: true,
+        ),
+      ]);
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          id: 1,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '第一问',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+      followUpQueue.enqueue(
+        groupId: 1,
+        request: const SendMessageRequest(
+          text: '补充一条',
+          dispatchMode: SendMessageDispatchMode.steer,
+        ),
+      );
+      final harness = TurnHarness(
+        plannerService: planner,
+        turnRepository: turnRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        turnVerifier: _AlwaysStopVerifier(),
+        toolCallService: _FakeToolCallService(
+          executeResult: const ToolPreparationResult.noTool(),
+        ),
+        chatStorage: _NoopChatStorage(),
+        followUpDispatchQueue: followUpQueue,
+      );
+
+      final emitted = await harness
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(systemPrompt: ''),
+          )
+          .toList();
+
+      final userEvents = emitted
+          .where((event) => event.eventType == ChatEventType.userMessage)
+          .toList(growable: false);
+      expect(userEvents.map((event) => event.content), ['第一问', '补充一条']);
+      expect(
+        userEvents.map((event) => event.userMessageKind?.name),
+        ['start', 'start'],
+      );
+      expect(
+        planner.capturedPlannerMessages.single
+            ?.where((message) => message.role == MessageRole.user)
+            .map((message) => message.text)
+            .toList(),
+        ['第一问', '补充一条'],
+      );
+    });
+
+    test('steer follow-up becomes follow_up after a non-user event exists',
+        () async {
+      final eventRepository = _InMemoryChatEventRepository();
+      final turnRepository = _InMemoryChatTurnRepository();
+      final followUpQueue = FollowUpDispatchQueue();
+      final planner = _QueueingDecisionPlannerService(
+        queue: followUpQueue,
+        queueAfterCall: 1,
+        queuedRequest: const SendMessageRequest(
+          text: '请顺着刚才的中断继续',
+          dispatchMode: SendMessageDispatchMode.steer,
+        ),
+        decisions: [
+          const ModelTurnDecision(
+            toolCalls: [
+              ModelToolCall(
+                toolName: 'web_search',
+                arguments: {'query': 'OpenAI latest'},
+                sequence: 0,
+              ),
+            ],
+            assistantMessage: null,
+            diagnosticCode: 'planner_tool_round',
+            providerState: {'response_id': 'resp_tool_round'},
+            providerStyle: ChatTurnProviderStyle.openaiResponses,
+            modelName: 'gpt-5.4',
+            isTerminal: false,
+          ),
+          const ModelTurnDecision(
+            toolCalls: [],
+            assistantMessage: '继续完成上一轮。',
+            diagnosticCode: 'planner_action_respond',
+            providerState: {'response_id': 'resp_after_follow_up'},
+            providerStyle: ChatTurnProviderStyle.openaiResponses,
+            modelName: 'gpt-5.4',
+            isTerminal: true,
+          ),
+        ],
+      );
+      final turnId = await turnRepository.createTurn(
+        ChatTurn(
+          id: 1,
+          groupId: 1,
+          status: ChatTurnStatus.running,
+          userInput: '第一问',
+        ),
+      );
+      final turn = (await turnRepository.getTurn(turnId))!;
+      final harness = TurnHarness(
+        plannerService: planner,
+        turnRepository: turnRepository,
+        eventRepository: eventRepository,
+        transcriptBuilderService: TranscriptBuilderService(
+          eventRepository: eventRepository,
+        ),
+        turnVerifier: _AlwaysStopVerifier(),
+        toolCallService: _FakeToolCallService(
+          executeResult: const ToolPreparationResult.noTool(),
+        ),
+        decisionToolCallExecutor: _FakeDecisionToolCallExecutor(),
+        chatStorage: _NoopChatStorage(),
+        followUpDispatchQueue: followUpQueue,
+      );
+
+      final emitted = await harness
+          .runTurn(
+            turn: turn,
+            config: ChatConfig(systemPrompt: ''),
+          )
+          .toList();
+
+      final userEvents = emitted
+          .where((event) => event.eventType == ChatEventType.userMessage)
+          .toList(growable: false);
+      expect(userEvents.map((event) => event.content), [
+        '第一问',
+        '请顺着刚才的中断继续',
+      ]);
+      expect(
+        userEvents.map((event) => event.userMessageKind?.name),
+        ['start', 'followUp'],
+      );
+      expect(planner.planCalls, 2);
+      expect(
+        planner.capturedPlannerMessages.last
+            ?.where((message) => message.role == MessageRole.user)
+            .map((message) => message.text)
+            .toList(),
+        ['第一问', '请顺着刚才的中断继续'],
+      );
     });
 
     test('emits scoped reasoning for tool-use and final-answer decisions',
@@ -247,7 +412,7 @@ void main() {
         decisionToolCallExecutor: _FakeDecisionToolCallExecutor(),
         limits: const AgentLoopLimits(maxIterations: 4),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -351,7 +516,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -482,7 +647,7 @@ void main() {
         ),
         decisionToolCallExecutor: fakeExecutor,
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -624,7 +789,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -699,7 +864,7 @@ void main() {
         limits:
             const AgentLoopLimits(maxIterations: 4, maxConsecutiveFailures: 1),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -759,7 +924,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .resumeAfterConfirmation(
@@ -860,7 +1025,7 @@ void main() {
         limits:
             const AgentLoopLimits(maxIterations: 4, maxConsecutiveFailures: 2),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -1027,7 +1192,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxIterations: 5),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -1155,7 +1320,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -1226,7 +1391,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .resumeAfterConfirmation(
@@ -1307,7 +1472,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxIterations: 2),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .resumeAfterConfirmation(
@@ -1409,7 +1574,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxIterations: 2),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .resumeAfterConfirmation(
@@ -1492,7 +1657,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxIterations: 2),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       await harness
           .resumeAfterConfirmation(
@@ -1566,7 +1731,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxIterations: 2),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       await expectLater(
         harness
@@ -1641,7 +1806,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxConsecutiveFailures: 1),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .resumeAfterConfirmation(
@@ -1698,7 +1863,7 @@ void main() {
           executeResult: const ToolPreparationResult.noTool(),
         ),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       await expectLater(
         harness
@@ -1793,7 +1958,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -1885,7 +2050,7 @@ void main() {
         toolCallService: toolCallService,
         limits: const AgentLoopLimits(maxIterations: 4),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .resumeAfterQuestionAnswered(
@@ -2022,7 +2187,7 @@ void main() {
         ]),
         limits: const AgentLoopLimits(maxIterations: 4),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -2133,7 +2298,7 @@ void main() {
         sessionContextService: sessionContextService,
         limits: const AgentLoopLimits(maxIterations: 4),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -2236,7 +2401,7 @@ void main() {
         ]),
         limits: const AgentLoopLimits(maxIterations: 4),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -2396,7 +2561,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxIterations: 5),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -2519,7 +2684,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final suspended = await harness
           .runTurn(
@@ -2629,7 +2794,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxIterations: 1),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -2706,7 +2871,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -2756,7 +2921,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxToolCallsPerTurn: 3),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -2806,7 +2971,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxDuration: Duration(minutes: 1)),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -2888,7 +3053,7 @@ void main() {
         ]),
         limits: const AgentLoopLimits(maxIterations: 4),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -2944,7 +3109,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -3040,7 +3205,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       await harness
           .runTurn(
@@ -3128,7 +3293,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       await harness
           .runTurn(
@@ -3209,7 +3374,7 @@ void main() {
         ),
         limits: const AgentLoopLimits(maxIterations: 4),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -3375,7 +3540,7 @@ void main() {
         ]),
         limits: const AgentLoopLimits(maxIterations: 4),
         chatStorage: _NoopChatStorage(),
-);
+      );
 
       final emitted = await harness
           .runTurn(
@@ -3549,7 +3714,23 @@ class _RecordingDecisionPlannerService extends AgentPlannerService {
   }) async {
     planCalls += 1;
     capturedPlannerMessages.add(
-      carriers.isEmpty ? null : [for (final c in carriers) if (c is SyntheticCarrier) ChatMessage(text: c.content, role: c.role == SyntheticRole.user ? MessageRole.user : c.role == SyntheticRole.system ? MessageRole.system : MessageRole.user) else if (c is RawAssistantCarrier) ChatMessage(text: (c.rawJson['content'] as String?) ?? '', role: MessageRole.assistant)],
+      carriers.isEmpty
+          ? null
+          : [
+              for (final c in carriers)
+                if (c is SyntheticCarrier)
+                  ChatMessage(
+                      text: c.content,
+                      role: c.role == SyntheticRole.user
+                          ? MessageRole.user
+                          : c.role == SyntheticRole.system
+                              ? MessageRole.system
+                              : MessageRole.user)
+                else if (c is RawAssistantCarrier)
+                  ChatMessage(
+                      text: (c.rawJson['content'] as String?) ?? '',
+                      role: MessageRole.assistant)
+            ],
     );
     final decision = decisions.removeFirst();
     if (!fillMissingRuntimeMetadata) {
@@ -3560,6 +3741,46 @@ class _RecordingDecisionPlannerService extends AgentPlannerService {
           decision.providerStyle ?? ChatTurnProviderStyle.openaiResponses,
       modelName: decision.modelName ?? 'gpt-5.4',
     );
+  }
+}
+
+class _QueueingDecisionPlannerService extends _RecordingDecisionPlannerService {
+  final FollowUpDispatchQueue queue;
+  final int queueAfterCall;
+  final SendMessageRequest queuedRequest;
+
+  _QueueingDecisionPlannerService({
+    required this.queue,
+    required this.queueAfterCall,
+    required this.queuedRequest,
+    required List<ModelTurnDecision> decisions,
+  }) : super(decisions);
+
+  @override
+  Future<ModelTurnDecision?> planNextDecision({
+    required ChatTurn turn,
+    required List<ChatEvent> transcript,
+    required List<ChatTurnStep> steps,
+    required ChatConfig config,
+    required AgentLoopLimits limits,
+    required List<PlannerContextCarrier> carriers,
+    required ChatTurnProviderStyle activeApiStyle,
+    required bool currentTurnRunning,
+  }) async {
+    final decision = await super.planNextDecision(
+      turn: turn,
+      transcript: transcript,
+      steps: steps,
+      config: config,
+      limits: limits,
+      carriers: carriers,
+      activeApiStyle: activeApiStyle,
+      currentTurnRunning: currentTurnRunning,
+    );
+    if (planCalls == queueAfterCall) {
+      queue.enqueue(groupId: turn.groupId, request: queuedRequest);
+    }
+    return decision;
   }
 }
 
@@ -4183,7 +4404,9 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
     required int turnId,
     required int groupId,
     required String content,
+    ChatEventUserMessageKind kind = ChatEventUserMessageKind.start,
     List<ChatAttachment> attachments = const <ChatAttachment>[],
+    Map<String, dynamic>? extraPayloadJson,
   }) async {
     return _append(
       turnId: turnId,
@@ -4191,6 +4414,13 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
       eventType: ChatEventType.userMessage,
       role: MessageRole.user,
       content: content,
+      payloadJson: {
+        'userMessageKind': kind.name,
+        ...?extraPayloadJson,
+        if (attachments.isNotEmpty)
+          'attachments':
+              attachments.map((attachment) => attachment.toJson()).toList(),
+      },
     );
   }
 
@@ -4692,7 +4922,8 @@ class _NoopChatStorage implements ChatStorage {
       );
 
   @override
-  Future<int> insertSessionRuntimeConfig(SessionRuntimeConfig config) async => 1;
+  Future<int> insertSessionRuntimeConfig(SessionRuntimeConfig config) async =>
+      1;
 
   @override
   Future<SessionRuntimeConfig?> getSessionRuntimeConfigByGroup(
@@ -4746,7 +4977,8 @@ class _NoopChatStorage implements ChatStorage {
   Future<void> insertMessageAttachments(
     int messageId,
     List<ChatAttachment> attachments,
-  ) => throw UnimplementedError();
+  ) =>
+      throw UnimplementedError();
 
   @override
   Future<List<ChatAttachment>> getMessageAttachments(int messageId) =>

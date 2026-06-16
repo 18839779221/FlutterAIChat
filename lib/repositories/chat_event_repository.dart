@@ -32,7 +32,9 @@ class ChatEventRepository {
     required int turnId,
     required int groupId,
     required String content,
+    ChatEventUserMessageKind kind = ChatEventUserMessageKind.start,
     List<ChatAttachment> attachments = const <ChatAttachment>[],
+    Map<String, dynamic>? extraPayloadJson,
   }) {
     if (attachments.isNotEmpty) {
       Logger.temp(
@@ -43,7 +45,8 @@ class ChatEventRepository {
           'turnId': turnId,
           'groupId': groupId,
           'attachmentCount': attachments.length,
-          'localIds': attachments.map((attachment) => attachment.localId).toList(),
+          'localIds':
+              attachments.map((attachment) => attachment.localId).toList(),
           'hasProviderDataUrl': attachments
               .map(
                 (attachment) =>
@@ -62,12 +65,13 @@ class ChatEventRepository {
       eventType: ChatEventType.userMessage,
       role: MessageRole.user,
       content: content,
-      payloadJson: attachments.isEmpty
-          ? null
-          : {
-              'attachments':
-                  attachments.map((attachment) => attachment.toJson()).toList(),
-            },
+      payloadJson: {
+        'userMessageKind': kind.name,
+        ...?extraPayloadJson,
+        if (attachments.isNotEmpty)
+          'attachments':
+              attachments.map((attachment) => attachment.toJson()).toList(),
+      },
     );
   }
 

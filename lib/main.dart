@@ -40,6 +40,7 @@ import 'services/turn_harness.dart';
 import 'services/turn_verifier.dart';
 import 'services/tool_call_service.dart';
 import 'services/default_tool_adapters.dart';
+import 'services/follow_up_dispatch_queue.dart';
 import 'services/transcript_builder_service.dart';
 import 'services/tool_executor.dart';
 import 'services/tool_policy_service.dart';
@@ -88,6 +89,7 @@ void main() async {
     late final ChatTraceRecorder traceRecorder;
     late final ChatService chatService;
     late final TurnHarness turnHarness;
+    late final FollowUpDispatchQueue followUpDispatchQueue;
     traceRecorder = ChatTraceRecorder();
     await storage.testDatabaseConnection();
     final chatCompletionsAdapterType =
@@ -231,6 +233,7 @@ void main() async {
       llm: llm,
       toolCallService: toolCallService,
     );
+    followUpDispatchQueue = FollowUpDispatchQueue();
     final turnRepository = ChatTurnRepository(storage);
     final turnStepRepository = ChatTurnStepRepository(storage);
     final eventRepository = ChatEventRepository(storage);
@@ -284,6 +287,7 @@ void main() async {
       toolCallService: toolCallService,
       chatStorage: storage,
       sessionContextService: sessionContextService,
+      followUpDispatchQueue: followUpDispatchQueue,
     );
 
     // 创建一个自定义的ProviderContainer来添加覆盖
@@ -293,6 +297,7 @@ void main() async {
         sharedPreferencesProvider.overrideWithValue(preferences),
         appSettingsRepositoryProvider.overrideWithValue(settingsRepository),
         databaseProvider.overrideWithValue(storage),
+        followUpDispatchQueueProvider.overrideWithValue(followUpDispatchQueue),
         chatAttachmentPickerServiceProvider.overrideWithValue(
           ImagePickerChatAttachmentPickerService(),
         ),

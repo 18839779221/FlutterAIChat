@@ -18,6 +18,7 @@ import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_timeline_projection_service.dart';
 import 'package:ai_chat/services/chat_timeline_order_anchor_store.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
+import 'package:ai_chat/services/follow_up_dispatch_queue.dart';
 import 'package:ai_chat/services/latest_message_running_status_resolver.dart';
 import 'package:ai_chat/services/model_budget_registry.dart';
 import 'package:ai_chat/services/model_capability_resolver.dart';
@@ -99,7 +100,8 @@ final chatAttachmentPickerServiceProvider =
 final chatAttachmentStorageServiceProvider =
     Provider<ChatAttachmentStorageService?>((ref) => null);
 
-final fileToolRootServiceProvider = Provider<FileToolRootService?>((ref) => null);
+final fileToolRootServiceProvider =
+    Provider<FileToolRootService?>((ref) => null);
 
 final chatAttachmentHostFileResolverProvider =
     Provider<ChatAttachmentHostFileResolver?>((ref) {
@@ -152,6 +154,10 @@ final speechToTextServiceProvider = Provider<SpeechToTextService?>((ref) {
 
 final traceRecorderProvider = Provider<ChatTraceRecorder>((ref) {
   return ChatTraceRecorder();
+});
+
+final followUpDispatchQueueProvider = Provider<FollowUpDispatchQueue>((ref) {
+  return FollowUpDispatchQueue();
 });
 
 final activeTurnStatusResolverProvider =

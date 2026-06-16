@@ -37,8 +37,7 @@ void main() {
         databaseName: 'session_context_service_date_reminder_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(
-            title: 'Session Context Date Reminder'),
+        ChatGroup(title: 'Session Context Date Reminder'),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -174,8 +173,7 @@ void main() {
         databaseName: 'session_context_service_no_eager_summary_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(
-            title: 'Session Context No Eager Summary'),
+        ChatGroup(title: 'Session Context No Eager Summary'),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -267,8 +265,7 @@ void main() {
         databaseName: 'session_context_service_compress_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(
-            title: 'Session Context Compress'),
+        ChatGroup(title: 'Session Context Compress'),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -571,8 +568,7 @@ void main() {
         databaseName: 'session_context_service_recent_working_set_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(
-            title: 'Session Context Recent Working Set'),
+        ChatGroup(title: 'Session Context Recent Working Set'),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -718,8 +714,7 @@ void main() {
             'session_context_service_no_duplicate_current_turn_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(
-            title: 'Session Context Current Turn Boundary'),
+        ChatGroup(title: 'Session Context Current Turn Boundary'),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -801,8 +796,7 @@ void main() {
         databaseName: 'session_context_service_recent_ratio_limit_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(
-            title: 'Session Context Recent Ratio Limit'),
+        ChatGroup(title: 'Session Context Recent Ratio Limit'),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -919,8 +913,7 @@ void main() {
             'session_context_service_summary_failure_fallback_test.db',
       );
       final groupId = await storage.insertGroup(
-        ChatGroup(
-            title: 'Session Context Summary Failure Fallback'),
+        ChatGroup(title: 'Session Context Summary Failure Fallback'),
       );
       final turnRepository = ChatTurnRepository(storage);
       final eventRepository = ChatEventRepository(storage);
@@ -1730,7 +1723,8 @@ void main() {
       );
       expect(
         syntheticUsers.any(
-          (carrier) => carrier.content ==
+          (carrier) =>
+              carrier.content ==
               'I\'ll create an interactive visualization of the iOS architecture. Let me first get the design contract.',
         ),
         isFalse,
@@ -1744,6 +1738,117 @@ void main() {
       expect(
         toolResults.single.toolCallId,
         'call_00_Wb4vfroJvsouMPg95VfJ6175',
+      );
+
+      await storage.deleteGroup(groupId);
+    });
+
+    test(
+        'buildPlannerCarriers keeps interrupted partial assistant snapshot and reminder together',
+        () async {
+      final storage = DatabaseHelper(
+        databaseName:
+            'session_context_service_interrupted_partial_context_test.db',
+      );
+      final groupId = await storage.insertGroup(ChatGroup(title: 'partial'));
+      final turnId = await storage.insertTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.cancelled,
+          userInput: '继续刚才的回答',
+          providerStyle: ChatTurnProviderStyle.openaiResponses,
+        ),
+      );
+      final service = SessionContextService(
+        chatTurnRepository: ChatTurnRepository(storage),
+        chatEventRepository: ChatEventRepository(storage),
+        snapshotRepository: SessionContextSnapshotRepository(storage),
+        chatStorage: storage,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw UnimplementedError(),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+      );
+
+      final carriers = await service.buildPlannerCarriers(
+        groupId: groupId,
+        currentTurnId: turnId,
+        currentTurnTranscript: [
+          ChatEvent(
+            turnId: turnId,
+            groupId: groupId,
+            sequence: 1,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content: '继续刚才的回答',
+            payloadJson: const {'userMessageKind': 'start'},
+          ),
+          ChatEvent(
+            turnId: turnId,
+            groupId: groupId,
+            sequence: 2,
+            eventType: ChatEventType.assistantTurnSnapshot,
+            role: MessageRole.assistant,
+            payloadJson: const {
+              'apiStyle': 'openaiResponses',
+              'rawAssistantMessage': {
+                'interruptedPartialRecovery': true,
+                'output': [
+                  {
+                    'type': 'message',
+                    'role': 'assistant',
+                    'content': [
+                      {
+                        'type': 'output_text',
+                        'text': '这是半截回答',
+                        'annotations': [],
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          ),
+          ChatEvent(
+            turnId: turnId,
+            groupId: groupId,
+            sequence: 3,
+            eventType: ChatEventType.userMessage,
+            role: MessageRole.user,
+            content:
+                'The previous response was interrupted before it completed.',
+            payloadJson: const {'userMessageKind': 'systemReminder'},
+          ),
+        ],
+        config: ChatConfig(systemPrompt: ''),
+      );
+
+      final userCarriers = carriers
+          .whereType<SyntheticCarrier>()
+          .where((carrier) => carrier.role == SyntheticRole.user)
+          .toList(growable: false);
+      expect(
+        userCarriers.any((carrier) => carrier.content == '继续刚才的回答'),
+        isTrue,
+      );
+      expect(carriers.whereType<RawAssistantCarrier>(), hasLength(1));
+      expect(
+        carriers.whereType<RawAssistantCarrier>().single.rawJson['output'],
+        isNotEmpty,
+      );
+      expect(
+        userCarriers.any(
+          (carrier) =>
+              carrier.content ==
+              'The previous response was interrupted before it completed.',
+        ),
+        isTrue,
       );
 
       await storage.deleteGroup(groupId);

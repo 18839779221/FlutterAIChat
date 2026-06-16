@@ -86,9 +86,9 @@ void main() {
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
-            id: groupId,
-            title: 'group',
-          );
+        id: groupId,
+        title: 'group',
+      );
 
       final previewNotifier =
           container.read(runtimeStreamingPreviewStateProvider.notifier);
@@ -112,12 +112,14 @@ void main() {
       );
       await Future<void>.delayed(const Duration(milliseconds: 140));
 
-      final sendFuture = container.read(chatSendCoordinatorProvider).sendMessage(
-            '打一声招呼',
-            scheduleAutoSummary: () {},
-            cancelActiveStream:
-                container.read(chatControllerProvider).cancelStreamSubscription,
-          );
+      final sendFuture =
+          container.read(chatSendCoordinatorProvider).sendMessage(
+                '打一声招呼',
+                scheduleAutoSummary: () {},
+                cancelActiveStream: container
+                    .read(chatControllerProvider)
+                    .cancelStreamSubscription,
+              );
 
       await _waitForSendPhase(container, ChatSendPhase.streamingResponse);
       await Future<void>.delayed(const Duration(milliseconds: 30));
@@ -218,9 +220,9 @@ void main() {
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
-            id: groupId,
-            title: 'group',
-          );
+        id: groupId,
+        title: 'group',
+      );
 
       await container.read(chatSendCoordinatorProvider).sendMessageRequest(
             SendMessageRequest(
@@ -266,9 +268,9 @@ void main() {
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
-            id: groupId,
-            title: 'group',
-          );
+        id: groupId,
+        title: 'group',
+      );
 
       await container.read(chatSendCoordinatorProvider).sendMessage(
             'trace this turn',
@@ -278,9 +280,8 @@ void main() {
           );
 
       expect(harness.recordedTurns, isNotEmpty);
-      final runtimeContext =
-          harness.recordedTurns.single.providerStateJson?['runtime_context']
-              as Map<String, dynamic>?;
+      final runtimeContext = harness.recordedTurns.single
+          .providerStateJson?['runtime_context'] as Map<String, dynamic>?;
       final traceTurnId = runtimeContext?['trace_turn_id'] as String?;
       expect(traceTurnId, isNotNull);
       expect(traceTurnId, isNotEmpty);
@@ -306,9 +307,9 @@ void main() {
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
-            id: groupId,
-            title: 'group',
-          );
+        id: groupId,
+        title: 'group',
+      );
 
       await container.read(chatSendCoordinatorProvider).sendMessageRequest(
             SendMessageRequest(
@@ -377,10 +378,12 @@ void main() {
 
       expect(container.read(currentGroupProvider), isNotNull);
       final allMessages = container.read(messagesProvider);
-      expect(allMessages.where((message) => message.role == MessageRole.user), hasLength(1));
+      expect(allMessages.where((message) => message.role == MessageRole.user),
+          hasLength(1));
     });
 
-    test('persists current draft session runtime config when first send creates the group',
+    test(
+        'persists current draft session runtime config when first send creates the group',
         () async {
       final databaseHelper = _createTestDatabaseHelper();
       final harness = _FakeTurnHarness(
@@ -417,7 +420,8 @@ void main() {
       expect(runtimeConfig, isNotNull);
       expect(runtimeConfig!.providerId, 'anthropic');
       expect(runtimeConfig.modelId, 'claude-sonnet-4-5');
-      expect(runtimeConfig.providerStyle, ChatTurnProviderStyle.anthropicMessages);
+      expect(
+          runtimeConfig.providerStyle, ChatTurnProviderStyle.anthropicMessages);
     });
 
     test('passes current session runtime override into turn config', () async {
@@ -465,7 +469,8 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final groupId = await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       container.read(currentGroupProvider.notifier).state =
           ChatGroup(id: groupId, title: 'group');
       container.read(currentSessionRuntimeConfigProvider.notifier).state =
@@ -488,7 +493,8 @@ void main() {
           harness.recordedConfigs.single.runtimeConfigOverride;
       expect(runtimeOverride, isNotNull);
       expect(runtimeOverride?.apiKey, 'session-key');
-      expect(runtimeOverride?.apiUrl, 'https://session.example/v1/chat/completions');
+      expect(runtimeOverride?.apiUrl,
+          'https://session.example/v1/chat/completions');
       expect(runtimeOverride?.model, 'session-model');
       expect(runtimeOverride?.apiStyle, ApiStyle.chatCompletions);
     });
@@ -525,7 +531,8 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final groupId = await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
       container.read(currentGroupProvider.notifier).state =
           ChatGroup(id: groupId, title: 'group');
       container.read(currentSessionRuntimeConfigProvider.notifier).state =
@@ -572,9 +579,9 @@ void main() {
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
-            id: groupId,
-            title: 'group',
-          );
+        id: groupId,
+        title: 'group',
+      );
 
       await container.read(chatSendCoordinatorProvider).sendMessageRequest(
             SendMessageRequest(
@@ -653,9 +660,9 @@ void main() {
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
-            id: groupId,
-            title: 'group',
-          );
+        id: groupId,
+        title: 'group',
+      );
 
       await container.read(chatSendCoordinatorProvider).sendMessageRequest(
             SendMessageRequest(
@@ -677,9 +684,8 @@ void main() {
           );
 
       expect(harness.recordedTurns, isNotEmpty);
-      final runtimeContext =
-          harness.recordedTurns.single.providerStateJson?['runtime_context']
-              as Map<String, dynamic>?;
+      final runtimeContext = harness.recordedTurns.single
+          .providerStateJson?['runtime_context'] as Map<String, dynamic>?;
       final rawAttachments = runtimeContext?['user_attachments'] as List?;
       expect(rawAttachments, isNotNull);
       expect(rawAttachments, hasLength(1));
@@ -734,9 +740,9 @@ void main() {
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
-            id: groupId,
-            title: 'group',
-          );
+        id: groupId,
+        title: 'group',
+      );
 
       final previewNotifier =
           container.read(runtimeStreamingPreviewStateProvider.notifier);
@@ -775,7 +781,8 @@ void main() {
       expect(assistantMessages, hasLength(1));
       expect(assistantMessages.single.text, '你好，世界');
       expect(assistantMessages.single.status, MessageStatus.completed);
-      expect(container.read(runtimeStreamingPreviewStateProvider).isEmpty, isTrue);
+      expect(
+          container.read(runtimeStreamingPreviewStateProvider).isEmpty, isTrue);
       expect(container.read(runtimeAssistantDraftProvider), isNull);
 
       final persisted = await databaseHelper.getMessagesByGroup(groupId);
@@ -826,16 +833,18 @@ void main() {
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
-            id: groupId,
-            title: 'group',
-          );
+        id: groupId,
+        title: 'group',
+      );
 
-      final sendFuture = container.read(chatSendCoordinatorProvider).sendMessage(
-            '打一声招呼',
-            scheduleAutoSummary: () {},
-            cancelActiveStream:
-                container.read(chatControllerProvider).cancelStreamSubscription,
-          );
+      final sendFuture =
+          container.read(chatSendCoordinatorProvider).sendMessage(
+                '打一声招呼',
+                scheduleAutoSummary: () {},
+                cancelActiveStream: container
+                    .read(chatControllerProvider)
+                    .cancelStreamSubscription,
+              );
 
       await _waitForSendPhase(container, ChatSendPhase.streamingResponse);
 
@@ -915,9 +924,9 @@ void main() {
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
-            id: groupId,
-            title: 'group',
-          );
+        id: groupId,
+        title: 'group',
+      );
 
       final previewNotifier =
           container.read(runtimeStreamingPreviewStateProvider.notifier);
@@ -954,7 +963,8 @@ void main() {
           );
       await Future<void>.delayed(const Duration(milliseconds: 30));
 
-      expect(container.read(runtimeStreamingPreviewStateProvider).isEmpty, isTrue);
+      expect(
+          container.read(runtimeStreamingPreviewStateProvider).isEmpty, isTrue);
       final assistant = container
           .read(messagesProvider)
           .lastWhere((message) => message.role == MessageRole.assistant);
@@ -962,7 +972,9 @@ void main() {
       expect(assistant.status, MessageStatus.completed);
     });
 
-    test('explicit slash skill injects reminder before real user message in transcript', () async {
+    test(
+        'explicit slash skill injects reminder before real user message in transcript',
+        () async {
       final databaseHelper = _createTestDatabaseHelper();
       final harness = _FakeTurnHarness(
         databaseHelper: databaseHelper,
@@ -995,7 +1007,8 @@ void main() {
               id: 'verify',
               name: 'verify',
               description: 'Run project verification after code changes.',
-              bodyText: 'After code changes, run tests before claiming success.',
+              bodyText:
+                  'After code changes, run tests before claiming success.',
               skillRootPath: '/skills/installed/verify',
               entryFilePath: '/skills/installed/verify/SKILL.md',
             ),
@@ -1018,8 +1031,8 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 30));
 
       expect(harness.recordedTurns.single.userInput, '请检查这次改动');
-      final runtimeContext = harness.recordedTurns.single.providerStateJson?['runtime_context']
-          as Map<String, dynamic>?;
+      final runtimeContext = harness.recordedTurns.single
+          .providerStateJson?['runtime_context'] as Map<String, dynamic>?;
       expect(runtimeContext, isNotNull);
       expect(
         runtimeContext?['explicit_skill_reminder'],
@@ -1127,7 +1140,8 @@ void main() {
         container
             .read(messagesProvider)
             .where((message) => message.role == MessageRole.assistant)
-            .where((message) => message.contentType == MessageContentType.plainText),
+            .where((message) =>
+                message.contentType == MessageContentType.plainText),
         hasLength(1),
       );
     });
@@ -1317,7 +1331,8 @@ void main() {
       );
     });
 
-    test('cancelling a streaming assistant turn with run failure falls back to failed',
+    test(
+        'cancelling a streaming assistant turn with run failure falls back to failed',
         () async {
       final databaseHelper = _createTestDatabaseHelper();
       final afterEventsGate = Completer<void>();
@@ -1429,8 +1444,7 @@ void main() {
       expect(turns.single.stopReason, 'cancelled_by_user');
     });
 
-    test(
-        'cancelled preview-driven response projects interrupted partial text',
+    test('cancelled preview-driven response projects interrupted partial text',
         () async {
       final databaseHelper = _createTestDatabaseHelper();
       final afterEventsGate = Completer<void>();
@@ -1460,9 +1474,9 @@ void main() {
         ),
       );
       container.read(currentGroupProvider.notifier).state = ChatGroup(
-            id: groupId,
-            title: 'group',
-          );
+        id: groupId,
+        title: 'group',
+      );
 
       final previewNotifier =
           container.read(runtimeStreamingPreviewStateProvider.notifier);
@@ -1514,6 +1528,27 @@ void main() {
         container.read(runtimeStreamingPreviewStateProvider).isEmpty,
         isTrue,
       );
+
+      final turnId = harness.recordedTurns.single.id!;
+      final transcript =
+          await ChatEventRepository(databaseHelper).listEventsByTurn(turnId);
+      final interruptedSnapshot = transcript.singleWhere(
+        (event) => event.eventType == ChatEventType.assistantTurnSnapshot,
+      );
+      expect(
+        interruptedSnapshot.payloadJson?['rawAssistantMessage']
+            ?['interruptedPartialRecovery'],
+        isTrue,
+      );
+      final reminder = transcript.singleWhere(
+        (event) =>
+            event.eventType == ChatEventType.userMessage &&
+            event.userMessageKind == ChatEventUserMessageKind.systemReminder,
+      );
+      expect(
+        reminder.content,
+        'User interrupted the previous response before it completed.',
+      );
     });
 
     test('cancelled turn during preparing appends visible cancellation summary',
@@ -1558,6 +1593,134 @@ void main() {
         );
         expect(assistant.status, MessageStatus.interrupted);
       }
+    });
+
+    test(
+        'queue follow-up does not cancel the active turn or persist immediately',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final afterEventsGate = Completer<void>();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.assistantTextDelta,
+            role: MessageRole.assistant,
+            content: '第一轮还在继续',
+          ),
+        ],
+        afterEventsGate: afterEventsGate,
+      );
+      final container = await _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      final firstSend = container.read(chatSendCoordinatorProvider).sendMessage(
+            '第一问',
+            scheduleAutoSummary: () {},
+            cancelActiveStream:
+                container.read(chatControllerProvider).cancelStreamSubscription,
+          );
+
+      await _waitForSendPhase(container, ChatSendPhase.streamingResponse);
+
+      await container.read(chatSendCoordinatorProvider).sendMessageRequest(
+            const SendMessageRequest(
+              text: '第二问排队',
+              dispatchMode: SendMessageDispatchMode.queue,
+            ),
+            scheduleAutoSummary: () {},
+            cancelActiveStream:
+                container.read(chatControllerProvider).cancelStreamSubscription,
+          );
+
+      final persistedWhileRunning =
+          await databaseHelper.getMessagesByGroup(groupId);
+      expect(
+        persistedWhileRunning
+            .where((message) => message.isUser)
+            .map((m) => m.text),
+        ['第一问'],
+      );
+      expect(harness.recordedTurns, hasLength(1));
+      expect(
+          container.read(sendPhaseProvider), ChatSendPhase.streamingResponse);
+
+      afterEventsGate.complete();
+      await firstSend.timeout(const Duration(seconds: 1));
+    });
+
+    test(
+        'steer follow-up does not persist immediately while the turn is still running',
+        () async {
+      final databaseHelper = _createTestDatabaseHelper();
+      final afterEventsGate = Completer<void>();
+      final harness = _FakeTurnHarness(
+        databaseHelper: databaseHelper,
+        events: [
+          ChatEvent(
+            turnId: 1,
+            groupId: 1,
+            sequence: 1,
+            eventType: ChatEventType.assistantTextDelta,
+            role: MessageRole.assistant,
+            content: '当前还在执行',
+          ),
+        ],
+        afterEventsGate: afterEventsGate,
+      );
+      final container = await _createContainer(
+        databaseHelper: databaseHelper,
+        harness: harness,
+      );
+      addTearDown(container.dispose);
+
+      final groupId =
+          await databaseHelper.insertGroup(ChatGroup(title: 'group'));
+      container.read(currentGroupProvider.notifier).state =
+          ChatGroup(id: groupId, title: 'group');
+
+      final firstSend = container.read(chatSendCoordinatorProvider).sendMessage(
+            '第一问',
+            scheduleAutoSummary: () {},
+            cancelActiveStream:
+                container.read(chatControllerProvider).cancelStreamSubscription,
+          );
+
+      await _waitForSendPhase(container, ChatSendPhase.streamingResponse);
+
+      await container.read(chatSendCoordinatorProvider).sendMessageRequest(
+            const SendMessageRequest(
+              text: '引导当前对话',
+              dispatchMode: SendMessageDispatchMode.steer,
+            ),
+            scheduleAutoSummary: () {},
+            cancelActiveStream:
+                container.read(chatControllerProvider).cancelStreamSubscription,
+          );
+
+      final persistedWhileRunning =
+          await databaseHelper.getMessagesByGroup(groupId);
+      expect(
+        persistedWhileRunning
+            .where((message) => message.isUser)
+            .map((m) => m.text),
+        ['第一问'],
+      );
+      expect(harness.recordedTurns, hasLength(1));
+
+      afterEventsGate.complete();
+      await firstSend.timeout(const Duration(seconds: 1));
     });
 
     test('cancelled turn marks active tool workflow message as cancelled',
@@ -1877,9 +2040,9 @@ Future<ProviderContainer> _createContainer({
   final preferences = await SharedPreferences.getInstance();
   final resolvedSettingsRepository = settingsRepository ??
       AppSettingsRepository(
-    preferences,
-    localDefaultsLoader: () async => null,
-  );
+        preferences,
+        localDefaultsLoader: () async => null,
+      );
   final resolvedLlm = llm ?? _NoopBaseLLM();
   return ProviderContainer(
     overrides: [
@@ -2083,7 +2246,8 @@ class _FakeTurnHarness extends TurnHarness {
     if (finalStatus == ChatTurnStatus.completed) {
       await ChatTurnRepository(databaseHelper).markCompleted(
         turnId,
-        finalResponseText: resumeAfterQuestionAnsweredEvents.lastOrNull?.content,
+        finalResponseText:
+            resumeAfterQuestionAnsweredEvents.lastOrNull?.content,
       );
     } else if (finalStatus == ChatTurnStatus.failed) {
       await ChatTurnRepository(databaseHelper).markFailed(
@@ -2109,7 +2273,8 @@ class _CatalogSkillRuntimeService extends SkillRuntimeService {
   final Map<String, _SkillFixture> skillByLookup;
 
   @override
-  Future<List<SkillCatalogEntry>> listSkillCatalogEntries() async => availableCatalog;
+  Future<List<SkillCatalogEntry>> listSkillCatalogEntries() async =>
+      availableCatalog;
 
   @override
   Future<SkillDescriptor?> loadSkillById(String skillId) async {
@@ -2205,7 +2370,6 @@ class _NoopBaseLLM implements BaseLLM {
 
   @override
   Future<String> summarizeConversation(List<ChatMessage> messages) async => '';
-
 }
 
 class _ImageUnsupportedBaseLLM extends _NoopBaseLLM {

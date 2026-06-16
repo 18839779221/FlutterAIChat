@@ -8,6 +8,7 @@ import '../models/agent/agent_loop_limits.dart';
 import '../models/chat_event.dart';
 import '../models/chat/chat_attachment.dart';
 import '../models/chat_message.dart';
+import '../models/chat/send_message_request.dart';
 import '../models/chat_turn.dart';
 import '../models/interaction/ask_user_question_request.dart';
 import '../models/context/planner_context_carrier.dart';
@@ -23,6 +24,7 @@ import '../utils/logger.dart';
 import 'agent_planner_service.dart';
 import 'chat_service.dart';
 import 'decision_tool_call_executor.dart';
+import 'follow_up_dispatch_queue.dart';
 import 'turn_verifier.dart';
 import 'tool_call_service.dart';
 import 'transcript_builder_service.dart';
@@ -32,6 +34,7 @@ import 'session_runtime_marker_service.dart';
 
 class TurnHarness {
   static const _tag = 'TurnHarness';
+  static const _seededUserMessagesRuntimeContextKey = 'seeded_user_messages';
   final AgentPlannerService _plannerService;
   final ChatTurnRepository _turnRepository;
   final ChatTurnStepRepository? _stepRepository;
@@ -43,6 +46,7 @@ class TurnHarness {
   final AgentLoopLimits _limits;
   final SessionContextService? _sessionContextService;
   final ChatStorage _chatStorage;
+  final FollowUpDispatchQueue? _followUpDispatchQueue;
 
   TurnHarness({
     required AgentPlannerService plannerService,
@@ -54,6 +58,7 @@ class TurnHarness {
     required ToolCallService toolCallService,
     required ChatStorage chatStorage,
     SessionContextService? sessionContextService,
+    FollowUpDispatchQueue? followUpDispatchQueue,
     DecisionToolCallExecutor? decisionToolCallExecutor,
     AgentLoopLimits limits = const AgentLoopLimits(),
   })  : _plannerService = plannerService,
@@ -73,6 +78,7 @@ class TurnHarness {
               limits: limits,
             ),
         _sessionContextService = sessionContextService,
+        _followUpDispatchQueue = followUpDispatchQueue,
         _limits = limits;
 
   Stream<ChatEvent> runTurn({
@@ -100,15 +106,29 @@ class TurnHarness {
         turnId: turnId,
         groupId: turn.groupId,
         content: explicitSkillReminder.text,
+        kind: ChatEventUserMessageKind.systemReminder,
       );
     }
-    final userAttachments = _extractUserAttachments(turn);
-    yield await _eventRepository.appendUserMessage(
-      turnId: turnId,
-      groupId: turn.groupId,
-      content: turn.userInput,
-      attachments: userAttachments,
-    );
+    final seededUserMessages = _extractSeededUserMessages(turn);
+    if (seededUserMessages.isNotEmpty) {
+      for (final seed in seededUserMessages) {
+        yield await _eventRepository.appendUserMessage(
+          turnId: turnId,
+          groupId: turn.groupId,
+          content: seed.text,
+          kind: seed.kind,
+          attachments: seed.attachments,
+        );
+      }
+    } else {
+      final userAttachments = _extractUserAttachments(turn);
+      yield await _eventRepository.appendUserMessage(
+        turnId: turnId,
+        groupId: turn.groupId,
+        content: turn.userInput,
+        attachments: userAttachments,
+      );
+    }
 
     yield* _continueTurnLoop(
       turn: turn,
@@ -149,7 +169,8 @@ class TurnHarness {
         data: {
           'turnId': turn?.id,
           'groupId': turn?.groupId,
-          'runtimeContextKeys': runtimeContext.keys.map((key) => '$key').toList(),
+          'runtimeContextKeys':
+              runtimeContext.keys.map((key) => '$key').toList(),
         },
       );
       return const <ChatAttachment>[];
@@ -170,7 +191,8 @@ class TurnHarness {
         'turnId': turn?.id,
         'groupId': turn?.groupId,
         'attachmentCount': attachments.length,
-        'localIds': attachments.map((attachment) => attachment.localId).toList(),
+        'localIds':
+            attachments.map((attachment) => attachment.localId).toList(),
         'hasProviderDataUrl': attachments
             .map(
               (attachment) =>
@@ -183,6 +205,24 @@ class TurnHarness {
       },
     );
     return attachments;
+  }
+
+  List<_TurnUserMessageSeed> _extractSeededUserMessages(ChatTurn? turn) {
+    final runtimeContext =
+        turn?.providerStateJson?[SessionRuntimeMarkerService.runtimeContextKey];
+    if (runtimeContext is! Map) {
+      return const <_TurnUserMessageSeed>[];
+    }
+    final rawMessages = runtimeContext[_seededUserMessagesRuntimeContextKey];
+    if (rawMessages is! List) {
+      return const <_TurnUserMessageSeed>[];
+    }
+    return rawMessages
+        .whereType<Map>()
+        .map((item) => _TurnUserMessageSeed.fromJson(
+              Map<String, dynamic>.from(item),
+            ))
+        .toList(growable: false);
   }
 
   Stream<ChatEvent> resumeAfterConfirmation({
@@ -371,6 +411,11 @@ class TurnHarness {
         break;
       }
 
+      final insertedFollowUps =
+          await _consumeSteerFollowUpsBeforePlanner(currentTurn);
+      for (final event in insertedFollowUps) {
+        yield event;
+      }
       final transcript = await _transcriptBuilderService.loadTranscript(turnId);
       final compactionRestart = await _maybeAutoCompactAndRestart(
         turn: currentTurn,
@@ -457,7 +502,8 @@ class TurnHarness {
       final runtimeTurn = await _turnRepository.getTurn(turnId) ?? currentTurn;
       // Persist the provider's raw assistant message for round-trip replay
       // (spec 2026-05-22). One event per planner iteration with content.
-      final rawAssistantMessage = decision.providerState['raw_assistant_message'];
+      final rawAssistantMessage =
+          decision.providerState['raw_assistant_message'];
       if (rawAssistantMessage is Map<String, dynamic> &&
           decision.providerStyle != null) {
         yield await _eventRepository.appendAssistantTurnSnapshot(
@@ -700,6 +746,55 @@ class TurnHarness {
     }
   }
 
+  Future<List<ChatEvent>> _consumeSteerFollowUpsBeforePlanner(
+    ChatTurn turn,
+  ) async {
+    final queue = _followUpDispatchQueue;
+    final turnId = turn.id;
+    if (queue == null || turnId == null) {
+      return const <ChatEvent>[];
+    }
+    final pending = queue.takeSteerForPlanner(turn.groupId);
+    if (pending.isEmpty) {
+      return const <ChatEvent>[];
+    }
+    final existingEvents = await _eventRepository.listEventsByTurn(turnId);
+    final kind = _isStartUserSegment(existingEvents)
+        ? ChatEventUserMessageKind.start
+        : ChatEventUserMessageKind.followUp;
+    final appendedEvents = <ChatEvent>[];
+    for (final pendingEntry in pending) {
+      for (final request in _flattenPendingRequests(pendingEntry.request)) {
+        appendedEvents.add(await _eventRepository.appendUserMessage(
+          turnId: turnId,
+          groupId: turn.groupId,
+          content: request.text,
+          kind: kind,
+          attachments: request.attachments,
+        ));
+      }
+    }
+    return appendedEvents;
+  }
+
+  bool _isStartUserSegment(List<ChatEvent> events) {
+    return events
+        .every((event) => event.eventType == ChatEventType.userMessage);
+  }
+
+  List<SendMessageRequest> _flattenPendingRequests(SendMessageRequest request) {
+    return <SendMessageRequest>[
+      SendMessageRequest(
+        text: request.text,
+        attachments: request.attachments,
+        allowUnsupportedImageInputAttempt:
+            request.allowUnsupportedImageInputAttempt,
+        dispatchMode: request.dispatchMode,
+      ),
+      ...request.additionalStartMessages.expand(_flattenPendingRequests),
+    ];
+  }
+
   Future<_AutoCompactionRestartResult?> _maybeAutoCompactAndRestart({
     required ChatTurn turn,
     required List<ChatEvent> transcript,
@@ -714,7 +809,8 @@ class TurnHarness {
       return null;
     }
 
-    final compactionResult = await sessionContextService.applyActiveTurnCompaction(
+    final compactionResult =
+        await sessionContextService.applyActiveTurnCompaction(
       groupId: turn.groupId,
       currentTurnId: turn.id!,
       currentTurnTranscript: transcript,
@@ -915,12 +1011,16 @@ class TurnHarness {
       turnId: turnId,
       decision: decision,
     );
-    if ((messageId == null || messageId.isEmpty || blockId == null || blockId.isEmpty) &&
+    if ((messageId == null ||
+            messageId.isEmpty ||
+            blockId == null ||
+            blockId.isEmpty) &&
         logicalId == null) {
       return null;
     }
     return {
-      if (messageId != null && messageId.isNotEmpty) 'previewMessageId': messageId,
+      if (messageId != null && messageId.isNotEmpty)
+        'previewMessageId': messageId,
       if (blockId != null && blockId.isNotEmpty)
         'previewContentBlockId': blockId,
       if (logicalId != null) 'logicalId': logicalId,
@@ -977,7 +1077,8 @@ class TurnHarness {
     return 'toolText:$responseId';
   }
 
-  Map<String, dynamic>? _readStreamingPreviewIdentity(ModelTurnDecision decision) {
+  Map<String, dynamic>? _readStreamingPreviewIdentity(
+      ModelTurnDecision decision) {
     final identity = decision.providerState['streaming_preview_identity'];
     if (identity is Map<String, dynamic>) {
       return identity;
@@ -1145,7 +1246,8 @@ class TurnHarness {
     String? workspaceChangeReminder,
     String? workspaceId,
   }) async {
-    if ((workspaceChangeReminder == null || workspaceChangeReminder.trim().isEmpty) &&
+    if ((workspaceChangeReminder == null ||
+            workspaceChangeReminder.trim().isEmpty) &&
         (workspaceId == null || workspaceId.trim().isEmpty)) {
       return;
     }
@@ -1153,19 +1255,22 @@ class TurnHarness {
     if (turn == null) {
       return;
     }
-    final providerState = Map<String, dynamic>.from(turn.providerStateJson ?? const {});
+    final providerState =
+        Map<String, dynamic>.from(turn.providerStateJson ?? const {});
     final runtimeContext = Map<String, dynamic>.from(
       providerState[SessionRuntimeMarkerService.runtimeContextKey] as Map? ??
           const <String, dynamic>{},
     );
-    if (workspaceChangeReminder != null && workspaceChangeReminder.trim().isNotEmpty) {
+    if (workspaceChangeReminder != null &&
+        workspaceChangeReminder.trim().isNotEmpty) {
       runtimeContext[SessionRuntimeMarkerService.workspaceChangeReminderKey] =
           workspaceChangeReminder.trim();
     }
     if (workspaceId != null && workspaceId.trim().isNotEmpty) {
       runtimeContext['workspace_id'] = workspaceId.trim();
     }
-    providerState[SessionRuntimeMarkerService.runtimeContextKey] = runtimeContext;
+    providerState[SessionRuntimeMarkerService.runtimeContextKey] =
+        runtimeContext;
     await _turnRepository.updateRuntimeState(
       turnId,
       providerStyle: turn.providerStyle,
@@ -1253,10 +1358,47 @@ class TurnHarness {
       final answer = response.answersByQuestionId[question.id] ?? '';
       final title =
           question.header.trim().isEmpty ? question.id : question.header;
-      final normalizedAnswer = answer.trim().isEmpty ? '(skipped)' : answer.trim();
+      final normalizedAnswer =
+          answer.trim().isEmpty ? '(skipped)' : answer.trim();
       lines.add('- $title: $normalizedAnswer');
     }
     return lines.join('\n');
+  }
+}
+
+class _TurnUserMessageSeed {
+  const _TurnUserMessageSeed({
+    required this.text,
+    required this.kind,
+    this.attachments = const <ChatAttachment>[],
+  });
+
+  final String text;
+  final ChatEventUserMessageKind kind;
+  final List<ChatAttachment> attachments;
+
+  factory _TurnUserMessageSeed.fromJson(Map<String, dynamic> json) {
+    final kindName = json['kind']?.toString().trim();
+    final kind = ChatEventUserMessageKind.values.firstWhere(
+      (value) => value.name == kindName,
+      orElse: () => ChatEventUserMessageKind.start,
+    );
+    final rawAttachments = json['attachments'];
+    final attachments = rawAttachments is! List
+        ? const <ChatAttachment>[]
+        : rawAttachments
+            .whereType<Map>()
+            .map(
+              (item) => ChatAttachment.fromJson(
+                Map<String, dynamic>.from(item),
+              ),
+            )
+            .toList(growable: false);
+    return _TurnUserMessageSeed(
+      text: json['text']?.toString() ?? '',
+      kind: kind,
+      attachments: attachments,
+    );
   }
 }
 

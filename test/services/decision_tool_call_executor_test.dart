@@ -928,7 +928,9 @@ class _InMemoryChatEventRepository extends ChatEventRepository {
     required int turnId,
     required int groupId,
     required String content,
+    ChatEventUserMessageKind kind = ChatEventUserMessageKind.start,
     List<ChatAttachment> attachments = const <ChatAttachment>[],
+    Map<String, dynamic>? extraPayloadJson,
   }) async {
     return _append(turnId, groupId, ChatEventType.userMessage, content);
   }

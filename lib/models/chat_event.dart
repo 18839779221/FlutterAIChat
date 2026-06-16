@@ -22,6 +22,12 @@ enum ChatEventType {
   error,
 }
 
+enum ChatEventUserMessageKind {
+  start,
+  followUp,
+  systemReminder,
+}
+
 class ChatEvent {
   final int? id;
   final int turnId;
@@ -46,6 +52,17 @@ class ChatEvent {
     this.payloadJson,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
+
+  ChatEventUserMessageKind? get userMessageKind {
+    final raw = payloadJson?['userMessageKind']?.toString();
+    if (raw == null || raw.trim().isEmpty) {
+      return null;
+    }
+    return ChatEventUserMessageKind.values.firstWhere(
+      (value) => value.name == raw,
+      orElse: () => ChatEventUserMessageKind.start,
+    );
+  }
 
   ChatEvent copyWith({int? id}) {
     return ChatEvent(

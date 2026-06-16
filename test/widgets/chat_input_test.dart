@@ -1646,6 +1646,10 @@ void main() {
       sendCoordinator.lastRequest?.allowUnsupportedImageInputAttempt,
       isTrue,
     );
+    expect(
+      sendCoordinator.lastRequest?.dispatchMode,
+      SendMessageDispatchMode.steer,
+    );
   });
 }
 

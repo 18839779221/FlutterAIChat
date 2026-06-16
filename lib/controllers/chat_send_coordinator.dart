@@ -27,6 +27,7 @@ import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/debug/streaming_trace_recorder.dart';
+import 'package:ai_chat/services/follow_up_dispatch_queue.dart';
 import 'package:ai_chat/services/agent_planner_service.dart'
     show PlannerRequestTraceEvent, PlannerRequestTraceStage;
 import 'package:ai_chat/services/session_runtime_marker_service.dart';
@@ -165,10 +166,13 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       _tag,
       'sendMessageRequest entered',
     );
-    final text = request.text;
-    final attachments = request.attachments;
-    final allowUnsupportedImageInputAttempt =
-        request.allowUnsupportedImageInputAttempt;
+    final outboundRequests = _flattenSendRequests(request);
+    final text = outboundRequests.first.text;
+    final attachments =
+        outboundRequests.expand((candidate) => candidate.attachments).toList();
+    final allowUnsupportedImageInputAttempt = outboundRequests.any(
+      (candidate) => candidate.allowUnsupportedImageInputAttempt,
+    );
     Logger.runtime(
       _tag,
       'sendMessageRequest payload received',
@@ -182,7 +186,31 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
             attachments.map((attachment) => attachment.status.name).join(','),
       },
     );
-    if (text.trim().isEmpty && attachments.isEmpty) return;
+    if (outboundRequests.every(
+      (candidate) =>
+          candidate.text.trim().isEmpty && candidate.attachments.isEmpty,
+    )) {
+      return;
+    }
+
+    final pendingQueue = _ref.read(followUpDispatchQueueProvider);
+    final activeSendPhase = _ref.read(sendPhaseProvider);
+    if (activeSendPhase != ChatSendPhase.idle) {
+      pendingQueue.enqueue(
+        groupId: _ref.read(currentGroupProvider)?.id,
+        request: request,
+      );
+      Logger.runtime(
+        _tag,
+        'queued follow-up request while turn remains active',
+        data: {
+          'dispatchMode': request.dispatchMode.name,
+          'pendingCount': pendingQueue
+              .pendingCountForGroup(_ref.read(currentGroupProvider)?.id),
+        },
+      );
+      return;
+    }
 
     var currentGroup = _ref.read(currentGroupProvider);
     if (currentGroup == null) {
@@ -198,26 +226,29 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       _ref.read(hasMoreMessagesProvider.notifier).state = false;
       _ref.read(isInitializingProvider.notifier).state = false;
     }
-    final imageSupportFailure = await _validateAttachmentSupport(
-      attachments: attachments,
-      currentGroup: currentGroup,
-      llm: _ref.read(chatServiceProvider).llm,
-      allowUnsupportedImageInputAttempt: allowUnsupportedImageInputAttempt,
-    );
-    if (imageSupportFailure != null) {
-      Logger.w(
-        _tag,
-        'image support validation rejected request: $imageSupportFailure',
+    for (final outboundRequest in outboundRequests) {
+      final imageSupportFailure = await _validateAttachmentSupport(
+        attachments: outboundRequest.attachments,
+        currentGroup: currentGroup,
+        llm: _ref.read(chatServiceProvider).llm,
+        allowUnsupportedImageInputAttempt:
+            outboundRequest.allowUnsupportedImageInputAttempt,
       );
-      await _appendVisibleSendFailureMessage(
-        groupId: currentGroup.id,
-        error: Exception(imageSupportFailure),
-      );
-      _ref.read(chatSendStateProvider.notifier).update(
-            isGenerating: false,
-            phase: ChatSendPhase.idle,
-          );
-      return;
+      if (imageSupportFailure != null) {
+        Logger.w(
+          _tag,
+          'image support validation rejected request: $imageSupportFailure',
+        );
+        await _appendVisibleSendFailureMessage(
+          groupId: currentGroup.id,
+          error: Exception(imageSupportFailure),
+        );
+        _ref.read(chatSendStateProvider.notifier).update(
+              isGenerating: false,
+              phase: ChatSendPhase.idle,
+            );
+        return;
+      }
     }
     var cancellationRequested = false;
 
@@ -298,35 +329,47 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     final explicitSkillParser = ExplicitSkillInvocationParser(
       skillRuntimeService: _ref.read(skillRuntimeServiceProvider),
     );
-    final explicitSkill = await explicitSkillParser.parse(text);
-    final sanitizedText = explicitSkill.cleanedUserText.trim().isEmpty
-        ? text
-        : explicitSkill.cleanedUserText;
-
-    final userMessage = ChatMessage(
-      text: sanitizedText,
-      role: MessageRole.user,
-      status: MessageStatus.completed,
-      attachments: attachments,
-      referenceJson: attachments.isEmpty
-          ? null
-          : {
-              'attachments':
-                  attachments.map((attachment) => attachment.toJson()).toList(),
-            },
-    );
-
-    _ref.read(pendingPinnedUserMessageStableKeyProvider.notifier).state =
-        'user-${userMessage.timestamp.microsecondsSinceEpoch}';
-    _ref.read(messagesProvider.notifier).addMessage(userMessage);
-    Logger.runtime(
-      _tag,
-      'user message added to in-memory timeline',
-      data: {
-        'textLength': sanitizedText.length,
-        'attachmentCount': attachments.length,
-      },
-    );
+    final preparedInputs = <_PreparedOutboundUserMessage>[];
+    InvokedSkillContext? explicitInvokedSkill;
+    for (final outboundRequest in outboundRequests) {
+      final explicitSkill =
+          await explicitSkillParser.parse(outboundRequest.text);
+      explicitInvokedSkill ??= explicitSkill.invokedSkill;
+      final sanitizedText = explicitSkill.cleanedUserText.trim().isEmpty
+          ? outboundRequest.text
+          : explicitSkill.cleanedUserText;
+      final userMessage = ChatMessage(
+        text: sanitizedText,
+        role: MessageRole.user,
+        status: MessageStatus.completed,
+        attachments: outboundRequest.attachments,
+        referenceJson: outboundRequest.attachments.isEmpty
+            ? null
+            : {
+                'attachments': outboundRequest.attachments
+                    .map((attachment) => attachment.toJson())
+                    .toList(),
+              },
+      );
+      preparedInputs.add(
+        _PreparedOutboundUserMessage(
+          request: outboundRequest,
+          text: sanitizedText,
+          userMessage: userMessage,
+        ),
+      );
+      _ref.read(pendingPinnedUserMessageStableKeyProvider.notifier).state =
+          'user-${userMessage.timestamp.microsecondsSinceEpoch}';
+      _ref.read(messagesProvider.notifier).addMessage(userMessage);
+      Logger.runtime(
+        _tag,
+        'user message added to in-memory timeline',
+        data: {
+          'textLength': sanitizedText.length,
+          'attachmentCount': outboundRequest.attachments.length,
+        },
+      );
+    }
     await Future.delayed(const Duration(milliseconds: 1));
 
     try {
@@ -338,46 +381,54 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
           await runtimeMarkerService.prepareForUserMessage(
         groupId: currentGroupId,
       );
-      final shouldPersistUserTextMessage =
-          sanitizedText.trim().isNotEmpty || attachments.isEmpty;
+      for (final preparedInput in preparedInputs) {
+        final shouldPersistUserTextMessage =
+            preparedInput.text.trim().isNotEmpty ||
+                preparedInput.userMessage.attachments.isEmpty;
 
-      if (shouldPersistUserTextMessage) {
-        Logger.d(_tag, '保存用户消息到数据库...');
-        final userMessageId =
-            await dbHelper.insertMessage(userMessage, currentGroupId);
-        userMessage.id = userMessageId;
-        Logger.runtime(
-          _tag,
-          'user message persisted',
-          data: {
-            'messageId': userMessageId,
-            'groupId': currentGroupId,
-            'attachmentCount': attachments.length,
-          },
-        );
-        if (attachments.isNotEmpty) {
-          await dbHelper.insertMessageAttachments(userMessageId, attachments);
+        if (shouldPersistUserTextMessage) {
+          Logger.d(_tag, '保存用户消息到数据库...');
+          final userMessageId = await dbHelper.insertMessage(
+            preparedInput.userMessage,
+            currentGroupId,
+          );
+          preparedInput.userMessage.id = userMessageId;
           Logger.runtime(
             _tag,
-            'user attachments persisted',
+            'user message persisted',
             data: {
               'messageId': userMessageId,
-              'attachmentCount': attachments.length,
-              'attachmentPaths': attachments
-                  .map((attachment) => attachment.localPath ?? '')
-                  .join(','),
+              'groupId': currentGroupId,
+              'attachmentCount': preparedInput.userMessage.attachments.length,
+            },
+          );
+          if (preparedInput.userMessage.attachments.isNotEmpty) {
+            await dbHelper.insertMessageAttachments(
+              userMessageId,
+              preparedInput.userMessage.attachments,
+            );
+            Logger.runtime(
+              _tag,
+              'user attachments persisted',
+              data: {
+                'messageId': userMessageId,
+                'attachmentCount': preparedInput.userMessage.attachments.length,
+                'attachmentPaths': preparedInput.userMessage.attachments
+                    .map((attachment) => attachment.localPath ?? '')
+                    .join(','),
+              },
+            );
+          }
+        } else {
+          Logger.runtime(
+            _tag,
+            'skip persisting empty user text message; attachments remain turn-scoped only',
+            data: {
+              'groupId': currentGroupId,
+              'attachmentCount': preparedInput.userMessage.attachments.length,
             },
           );
         }
-      } else {
-        Logger.runtime(
-          _tag,
-          'skip persisting empty user text message; attachments remain turn-scoped only',
-          data: {
-            'groupId': currentGroupId,
-            'attachmentCount': attachments.length,
-          },
-        );
       }
 
       if (cancellationRequested) {
@@ -397,15 +448,16 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         throw StateError('turnHarnessProvider is required');
       }
       await _sendMessageWithAgentLoop(
-        text: sanitizedText,
+        text: preparedInputs.first.text,
         currentGroupId: currentGroupId,
-        userMessage: userMessage,
+        preparedInputs: preparedInputs,
         turnId: turnId,
         harness: turnHarness,
         runtimeMarkerPreparation: runtimeMarkerPreparation,
         runtimeMarkerService: runtimeMarkerService,
-        explicitInvokedSkill: explicitSkill.invokedSkill,
+        explicitInvokedSkill: explicitInvokedSkill,
         scheduleAutoSummary: scheduleAutoSummary,
+        cancelActiveStream: cancelActiveStream,
       );
       await _recordRuntimeImageInputSupportSuccessIfNeeded(attachments);
     } catch (e, stackTrace) {
@@ -445,13 +497,14 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
   Future<void> _sendMessageWithAgentLoop({
     required String text,
     required int currentGroupId,
-    required ChatMessage userMessage,
+    required List<_PreparedOutboundUserMessage> preparedInputs,
     required String turnId,
     required TurnHarness harness,
     required SessionRuntimeMarkerPreparation runtimeMarkerPreparation,
     required SessionRuntimeMarkerService runtimeMarkerService,
     required InvokedSkillContext? explicitInvokedSkill,
     required VoidCallback scheduleAutoSummary,
+    required VoidCallback cancelActiveStream,
   }) async {
     final dbHelper = _ref.read(databaseProvider);
     final traceRecorder = _ref.read(traceRecorderProvider);
@@ -467,7 +520,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
         runtimeMarkerService: runtimeMarkerService,
         runtimeMarkerPreparation: runtimeMarkerPreparation,
         explicitInvokedSkill: explicitInvokedSkill,
-        attachments: userMessage.attachments,
+        preparedInputs: preparedInputs,
         traceTurnId: turnId,
       ),
     );
@@ -477,7 +530,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       traceId: streamingTraceIdForTurn(turnRecordId),
       turnId: turnRecordId.toString(),
       stage: StreamingTraceStage.turnStarted,
-      timestamp: userMessage.timestamp,
+      timestamp: preparedInputs.first.userMessage.timestamp,
       details: {
         'userMessagePreview': text.substring(0, text.length.clamp(0, 80)),
       },
@@ -574,6 +627,8 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
           groupId: currentGroupId,
           turnId: turnRecordId,
           processor: processor,
+          scheduleAutoSummary: scheduleAutoSummary,
+          cancelActiveStream: cancelActiveStream,
         );
       },
       onFinally: () async {
@@ -591,7 +646,7 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     required SessionRuntimeMarkerService runtimeMarkerService,
     required SessionRuntimeMarkerPreparation runtimeMarkerPreparation,
     required InvokedSkillContext? explicitInvokedSkill,
-    required List<ChatAttachment> attachments,
+    required List<_PreparedOutboundUserMessage> preparedInputs,
     required String traceTurnId,
   }) {
     final context = runtimeMarkerService.buildTurnRuntimeContext(
@@ -601,6 +656,21 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       context[SessionRuntimeMarkerService.runtimeContextKey] as Map,
     );
     runtimeContext[traceTurnIdRuntimeContextKey] = traceTurnId;
+    runtimeContext['seeded_user_messages'] = preparedInputs
+        .map(
+          (input) => {
+            'text': input.text,
+            'kind': ChatEventUserMessageKind.start.name,
+            if (input.userMessage.attachments.isNotEmpty)
+              'attachments': input.userMessage.attachments
+                  .map((attachment) => attachment.toJson())
+                  .toList(),
+          },
+        )
+        .toList(growable: false);
+    final attachments = preparedInputs
+        .expand((input) => input.userMessage.attachments)
+        .toList(growable: false);
     if (attachments.isNotEmpty) {
       runtimeContext['user_attachments'] =
           attachments.map((attachment) => attachment.toJson()).toList();
@@ -727,6 +797,8 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
     required int groupId,
     required int turnId,
     required AgentEventProcessor processor,
+    VoidCallback? scheduleAutoSummary,
+    VoidCallback? cancelActiveStream,
   }) async {
     if (processor.hasPendingConfirmation) {
       _ref.read(chatSendStateProvider.notifier).update(
@@ -748,10 +820,21 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
 
     if (turn.status == ChatTurnStatus.failed &&
         !processor.receivedFinalAnswer) {
+      await _persistInterruptedPartialContextIfNeeded(
+        turn: turn,
+        assistantMessageId: processor.assistantMessageId,
+      );
       await _upsertAssistantFailureMessage(
         groupId: groupId,
         assistantMessageId: processor.assistantMessageId,
         text: _formatTurnFailureText(turn),
+      );
+    }
+    if (turn.status == ChatTurnStatus.cancelled &&
+        !processor.receivedFinalAnswer) {
+      await _persistInterruptedPartialContextIfNeeded(
+        turn: turn,
+        assistantMessageId: processor.assistantMessageId,
       );
     }
 
@@ -759,6 +842,41 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
           isGenerating: false,
           phase: ChatSendPhase.idle,
         );
+    await _startQueuedNextTurnIfNeeded(
+      groupId: groupId,
+      scheduleAutoSummary: scheduleAutoSummary ?? () {},
+      cancelActiveStream: cancelActiveStream ?? () {},
+    );
+  }
+
+  Future<void> _startQueuedNextTurnIfNeeded({
+    required int groupId,
+    required VoidCallback scheduleAutoSummary,
+    required VoidCallback cancelActiveStream,
+  }) async {
+    final pending =
+        _ref.read(followUpDispatchQueueProvider).takeAllForNextTurn(groupId);
+    if (pending.isEmpty) {
+      return;
+    }
+    final requests = pending
+        .expand((entry) => _flattenSendRequests(entry.request))
+        .toList(growable: false);
+    if (requests.isEmpty) {
+      return;
+    }
+    await sendMessageRequest(
+      SendMessageRequest(
+        text: requests.first.text,
+        attachments: requests.first.attachments,
+        allowUnsupportedImageInputAttempt:
+            requests.first.allowUnsupportedImageInputAttempt,
+        dispatchMode: SendMessageDispatchMode.queue,
+        additionalStartMessages: requests.skip(1).toList(growable: false),
+      ),
+      scheduleAutoSummary: scheduleAutoSummary,
+      cancelActiveStream: cancelActiveStream,
+    );
   }
 
   Future<void> _projectCancelledTurnOutcome({
@@ -790,6 +908,108 @@ class DefaultChatSendCoordinator implements ChatSendCoordinator {
       assistantMessageId: assistantMessageId,
       text: _cancelledTurnSummaryText(),
     );
+  }
+
+  Future<void> _persistInterruptedPartialContextIfNeeded({
+    required ChatTurn turn,
+    required int? assistantMessageId,
+  }) async {
+    final partialText = _resolveInterruptedAssistantText(assistantMessageId);
+    if (partialText == null || partialText.trim().isEmpty) {
+      return;
+    }
+    final turnId = turn.id;
+    if (turnId == null) {
+      return;
+    }
+    final eventRepository = _ref.read(chatEventRepositoryProvider);
+    final existingEvents = await eventRepository.listEventsByTurn(turnId);
+    if (existingEvents.any(
+      (event) =>
+          event.eventType == ChatEventType.assistantTurnSnapshot &&
+          event.payloadJson?['rawAssistantMessage'] is Map &&
+          (event.payloadJson?['rawAssistantMessage']
+                  as Map)['interruptedPartialRecovery'] ==
+              true,
+    )) {
+      return;
+    }
+    await eventRepository.appendAssistantTurnSnapshot(
+      turnId: turnId,
+      groupId: turn.groupId,
+      apiStyle: turn.providerStyle ?? ChatTurnProviderStyle.openaiResponses,
+      rawAssistantMessageJson: _buildInterruptedAssistantSnapshot(
+        text: partialText,
+        providerStyle:
+            turn.providerStyle ?? ChatTurnProviderStyle.openaiResponses,
+      ),
+    );
+    await eventRepository.appendUserMessage(
+      turnId: turnId,
+      groupId: turn.groupId,
+      content: _buildInterruptedReminderText(turn.status),
+      kind: ChatEventUserMessageKind.systemReminder,
+      extraPayloadJson: const {
+        'interruptedPreviousResponse': true,
+      },
+    );
+  }
+
+  String? _resolveInterruptedAssistantText(int? assistantMessageId) {
+    final visibleAssistantMessage = assistantMessageId == null
+        ? null
+        : _findMessageById(assistantMessageId);
+    final visibleText = visibleAssistantMessage?.text.trim();
+    if (visibleText != null && visibleText.isNotEmpty) {
+      return visibleAssistantMessage!.text;
+    }
+    return _resolveLatestRuntimePreviewResponseText();
+  }
+
+  String _buildInterruptedReminderText(ChatTurnStatus status) {
+    if (status == ChatTurnStatus.cancelled) {
+      return 'User interrupted the previous response before it completed.';
+    }
+    return 'The previous response was interrupted before it completed.';
+  }
+
+  Map<String, dynamic> _buildInterruptedAssistantSnapshot({
+    required String text,
+    required ChatTurnProviderStyle providerStyle,
+  }) {
+    return switch (providerStyle) {
+      ChatTurnProviderStyle.openaiChatCompletions => {
+          'role': 'assistant',
+          'content': text,
+          'interruptedPartialRecovery': true,
+        },
+      ChatTurnProviderStyle.openaiResponses => {
+          'interruptedPartialRecovery': true,
+          'output': [
+            {
+              'type': 'message',
+              'role': 'assistant',
+              'content': [
+                {
+                  'type': 'output_text',
+                  'text': text,
+                  'annotations': const [],
+                },
+              ],
+            },
+          ],
+        },
+      ChatTurnProviderStyle.anthropicMessages => {
+          'role': 'assistant',
+          'content': [
+            {
+              'type': 'text',
+              'text': text,
+            },
+          ],
+          'interruptedPartialRecovery': true,
+        },
+    };
   }
 
   Future<void> _upsertAssistantFailureMessage({
@@ -1613,4 +1833,29 @@ class _HandledSendFailure implements Exception {
 
   @override
   String toString() => error.toString();
+}
+
+class _PreparedOutboundUserMessage {
+  const _PreparedOutboundUserMessage({
+    required this.request,
+    required this.text,
+    required this.userMessage,
+  });
+
+  final SendMessageRequest request;
+  final String text;
+  final ChatMessage userMessage;
+}
+
+List<SendMessageRequest> _flattenSendRequests(SendMessageRequest request) {
+  return <SendMessageRequest>[
+    SendMessageRequest(
+      text: request.text,
+      attachments: request.attachments,
+      allowUnsupportedImageInputAttempt:
+          request.allowUnsupportedImageInputAttempt,
+      dispatchMode: request.dispatchMode,
+    ),
+    ...request.additionalStartMessages.expand(_flattenSendRequests),
+  ];
 }

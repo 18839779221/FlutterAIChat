@@ -423,6 +423,16 @@ void main() {
 
     expect(sendCoordinator.lastRequest?.attachments, hasLength(1));
     expect(sendCoordinator.lastRequest?.text, '看下这张图');
+    expect(
+      sendCoordinator.lastRequest?.dispatchMode,
+      SendMessageDispatchMode.steer,
+    );
+  });
+
+  test('send message request defaults dispatch mode to steer', () {
+    const request = SendMessageRequest(text: '继续');
+
+    expect(request.dispatchMode, SendMessageDispatchMode.steer);
   });
 
   test('chat controller triggers manual compaction for current group',
