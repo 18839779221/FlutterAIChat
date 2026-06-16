@@ -179,6 +179,22 @@ void main() {
     expect(document, contains('JSON.stringify'));
   });
 
+  test(
+      'runtime preview host schedules only a single animation-frame height probe after apply',
+      () {
+    final document = buildArtifactPreviewDocument();
+
+    expect(document, contains('requestAnimationFrame(window.__artifactHeight__)'));
+    expect(document, isNot(contains('window.__artifactHeight__();')));
+    expect(document, isNot(contains('setTimeout(window.__artifactHeight__, 50)')));
+    expect(
+      document,
+      isNot(contains('setTimeout(window.__artifactHeight__, 150)')),
+    );
+    expect(document, isNot(contains('setTimeout(postHeight, 120)')));
+    expect(document, isNot(contains('setTimeout(postHeight, 360)')));
+  });
+
   test('does not inline artifact source into the host document script context',
       () {
     const source =
@@ -293,6 +309,142 @@ void main() {
     expect(clampArtifactPreviewHeight(5000, viewportHeight: 800), 5000);
   });
 
+  test('runtime preview height stays monotonic when a smaller sample arrives', () {
+    expect(
+      resolveNextArtifactPreviewHeight(
+        currentAppliedHeight: 440,
+        sampledHeight: 201,
+        isRuntimePreview: true,
+      ),
+      440,
+    );
+    expect(
+      resolveNextArtifactPreviewHeight(
+        currentAppliedHeight: 440,
+        sampledHeight: 672,
+        isRuntimePreview: true,
+      ),
+      672,
+    );
+    expect(
+      resolveNextArtifactPreviewHeight(
+        currentAppliedHeight: 440,
+        sampledHeight: 201,
+        isRuntimePreview: false,
+      ),
+      201,
+    );
+  });
+
+  test('runtime preview applies growth immediately but not shrink or final updates', () {
+    expect(
+      shouldApplyArtifactHeightImmediately(
+        currentAppliedHeight: 260,
+        nextResolvedHeight: 440,
+        isRuntimePreview: true,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldApplyArtifactHeightImmediately(
+        currentAppliedHeight: 440,
+        nextResolvedHeight: 440,
+        isRuntimePreview: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldApplyArtifactHeightImmediately(
+        currentAppliedHeight: 440,
+        nextResolvedHeight: 260,
+        isRuntimePreview: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldApplyArtifactHeightImmediately(
+        currentAppliedHeight: 260,
+        nextResolvedHeight: 440,
+        isRuntimePreview: false,
+      ),
+      isFalse,
+    );
+  });
+
+  test('runtime preview starts a resize shield only for external-height growth', () {
+    expect(
+      shouldStartArtifactHeightRenderShield(
+        currentAppliedHeight: 260,
+        nextResolvedHeight: 440,
+        isRuntimePreview: true,
+        enableInternalScroll: false,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldStartArtifactHeightRenderShield(
+        currentAppliedHeight: 440,
+        nextResolvedHeight: 440,
+        isRuntimePreview: true,
+        enableInternalScroll: false,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldStartArtifactHeightRenderShield(
+        currentAppliedHeight: 260,
+        nextResolvedHeight: 440,
+        isRuntimePreview: false,
+        enableInternalScroll: false,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldStartArtifactHeightRenderShield(
+        currentAppliedHeight: 260,
+        nextResolvedHeight: 440,
+        isRuntimePreview: true,
+        enableInternalScroll: true,
+      ),
+      isFalse,
+    );
+  });
+
+  test('continues height render probing only while render height still lags', () {
+    expect(
+      shouldContinueArtifactHeightRenderProbe(
+        configuredHeight: 440,
+        renderHeight: 260,
+        remainingFrames: 2,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldContinueArtifactHeightRenderProbe(
+        configuredHeight: 440,
+        renderHeight: 440,
+        remainingFrames: 2,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldContinueArtifactHeightRenderProbe(
+        configuredHeight: 440,
+        renderHeight: null,
+        remainingFrames: 2,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldContinueArtifactHeightRenderProbe(
+        configuredHeight: 440,
+        renderHeight: 260,
+        remainingFrames: 0,
+      ),
+      isFalse,
+    );
+  });
+
   test(
       'prefers artifact rect height when root scroll height is transiently stretched',
       () {
@@ -386,5 +538,29 @@ void main() {
     expect(styles, contains('html, body'));
     expect(styles, contains('#artifact-root'));
     expect(styles, isNot(contains('background: transparent')));
+  });
+
+  test('rebuilds runtime host when preview restarts after final takeover', () {
+    expect(
+      shouldRebuildArtifactHostForRuntimeRestart(
+        isRuntimePreview: true,
+        previousWasRuntimePreview: false,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldRebuildArtifactHostForRuntimeRestart(
+        isRuntimePreview: true,
+        previousWasRuntimePreview: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldRebuildArtifactHostForRuntimeRestart(
+        isRuntimePreview: false,
+        previousWasRuntimePreview: true,
+      ),
+      isFalse,
+    );
   });
 }

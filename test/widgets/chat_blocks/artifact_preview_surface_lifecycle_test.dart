@@ -29,7 +29,7 @@ void main() {
 
     // Lease coordination emits its own lifecycle events; this test only
     // asserts the core init/update/dispose sequence.
-    List<_SurfaceLifecycleEvent> coreEvents() => recorder.surfaceLifecycleEvents
+    List<SurfaceLifecycleEvent> coreEvents() => recorder.surfaceLifecycleEvents
         .where((event) => !event.event.startsWith('lease_'))
         .toList(growable: false);
 
@@ -86,14 +86,62 @@ void main() {
       containsPair('hasRenderedVisibleContent', false),
     );
   });
+
+  testWidgets(
+      'rebuilds runtime host when switching from final preview back to runtime preview',
+      (WidgetTester tester) async {
+    final recorder = FakeArtifactRenderSessionRecorder();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ArtifactPreviewSurface(
+            artifactId: 'artifact-1',
+            source: '<div>Final</div>',
+            sourcePath: 'test://artifact',
+            isRuntimePreview: false,
+            sessionRecorder: recorder,
+            turnId: 'turn-1',
+            providerCallId: 'call-1',
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ArtifactPreviewSurface(
+            artifactId: 'artifact-1',
+            source: '<div>Runtime restart</div>',
+            sourcePath: 'runtime://artifact',
+            isRuntimePreview: true,
+            sessionRecorder: recorder,
+            turnId: 'turn-1',
+            providerCallId: 'call-1',
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+
+    expect(
+      recorder.surfaceLifecycleEvents
+          .where((event) => event.event == 'runtime_restart_host_rebuild'),
+      hasLength(1),
+    );
+  });
 }
 
 class FakeArtifactRenderSessionRecorder extends ArtifactRenderSessionRecorder {
   FakeArtifactRenderSessionRecorder()
       : super(traceEmitter: (_, __, {level = LogLevel.info, data}) {});
 
-  final List<_SurfaceLifecycleEvent> surfaceLifecycleEvents =
-      <_SurfaceLifecycleEvent>[];
+  final List<SurfaceLifecycleEvent> surfaceLifecycleEvents =
+      <SurfaceLifecycleEvent>[];
 
   @override
   void recordSurfaceLifecycle({
@@ -103,7 +151,7 @@ class FakeArtifactRenderSessionRecorder extends ArtifactRenderSessionRecorder {
     Map<String, dynamic> data = const <String, dynamic>{},
   }) {
     surfaceLifecycleEvents.add(
-      _SurfaceLifecycleEvent(
+      SurfaceLifecycleEvent(
         sessionId: sessionId,
         event: event,
         data: Map<String, dynamic>.from(data),
@@ -118,8 +166,8 @@ class FakeArtifactRenderSessionRecorder extends ArtifactRenderSessionRecorder {
   }
 }
 
-class _SurfaceLifecycleEvent {
-  const _SurfaceLifecycleEvent({
+class SurfaceLifecycleEvent {
+  const SurfaceLifecycleEvent({
     required this.sessionId,
     required this.event,
     required this.data,

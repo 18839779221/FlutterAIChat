@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:ai_chat/models/artifact/artifact_render_session_snapshot.dart';
 import 'package:ai_chat/providers/streaming_trace_providers.dart';
 import 'package:ai_chat/services/artifact/artifact_render_session_recorder.dart';
@@ -26,7 +27,9 @@ const Duration _streamingDebounceDelay = Duration(milliseconds: 1000);
 const Duration _heightUpdateDebounceDelay = Duration(milliseconds: 100);
 const String _artifactPreviewLogTag = 'ArtifactPreviewSurface';
 const String _artifactPreviewSweepShellKey = 'artifact-preview-sweep-shell';
+const String _artifactPreviewResizeShieldKey = 'artifact-preview-resize-shield';
 const int _maxRuntimeApplyRetries = 3;
+const int _artifactHeightRenderProbeMaxFrames = 3;
 
 /// Upper bound for waiting on the host document before a runtime apply.
 /// Mutable so tests can shorten it; production code never reassigns it.
@@ -74,6 +77,55 @@ double clampArtifactPreviewHeight(
         double.infinity,
       )
       .toDouble();
+}
+
+@visibleForTesting
+double resolveNextArtifactPreviewHeight({
+  required double currentAppliedHeight,
+  required double sampledHeight,
+  required bool isRuntimePreview,
+}) {
+  if (!isRuntimePreview) {
+    return sampledHeight;
+  }
+  return math.max(currentAppliedHeight, sampledHeight).toDouble();
+}
+
+@visibleForTesting
+bool shouldApplyArtifactHeightImmediately({
+  required double currentAppliedHeight,
+  required double nextResolvedHeight,
+  required bool isRuntimePreview,
+}) {
+  return isRuntimePreview && nextResolvedHeight > currentAppliedHeight;
+}
+
+@visibleForTesting
+bool shouldStartArtifactHeightRenderShield({
+  required double currentAppliedHeight,
+  required double nextResolvedHeight,
+  required bool isRuntimePreview,
+  required bool enableInternalScroll,
+}) {
+  return isRuntimePreview &&
+      !enableInternalScroll &&
+      nextResolvedHeight > currentAppliedHeight;
+}
+
+@visibleForTesting
+bool shouldContinueArtifactHeightRenderProbe({
+  required double configuredHeight,
+  required double? renderHeight,
+  required int remainingFrames,
+}) {
+  if (remainingFrames <= 0) {
+    return false;
+  }
+  final normalizedRenderHeight = _normalizePositiveHeight(renderHeight);
+  if (normalizedRenderHeight == null) {
+    return true;
+  }
+  return (configuredHeight - normalizedRenderHeight).abs() > 0.5;
 }
 
 enum ArtifactMeasuredHeightBasis {
@@ -136,6 +188,14 @@ bool shouldReloadArtifactHostDocumentForThemeChange({
   required String? source,
 }) {
   return source != null && source.trim().isNotEmpty;
+}
+
+@visibleForTesting
+bool shouldRebuildArtifactHostForRuntimeRestart({
+  required bool isRuntimePreview,
+  required bool previousWasRuntimePreview,
+}) {
+  return isRuntimePreview && !previousWasRuntimePreview;
 }
 
 /// Sub-resource failures (images, fonts, blocked requests) must not replace
@@ -405,10 +465,7 @@ String buildArtifactPreviewDocument({
         }
         lockScroll();
         if (window.__artifactHeight__) {
-          window.__artifactHeight__();
           requestAnimationFrame(window.__artifactHeight__);
-          setTimeout(window.__artifactHeight__, 50);
-          setTimeout(window.__artifactHeight__, 150);
         }
         if (window.__artifactDomCommit__) {
           window.__artifactDomCommit__({
@@ -505,10 +562,7 @@ String buildArtifactPreviewDocument({
     lockScroll();
     window.addEventListener('load', () => {
       lockScroll();
-      postHeight();
       requestAnimationFrame(postHeight);
-      setTimeout(postHeight, 120);
-      setTimeout(postHeight, 360);
     });
     window.addEventListener('resize', () => {
       lockScroll();
@@ -779,6 +833,8 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface>
   // Height update debouncing
   Timer? _heightDebounceTimer;
   double? _pendingHeight;
+  int _heightRenderProbeGeneration = 0;
+  bool _isWaitingForHeightRenderCatchUp = false;
   late final ArtifactRenderSessionRecorder _sessionRecorder;
   late final StreamingVisibilityReporter _streamingVisibilityReporter;
   late final String _flowId;
@@ -883,6 +939,9 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface>
 
     if (oldWidget.source != widget.source ||
         oldWidget.isRuntimePreview != widget.isRuntimePreview) {
+      if (!widget.isRuntimePreview || widget.enableInternalScroll) {
+        _isWaitingForHeightRenderCatchUp = false;
+      }
       final oldLength = oldWidget.source?.length ?? 0;
       final newLength = widget.source?.length ?? 0;
       Logger.temp(
@@ -901,6 +960,13 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface>
       _runtimeApplyRetryCount = 0;
 
       final source = widget.source;
+      if (shouldRebuildArtifactHostForRuntimeRestart(
+        isRuntimePreview: widget.isRuntimePreview,
+        previousWasRuntimePreview: oldWidget.isRuntimePreview,
+      )) {
+        _restartRuntimePreviewHostDocument(source);
+        return;
+      }
       if (source == null || source.trim().isEmpty) {
         _pendingSource = source;
         _ensureStreamingUpdateLoop();
@@ -913,6 +979,37 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface>
         _streamingUpdateTimer = null;
         _loadFinalSource(source);
       }
+    }
+  }
+
+  void _restartRuntimePreviewHostDocument(String? source) {
+    _streamingUpdateTimer?.cancel();
+    _streamingUpdateTimer = null;
+    _takeoverFallbackTimer?.cancel();
+    _takeoverFallbackTimer = null;
+    _releaseTakeoverPin();
+    _pendingSource = null;
+    _pendingFinalController = null;
+    _pendingFinalSource = null;
+    _lastRenderedSource = null;
+    _controllerGeneration += 1;
+    _abandonControllerReadyWaiters();
+    _isControllerReady = false;
+    _controllerReadyCompleter = null;
+    _hasRebuiltControllerForApplyFailure = false;
+    _errorText = null;
+    _previewHeight = _defaultArtifactPreviewHeight;
+    _isWaitingForHeightRenderCatchUp = false;
+    _recordSurfaceLifecycle(
+      'runtime_restart_host_rebuild',
+      data: <String, dynamic>{
+        'sourceLength': source?.length ?? 0,
+      },
+    );
+    if (mounted) {
+      setState(() {
+        _controller = _createController();
+      });
     }
   }
 
@@ -1022,6 +1119,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface>
     _hasRebuiltControllerForApplyFailure = false;
     _errorText = null;
     _previewHeight = _defaultArtifactPreviewHeight;
+    _isWaitingForHeightRenderCatchUp = false;
     _controller = _createController();
     if (mounted) {
       setState(() {});
@@ -1304,6 +1402,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface>
     _takeoverFallbackTimer?.cancel();
     _leaseHandle?.unregister();
     _leaseHandle = null;
+    _isWaitingForHeightRenderCatchUp = false;
     _recordSurfaceLifecycle(
       'dispose',
       data: <String, dynamic>{
@@ -1606,6 +1705,7 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface>
     _controller = null;
     _runtimeApplyRetryCount = 0;
     _hasRebuiltControllerForApplyFailure = false;
+    _isWaitingForHeightRenderCatchUp = false;
     _recordSurfaceLifecycle('lease_released_cleanup');
   }
 
@@ -1760,35 +1860,137 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface>
           context: sampleContext,
         );
         _heightDebounceTimer?.cancel();
+        final nextHeight = resolveNextArtifactPreviewHeight(
+          currentAppliedHeight: _previewHeight,
+          sampledHeight: clampedHeight,
+          isRuntimePreview: widget.isRuntimePreview,
+        );
+        if (shouldApplyArtifactHeightImmediately(
+          currentAppliedHeight: _previewHeight,
+          nextResolvedHeight: nextHeight,
+          isRuntimePreview: widget.isRuntimePreview,
+        )) {
+          _applyResolvedArtifactHeight(nextHeight);
+          return;
+        }
         _heightDebounceTimer = Timer(_heightUpdateDebounceDelay, () {
           if (!mounted) return;
-          final nextHeight = _pendingHeight ?? _previewHeight;
-          setState(() {
-            _previewHeight = nextHeight;
-          });
-          _persistPreviewStateToPageStorage(
-            previewHeight: nextHeight,
-            isPreviewTruncated: false,
+          final nextSampledHeight = _pendingHeight ?? _previewHeight;
+          final resolvedHeight = resolveNextArtifactPreviewHeight(
+            currentAppliedHeight: _previewHeight,
+            sampledHeight: nextSampledHeight,
+            isRuntimePreview: widget.isRuntimePreview,
           );
-          _sessionRecorder.recordHeightApplied(
-            sessionId: _sessionId,
-            appliedHeight: nextHeight,
-            isPreviewTruncated: false,
-            timestamp: DateTime.now(),
-          );
-          Logger.temp(
-            _artifactPreviewLogTag,
-            'artifact height applied',
-            reason: 'diagnose inline artifact height sync',
-            data: {
-              'sourcePath': widget.sourcePath,
-              'appliedHeight': _pendingHeight,
-              'isPreviewTruncated': false,
-            },
-          );
+          _applyResolvedArtifactHeight(resolvedHeight);
         });
       },
     );
+  }
+
+  void _applyResolvedArtifactHeight(double nextHeight) {
+    if (!mounted) {
+      return;
+    }
+    final shouldStartRenderShield = shouldStartArtifactHeightRenderShield(
+      currentAppliedHeight: _previewHeight,
+      nextResolvedHeight: nextHeight,
+      isRuntimePreview: widget.isRuntimePreview,
+      enableInternalScroll: widget.enableInternalScroll,
+    );
+    setState(() {
+      _previewHeight = nextHeight;
+      if (shouldStartRenderShield) {
+        _isWaitingForHeightRenderCatchUp = true;
+      }
+    });
+    _persistPreviewStateToPageStorage(
+      previewHeight: nextHeight,
+      isPreviewTruncated: false,
+    );
+    _sessionRecorder.recordHeightApplied(
+      sessionId: _sessionId,
+      appliedHeight: nextHeight,
+      isPreviewTruncated: false,
+      timestamp: DateTime.now(),
+    );
+    if (shouldStartRenderShield) {
+      _recordSurfaceLifecycle(
+        'height_render_shield_started',
+        data: <String, dynamic>{'configuredHeight': nextHeight},
+      );
+    }
+    Logger.temp(
+      _artifactPreviewLogTag,
+      'artifact height applied',
+      reason: 'diagnose inline artifact height sync',
+      data: {
+        'sourcePath': widget.sourcePath,
+        'appliedHeight': nextHeight,
+        'isPreviewTruncated': false,
+        'startedRenderShield': shouldStartRenderShield,
+      },
+    );
+    _scheduleHeightRenderProbe(configuredHeight: nextHeight);
+  }
+
+  void _scheduleHeightRenderProbe({
+    required double configuredHeight,
+    int frameIndex = 1,
+    int? generation,
+  }) {
+    final probeGeneration = generation ?? ++_heightRenderProbeGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || probeGeneration != _heightRenderProbeGeneration) {
+        return;
+      }
+      final sample = _resolveHostViewportProbeSample();
+      final renderHeight = sample.renderHeight;
+      final renderGapPx = renderHeight == null
+          ? null
+          : configuredHeight - renderHeight;
+      _recordSurfaceLifecycle(
+        'height_apply_render_probe',
+        data: <String, dynamic>{
+          'probeGeneration': probeGeneration,
+          'frameIndex': frameIndex,
+          'configuredHeight': configuredHeight,
+          'renderHeight': renderHeight,
+          'renderGapPx': renderGapPx,
+          'probeStatus': sample.status.wireName,
+        },
+      );
+      final remainingFrames = _artifactHeightRenderProbeMaxFrames - frameIndex;
+      final shouldContinue = shouldContinueArtifactHeightRenderProbe(
+        configuredHeight: configuredHeight,
+        renderHeight: renderHeight,
+        remainingFrames: remainingFrames,
+      );
+      if (!shouldContinue &&
+          _isWaitingForHeightRenderCatchUp &&
+          probeGeneration == _heightRenderProbeGeneration) {
+        _recordSurfaceLifecycle(
+          'height_render_shield_ended',
+          data: <String, dynamic>{
+            'probeGeneration': probeGeneration,
+            'frameIndex': frameIndex,
+            'configuredHeight': configuredHeight,
+            'renderHeight': renderHeight,
+          },
+        );
+        setState(() {
+          _isWaitingForHeightRenderCatchUp = false;
+        });
+      }
+      if (!shouldContinue) {
+        return;
+      }
+      WidgetsBinding.instance.scheduleFrame();
+      _scheduleHeightRenderProbe(
+        configuredHeight: configuredHeight,
+        frameIndex: frameIndex + 1,
+        generation: probeGeneration,
+      );
+    });
   }
 
   void _addArtifactRenderStateChannel(WebViewController controller) {
@@ -1940,6 +2142,8 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface>
         _isStreamingUpdateInFlight ||
         _pendingFinalController != null;
     final showWaitingShell = !_hasRenderedVisibleContent;
+    final showResizeShield =
+        _isWaitingForHeightRenderCatchUp && !showWaitingShell;
     if (widget.enableInternalScroll) {
       return ClipRRect(
         key: _previewViewportKey,
@@ -1970,6 +2174,14 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface>
             if (showWaitingShell)
               Positioned.fill(
                 child: _buildPreviewShell(context, isRunning: true),
+              )
+            else if (showResizeShield)
+              Positioned.fill(
+                child: _buildPreviewShell(
+                  context,
+                  isRunning: true,
+                  shellKey: const Key(_artifactPreviewResizeShieldKey),
+                ),
               )
             else if (isUpdating)
               Positioned.fill(
@@ -2019,10 +2231,18 @@ class _ArtifactPreviewSurfaceState extends State<ArtifactPreviewSurface>
                       Positioned.fill(
                         child: _buildPreviewShell(context, isRunning: true),
                       ),
+                    if (showResizeShield)
+                      Positioned.fill(
+                        child: _buildPreviewShell(
+                          context,
+                          isRunning: true,
+                          shellKey: const Key(_artifactPreviewResizeShieldKey),
+                        ),
+                      ),
                   ],
                 ),
               ),
-              if (!showWaitingShell && isUpdating)
+              if (!showWaitingShell && !showResizeShield && isUpdating)
                 Positioned.fill(
                   child: IgnorePointer(
                     child: _buildSweepOverlay(context),

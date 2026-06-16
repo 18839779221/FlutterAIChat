@@ -208,4 +208,47 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets(
+      'runtime preview shows a transient resize shield until the grown host height settles',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      buildSurface(source: '<div>stream</div>', isRuntimePreview: true),
+    );
+    await tester.pump();
+
+    final controller = platform.controllers.first;
+    controller.javaScriptChannels['ArtifactRenderState']!.onMessageReceived(
+      const JavaScriptMessage(
+        message:
+            '{"event":"dom_commit","sourceLength":17,"artifactRectHeight":260}',
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('artifact-preview-sweep-shell')),
+      findsNothing,
+    );
+
+    controller.javaScriptChannels['ArtifactHeight']!.onMessageReceived(
+      const JavaScriptMessage(
+        message:
+            '{"event":"height_measure","height":440,"heightBasis":"artifactRect","artifactRectHeight":440,"bodyScrollHeight":440,"bodyOffsetHeight":440,"rootScrollHeight":440,"rootOffsetHeight":440}',
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('artifact-preview-resize-shield')),
+      findsOneWidget,
+    );
+
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('artifact-preview-resize-shield')),
+      findsNothing,
+    );
+  });
 }
