@@ -56,6 +56,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       const <_SlashSuggestionItem>[];
   String? _selectedModelChipLabel;
   String? _slashSuggestionsDismissedText;
+  bool _didLogComposerEditable = false;
 
   @override
   void initState() {
@@ -263,6 +264,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   @override
   Widget build(BuildContext context) {
     final sendPhase = ref.watch(sendPhaseProvider);
+    final bootstrapState = ref.watch(appBootstrapStateProvider);
     final textController = ref.watch(textControllerProvider);
     final focusNode = ref.watch(focusNodeProvider);
     final chatController = ref.read(chatControllerProvider);
@@ -305,8 +307,10 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         sendPhase == ChatSendPhase.executingTool ||
         sendPhase == ChatSendPhase.streamingResponse;
     final isBlockingPhase = isCancellablePhase;
-    final isComposerLocked =
-        sendPhase != ChatSendPhase.idle || isVoiceSessionActive;
+    final isBootstrapReady = bootstrapState.isReady;
+    final isComposerLocked = isVoiceSessionActive;
+    final isComposerEditable = !isComposerLocked;
+    final startupProbe = ref.read(bootstrapStartupProbeProvider);
     final composerPreviewText = composerDocumentController.exportPlainText();
     final composerValue =
         composerPreviewText.trim().isEmpty ? '空白' : composerPreviewText;
@@ -315,8 +319,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         : isAwaitingConfirmation
             ? '等待工具确认'
             : '发送消息';
-    final isSendButtonEnabled =
-        isCancellablePhase || (!isBlockingPhase && !isAwaitingConfirmation);
+    final isSendButtonEnabled = isBootstrapReady &&
+        (isCancellablePhase || (!isBlockingPhase && !isAwaitingConfirmation));
     _activeSlashSuggestions = _resolveActiveSlashSuggestions(
       text: textController.text,
       isVoiceSessionActive: isVoiceSessionActive,
@@ -335,6 +339,15 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _syncSlashSuggestionsOverlay();
     });
+    if (isComposerEditable && !_didLogComposerEditable) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _didLogComposerEditable) {
+          return;
+        }
+        startupProbe.mark('bootstrap.composer_editable');
+        _didLogComposerEditable = true;
+      });
+    }
 
     Future<bool> handleSlashCommand() async {
       final command =
@@ -379,6 +392,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     Future<void> submitCurrentInput() async {
       final pendingText = composerDocumentController.exportPlainText();
       final pendingAttachments = List<ChatAttachment>.from(composerAttachments);
+      final messenger = ScaffoldMessenger.of(context);
       Logger.runtime(
         'ChatInput',
         'submitCurrentInput invoked',
@@ -405,14 +419,13 @@ class _ChatInputState extends ConsumerState<ChatInput> {
               .join(','),
         },
       );
-      if (isComposerLocked) {
+      if (!isComposerEditable) {
         Logger.w(
           'ChatInput',
           'submitCurrentInput ignored because composer is locked',
         );
         return;
       }
-      final messenger = ScaffoldMessenger.of(context);
       if (pendingText.trim().isEmpty && composerAttachments.isEmpty) {
         Logger.w(
           'ChatInput',
@@ -478,7 +491,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     }
 
     void requestComposerFocus() {
-      if (isComposerLocked) {
+      if (!isComposerEditable) {
         return;
       }
       FocusScope.of(context).requestFocus(focusNode);
@@ -489,13 +502,14 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       if (repository == null) {
         return;
       }
+      final navigator = Navigator.of(context);
       final providers = await repository.getProviders();
       final runtime = ref.read(currentSessionRuntimeConfigProvider);
       if (!mounted) {
         return;
       }
       if (providers.isEmpty) {
-        await Navigator.of(context).push(
+        await navigator.push(
           MaterialPageRoute(
             builder: (_) => ModelManagementPage(repository: repository),
           ),
@@ -656,7 +670,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                           Semantics(
                             container: true,
                             textField: true,
-                            enabled: !isComposerLocked,
+                            enabled: isComposerEditable,
                             focused: focusNode.hasFocus,
                             label: '聊天输入框',
                             hint: '输入消息',
@@ -745,7 +759,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                                         key: const ValueKey('chat-input-field'),
                                         focusNode: focusNode,
                                         controller: textController,
-                                        enabled: !isComposerLocked,
+                                        enabled: isComposerEditable,
                                         minLines: 1,
                                         maxLines: 4,
                                         textAlignVertical:
@@ -822,7 +836,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                                     padding:
                                         EdgeInsets.only(right: spacing.xxs + 2),
                                     child: _PressableScale(
-                                      enabled: !isComposerLocked,
+                                      enabled: isComposerEditable,
                                       child: IconButton(
                                         key: const ValueKey(
                                             'chat-input-add-image'),
@@ -1136,7 +1150,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                                           elevation: 0,
                                           shadowColor: Colors.transparent,
                                         ),
-                                        onPressed: () {
+                                        key: const ValueKey(
+                                          'chat-input-send-button',
+                                        ),
+                                        onPressed: isSendButtonEnabled
+                                            ? () {
                                           Logger.i(
                                             'ChatInput',
                                             'send button pressed',
@@ -1159,7 +1177,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                                           }
 
                                           submitCurrentInput();
-                                        },
+                                        }
+                                            : null,
                                         child: AnimatedSwitcher(
                                           duration:
                                               const Duration(milliseconds: 200),

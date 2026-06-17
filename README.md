@@ -35,9 +35,20 @@
 ## Engineering Highlights
 
 - 分层式 Flutter 架构：将 UI、状态装配、聊天编排、工具执行、上下文管理和持久化解耦，便于持续扩展
+- 冷启动 bootstrap 分层：`main.dart` 仅保留最小入口设置，重量级运行时装配延后到首帧之后执行，先渲染真实聊天页骨架和输入区启动态
 - 面向 Agent 的执行基础设施：围绕 turn / step / event 建模，支持工具确认、结构化追问、挂起恢复和过程可视化
 - 长对话上下文基础设施：内建 summary snapshot、token budget 控制和 recent-turn working set，兼顾连续性与成本
 - 面向真实接入的验证链路：提供多 provider 兼容、live contract tests、Web 固定 origin 回归和 Android 真机 smoke 脚本
+
+## 启动流程
+
+- `runApp()` 前只做最小化系统初始化，避免把数据库、设置、LLM 运行时和工具装配都堆在冷启动首屏前
+- 根节点通过 `AppBootstrapScope` 在首帧后异步装配 `AppRuntime`
+- 启动期间直接渲染同一套真实聊天页 UI：
+  - 消息区显示 skeleton，而不是单独的假启动页
+  - 输入框可立即聚焦和编辑
+  - 发送按钮在 bootstrap 完成前保持禁用
+- bootstrap 完成后再接通运行时依赖，并触发会话列表加载
 
 ## Agent Loop 架构
 

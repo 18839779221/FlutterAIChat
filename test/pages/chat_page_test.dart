@@ -1,5 +1,4 @@
 import 'package:ai_chat/models/chat_group.dart';
-import 'package:ai_chat/models/chat_turn.dart';
 import 'package:ai_chat/models/chat/active_turn_status_presentation.dart';
 import 'package:ai_chat/models/chat/send_message_request.dart';
 import 'package:ai_chat/models/chat_message.dart';
@@ -8,6 +7,7 @@ import 'package:ai_chat/models/debug/streaming_trace_snapshot.dart';
 import 'package:ai_chat/models/interaction/ask_user_question_response.dart';
 import 'package:ai_chat/models/response/message_content_type.dart';
 import 'package:ai_chat/models/tool/tool_invocation.dart';
+import 'package:ai_chat/bootstrap/app_bootstrap_state.dart';
 import 'package:ai_chat/pages/chat_page.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/providers/streaming_trace_providers.dart';
@@ -16,6 +16,7 @@ import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/widgets/chat_message_list.dart';
+import 'package:ai_chat/widgets/chat_message_list_skeleton.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_card.dart';
 import 'package:ai_chat/widgets/tool_confirmation/tool_confirmation_bottom_bar.dart';
 import 'package:flutter/material.dart';
@@ -1234,6 +1235,89 @@ void main() {
     expect(
         find.byKey(const ValueKey('floating-turn-status-bar')), findsNothing);
   });
+
+  testWidgets('chat page shows skeleton while bootstrap is booting',
+      (tester) async {
+    final coordinator = _CountingSessionCoordinator();
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider.overrideWith((ref) => coordinator),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+      ],
+    );
+    container.read(appBootstrapStateNotifierProvider.notifier).update(
+          const AppBootstrapState<Object?>.booting(),
+        );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(ChatMessageListSkeleton), findsOneWidget);
+    expect(find.byType(ChatMessageList), findsNothing);
+    expect(coordinator.loadGroupsCallCount, 0);
+  });
+
+  testWidgets('chat page loads groups only after bootstrap is ready',
+      (tester) async {
+    final coordinator = _CountingSessionCoordinator();
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider.overrideWith((ref) => coordinator),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+      ],
+    );
+    container.read(appBootstrapStateNotifierProvider.notifier).update(
+          const AppBootstrapState<Object?>.booting(),
+        );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(coordinator.loadGroupsCallCount, 0);
+
+    container.read(appBootstrapStateNotifierProvider.notifier).update(
+          const AppBootstrapState<Object?>.ready(null),
+        );
+    await tester.pump();
+    await tester.pump();
+
+    expect(coordinator.loadGroupsCallCount, 1);
+    expect(find.byType(ChatMessageList), findsOneWidget);
+  });
 }
 
 const _debugCaseEmptySetup = DebugTestCaseSetup(
@@ -1384,7 +1468,38 @@ class _StubSessionCoordinator implements ChatSessionCoordinator {
   @override
   Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {}
 
+  Future<void> syncDraftGroupProviderStyle() async {}
+}
+
+class _CountingSessionCoordinator implements ChatSessionCoordinator {
+  int loadGroupsCallCount = 0;
+
   @override
+  Future<void> createNewGroup() async {}
+
+  @override
+  Future<void> deleteGroup(int id) async {}
+
+  @override
+  Future<void> loadCurrentGroup() async {}
+
+  @override
+  Future<void> loadGroups() async {
+    loadGroupsCallCount += 1;
+  }
+
+  @override
+  Future<void> loadMessages() async {}
+
+  @override
+  Future<void> loadMoreMessages() async {}
+
+  @override
+  Future<void> selectGroup(ChatGroup group) async {}
+
+  @override
+  Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {}
+
   Future<void> syncDraftGroupProviderStyle() async {}
 }
 

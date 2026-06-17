@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ai_chat/controllers/voice_input_controller.dart';
+import 'package:ai_chat/bootstrap/bootstrap_startup_probe.dart';
 import 'package:ai_chat/controllers/composer_text_editing_controller.dart';
 import 'package:ai_chat/models/composer/composer_node.dart';
 import 'package:ai_chat/models/chat/chat_attachment.dart';
@@ -18,6 +19,7 @@ import 'package:ai_chat/models/skill/skill_catalog_entry.dart';
 import 'package:ai_chat/models/speech/speech_input_config.dart';
 import 'package:ai_chat/models/session/context_window_segment.dart';
 import 'package:ai_chat/models/session/context_window_snapshot.dart';
+import 'package:ai_chat/bootstrap/app_bootstrap_state.dart';
 import 'package:ai_chat/providers/chat_providers.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/repositories/llm_local_defaults.dart';
@@ -95,6 +97,58 @@ void main() {
     expect(boxShadow.first.spreadRadius, greaterThan(0));
     expect(boxShadow[1].color.a, greaterThan(boxShadow.first.color.a));
     expect(find.byType(BackdropFilter), findsOneWidget);
+  });
+
+  testWidgets('chat input stays editable but disables send while booting',
+      (tester) async {
+    final startupEvents = <String>[];
+    final startupProbe = BootstrapStartupProbe(
+      emit: ({required name, required elapsedMsSinceStart, Object? error}) {
+        startupEvents.add(name);
+      },
+    )..attachLogger();
+    final container = ProviderContainer(
+      overrides: [
+        appBootstrapStateProvider.overrideWithValue(
+          const AppBootstrapState<Object?>.booting(),
+        ),
+        bootstrapStartupProbeProvider.overrideWithValue(startupProbe),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: ChatInput()),
+        ),
+      ),
+    );
+
+    final textField = tester.widget<TextField>(
+      find.byKey(const ValueKey('chat-input-field')),
+    );
+    expect(textField.enabled, isTrue);
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey('chat-input-send-button')),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(
+      startupEvents.where((event) => event == 'bootstrap.composer_editable'),
+      hasLength(1),
+    );
+
+    await tester.pump();
+    expect(
+      startupEvents.where((event) => event == 'bootstrap.composer_editable'),
+      hasLength(1),
+    );
   });
 
   testWidgets('chat input dock exposes a unified focus surface',
@@ -1793,8 +1847,6 @@ class _NoopChatSessionCoordinator implements ChatSessionCoordinator {
   @override
   Future<void> updateCurrentGroupWorkspace(String? workspaceId) async {}
 
-  @override
-  Future<void> syncDraftGroupProviderStyle() async {}
 }
 
 class _NoopChatSummaryController implements ChatSummaryController {

@@ -8,7 +8,13 @@ final appThemeControllerProvider =
     NotifierProvider<AppThemeController, AppThemeSpec>(AppThemeController.new);
 
 class AppThemeController extends Notifier<AppThemeSpec> {
-  AppSettingsRepository get _repository => ref.read(appSettingsRepositoryProvider);
+  AppSettingsRepository? get _repository {
+    try {
+      return ref.read(appSettingsRepositoryProvider);
+    } on UnimplementedError {
+      return null;
+    }
+  }
 
   @override
   AppThemeSpec build() {
@@ -17,7 +23,11 @@ class AppThemeController extends Notifier<AppThemeSpec> {
   }
 
   Future<void> _restorePersistedTheme() async {
-    final storedId = await _repository.getThemeId();
+    final repository = _repository;
+    if (repository == null) {
+      return;
+    }
+    final storedId = await repository.getThemeId();
     if (storedId == null) {
       return;
     }
@@ -34,6 +44,10 @@ class AppThemeController extends Notifier<AppThemeSpec> {
       return;
     }
     state = nextTheme;
-    await _repository.saveThemeId(nextTheme.id);
+    final repository = _repository;
+    if (repository == null) {
+      return;
+    }
+    await repository.saveThemeId(nextTheme.id);
   }
 }

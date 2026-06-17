@@ -12,6 +12,7 @@ import '../theme/app_spacing.dart';
 import '../providers/chat_providers.dart';
 import '../widgets/chat_blocks/unified_turn_status_bar.dart';
 import '../widgets/chat_message_list.dart';
+import '../widgets/chat_message_list_skeleton.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/chat_drawer.dart';
 import '../widgets/debug/debug_test_case_sheet.dart';
@@ -42,16 +43,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final WorkspaceBindingService _workspaceBindingService =
       WorkspaceBindingService();
+  bool _didScheduleBootstrapReadyLoad = false;
 
   @override
   void initState() {
     super.initState();
-    // 初始化加载数据
-    Future.microtask(() => ref.read(chatControllerProvider).loadGroups());
   }
 
   @override
   Widget build(BuildContext context) {
+    final bootstrapState = ref.watch(appBootstrapStateProvider);
+    final isBootstrapReady = bootstrapState.isReady;
     final currentGroup = ref.watch(currentGroupProvider);
     final sendPhase = ref.watch(sendPhaseProvider);
     final isSendInFlight = sendPhase != ChatSendPhase.idle;
@@ -70,6 +72,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final chatController = ref.read(chatControllerProvider);
     final scrollController = ref.read(scrollControllerProvider);
+
+    if (isBootstrapReady && !_didScheduleBootstrapReadyLoad) {
+      _didScheduleBootstrapReadyLoad = true;
+      Future.microtask(() => ref.read(chatControllerProvider).loadGroups());
+    }
 
     ref.listen(streamingTraceSnapshotProvider, (previous, next) {
       if (next == null) {
@@ -135,7 +142,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     Positioned.fill(
                       child: Stack(
                         children: [
-                          const ChatMessageList(),
+                          if (isBootstrapReady)
+                            const ChatMessageList()
+                          else
+                            const ChatMessageListSkeleton(),
                           if (isLoadingMore)
                             Positioned(
                               top: MediaQuery.of(context).padding.top,

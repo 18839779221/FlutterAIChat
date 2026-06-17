@@ -185,6 +185,27 @@ File log 是开发期排障的主入口。
 
 它用于切分同一个 `logs/app.log` 中的不同运行周期，避免重启后日志时序混淆。
 
+冷启动观测当前补充以下启动锚点：
+
+- `bootstrap.start`
+- `bootstrap.first_frame`
+- `bootstrap.composer_editable`
+- `bootstrap.ready`
+- `bootstrap.failed`
+
+这些日志统一带：
+
+- `elapsedMsSinceStart`
+
+用于直接估算：
+
+- 白屏结束时间：`bootstrap.first_frame - bootstrap.start`
+- 输入框可编辑时间：`bootstrap.composer_editable - bootstrap.start`
+- 完整可发送时间：`bootstrap.ready - bootstrap.start`
+
+当前实现会先在 bootstrap 阶段缓冲这些事件，等日志系统准备完成后再统一写入 `app.log`。
+因此它们在文件中的写入顺序可能晚于真实发生时刻，但判断耗时应以 `elapsedMsSinceStart` 为准，而不是文件行顺序。
+
 ### planner 锚点
 
 每次 planner 决策至少应有：

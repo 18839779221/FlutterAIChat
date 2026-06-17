@@ -1,3 +1,6 @@
+import 'package:ai_chat/bootstrap/app_bootstrap_state.dart';
+import 'package:ai_chat/bootstrap/app_runtime.dart';
+import 'package:ai_chat/bootstrap/bootstrap_startup_probe.dart';
 import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/models/chat/tool_workflow_step.dart';
 import 'package:ai_chat/models/skill/skill_catalog_entry.dart';
@@ -67,16 +70,70 @@ import 'package:ai_chat/repositories/session_context_snapshot_repository.dart';
 
 // 数据库提供者（实际实现在 main.dart 中通过 override 注入）
 final databaseProvider = Provider<ChatStorage>((ref) {
-  throw UnimplementedError('需要在 main.dart 中覆盖 databaseProvider');
+  final runtime = ref.watch(appBootstrapRuntimeProvider);
+  if (runtime != null) {
+    return runtime.chatStorage;
+  }
+  throw UnimplementedError('bootstrap runtime 尚未完成，databaseProvider 不可用');
+});
+
+class AppBootstrapStateNotifier
+    extends StateNotifier<AppBootstrapState<Object?>> {
+  AppBootstrapStateNotifier([
+    super.initialState =
+        const AppBootstrapState<Object?>.ready(null),
+  ]);
+
+  void update(AppBootstrapState<Object?> nextState) {
+    state = nextState;
+  }
+}
+
+final appBootstrapStateNotifierProvider = StateNotifierProvider<
+    AppBootstrapStateNotifier, AppBootstrapState<Object?>>((ref) {
+  return AppBootstrapStateNotifier();
+});
+
+final appBootstrapStateProvider = Provider<AppBootstrapState<Object?>>((ref) {
+  return ref.watch(appBootstrapStateNotifierProvider);
+});
+
+final appBootstrapRuntimeProvider = Provider<AppRuntime?>((ref) {
+  final state = ref.watch(appBootstrapStateProvider);
+  final runtime = state.runtime;
+  if (runtime is AppRuntime) {
+    return runtime;
+  }
+  return null;
+});
+
+final isBootstrapReadyProvider = Provider<bool>((ref) {
+  return ref.watch(appBootstrapStateProvider).isReady;
+});
+
+final bootstrapStartupProbeProvider = Provider<BootstrapStartupProbe>((ref) {
+  return BootstrapStartupProbe();
 });
 
 /// App-wide shared preferences used for lightweight UI state only.
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
-  throw UnimplementedError('需要在 main.dart 中覆盖 sharedPreferencesProvider');
+  final runtime = ref.watch(appBootstrapRuntimeProvider);
+  if (runtime != null) {
+    return runtime.sharedPreferences;
+  }
+  throw UnimplementedError(
+    'bootstrap runtime 尚未完成，sharedPreferencesProvider 不可用',
+  );
 });
 
 final appSettingsRepositoryProvider = Provider<AppSettingsRepository>((ref) {
-  throw UnimplementedError('需要在 main.dart 中覆盖 AppSettingsRepository');
+  final runtime = ref.watch(appBootstrapRuntimeProvider);
+  if (runtime != null) {
+    return runtime.appSettingsRepository;
+  }
+  throw UnimplementedError(
+    'bootstrap runtime 尚未完成，appSettingsRepositoryProvider 不可用',
+  );
 });
 
 final speechInputConfigProvider =
@@ -95,13 +152,19 @@ final audioCaptureServiceProvider = Provider<AudioCaptureService?>((ref) {
 });
 
 final chatAttachmentPickerServiceProvider =
-    Provider<ChatAttachmentPickerService?>((ref) => null);
+    Provider<ChatAttachmentPickerService?>((ref) {
+  return ref.watch(appBootstrapRuntimeProvider)?.chatAttachmentPickerService;
+});
 
 final chatAttachmentStorageServiceProvider =
-    Provider<ChatAttachmentStorageService?>((ref) => null);
+    Provider<ChatAttachmentStorageService?>((ref) {
+  return ref.watch(appBootstrapRuntimeProvider)?.chatAttachmentStorageService;
+});
 
 final fileToolRootServiceProvider =
-    Provider<FileToolRootService?>((ref) => null);
+    Provider<FileToolRootService?>((ref) {
+  return ref.watch(appBootstrapRuntimeProvider)?.fileToolRootService;
+});
 
 final chatAttachmentHostFileResolverProvider =
     Provider<ChatAttachmentHostFileResolver?>((ref) {
@@ -153,6 +216,10 @@ final speechToTextServiceProvider = Provider<SpeechToTextService?>((ref) {
 });
 
 final traceRecorderProvider = Provider<ChatTraceRecorder>((ref) {
+  final runtime = ref.watch(appBootstrapRuntimeProvider);
+  if (runtime != null) {
+    return runtime.traceRecorder;
+  }
   return ChatTraceRecorder();
 });
 
@@ -224,7 +291,9 @@ final chatTimelineOrderAnchorStoreProvider =
 );
 
 final artifactFileStorageServiceProvider =
-    Provider<ArtifactFileStorageService?>((ref) => null);
+    Provider<ArtifactFileStorageService?>((ref) {
+  return ref.watch(appBootstrapRuntimeProvider)?.artifactFileStorageService;
+});
 
 final artifactThemeTokenMapperProvider = Provider<ArtifactThemeTokenMapper>(
     (ref) => const ArtifactThemeTokenMapper());
@@ -241,7 +310,11 @@ final chatServiceProvider = Provider<ChatService>((ref) {
 
 // 聊天服务工厂提供者
 final chatServiceFactoryProvider = Provider<ChatService>((ref) {
-  throw UnimplementedError("需要在 main.dart 中覆盖创建 ChatService 的代码");
+  final runtime = ref.watch(appBootstrapRuntimeProvider);
+  if (runtime != null) {
+    return runtime.chatService;
+  }
+  throw UnimplementedError('bootstrap runtime 尚未完成，chatService 不可用');
 });
 
 final chatTurnRepositoryProvider = Provider<ChatTurnRepository>((ref) {
@@ -321,25 +394,45 @@ final enabledSkillCatalogProvider =
 });
 
 final skillStorageServiceProvider = Provider<SkillStorageService>((ref) {
+  final runtime = ref.watch(appBootstrapRuntimeProvider);
+  if (runtime != null) {
+    return runtime.skillStorageService;
+  }
   return SkillStorageService();
 });
 
 final gitHubSkillSourceResolverProvider =
     Provider<GitHubSkillSourceResolver>((ref) {
+  final runtime = ref.watch(appBootstrapRuntimeProvider);
+  if (runtime != null) {
+    return runtime.gitHubSkillSourceResolver;
+  }
   return const GitHubSkillSourceResolver();
 });
 
 final gitHubSkillFetcherProvider = Provider<GitHubSkillFetcher>((ref) {
+  final runtime = ref.watch(appBootstrapRuntimeProvider);
+  if (runtime != null) {
+    return runtime.gitHubSkillFetcher;
+  }
   return GitHubSkillFetcher();
 });
 
 final skillIndexServiceProvider = Provider<SkillIndexService>((ref) {
+  final runtime = ref.watch(appBootstrapRuntimeProvider);
+  if (runtime != null) {
+    return runtime.skillIndexService;
+  }
   return SkillIndexService(
     storageService: ref.watch(skillStorageServiceProvider),
   );
 });
 
 final skillRuntimeServiceProvider = Provider<SkillRuntimeService>((ref) {
+  final runtime = ref.watch(appBootstrapRuntimeProvider);
+  if (runtime != null) {
+    return runtime.skillRuntimeService;
+  }
   return SkillRuntimeService(
     storageService: ref.watch(skillStorageServiceProvider),
     settingsRepository: ref.watch(appSettingsRepositoryProvider),
@@ -348,6 +441,10 @@ final skillRuntimeServiceProvider = Provider<SkillRuntimeService>((ref) {
 });
 
 final skillInstallerServiceProvider = Provider<SkillInstallerService>((ref) {
+  final runtime = ref.watch(appBootstrapRuntimeProvider);
+  if (runtime != null) {
+    return runtime.skillInstallerService;
+  }
   return SkillInstallerService(
     storageService: ref.watch(skillStorageServiceProvider),
     sourceResolver: ref.watch(gitHubSkillSourceResolverProvider),
@@ -416,7 +513,9 @@ final sessionContextInspectorServiceProvider =
   );
 });
 
-final turnHarnessProvider = Provider<TurnHarness?>((ref) => null);
+final turnHarnessProvider = Provider<TurnHarness?>((ref) {
+  return ref.watch(appBootstrapRuntimeProvider)?.turnHarness;
+});
 
 CompactToolRowModel _buildReadWorkflowRow(List<ToolWorkflowStep> steps) {
   final latestStep = steps.isEmpty ? null : steps.last;
