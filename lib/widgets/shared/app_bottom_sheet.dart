@@ -164,9 +164,20 @@ class AppBottomSheetScaffold extends StatelessWidget {
             child: shell,
           );
 
-    final aligned = Align(
-      alignment: Alignment.bottomCenter,
-      child: constrainedShell,
+    final aligned = Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.of(context).maybePop(),
+            child: const SizedBox.expand(),
+          ),
+        ),
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: constrainedShell,
+        ),
+      ],
     );
 
     if (!useSafeArea) {
