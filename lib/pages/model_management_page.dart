@@ -6,6 +6,9 @@ import '../models/llm/llm_selection_state.dart';
 import '../repositories/app_settings_repository.dart';
 import '../services/llm_model_discovery_service.dart';
 import '../services/llm_model_test_service.dart';
+import '../widgets/settings/settings_group_section.dart';
+import '../widgets/settings/settings_row.dart';
+import '../widgets/settings/settings_value_badge.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_theme_spec.dart';
@@ -164,7 +167,6 @@ class _ModelManagementPageState extends State<ModelManagementPage> {
   @override
   Widget build(BuildContext context) {
     final spacing = Theme.of(context).extension<AppSpacing>()!;
-    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final currentProvider = _currentProvider;
     final currentModel = _currentModel;
 
@@ -175,214 +177,93 @@ class _ModelManagementPageState extends State<ModelManagementPage> {
           : ListView(
               padding: EdgeInsets.all(spacing.lg),
               children: [
-                _ManagementOverviewCard(
-                  currentProvider: currentProvider,
-                  currentModel: currentModel,
-                  providerCount: _providers.length,
-                  onCreateProvider: _openProviderForm,
-                  isTestingCurrentModel: _isTestingCurrentModel,
-                  onTestCurrentModel: _testCurrentModel,
+                SettingsGroupSection(
+                  title: '当前接入',
+                  summary: '一级设置页负责总览，这里只保留当前连接状态与管理动作。',
+                  child: Column(
+                    children: [
+                      SettingsRow(
+                        title: '当前 Provider',
+                        subtitle: '主对话默认使用的连接来源',
+                        trailing: SettingsValueBadge(
+                          label: currentProvider?.name ?? '未配置',
+                          tone: currentProvider == null
+                              ? SettingsValueBadgeTone.warning
+                              : SettingsValueBadgeTone.active,
+                        ),
+                      ),
+                      SizedBox(height: spacing.xs),
+                      SettingsRow(
+                        title: '当前 Model',
+                        subtitle: '本次会话的默认主模型',
+                        trailing: SettingsValueBadge(
+                          label: currentModel?.displayName ?? '未配置',
+                          tone: currentModel == null
+                              ? SettingsValueBadgeTone.warning
+                              : SettingsValueBadgeTone.neutral,
+                        ),
+                      ),
+                      SizedBox(height: spacing.sm),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: _openProviderForm,
+                              child: const Text('新增 Provider'),
+                            ),
+                          ),
+                          SizedBox(width: spacing.sm),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: _isTestingCurrentModel
+                                  ? null
+                                  : _testCurrentModel,
+                              child: _isTestingCurrentModel
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Text('测试当前模型'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
                 SizedBox(height: spacing.lg),
                 if (_providers.isEmpty)
                   _EmptyProviderState(onCreateProvider: _openProviderForm),
                 if (_providers.isNotEmpty) ...[
-                  Padding(
-                    padding: EdgeInsets.only(bottom: spacing.md),
-                    child: Text(
-                      '按 Provider 管理连接与模型。优先在每个 Provider 内执行模型探测，再按需手动补充。',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: colors.secondaryText,
-                            height: 1.5,
+                  SettingsGroupSection(
+                    title: 'Provider 列表',
+                    summary: '按 Provider 管理连接与模型。先维护连接，再在对象内探测或补充模型。',
+                    child: Column(
+                      children: [
+                        for (var index = 0; index < _providers.length; index++)
+                          Padding(
+                            padding: EdgeInsets.only(
+                              bottom:
+                                  index == _providers.length - 1 ? 0 : spacing.md,
+                            ),
+                            child: _ProviderListTile(
+                              provider: _providers[index],
+                              isDefault: _providers[index].id ==
+                                  _selection.selectedProviderId,
+                              onEdit: () => _openProviderForm(_providers[index]),
+                              onDelete: () =>
+                                  _deleteProvider(_providers[index]),
+                            ),
                           ),
-                    ),
-                  ),
-                  ..._providers.map(
-                    (provider) => Padding(
-                      padding: EdgeInsets.only(bottom: spacing.md),
-                      child: _ProviderListTile(
-                        provider: provider,
-                        isDefault: provider.id == _selection.selectedProviderId,
-                        onEdit: () => _openProviderForm(provider),
-                        onDelete: () => _deleteProvider(provider),
-                      ),
+                      ],
                     ),
                   ),
                 ],
               ],
             ),
-    );
-  }
-}
-
-class _ManagementOverviewCard extends StatelessWidget {
-  const _ManagementOverviewCard({
-    required this.currentProvider,
-    required this.currentModel,
-    required this.providerCount,
-    required this.onCreateProvider,
-    required this.isTestingCurrentModel,
-    required this.onTestCurrentModel,
-  });
-
-  final LlmProviderConfig? currentProvider;
-  final LlmProviderModel? currentModel;
-  final int providerCount;
-  final VoidCallback onCreateProvider;
-  final bool isTestingCurrentModel;
-  final VoidCallback onTestCurrentModel;
-
-  @override
-  Widget build(BuildContext context) {
-    final spacing = Theme.of(context).extension<AppSpacing>()!;
-    final radius = Theme.of(context).extension<AppRadius>()!;
-    final colors = Theme.of(context).extension<AppThemeSpec>()!;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(radius.lg),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            colors.assistantSurface.withValues(alpha: 0.96),
-            colors.settingsPanelBackground.withValues(alpha: 0.98),
-          ],
-        ),
-        border: Border.all(color: colors.divider),
-        boxShadow: [
-          BoxShadow(
-            color: colors.primaryText.withValues(alpha: 0.05),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(spacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: spacing.sm,
-                vertical: spacing.xxs + 2,
-              ),
-              decoration: BoxDecoration(
-                color: colors.workflowRunning.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(radius.pill),
-              ),
-              child: Text(
-                providerCount == 0 ? '准备接入' : '当前会话候选',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: colors.workflowRunning,
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-            ),
-            SizedBox(height: spacing.md),
-            Text(
-              '当前选中模型',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: colors.secondaryText,
-                  ),
-            ),
-            SizedBox(height: spacing.xs),
-            Text(
-              currentModel?.displayName ?? '尚未完成模型接入',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    height: 1.15,
-                  ),
-            ),
-            SizedBox(height: spacing.xs),
-            Text(
-              currentProvider?.name ?? '请先新增 Provider 并补充模型',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: colors.secondaryText,
-                    height: 1.45,
-                  ),
-            ),
-            SizedBox(height: spacing.md),
-            Wrap(
-              spacing: spacing.sm,
-              runSpacing: spacing.sm,
-              children: [
-                _SummaryPill(
-                  icon: Icons.hub_outlined,
-                  label: '$providerCount 个 Provider',
-                ),
-              ],
-            ),
-            SizedBox(height: spacing.lg),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton(
-                    onPressed: onCreateProvider,
-                    child: const Text('新增 Provider'),
-                  ),
-                ),
-                SizedBox(width: spacing.sm),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed:
-                        isTestingCurrentModel ? null : onTestCurrentModel,
-                    child: isTestingCurrentModel
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('测试当前模型'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SummaryPill extends StatelessWidget {
-  const _SummaryPill({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final spacing = Theme.of(context).extension<AppSpacing>()!;
-    final radius = Theme.of(context).extension<AppRadius>()!;
-    final colors = Theme.of(context).extension<AppThemeSpec>()!;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.chatBackground.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(radius.pill),
-      ),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: spacing.sm,
-          vertical: spacing.xxs + 2,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: colors.secondaryText),
-            SizedBox(width: spacing.xxs + 2),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: colors.primaryText,
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -400,9 +281,16 @@ class _EmptyProviderState extends StatelessWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colors.settingsPanelBackground,
+        color: colors.settingsPanelBackground.withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(radius.lg),
-        border: Border.all(color: colors.divider),
+        boxShadow: [
+          BoxShadow(
+            color: colors.core.elevation.shadowColor.withValues(alpha: 0.05),
+            blurRadius: 18,
+            spreadRadius: -10,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Padding(
         padding: EdgeInsets.all(spacing.xl),
@@ -464,11 +352,14 @@ class _ProviderListTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.chatBackground.withValues(alpha: 0.96),
         borderRadius: BorderRadius.circular(radius.lg),
-        border: Border.all(
-          color: isDefault
-              ? colors.workflowRunning.withValues(alpha: 0.28)
-              : colors.divider,
-        ),
+        boxShadow: [
+          BoxShadow(
+            color: colors.core.elevation.shadowColor.withValues(alpha: 0.04),
+            blurRadius: 14,
+            spreadRadius: -8,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Padding(
         padding: EdgeInsets.all(spacing.md + spacing.xxs),
@@ -533,7 +424,9 @@ class _ProviderListTile extends StatelessWidget {
                 SizedBox(width: spacing.sm),
                 DecoratedBox(
                   decoration: BoxDecoration(
-                    color: colors.assistantSurface.withValues(alpha: 0.9),
+                    color: isDefault
+                        ? colors.workflowRunning.withValues(alpha: 0.12)
+                        : colors.assistantSurface.withValues(alpha: 0.9),
                     borderRadius: BorderRadius.circular(radius.lg),
                   ),
                   child: Padding(

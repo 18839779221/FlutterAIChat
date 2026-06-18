@@ -9,6 +9,9 @@ import '../services/llm_model_test_service.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_theme_spec.dart';
+import '../widgets/settings/settings_group_section.dart';
+import '../widgets/settings/settings_row.dart';
+import '../widgets/settings/settings_value_badge.dart';
 import '../widgets/shared/app_bottom_sheet.dart';
 
 class ProviderFormPage extends StatefulWidget {
@@ -606,18 +609,21 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
         child: ListView(
           padding: EdgeInsets.all(spacing.lg),
           children: [
-            _ProviderHeroCard(
-              isEdit: _isEdit,
-              providerName: _nameController.text.trim(),
-              modelCount: _models.length,
-            ),
-            SizedBox(height: spacing.lg),
-            _SectionCard(
-              title: '连接配置',
-              subtitle: '先填写连接信息。保存时仅在模型列表为空时自动探测；测速会基于当前第一个模型执行。',
+            SettingsGroupSection(
+              title: '连接与鉴权',
+              summary: '这里只编辑单个 Provider 对象。先完成连接信息，再决定是否探测模型。',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  SettingsRow(
+                    title: '编辑对象',
+                    subtitle: _isEdit ? '当前正在修改已有 Provider' : '当前正在创建新的 Provider',
+                    trailing: SettingsValueBadge(
+                      label: _isEdit ? '编辑中' : '新对象',
+                      tone: SettingsValueBadgeTone.active,
+                    ),
+                  ),
+                  SizedBox(height: spacing.md),
                   TextFormField(
                     controller: _nameController,
                     decoration: const InputDecoration(
@@ -691,9 +697,9 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
               ),
             ),
             SizedBox(height: spacing.lg),
-            _SectionCard(
-              title: '模型列表',
-              subtitle: hasModels
+            SettingsGroupSection(
+              title: '模型目录',
+              summary: hasModels
                   ? '优先通过探测更新模型目录，也可按需手动补充。测速会基于当前第一个模型执行。'
                   : '可先探测模型，再按需手动新增；测速会基于当前第一个模型执行。',
               child: Column(
@@ -761,9 +767,9 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
             ),
             if (hasModels) ...[
               SizedBox(height: spacing.lg),
-              _SectionCard(
-                title: 'Side Model',
-                subtitle: '默认不单独指定。留空时，side model 会跟随当前主模型。',
+              SettingsGroupSection(
+                title: '高级运行时',
+                summary: '仅在需要主模型之外的辅助模型时单独指定。默认留空，随主模型变化。',
                 child: DropdownButtonFormField<String>(
                   initialValue:
                       _resolveValidSideModelId(_buildProvider().models) ?? '',
@@ -799,92 +805,6 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
   }
 }
 
-class _ProviderHeroCard extends StatelessWidget {
-  const _ProviderHeroCard({
-    required this.isEdit,
-    required this.providerName,
-    required this.modelCount,
-  });
-
-  final bool isEdit;
-  final String providerName;
-  final int modelCount;
-
-  @override
-  Widget build(BuildContext context) {
-    final spacing = Theme.of(context).extension<AppSpacing>()!;
-    final radius = Theme.of(context).extension<AppRadius>()!;
-    final colors = Theme.of(context).extension<AppThemeSpec>()!;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(radius.lg),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            colors.assistantSurface.withValues(alpha: 0.98),
-            colors.settingsPanelBackground.withValues(alpha: 0.98),
-          ],
-        ),
-        border: Border.all(color: colors.divider),
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(spacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: spacing.sm,
-                vertical: spacing.xxs + 2,
-              ),
-              decoration: BoxDecoration(
-                color: colors.workflowRunning.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(radius.pill),
-              ),
-              child: Text(
-                isEdit ? 'Provider 详情' : '新增 Provider',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: colors.workflowRunning,
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-            ),
-            SizedBox(height: spacing.md),
-            Text(
-              providerName.isEmpty ? '配置新的模型连接' : providerName,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    height: 1.15,
-                  ),
-            ),
-            SizedBox(height: spacing.xs),
-            Text(
-              '每个 Provider 独立管理连接信息与模型列表。建议先探测模型，再按需手动补充。',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: colors.secondaryText,
-                    height: 1.5,
-                  ),
-            ),
-            SizedBox(height: spacing.md),
-            Wrap(
-              spacing: spacing.sm,
-              runSpacing: spacing.sm,
-              children: [
-                _InfoChip(
-                  icon: Icons.layers_outlined,
-                  label: modelCount == 0 ? '待探测模型' : '$modelCount 个模型',
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 PreferredSizeWidget _buildTintedHeader(BuildContext context, String title) {
   final colors = Theme.of(context).extension<AppThemeSpec>()!;
 
@@ -903,70 +823,6 @@ PreferredSizeWidget _buildTintedHeader(BuildContext context, String title) {
   );
 }
 
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({
-    required this.title,
-    required this.subtitle,
-    required this.child,
-  });
-
-  final String title;
-  final String subtitle;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final spacing = Theme.of(context).extension<AppSpacing>()!;
-    final radius = Theme.of(context).extension<AppRadius>()!;
-    final colors = Theme.of(context).extension<AppThemeSpec>()!;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.settingsPanelBackground,
-        borderRadius: BorderRadius.circular(radius.lg),
-        border: Border.all(color: colors.divider),
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(spacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                      ),
-                      SizedBox(height: spacing.xxs),
-                      Text(
-                        subtitle,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: colors.secondaryText,
-                              height: 1.45,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: spacing.md),
-            child,
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _EmptyModelState extends StatelessWidget {
   const _EmptyModelState({required this.onAddModel});
 
@@ -982,6 +838,14 @@ class _EmptyModelState extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.chatBackground.withValues(alpha: 0.88),
         borderRadius: BorderRadius.circular(radius.lg),
+        boxShadow: [
+          BoxShadow(
+            color: colors.core.elevation.shadowColor.withValues(alpha: 0.04),
+            blurRadius: 14,
+            spreadRadius: -8,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Padding(
         padding: EdgeInsets.all(spacing.lg),
@@ -1047,9 +911,16 @@ class _ModelEditorCard extends StatelessWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colors.chatBackground,
+        color: colors.chatBackground.withValues(alpha: 0.96),
         borderRadius: BorderRadius.circular(radius.lg),
-        border: Border.all(color: colors.divider),
+        boxShadow: [
+          BoxShadow(
+            color: colors.core.elevation.shadowColor.withValues(alpha: 0.04),
+            blurRadius: 14,
+            spreadRadius: -8,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Padding(
         padding: EdgeInsets.all(spacing.md),
@@ -1140,47 +1011,6 @@ class _ModelEditorCard extends StatelessWidget {
   }
 }
 
-class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final spacing = Theme.of(context).extension<AppSpacing>()!;
-    final radius = Theme.of(context).extension<AppRadius>()!;
-    final colors = Theme.of(context).extension<AppThemeSpec>()!;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.chatBackground.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(radius.pill),
-      ),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: spacing.sm,
-          vertical: spacing.xxs + 2,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: colors.secondaryText),
-            SizedBox(width: spacing.xxs + 2),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: colors.primaryText,
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 extension on ApiStyle {
   String get displayTitle {
     switch (this) {
@@ -1224,7 +1054,6 @@ class _ApiStyleRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.chatBackground.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(radius.md),
-        border: Border.all(color: colors.divider),
       ),
       child: Padding(
         padding: EdgeInsets.all(spacing.md),

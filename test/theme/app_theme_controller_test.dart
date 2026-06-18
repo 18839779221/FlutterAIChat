@@ -27,4 +27,25 @@ void main() {
     expect(await repository.getThemeId(), 'olive-paper');
     expect(container.read(appThemeControllerProvider).id, 'olive-paper');
   });
+
+  test('restores persisted theme once without re-triggering build loop', () async {
+    SharedPreferences.setMockInitialValues({
+      'appearance.theme_id': 'olive-paper',
+    });
+    final preferences = await SharedPreferences.getInstance();
+    final repository = AppSettingsRepository(preferences);
+    final container = ProviderContainer(
+      overrides: [
+        appSettingsRepositoryProvider.overrideWithValue(repository),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    expect(container.read(appThemeControllerProvider).id, 'claude');
+
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(container.read(appThemeControllerProvider).id, 'olive-paper');
+  });
 }

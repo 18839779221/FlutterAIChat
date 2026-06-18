@@ -33,6 +33,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('连接与鉴权'), findsOneWidget);
+    expect(find.text('模型目录'), findsOneWidget);
     expect(find.text('测速'), findsOneWidget);
     expect(find.byIcon(Icons.bolt_rounded), findsOneWidget);
     expect(find.text('探测模型'), findsOneWidget);
@@ -40,6 +42,31 @@ void main() {
     expect(find.text('Pong'), findsNothing);
 
     expect(find.text('用于展示（例如：OpenAI）'), findsOneWidget);
+  });
+
+  testWidgets('provider form removes decorative hero and uses grouped editor',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = await _createRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ProviderFormPage(
+          repository: repository,
+          discoveryService: _FakeDiscoveryService(),
+          testService: _FakeModelTestService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('配置新的模型连接'), findsNothing);
+    expect(find.text('新增 Provider'), findsOneWidget);
+    expect(find.text('连接与鉴权'), findsOneWidget);
+    expect(find.text('模型目录'), findsOneWidget);
+    expect(find.text('高级运行时'), findsNothing);
   });
 
   testWidgets('saving with empty model list auto-discovers and runs speed test',

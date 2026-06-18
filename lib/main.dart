@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:ai_chat/bootstrap/app_bootstrap_scope.dart';
 import 'package:ai_chat/bootstrap/app_runtime.dart';
 import 'package:ai_chat/bootstrap/bootstrap_startup_probe.dart';
+import 'package:ai_chat/bootstrap/runtime_host_services.dart';
 import 'package:ai_chat/constants/route_constant.dart';
 import 'package:ai_chat/pages/component_motion_debug_page.dart';
 import 'package:ai_chat/pages/debug_hub_page.dart';
@@ -29,7 +29,6 @@ import 'package:ai_chat/utils/logger.dart';
 import 'package:ai_chat/services/agent_planner_service.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
-import 'package:ai_chat/services/default_file_tool_adapters.dart';
 import 'package:ai_chat/services/default_tool_adapters.dart';
 import 'package:ai_chat/services/follow_up_dispatch_queue.dart';
 import 'package:ai_chat/services/model_budget_registry.dart';
@@ -49,15 +48,9 @@ import 'package:ai_chat/services/turn_harness.dart';
 import 'package:ai_chat/services/turn_verifier.dart';
 import 'package:ai_chat/services/workspace/workspace_runtime_service.dart';
 import 'package:ai_chat/services/workspace/workspace_tool_host_adapters.dart';
-import 'package:ai_chat/services/attachments/chat_attachment_storage_service.dart';
 import 'package:ai_chat/services/attachments/image_picker_chat_attachment_picker_service.dart';
-import 'package:ai_chat/services/artifact/artifact_file_storage_service.dart';
 import 'package:ai_chat/services/skills/github_skill_fetcher.dart';
 import 'package:ai_chat/services/skills/github_skill_source_resolver.dart';
-import 'package:ai_chat/services/skills/skill_index_service.dart';
-import 'package:ai_chat/services/skills/skill_installer_service.dart';
-import 'package:ai_chat/services/skills/skill_runtime_service.dart';
-import 'package:ai_chat/services/skills/skill_storage_service.dart';
 import 'package:ai_chat/tools/adapters/tool_host_adapters.dart';
 import 'package:ai_chat/tools/default_tool_runtime_registry.dart';
 import 'package:ai_chat/tools/handlers/create_artifact_guideline_tool_handler.dart';
@@ -66,8 +59,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as path;
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -115,36 +106,11 @@ Future<AppRuntime> _initializeRuntime() async {
     chatCompletionsAdapterType: chatCompletionsAdapterType,
     modelCapabilityResolver: modelCapabilityResolver,
   );
-  final fileToolAdapters = await buildDefaultFileToolHostAdapters();
-  final appSupportDirectory = await getApplicationSupportDirectory();
-  final agentRootDirectory = Directory(
-    path.join(appSupportDirectory.path, 'agent'),
-  );
-  final artifactFileStorageService = ArtifactFileStorageService(
-    rootDirectory: agentRootDirectory,
-    workspaceIdResolver: (groupId) async {
-      return (await storage.getGroupById(groupId))?.workspaceId;
-    },
-  );
-  final skillStorageService = SkillStorageService(
-    rootDirectoryProvider: () async => agentRootDirectory,
-  );
-  const gitHubSkillSourceResolver = GitHubSkillSourceResolver();
-  final gitHubSkillFetcher = GitHubSkillFetcher();
-  final skillIndexService = SkillIndexService(
-    storageService: skillStorageService,
-  );
-  final skillRuntimeService = SkillRuntimeService(
-    storageService: skillStorageService,
+  final hostServices = await buildRuntimeHostServices(
+    isWeb: kIsWeb,
+    storage: storage,
     settingsRepository: settingsRepository,
-    indexService: skillIndexService,
   );
-  final skillInstallerService = SkillInstallerService(
-    storageService: skillStorageService,
-    sourceResolver: gitHubSkillSourceResolver,
-    fetcher: gitHubSkillFetcher,
-  );
-  await artifactFileStorageService.ensureReady();
   final artifactRepository = ArtifactRepository(storage);
   final createArtifactGuidelineHandler = CreateArtifactGuidelineToolHandler(
     activeThemeSpecProvider: () {
@@ -153,18 +119,14 @@ Future<AppRuntime> _initializeRuntime() async {
           AppThemeSpec.claude();
     },
   );
-  final createArtifactHandler = CreateArtifactToolHandler(
-    artifactRepository: artifactRepository,
-    fileStorageService: artifactFileStorageService,
-  );
+  final createArtifactHandler = hostServices.artifactFileStorageService == null
+      ? null
+      : CreateArtifactToolHandler(
+          artifactRepository: artifactRepository,
+          fileStorageService: hostServices.artifactFileStorageService!,
+        );
   late final ProviderContainer container;
   final chatAttachmentPickerService = ImagePickerChatAttachmentPickerService();
-  final chatAttachmentStorageService = ChatAttachmentStorageService(
-    resolveRootDirectory: () async => agentRootDirectory,
-    resolveWorkspaceId: () async {
-      return container.read(currentGroupProvider)?.workspaceId;
-    },
-  );
   final runtimeAwareWorkspaceService = WorkspaceRuntimeService(
     storage: storage,
     currentGroupReader: () => container.read(currentGroupProvider),
@@ -216,7 +178,7 @@ Future<AppRuntime> _initializeRuntime() async {
   );
   final runtimeRegistry = buildDefaultToolRuntimeRegistry(
     toolExecutor: toolExecutor,
-    skillRuntimeService: skillRuntimeService,
+    skillRuntimeService: hostServices.skillRuntimeService,
     appSettingsRepository: settingsRepository,
     createArtifactGuidelineHandler: createArtifactGuidelineHandler,
     createArtifactHandler: createArtifactHandler,
@@ -247,7 +209,7 @@ Future<AppRuntime> _initializeRuntime() async {
         toolExecutor: toolExecutor,
         toolPolicyService: toolPolicyService,
         hostAdapters: ToolHostAdapters(
-          fileTools: fileToolAdapters,
+          fileTools: hostServices.fileToolAdapters,
           workspace: WorkspaceToolHostAdapters(
             resolveWorkspaceForGroup:
                 runtimeAwareWorkspaceService.resolveWorkspaceForGroup,
@@ -265,7 +227,7 @@ Future<AppRuntime> _initializeRuntime() async {
         toolExecutor: toolExecutor,
         toolPolicyService: toolPolicyService,
         hostAdapters: ToolHostAdapters(
-          fileTools: fileToolAdapters,
+          fileTools: hostServices.fileToolAdapters,
           workspace: WorkspaceToolHostAdapters(
             resolveWorkspaceForGroup:
                 runtimeAwareWorkspaceService.resolveWorkspaceForGroup,
@@ -285,7 +247,7 @@ Future<AppRuntime> _initializeRuntime() async {
       toolExecutor: toolExecutor,
       toolPolicyService: toolPolicyService,
       hostAdapters: ToolHostAdapters(
-        fileTools: fileToolAdapters,
+        fileTools: hostServices.fileToolAdapters,
         workspace: WorkspaceToolHostAdapters(
           resolveWorkspaceForGroup:
               runtimeAwareWorkspaceService.resolveWorkspaceForGroup,
@@ -334,7 +296,7 @@ Future<AppRuntime> _initializeRuntime() async {
       toolExecutor: toolExecutor,
       toolPolicyService: toolPolicyService,
       hostAdapters: ToolHostAdapters(
-        fileTools: fileToolAdapters,
+        fileTools: hostServices.fileToolAdapters,
         workspace: WorkspaceToolHostAdapters(
           resolveWorkspaceForGroup:
               runtimeAwareWorkspaceService.resolveWorkspaceForGroup,
@@ -356,15 +318,15 @@ Future<AppRuntime> _initializeRuntime() async {
     chatStorage: storage,
     followUpDispatchQueue: followUpDispatchQueue,
     chatAttachmentPickerService: chatAttachmentPickerService,
-    chatAttachmentStorageService: chatAttachmentStorageService,
-    artifactFileStorageService: artifactFileStorageService,
-    fileToolRootService: fileToolAdapters?.rootService,
-    skillStorageService: skillStorageService,
-    gitHubSkillSourceResolver: gitHubSkillSourceResolver,
-    gitHubSkillFetcher: gitHubSkillFetcher,
-    skillIndexService: skillIndexService,
-    skillRuntimeService: skillRuntimeService,
-    skillInstallerService: skillInstallerService,
+    chatAttachmentStorageService: hostServices.chatAttachmentStorageService,
+    artifactFileStorageService: hostServices.artifactFileStorageService,
+    fileToolRootService: hostServices.fileToolAdapters?.rootService,
+    skillStorageService: hostServices.skillStorageService,
+    gitHubSkillSourceResolver: const GitHubSkillSourceResolver(),
+    gitHubSkillFetcher: GitHubSkillFetcher(),
+    skillIndexService: hostServices.skillIndexService,
+    skillRuntimeService: hostServices.skillRuntimeService,
+    skillInstallerService: hostServices.skillInstallerService,
     traceRecorder: traceRecorder,
     chatService: chatService,
     turnHarness: turnHarness,
@@ -381,9 +343,10 @@ class _RootApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final activeTheme = ref.watch(appThemeControllerProvider);
+    final routes = _buildRouteMap();
     return MaterialApp(
-      routes: _buildRouteMap(),
-      initialRoute: RouteConstant.chatPage,
+      routes: routes,
+      initialRoute: _resolveInitialRoute(routes),
       title: 'AI Chat',
       theme: AppTheme.fromSpec(activeTheme),
     );
@@ -401,6 +364,84 @@ class _RootApp extends ConsumerWidget {
       RouteConstant.webviewDebugPage: (context) => const WebviewDebugPage(),
     };
   }
+}
+
+String _resolveInitialRoute(Map<String, WidgetBuilder> routes) {
+  final routeName = WidgetsBinding.instance.platformDispatcher.defaultRouteName;
+  return _resolveInitialRouteName(
+    routeName,
+    routes.keys,
+    currentUri: Uri.base,
+  );
+}
+
+String _resolveInitialRouteName(
+  String? routeName,
+  Iterable<String> validRoutes,
+  {Uri? currentUri}
+) {
+  final normalized = routeName?.trim();
+  if (normalized != null &&
+      normalized.isNotEmpty &&
+      validRoutes.contains(normalized)) {
+    return normalized;
+  }
+  final uriRoute = _routeNameFromUri(currentUri, validRoutes);
+  if (uriRoute != null) {
+    return uriRoute;
+  }
+  return RouteConstant.chatPage;
+}
+
+String? _routeNameFromUri(Uri? currentUri, Iterable<String> validRoutes) {
+  if (currentUri == null) {
+    return null;
+  }
+  final pathCandidate = currentUri.path.trim();
+  if (pathCandidate.isNotEmpty &&
+      pathCandidate != '/' &&
+      validRoutes.contains(pathCandidate)) {
+    return pathCandidate;
+  }
+  final fragmentCandidate = currentUri.fragment.trim();
+  if (fragmentCandidate.isEmpty) {
+    return null;
+  }
+  final normalizedFragment = fragmentCandidate.startsWith('/')
+      ? fragmentCandidate
+      : '/$fragmentCandidate';
+  if (validRoutes.contains(normalizedFragment)) {
+    return normalizedFragment;
+  }
+  return null;
+}
+
+String debugResolveInitialRouteForTest(String? routeName) {
+  return _resolveInitialRouteName(routeName, const [
+    RouteConstant.chatPage,
+    RouteConstant.settingsPage,
+    RouteConstant.testPage,
+    RouteConstant.debugHubPage,
+    RouteConstant.componentMotionDebugPage,
+    RouteConstant.layoutDebugPage,
+    RouteConstant.webviewDebugPage,
+  ]);
+}
+
+String debugResolveInitialRouteFromUriForTest(Uri? currentUri) {
+  return _resolveInitialRouteName(
+    null,
+    const [
+      RouteConstant.chatPage,
+      RouteConstant.settingsPage,
+      RouteConstant.testPage,
+      RouteConstant.debugHubPage,
+      RouteConstant.componentMotionDebugPage,
+      RouteConstant.layoutDebugPage,
+      RouteConstant.webviewDebugPage,
+    ],
+    currentUri: currentUri,
+  );
 }
 
 String _resolveRuntimePlatform() {

@@ -255,6 +255,13 @@ To add or extend provider support:
 - New or updated spec/design/plan docs under `docs/superpowers/` must be written in Chinese.
 - When adding a new feature, explicitly consider whether logging coverage, automated tests, `README.md`, `AGENTS.md`, and backlog/todo docs also need updates.
 - New modal bottom sheet UI should default to the shared `showAppBottomSheet` entry and shared outer shell unless the task explicitly requires a different presentation primitive.
+- Settings-domain pages must preserve the approved layering rules:
+  - Level-1 settings page is overview-first and should show as much current state as is practical.
+  - Level-2 pages are for management and change operations, not decorative overview duplication.
+  - Level-3 pages are only for genuinely complex object editing.
+- For settings-domain changes, prefer lightweight interactions in the current page (`bottom sheet`, dropdown, segmented control, dialog) before introducing a new page.
+- Settings-domain UI should avoid heavy outlined-card / wireframe boundaries; prefer tone, whitespace, typography, and light elevation for grouping.
+- Settings-domain motion and lightweight interaction feedback should use shared `AppMotion` tokens and shared shells rather than page-local raw durations or bespoke sheet styling.
 - For agent-loop regression coverage, prefer simulated integration tests built around fake planner/tool services plus real `TurnHarness`, `AgentEventProcessor`, and projection providers before reaching for heavier e2e flows.
 - For new interaction checkpoints, prefer message-card interactions over modal-only state and keep turn status, event payload, message payload, and step ledger aligned.
 - Keep the chat timeline under a single vertical scroll owner; avoid nested vertical scroll containers in timeline cards by default.

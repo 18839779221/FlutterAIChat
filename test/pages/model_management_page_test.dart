@@ -11,7 +11,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('model management renders provider-first list with summary actions',
+  testWidgets(
+      'model management renders provider-first list with management sections',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -48,14 +49,49 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('当前选中模型'), findsOneWidget);
+    expect(find.text('当前接入'), findsOneWidget);
+    expect(find.text('Provider 列表'), findsOneWidget);
     expect(find.text('gpt-5.4'), findsOneWidget);
     expect(find.text('新增 Provider'), findsOneWidget);
     expect(find.text('AIGoCode'), findsWidgets);
     expect(find.text('2 个模型'), findsOneWidget);
     expect(find.text('编辑'), findsWidgets);
     expect(find.text('删除'), findsWidgets);
+    expect(find.text('当前选中模型'), findsNothing);
     expect(find.text('用于当前会话'), findsNothing);
+  });
+
+  testWidgets('model management removes overview hero copy', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    SharedPreferences.setMockInitialValues({});
+    final repository = AppSettingsRepository(
+      await SharedPreferences.getInstance(),
+      localDefaultsLoader: () async => null,
+    );
+    await repository.saveProvider(
+      const LlmProviderConfig(
+        id: 'aigocode',
+        name: 'AIGoCode',
+        apiKey: 'key',
+        baseUrl: 'https://api.aigocode.com/v1',
+        models: [
+          LlmProviderModel(id: 'gpt-5.4', name: ''),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ModelManagementPage(repository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('当前会话候选'), findsNothing);
+    expect(find.text('准备接入'), findsNothing);
   });
 
   testWidgets('provider detail promotes discover models and fallback manual add',
@@ -92,7 +128,7 @@ void main() {
     expect(find.text('探测模型'), findsOneWidget);
     expect(find.text('手动新增模型'), findsOneWidget);
     expect(find.text('Provider 名称'), findsOneWidget);
-    expect(find.text('模型列表'), findsOneWidget);
+    expect(find.text('模型目录'), findsOneWidget);
     expect(find.text('用于当前会话'), findsNothing);
   });
 

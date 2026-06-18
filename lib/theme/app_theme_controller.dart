@@ -8,6 +8,8 @@ final appThemeControllerProvider =
     NotifierProvider<AppThemeController, AppThemeSpec>(AppThemeController.new);
 
 class AppThemeController extends Notifier<AppThemeSpec> {
+  bool _didScheduleRestore = false;
+
   AppSettingsRepository? get _repository {
     try {
       return ref.read(appSettingsRepositoryProvider);
@@ -18,7 +20,10 @@ class AppThemeController extends Notifier<AppThemeSpec> {
 
   @override
   AppThemeSpec build() {
-    _restorePersistedTheme();
+    if (!_didScheduleRestore) {
+      _didScheduleRestore = true;
+      Future<void>.microtask(_restorePersistedTheme);
+    }
     return AppThemeSpec.claude();
   }
 

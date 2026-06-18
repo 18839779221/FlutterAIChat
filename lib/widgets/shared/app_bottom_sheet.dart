@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../theme/app_motion.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_theme_spec.dart';
@@ -23,6 +24,7 @@ Future<T?> showAppBottomSheet<T>({
   bool useSafeArea = true,
   bool useRootNavigator = false,
 }) {
+  final motion = Theme.of(context).extension<AppMotion>()!;
   return showModalBottomSheet<T>(
     context: context,
     isScrollControlled: true,
@@ -30,6 +32,10 @@ Future<T?> showAppBottomSheet<T>({
     isDismissible: true,
     enableDrag: true,
     backgroundColor: Colors.transparent,
+    sheetAnimationStyle: AnimationStyle(
+      duration: motion.standard,
+      reverseDuration: motion.quick,
+    ),
     builder: (_) => AppBottomSheetScaffold(
       mode: mode,
       title: title,

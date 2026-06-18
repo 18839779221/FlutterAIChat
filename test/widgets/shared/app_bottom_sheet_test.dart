@@ -1,4 +1,5 @@
 import 'package:ai_chat/theme/app_theme.dart';
+import 'package:ai_chat/theme/app_motion.dart';
 import 'package:ai_chat/widgets/shared/app_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,13 +10,13 @@ void main() {
       const simulatedBottomInset = 34.0;
 
       await tester.pumpWidget(
-        _Harness(
+        const _Harness(
           mode: AppBottomSheetMode.fixed80,
-          mediaQueryData: const MediaQueryData(
+          mediaQueryData: MediaQueryData(
             size: Size(390, 844),
             viewPadding: EdgeInsets.only(bottom: simulatedBottomInset),
           ),
-          body: const SizedBox.expand(
+          body: SizedBox.expand(
             child: Text('long content'),
           ),
         ),
@@ -36,9 +37,9 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        _Harness(
+        const _Harness(
           mode: AppBottomSheetMode.adaptive,
-          body: const SizedBox(
+          body: SizedBox(
             height: 120,
             child: Text('short content'),
           ),
@@ -61,9 +62,9 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        _Harness(
+        const _Harness(
           mode: AppBottomSheetMode.fixed80,
-          body: const SizedBox.expand(
+          body: SizedBox.expand(
             child: Text('long content'),
           ),
         ),
@@ -146,9 +147,9 @@ void main() {
 
     testWidgets('tapping barrier dismisses sheet', (tester) async {
       await tester.pumpWidget(
-        _Harness(
+        const _Harness(
           mode: AppBottomSheetMode.adaptive,
-          body: const SizedBox(height: 120, child: Text('short content')),
+          body: SizedBox(height: 120, child: Text('short content')),
         ),
       );
 
@@ -189,6 +190,33 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('app-bottom-sheet')), findsNothing);
+    });
+
+    testWidgets('sheet animation style follows app motion tokens', (tester) async {
+      await tester.pumpWidget(
+        const _Harness(
+          mode: AppBottomSheetMode.adaptive,
+          body: SizedBox(height: 120, child: Text('short content')),
+        ),
+      );
+
+      await tester.tap(find.text('open'));
+      await tester.pump();
+
+      final route = ModalRoute.of(
+        tester.element(find.byKey(const ValueKey('app-bottom-sheet'))),
+      );
+
+      expect(route, isA<PopupRoute<void>>());
+      final popupRoute = route! as PopupRoute<void>;
+      expect(
+        popupRoute.transitionDuration,
+        AppTheme.light().extension<AppMotion>()!.standard,
+      );
+      expect(
+        popupRoute.reverseTransitionDuration,
+        AppTheme.light().extension<AppMotion>()!.quick,
+      );
     });
   });
 }

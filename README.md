@@ -149,6 +149,12 @@ fvm flutter test
 
 ## 模型与运行时配置
 
+- 设置域现在采用分层结构：
+  - 一级设置页负责分组式总览，优先展示当前 Provider / Model、工具与安全状态、扩展能力与外观兼容摘要
+  - 二级页负责管理型变更，例如 Provider 列表维护、增删改、测试与探测
+  - 三级页只保留复杂对象编辑；离散选择优先用当前页控件、下拉或共享 bottom sheet
+- 设置相关页面共享一套更接近首页气质的暖纸底和轻面板语法，边界主要通过留白、层次和轻浮感表达，而不是重描边线框
+- 设置域轻量交互统一走共享 `showAppBottomSheet` 和 `AppMotion` token，避免后续新增配置时出现不同页各自发明的动效和弹层样式
 - 模型配置采用 provider-first 结构，可在设置页管理提供方和模型目录
 - 当前运行时选择已从“全局当前模型”改为“session runtime profile”：
   - `primary` slot 用于主对话发送、planner 和主 turn loop

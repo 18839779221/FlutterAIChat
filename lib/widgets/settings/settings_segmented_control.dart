@@ -1,4 +1,5 @@
 import 'package:ai_chat/theme/app_theme_spec.dart';
+import 'package:ai_chat/theme/app_motion.dart';
 import 'package:ai_chat/theme/app_radius.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:flutter/material.dart';
@@ -19,15 +20,15 @@ class SettingsSegmentedControl<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
+    final motion = Theme.of(context).extension<AppMotion>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
 
     return Container(
       padding: EdgeInsets.all(spacing.xxs),
       decoration: BoxDecoration(
-        color: colors.assistantSurface,
+        color: colors.assistantSurface.withValues(alpha: 0.72),
         borderRadius: BorderRadius.circular(radius.pill),
-        border: Border.all(color: colors.divider),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -38,20 +39,35 @@ class SettingsSegmentedControl<T> extends StatelessWidget {
             child: InkWell(
               borderRadius: BorderRadius.circular(radius.pill),
               onTap: () => onChanged(entry.key),
-              child: Container(
+              child: AnimatedContainer(
+                duration: motion.quick,
+                curve: motion.easeOut,
                 padding: EdgeInsets.symmetric(
                   horizontal: spacing.sm,
                   vertical: spacing.xs,
                 ),
                 decoration: BoxDecoration(
-                  color: selected ? colors.workflowRunning : Colors.transparent,
+                  color: selected
+                      ? colors.settingsPanelBackground
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(radius.pill),
+                  boxShadow: selected
+                      ? [
+                          BoxShadow(
+                            color: colors.core.elevation.shadowColor
+                                .withValues(alpha: 0.05),
+                            blurRadius: 12,
+                            spreadRadius: -8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ]
+                      : null,
                 ),
                 child: Text(
                   entry.value,
                   style: TextStyle(
                     color: selected
-                        ? colors.semantic.text.inverse
+                        ? colors.primaryText
                         : colors.secondaryText,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,

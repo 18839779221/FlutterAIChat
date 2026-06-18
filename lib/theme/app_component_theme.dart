@@ -39,12 +39,12 @@ class AppComponentTheme {
     final colors = spec.semantic;
     final radius = spec.core.radius;
     return CardThemeData(
-      color: colors.surfaces.readingSurface,
+      color: colors.surfaces.panelBackground,
       elevation: 0,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(radius.md),
-        side: BorderSide(color: colors.interaction.subtleBorder),
+        borderRadius: BorderRadius.circular(radius.lg),
+        side: BorderSide.none,
       ),
     );
   }
