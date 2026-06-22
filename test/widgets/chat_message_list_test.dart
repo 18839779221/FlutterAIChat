@@ -28,6 +28,7 @@ import 'package:ai_chat/widgets/interaction/ask_user_question_result_card.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_timeline_card.dart';
 import 'package:ai_chat/widgets/tool_renderers/compact_tool_row_renderer.dart';
 import 'package:ai_chat/widgets/tool_renderers/web_search_tool_result_card.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -2377,8 +2378,8 @@ void main() {
       await tester.pumpAndSettle();
 
       final initialOffset = scrollController.offset;
-      final targetOffset =
-          (initialOffset + 180).clamp(0.0, scrollController.position.maxScrollExtent);
+      final targetOffset = (initialOffset + 180)
+          .clamp(0.0, scrollController.position.maxScrollExtent);
       scrollController.jumpTo(targetOffset);
       await tester.pump();
 
@@ -2701,6 +2702,78 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('结构化整理（调试）'), findsNothing);
+    });
+
+    testWidgets(
+        'completed final response long press does not open legacy copy menu',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '最终答案内容',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+      );
+
+      await tester.longPress(find.text('最终答案内容').first);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CupertinoActionSheet), findsNothing);
+      expect(find.text('删除'), findsNothing);
+    });
+
+    testWidgets('analysis block long press does not open legacy copy menu', (
+      tester,
+    ) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            id: 1,
+            text: '用户问题',
+            role: MessageRole.user,
+            contentType: MessageContentType.plainText,
+          ),
+          _buildMessage(
+            id: 2,
+            text: '分析内容',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+          ),
+        ],
+      );
+
+      await tester.longPress(find.text('分析内容').first);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CupertinoActionSheet), findsNothing);
+      expect(find.text('删除'), findsNothing);
+    });
+
+    testWidgets(
+        'tool-use analysis block long press does not open legacy copy menu',
+        (tester) async {
+      await _pumpMessageList(
+        tester,
+        messages: [
+          _buildMessage(
+            text: '',
+            role: MessageRole.assistant,
+            contentType: MessageContentType.plainText,
+            reasoningContent: '需要先读取文件。',
+            payloadJson: const {'reasoningScope': 'tool_use'},
+          ),
+        ],
+      );
+
+      await tester.longPress(find.text('需要先读取文件。').first);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CupertinoActionSheet), findsNothing);
+      expect(find.text('删除'), findsNothing);
     });
 
     testWidgets('user anchor does not expose structured output action', (

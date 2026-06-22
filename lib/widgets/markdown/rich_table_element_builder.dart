@@ -20,7 +20,11 @@ import 'package:markdown/markdown.dart' as md;
 /// code, links, inline math) keeps working with the same theme as the
 /// outer document.
 class RichTableElementBuilder extends MarkdownElementBuilder {
-  RichTableElementBuilder();
+  final bool selectable;
+
+  RichTableElementBuilder({
+    this.selectable = false,
+  });
 
   @override
   bool isBlockElement() => true;
@@ -199,7 +203,7 @@ class RichTableElementBuilder extends MarkdownElementBuilder {
             textAlign: align,
             child: MarkdownBody(
               data: cellMarkdown,
-              selectable: false,
+              selectable: selectable,
               fitContent: true,
               extensionSet: md.ExtensionSet.gitHubFlavored,
               inlineSyntaxes: [MathInlineSyntax()],

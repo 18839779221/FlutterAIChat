@@ -15,9 +15,11 @@ import 'rich_table_element_builder.dart';
 
 class FlutterMarkdownImpl extends StatelessWidget {
   final String data;
+  final bool selectable;
   const FlutterMarkdownImpl({
     super.key,
     required this.data,
+    this.selectable = false,
   });
 
   @override
@@ -28,7 +30,7 @@ class FlutterMarkdownImpl extends StatelessWidget {
     return RepaintBoundary(
       child: MarkdownBody(
         data: data,
-        selectable: false,
+        selectable: selectable,
         fitContent: false,
         onTapLink: (text, href, title) => _launchUrl(text, href),
         extensionSet: md.ExtensionSet(
@@ -87,7 +89,7 @@ class FlutterMarkdownImpl extends StatelessWidget {
           'callout': MarkdownCalloutBuilder(),
           'code': CodeElementBuilder(),
           'pre': CodeBlockBuilder(),
-          'rich-table': RichTableElementBuilder(),
+          'rich-table': RichTableElementBuilder(selectable: selectable),
         },
       ),
     );
@@ -100,20 +102,4 @@ class FlutterMarkdownImpl extends StatelessWidget {
       throw Exception('无法打开链接: $url');
     }
   }
-
-  static bool _containsMarkdownMath(String input) {
-    if (_blockMathPattern.hasMatch(input)) {
-      return true;
-    }
-    return _inlineMathPattern.hasMatch(input);
-  }
-
-  static final RegExp _blockMathPattern = RegExp(
-    r'^\s*(\$\$|\\\[)\s*$',
-    multiLine: true,
-  );
-
-  static final RegExp _inlineMathPattern = RegExp(
-    r'\\\(.+?\\\)|(?<![A-Za-z0-9])\$[^\s$](?:[^$]*?[^\s$])?\$(?![A-Za-z0-9])',
-  );
 }

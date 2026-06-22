@@ -139,23 +139,18 @@ class ChatTimelineRow extends ConsumerWidget {
     switch (block.type) {
       case AssistantTurnBlockType.analysis:
         final hasReasoning = (block.reasoningText ?? '').trim().isNotEmpty;
-        blockWidget = GestureDetector(
-          onLongPress: sourceMessage == null
-              ? null
-              : () => onLongPressMessage(sourceMessage),
-          child: AssistantDocBlock(
-            label: hasReasoning ? null : 'Analysis',
-            text: block.text ?? '',
-            reasoningText: block.reasoningText,
-            reasoningVariant: hasReasoning
-                ? ReasoningSectionVariant.finalAnswerCollapsible
-                : ReasoningSectionVariant.toolUseInline,
-            reasoningInitiallyExpanded: hasReasoning,
-            onReasoningExpansionChanged: hasReasoning
-                ? (_) => onActiveStatusLayoutChanged?.call()
-                : null,
-            markdownCacheKey: item.stableKey,
-          ),
+        blockWidget = AssistantDocBlock(
+          label: hasReasoning ? null : 'Analysis',
+          text: block.text ?? '',
+          reasoningText: block.reasoningText,
+          selectable: true,
+          reasoningVariant: hasReasoning
+              ? ReasoningSectionVariant.finalAnswerCollapsible
+              : ReasoningSectionVariant.toolUseInline,
+          reasoningInitiallyExpanded: hasReasoning,
+          onReasoningExpansionChanged:
+              hasReasoning ? (_) => onActiveStatusLayoutChanged?.call() : null,
+          markdownCacheKey: item.stableKey,
         );
         break;
       case AssistantTurnBlockType.finalResponse:
@@ -169,22 +164,18 @@ class ChatTimelineRow extends ConsumerWidget {
         final markdownCacheKey = block.logicalId?.trim().isNotEmpty == true
             ? 'final:${block.logicalId}'
             : item.stableKey;
-        blockWidget = GestureDetector(
-          onLongPress: sourceMessage == null
-              ? null
-              : () => onLongPressMessage(sourceMessage),
-          child: FinalResponseBlock(
-            title: block.title ?? '最终回答',
-            text: block.text ?? '',
-            reasoningText: block.reasoningText,
-            markdownCacheKey: markdownCacheKey,
-            isStreaming: isStreaming,
-            streamTraceId: block.payload?['streamTraceId'] as String?,
-            streamTurnId: block.payload?['streamTurnId'] as String?,
-            onReasoningExpansionChanged: (_) =>
-                onActiveStatusLayoutChanged?.call(),
-          ),
+        final finalResponse = FinalResponseBlock(
+          title: block.title ?? '最终回答',
+          text: block.text ?? '',
+          reasoningText: block.reasoningText,
+          markdownCacheKey: markdownCacheKey,
+          isStreaming: isStreaming,
+          streamTraceId: block.payload?['streamTraceId'] as String?,
+          streamTurnId: block.payload?['streamTurnId'] as String?,
+          onReasoningExpansionChanged: (_) =>
+              onActiveStatusLayoutChanged?.call(),
         );
+        blockWidget = finalResponse;
         break;
       case AssistantTurnBlockType.structuredOutput:
         if (sourceMessage?.contentType ==

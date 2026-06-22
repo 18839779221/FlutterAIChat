@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:ai_chat/models/debug/streaming_trace_snapshot.dart';
 import 'package:ai_chat/providers/streaming_trace_providers.dart';
 import 'package:ai_chat/theme/app_motion.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
+import 'package:ai_chat/theme/app_theme_spec.dart';
 import 'package:ai_chat/theme/app_typography.dart';
 import 'package:ai_chat/widgets/chat_blocks/reasoning_section.dart';
 import 'package:ai_chat/widgets/chat_timeline/stable_markdown_block.dart';
 import 'package:ai_chat/widgets/markdown/flutter_markdown_impl.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Final answer block used for both streaming preview and persisted state.
@@ -57,6 +61,8 @@ class FinalResponseBlock extends ConsumerStatefulWidget {
 class _FinalResponseBlockState extends ConsumerState<FinalResponseBlock> {
   bool _hasReportedFirstVisible = false;
   String _lastReportedText = '';
+  bool _isCopied = false;
+  Timer? _copiedResetTimer;
 
   @override
   void initState() {
@@ -81,6 +87,12 @@ class _FinalResponseBlockState extends ConsumerState<FinalResponseBlock> {
         _reportVisibilityStages();
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _copiedResetTimer?.cancel();
+    super.dispose();
   }
 
   void _reportVisibilityStages() {
@@ -131,6 +143,21 @@ class _FinalResponseBlockState extends ConsumerState<FinalResponseBlock> {
     }
   }
 
+  Future<void> _copyAnswerBody() async {
+    await Clipboard.setData(ClipboardData(text: widget.text));
+    if (!mounted) {
+      return;
+    }
+    _copiedResetTimer?.cancel();
+    setState(() => _isCopied = true);
+    _copiedResetTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isCopied = false);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final motion = Theme.of(context).extension<AppMotion>()!;
@@ -138,6 +165,7 @@ class _FinalResponseBlockState extends ConsumerState<FinalResponseBlock> {
 
     final hasReasoning = (widget.reasoningText ?? '').trim().isNotEmpty;
     final showTitle = widget.title.trim().isNotEmpty && widget.title != '最终回答';
+    final showCopyButton = !widget.isStreaming && widget.text.trim().isNotEmpty;
 
     // Streaming and completed phases render the exact same Markdown subtree
     // so takeover is a pure text update with no visual transition. The
@@ -146,7 +174,10 @@ class _FinalResponseBlockState extends ConsumerState<FinalResponseBlock> {
     final stableMarkdown = StableMarkdownBlock(
       cacheKey: widget.markdownCacheKey ??
           'final:${widget.title.trim()}:${widget.text.hashCode}',
-      child: FlutterMarkdownImpl(data: widget.text),
+      child: FlutterMarkdownImpl(
+        data: widget.text,
+        selectable: true,
+      ),
     );
 
     return AnimatedOpacity(
@@ -185,9 +216,70 @@ class _FinalResponseBlockState extends ConsumerState<FinalResponseBlock> {
                   onExpansionChanged: widget.onReasoningExpansionChanged,
                 ),
               stableMarkdown,
+              if (showCopyButton) ...[
+                SizedBox(height: spacing.xs),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _FinalResponseCopyButton(
+                    isCopied: _isCopied,
+                    onPressed: _copyAnswerBody,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _FinalResponseCopyButton extends StatelessWidget {
+  const _FinalResponseCopyButton({
+    required this.isCopied,
+    required this.onPressed,
+  });
+
+  final bool isCopied;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+
+    return Tooltip(
+      message: '复制全文',
+      child: TextButton.icon(
+        onPressed: onPressed,
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          visualDensity: VisualDensity.compact,
+          foregroundColor: isCopied
+              ? colors.markdown.copySuccessAccent
+              : colors.secondaryText.withValues(alpha: 0.8),
+        ),
+        icon: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 180),
+          child: Icon(
+            isCopied ? Icons.check : Icons.copy_outlined,
+            key: ValueKey<bool>(isCopied),
+            size: 14,
+          ),
+        ),
+        label: Text(
+          isCopied ? '已复制' : '复制',
+          style: AppTypography.uiStyle(
+            color: isCopied
+                ? colors.markdown.copySuccessAccent
+                : colors.secondaryText.withValues(alpha: 0.8),
+            fontSize: 11.5,
+            fontWeight: FontWeight.w500,
+            height: 1.0,
+          ),
+        ),
+        iconAlignment: IconAlignment.start,
       ),
     );
   }

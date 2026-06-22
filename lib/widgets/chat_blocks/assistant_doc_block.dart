@@ -13,6 +13,7 @@ class AssistantDocBlock extends StatelessWidget {
   final String? label;
   final String? reasoningText;
   final String? markdownCacheKey;
+  final bool selectable;
   final ReasoningSectionVariant reasoningVariant;
   final bool reasoningInitiallyExpanded;
   final ValueChanged<bool>? onReasoningExpansionChanged;
@@ -23,6 +24,7 @@ class AssistantDocBlock extends StatelessWidget {
     this.label,
     this.reasoningText,
     this.markdownCacheKey,
+    this.selectable = false,
     this.reasoningVariant = ReasoningSectionVariant.toolUseInline,
     this.reasoningInitiallyExpanded = true,
     this.onReasoningExpansionChanged,
@@ -79,7 +81,10 @@ class AssistantDocBlock extends StatelessWidget {
               StableMarkdownBlock(
                 cacheKey: markdownCacheKey ??
                     'doc:${label ?? 'analysis'}:${text.hashCode}',
-                child: FlutterMarkdownImpl(data: text),
+                child: FlutterMarkdownImpl(
+                  data: text,
+                  selectable: selectable,
+                ),
               ),
             ],
           ),

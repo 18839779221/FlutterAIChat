@@ -22,6 +22,7 @@ import 'package:ai_chat/widgets/markdown/table_edge_fade_scroll_shell.dart';
 import 'package:ai_chat/widgets/shared/highlighted_code_content.dart';
 import 'package:ai_chat/widgets/technical_content_surface.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -67,6 +68,27 @@ void main() {
       expect(find.text('这是一段分析内容'), findsOneWidget);
       expect(find.byType(StableMarkdownBlock), findsOneWidget);
       expect(find.byType(AnimatedOpacity), findsOneWidget);
+    });
+
+    testWidgets('assistant doc block enables selection without copy button', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: AssistantDocBlock(
+              label: 'Analysis',
+              text: '这是一段分析内容',
+              selectable: true,
+            ),
+          ),
+        ),
+      );
+
+      final markdown = tester.widget<MarkdownBody>(find.byType(MarkdownBody));
+      expect(markdown.selectable, isTrue);
+      expect(find.byTooltip('复制全文'), findsNothing);
     });
 
     testWidgets('collapsed final reasoning reads as quiet secondary text',
@@ -512,8 +534,31 @@ $$
       // Streaming and completed phases share the exact same Markdown subtree
       // so takeover is a pure text update; no inline cursor decoration is
       // mounted (active-turn status surfaces the running signal elsewhere).
+      // Streaming selection now reuses SelectableText under MarkdownBody, so
+      // the assertion only guards the shared Markdown path.
       expect(find.byType(MarkdownBody), findsOneWidget);
-      expect(find.byType(SelectableText), findsNothing);
+    });
+
+    testWidgets(
+        'streaming final response enables selection without copy affordance', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: FinalResponseBlock(
+              title: '最终回答',
+              text: '这是一段流式中的回答。',
+              isStreaming: true,
+            ),
+          ),
+        ),
+      );
+
+      final markdown = tester.widget<MarkdownBody>(find.byType(MarkdownBody));
+      expect(markdown.selectable, isTrue);
+      expect(find.byTooltip('复制全文'), findsNothing);
     });
 
     testWidgets('streaming final response tags first visible source', (
@@ -567,6 +612,63 @@ $$
       );
 
       expect(find.byType(MarkdownBody), findsOneWidget);
+    });
+
+    testWidgets('completed final response enables selection and shows copy', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: FinalResponseBlock(
+              title: '最终回答',
+              text: '这是一段**完成态**的回答。',
+            ),
+          ),
+        ),
+      );
+
+      final markdown = tester.widget<MarkdownBody>(find.byType(MarkdownBody));
+      expect(markdown.selectable, isTrue);
+      expect(find.byTooltip('复制全文'), findsOneWidget);
+    });
+
+    testWidgets('completed final response copy button copies body only', (
+      tester,
+    ) async {
+      final calls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        calls.add(call);
+        return null;
+      });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SystemChannels.platform, null);
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: FinalResponseBlock(
+              title: '最终回答',
+              text: '保留正文',
+              reasoningText: '不要复制这段推理',
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byTooltip('复制全文'));
+      await tester.pump();
+
+      expect(calls, isNotEmpty);
+      expect(calls.last.method, 'Clipboard.setData');
+      expect(calls.last.arguments, <String, dynamic>{
+        'text': '保留正文',
+      });
     });
 
     testWidgets('markdown content is isolated by repaint boundary', (
