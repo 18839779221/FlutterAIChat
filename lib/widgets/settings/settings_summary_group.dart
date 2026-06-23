@@ -10,17 +10,13 @@ class SettingsSummaryGroup extends StatelessWidget {
   const SettingsSummaryGroup({
     super.key,
     required this.title,
-    required this.summary,
     required this.children,
-    this.actionLabel,
-    this.onActionPressed,
+    this.headerTrailing,
   });
 
   final String title;
-  final String summary;
   final List<Widget> children;
-  final String? actionLabel;
-  final VoidCallback? onActionPressed;
+  final Widget? headerTrailing;
 
   @override
   Widget build(BuildContext context) {
@@ -28,72 +24,72 @@ class SettingsSummaryGroup extends StatelessWidget {
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.settingsPanelBackground.withValues(alpha: 0.78),
-        borderRadius: BorderRadius.circular(radius.lg),
-        boxShadow: [
-          BoxShadow(
-            color: colors.core.elevation.shadowColor.withValues(alpha: 0.05),
-            blurRadius: 18,
-            spreadRadius: -8,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          spacing.lg,
-          spacing.md,
-          spacing.lg,
-          spacing.md,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              color: colors.primaryText,
-                              fontWeight: FontWeight.w700,
-                            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(spacing.sm, 0, spacing.sm, spacing.sm),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: colors.secondaryText,
+                        fontWeight: FontWeight.w600,
                       ),
-                      SizedBox(height: spacing.xxs),
-                      Text(
-                        summary,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: colors.secondaryText,
-                              height: 1.45,
-                            ),
-                      ),
-                    ],
-                  ),
                 ),
-                if ((actionLabel ?? '').trim().isNotEmpty)
-                  _SettingsSummaryAction(
-                    label: actionLabel!.trim(),
-                    onPressed: onActionPressed,
-                  ),
+              ),
+              if (headerTrailing != null) headerTrailing!,
+            ],
+          ),
+        ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: colors.settingsPanelBackground.withValues(alpha: 0.58),
+            borderRadius: BorderRadius.circular(radius.lg + 6),
+            border: Border.all(
+              color: colors.divider.withValues(alpha: 0.28),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color:
+                    colors.core.elevation.shadowColor.withValues(alpha: 0.04),
+                blurRadius: 24,
+                spreadRadius: -10,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: spacing.xs),
+            child: Column(
+              children: [
+                for (var i = 0; i < children.length; i++) ...[
+                  if (i > 0)
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: spacing.sm),
+                      child: Divider(
+                        height: 1,
+                        thickness: 1,
+                        color: colors.divider.withValues(alpha: 0.42),
+                      ),
+                    ),
+                  children[i],
+                ],
               ],
             ),
-            SizedBox(height: spacing.md),
-            ...children,
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
 
-class _SettingsSummaryAction extends StatefulWidget {
-  const _SettingsSummaryAction({
+class SettingsSectionHeaderAction extends StatefulWidget {
+  const SettingsSectionHeaderAction({
+    super.key,
     required this.label,
     required this.onPressed,
   });
@@ -102,10 +98,12 @@ class _SettingsSummaryAction extends StatefulWidget {
   final VoidCallback? onPressed;
 
   @override
-  State<_SettingsSummaryAction> createState() => _SettingsSummaryActionState();
+  State<SettingsSectionHeaderAction> createState() =>
+      _SettingsSectionHeaderActionState();
 }
 
-class _SettingsSummaryActionState extends State<_SettingsSummaryAction> {
+class _SettingsSectionHeaderActionState
+    extends State<SettingsSectionHeaderAction> {
   bool _pressed = false;
 
   @override
@@ -116,7 +114,7 @@ class _SettingsSummaryActionState extends State<_SettingsSummaryAction> {
     final motion = Theme.of(context).extension<AppMotion>()!;
 
     return AnimatedScale(
-      scale: _pressed ? 0.98 : 1,
+      scale: _pressed ? 0.985 : 1,
       duration: motion.instant,
       curve: motion.easeOut,
       child: Material(
@@ -134,13 +132,14 @@ class _SettingsSummaryActionState extends State<_SettingsSummaryAction> {
           child: AnimatedContainer(
             duration: motion.quick,
             curve: motion.easeOut,
+            constraints: const BoxConstraints(minHeight: 30, minWidth: 74),
             padding: EdgeInsets.symmetric(
               horizontal: spacing.sm,
-              vertical: spacing.xs,
+              vertical: spacing.xxs + 2,
             ),
             decoration: BoxDecoration(
               color: colors.assistantSurface.withValues(
-                alpha: _pressed ? 0.98 : 0.9,
+                alpha: _pressed ? 0.96 : 0.86,
               ),
               borderRadius: BorderRadius.circular(radius.pill),
             ),

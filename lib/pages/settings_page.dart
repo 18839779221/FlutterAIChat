@@ -40,7 +40,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   List<SkillDescriptor> _skills = const [];
   String? _latestSkillInstallUrl;
   String? _chatCompletionsAdapterType;
-  String? _imageGenerationProviderId;
   String? _imageGenerationModelId;
   LlmProviderConfig? _currentProvider;
   LlmProviderModel? _currentModel;
@@ -104,8 +103,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       _blockedToolNames = blockedToolNames.toList()..sort();
       _latestSkillInstallUrl = latestSkillInstallUrl;
       _chatCompletionsAdapterType = chatCompletionsAdapterType;
-      _imageGenerationProviderId =
-          additionalConfig['image_generation.default_provider_id']?.toString();
       _imageGenerationModelId =
           additionalConfig['image_generation.default_model_id']?.toString();
       _isLoading = false;
@@ -153,6 +150,32 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
     setState(() {
       _toolExecutionMode = mode;
+    });
+  }
+
+  Future<void> _removeTrustedTool(String toolName) async {
+    await ref
+        .read(appSettingsRepositoryProvider)
+        .removeTrustedToolName(toolName);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _trustedToolNames =
+          _trustedToolNames.where((item) => item != toolName).toList();
+    });
+  }
+
+  Future<void> _removeBlockedTool(String toolName) async {
+    await ref
+        .read(appSettingsRepositoryProvider)
+        .removeBlockedToolName(toolName);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _blockedToolNames =
+          _blockedToolNames.where((item) => item != toolName).toList();
     });
   }
 
@@ -296,32 +319,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
   }
 
-  Future<void> _openThemePicker() async {
-    final activeTheme = ref.read(appThemeControllerProvider);
-    final selected = await showAppBottomSheet<String>(
-      context: context,
-      mode: AppBottomSheetMode.adaptive,
-      title: '选择主题',
-      subtitle: '主题切换会立即作用到整个应用。',
-      bodyPadding: const EdgeInsets.fromLTRB(0, 8, 0, 16),
-      body: _SelectionListSheet<String>(
-        sheetKey: const ValueKey('theme-picker-sheet'),
-        items: AppThemeSpec.builtInThemes().map((theme) {
-          return _SelectionListItem<String>(
-            value: theme.id,
-            title: theme.displayName,
-            subtitle: theme.id == activeTheme.id ? '当前主题' : '点击切换',
-          );
-        }).toList(growable: false),
-        selectedValue: activeTheme.id,
-      ),
-    );
-    if (selected == null) {
-      return;
-    }
-    await ref.read(appThemeControllerProvider.notifier).setTheme(selected);
-  }
-
   Future<void> _openToolExecutionModePicker() async {
     final selected = await showAppBottomSheet<ToolExecutionMode>(
       context: context,
@@ -413,34 +410,27 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               children: [
                 SettingsSummaryGroup(
                   title: '模型与运行时',
-                  summary: model == null ? '尚未完成模型接入' : '当前模型可用',
-                  actionLabel: '进入管理',
-                  onActionPressed: _openModelManagement,
                   children: [
                     SettingsRow(
                       title: '当前 Provider',
-                      subtitle: provider?.baseUrl ?? '未配置连接地址',
-                      trailing: SettingsValueBadge(
+                      leading: const Icon(Icons.hub_outlined),
+                      trailing: _StaticValuePill(
                         label: provider?.name ?? '未配置',
-                        tone: provider == null
-                            ? SettingsValueBadgeTone.warning
-                            : SettingsValueBadgeTone.neutral,
+                        emphasize: provider == null,
                       ),
                     ),
                     SettingsRow(
                       title: '当前 Model',
-                      subtitle: '用于主对话的默认模型',
-                      trailing: SettingsValueBadge(
+                      leading: const Icon(Icons.chat_bubble_outline_rounded),
+                      trailing: _StaticValuePill(
                         label: model?.displayName ?? '未配置',
-                        tone: model == null
-                            ? SettingsValueBadgeTone.warning
-                            : SettingsValueBadgeTone.active,
+                        emphasize: model == null,
                       ),
                     ),
                     SettingsRow(
                       title: '当前 Side Model',
-                      subtitle: '默认 side task 模型',
-                      trailing: SettingsValueBadge(
+                      leading: const Icon(Icons.layers_outlined),
+                      trailing: _StaticValuePill(
                         label: provider?.sideModelId?.trim().isNotEmpty == true
                             ? provider!.sideModelId!.trim()
                             : '跟随主模型',
@@ -448,26 +438,30 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ),
                     SettingsRow(
                       title: '当前生图模型',
-                      subtitle: _imageGenerationProviderId?.trim().isNotEmpty ==
-                              true
-                          ? _imageGenerationProviderId!.trim()
-                          : '未配置生图 Provider',
-                      trailing: SettingsValueBadge(
-                        label: _imageGenerationModelId?.trim().isNotEmpty ==
-                                true
-                            ? _imageGenerationModelId!.trim()
-                            : '未配置',
-                        tone: _imageGenerationModelId?.trim().isNotEmpty == true
-                            ? SettingsValueBadgeTone.neutral
-                            : SettingsValueBadgeTone.warning,
+                      leading: const Icon(Icons.image_outlined),
+                      trailing: _StaticValuePill(
+                        label:
+                            _imageGenerationModelId?.trim().isNotEmpty == true
+                                ? _imageGenerationModelId!.trim()
+                                : '未配置',
+                        emphasize:
+                            _imageGenerationModelId?.trim().isNotEmpty != true,
                       ),
                     ),
                     SettingsRow(
                       title: '连通状态',
-                      subtitle: '对当前模型执行快速连通验证',
+                      leading: const Icon(Icons.wifi_tethering_rounded),
                       trailing: _QuickActionButton(
                         label: _isTestingModel ? '测试中...' : '测试当前模型',
                         onPressed: _isTestingModel ? null : _testCurrentModel,
+                      ),
+                    ),
+                    SettingsRow(
+                      title: '模型管理',
+                      leading: const Icon(Icons.tune_rounded),
+                      onTap: _openModelManagement,
+                      trailing: const _TrailingTextValue(
+                        label: 'Provider 与模型',
                       ),
                     ),
                   ],
@@ -475,93 +469,99 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 SizedBox(height: spacing.lg),
                 SettingsSummaryGroup(
                   title: '工具与安全',
-                  summary: _toolExecutionModeDescription(_toolExecutionMode),
-                  actionLabel: '进入管理',
-                  onActionPressed: _openToolExecutionModePicker,
                   children: [
                     SettingsRow(
                       title: '执行模式',
-                      subtitle: '当前自动化策略',
+                      leading: const Icon(Icons.bolt_outlined),
                       onTap: _openToolExecutionModePicker,
-                      trailing: SettingsValueBadge(
+                      trailing: _TrailingTextValue(
                         label: _toolExecutionModeTitle(_toolExecutionMode),
-                        tone: _toolExecutionMode == ToolExecutionMode.aggressive
-                            ? SettingsValueBadgeTone.warning
-                            : SettingsValueBadgeTone.active,
+                        emphasize:
+                            _toolExecutionMode == ToolExecutionMode.aggressive,
                       ),
                     ),
                     SettingsRow(
-                      title: '已信任工具',
-                      subtitle: _trustedToolNames.isEmpty
-                          ? '当前没有直接放行项'
-                          : _trustedToolNames.take(2).join(' · '),
-                      trailing: SettingsValueBadge(
+                      title: '长期授权工具',
+                      leading: const Icon(Icons.verified_outlined),
+                      trailing: _TrailingTextValue(
                         label: '${_trustedToolNames.length} 项',
+                        emphasize: _trustedToolNames.isNotEmpty,
                       ),
                     ),
+                    if (_trustedToolNames.isEmpty)
+                      const _InlinePermissionHint(
+                        label: '当前没有长期授权项',
+                      )
+                    else
+                      _InlinePermissionPreview(
+                        toolNames: _trustedToolNames,
+                        tone: SettingsValueBadgeTone.active,
+                        removeKeyBuilder: (toolName) =>
+                            ValueKey('remove-trusted-$toolName'),
+                        onRemove: _removeTrustedTool,
+                      ),
                     SettingsRow(
                       title: '已阻止工具',
-                      subtitle: _blockedToolNames.isEmpty
-                          ? '当前没有明确拦截项'
-                          : _blockedToolNames.take(2).join(' · '),
-                      trailing: SettingsValueBadge(
+                      leading: const Icon(Icons.block_outlined),
+                      trailing: _TrailingTextValue(
                         label: '${_blockedToolNames.length} 项',
-                        tone: _blockedToolNames.isEmpty
-                            ? SettingsValueBadgeTone.neutral
-                            : SettingsValueBadgeTone.warning,
+                        emphasize: _blockedToolNames.isNotEmpty,
                       ),
                     ),
-                    SettingsRow(
-                      title: '执行模式',
-                      subtitle: '轻量切换当前策略',
-                      trailing: _QuickActionButton(
-                        label: '切换',
-                        onPressed: _openToolExecutionModePicker,
+                    if (_blockedToolNames.isEmpty)
+                      const _InlinePermissionHint(
+                        label: '当前没有阻止项',
+                      )
+                    else
+                      _InlinePermissionPreview(
+                        toolNames: _blockedToolNames,
+                        tone: SettingsValueBadgeTone.warning,
+                        removeKeyBuilder: (toolName) =>
+                            ValueKey('remove-blocked-$toolName'),
+                        onRemove: _removeBlockedTool,
                       ),
-                    ),
                   ],
                 ),
                 SizedBox(height: spacing.lg),
                 SettingsSummaryGroup(
                   title: '扩展能力',
-                  summary: _isLoadingSkills
-                      ? '正在读取 skills 状态'
-                      : _skills.isEmpty
-                          ? '当前没有已安装 skills'
-                          : '已安装 ${_skills.length} 项，启用 ${_skills.where((skill) => skill.isEnabled).length} 项',
-                  actionLabel: '进入管理',
-                  onActionPressed: _openSkillManagement,
                   children: [
                     SettingsRow(
                       title: '已安装 Skills',
-                      subtitle: '当前可参与运行时匹配的技能目录',
-                      trailing: SettingsValueBadge(label: '${_skills.length} 项'),
+                      leading: const Icon(Icons.extension_outlined),
+                      trailing: _TrailingTextValue(
+                        label: '${_skills.length} 项',
+                      ),
                     ),
                     SettingsRow(
                       title: '启用状态',
-                      subtitle: _skills.isEmpty
-                          ? '暂无可用技能'
-                          : '禁用 ${_skills.where((skill) => !skill.isEnabled).length} 项',
-                      trailing: SettingsValueBadge(
+                      leading: const Icon(Icons.toggle_on_outlined),
+                      trailing: _TrailingTextValue(
                         label:
                             '${_skills.where((skill) => skill.isEnabled).length} 项启用',
-                        tone: SettingsValueBadgeTone.active,
+                        emphasize: _skills
+                            .where((skill) => skill.isEnabled)
+                            .isNotEmpty,
                       ),
                     ),
                     SettingsRow(
                       title: '最近安装来源',
-                      subtitle: _latestSkillInstallUrl ?? '尚未记录安装来源',
-                      trailing: SettingsValueBadge(
-                        label: _latestSkillInstallUrl == null ? '无' : '已记录',
+                      leading: const Icon(Icons.link_outlined),
+                      trailing: _TrailingTextValue(
+                        label: _latestSkillInstallUrl == null ? '未记录' : '已记录',
+                      ),
+                    ),
+                    SettingsRow(
+                      title: '管理 Skills',
+                      leading: const Icon(Icons.folder_open_outlined),
+                      onTap: _openSkillManagement,
+                      trailing: const _TrailingTextValue(
+                        label: '安装与启用',
                       ),
                     ),
                     SettingsRow(
                       title: '重复调用策略',
-                      subtitle:
-                          _duplicateSkillInvocationMode ==
-                                  DuplicateSkillInvocationMode.reload
-                              ? '重复调用会重新读取 skill 内容'
-                              : '重复调用直接复用已加载结果',
+                      leading: const Icon(Icons.refresh_rounded),
                       trailing: _QuickActionButton(
                         label: _duplicateSkillInvocationMode ==
                                 DuplicateSkillInvocationMode.reload
@@ -575,28 +575,29 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 SizedBox(height: spacing.lg),
                 SettingsSummaryGroup(
                   title: '外观与兼容',
-                  summary: '共享首页语法，兼容项作为高阶配置收口。',
-                  actionLabel: '进入管理',
-                  onActionPressed: _openThemePicker,
                   children: [
-                    SettingsRow(
-                      title: '当前主题',
-                      subtitle: '轻量切换整个应用主题',
-                      onTap: _openThemePicker,
-                      trailing: _QuickActionButton(
-                        label: activeTheme.displayName,
-                        onPressed: _openThemePicker,
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        spacing.sm,
+                        spacing.sm,
+                        spacing.sm,
+                        spacing.xs,
+                      ),
+                      child: _ThemeSelectorBlock(
+                        activeThemeId: activeTheme.id,
+                        onThemeSelected: (themeId) => ref
+                            .read(appThemeControllerProvider.notifier)
+                            .setTheme(themeId),
                       ),
                     ),
                     SettingsRow(
                       title: '兼容适配器',
-                      subtitle: '用于 Chat Completions 的运行兼容策略',
-                      trailing: SettingsValueBadge(
-                        label:
-                            (_chatCompletionsAdapterType ?? 'sdk').toUpperCase(),
-                        tone: (_chatCompletionsAdapterType ?? 'sdk') == 'sdk'
-                            ? SettingsValueBadgeTone.neutral
-                            : SettingsValueBadgeTone.warning,
+                      leading: const Icon(Icons.sync_alt_rounded),
+                      trailing: _TrailingTextValue(
+                        label: (_chatCompletionsAdapterType ?? 'sdk')
+                            .toUpperCase(),
+                        emphasize:
+                            (_chatCompletionsAdapterType ?? 'sdk') != 'sdk',
                       ),
                     ),
                   ],
@@ -611,14 +612,21 @@ PreferredSizeWidget _buildTintedHeader(BuildContext context, String title) {
   final colors = Theme.of(context).extension<AppThemeSpec>()!;
 
   return AppBar(
-    backgroundColor: colors.workflowRunning.withValues(alpha: 0.1),
+    centerTitle: true,
+    backgroundColor: colors.chatBackground,
     surfaceTintColor: Colors.transparent,
     elevation: 0,
-    titleSpacing: 12,
+    scrolledUnderElevation: 0,
+    shadowColor: Colors.transparent,
+    shape: Border(
+      bottom: BorderSide(
+        color: colors.divider.withValues(alpha: 0.28),
+      ),
+    ),
     title: Text(
       title,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
+      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
             color: colors.primaryText,
           ),
     ),
@@ -667,6 +675,7 @@ class _QuickActionButtonState extends State<_QuickActionButton> {
           child: AnimatedContainer(
             duration: motion.quick,
             curve: motion.easeOut,
+            constraints: const BoxConstraints(minWidth: 88, minHeight: 36),
             padding: EdgeInsets.symmetric(
               horizontal: spacing.sm,
               vertical: spacing.xs,
@@ -687,6 +696,467 @@ class _QuickActionButtonState extends State<_QuickActionButton> {
                   ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StaticValuePill extends StatelessWidget {
+  const _StaticValuePill({
+    required this.label,
+    this.emphasize = false,
+  });
+
+  final String label;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+    return Text(
+      label,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.right,
+      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            color: emphasize ? colors.workflowWarning : colors.primaryText,
+            fontWeight: FontWeight.w500,
+            height: 1.25,
+          ),
+    );
+  }
+}
+
+class _TrailingTextValue extends StatelessWidget {
+  const _TrailingTextValue({
+    required this.label,
+    this.emphasize = false,
+  });
+
+  final String label;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+    return Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.right,
+      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            color: emphasize ? colors.workflowWarning : colors.secondaryText,
+            fontWeight: FontWeight.w600,
+          ),
+    );
+  }
+}
+
+class _InlinePermissionHint extends StatelessWidget {
+  const _InlinePermissionHint({
+    required this.label,
+  });
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        spacing.lg,
+        0,
+        spacing.lg,
+        spacing.sm,
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: colors.secondaryText,
+            ),
+      ),
+    );
+  }
+}
+
+class _InlinePermissionPreview extends StatelessWidget {
+  const _InlinePermissionPreview({
+    required this.tone,
+    required this.toolNames,
+    required this.removeKeyBuilder,
+    required this.onRemove,
+  });
+
+  final SettingsValueBadgeTone tone;
+  final List<String> toolNames;
+  final Key Function(String toolName) removeKeyBuilder;
+  final Future<void> Function(String toolName) onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final previewNames = toolNames.take(3).toList(growable: false);
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        spacing.lg,
+        spacing.xs,
+        spacing.lg,
+        spacing.sm,
+      ),
+      child: Wrap(
+        spacing: spacing.sm,
+        runSpacing: spacing.sm,
+        children: previewNames
+            .map(
+              (toolName) => _SettingsToolChip(
+                label: toolName,
+                tone: tone,
+                removeKey: removeKeyBuilder(toolName),
+                onRemove: () => onRemove(toolName),
+              ),
+            )
+            .toList(growable: false),
+      ),
+    );
+  }
+}
+
+class _SettingsToolChip extends StatefulWidget {
+  const _SettingsToolChip({
+    required this.label,
+    required this.removeKey,
+    required this.onRemove,
+    this.tone = SettingsValueBadgeTone.neutral,
+  });
+
+  final String label;
+  final Key removeKey;
+  final VoidCallback onRemove;
+  final SettingsValueBadgeTone tone;
+
+  @override
+  State<_SettingsToolChip> createState() => _SettingsToolChipState();
+}
+
+class _SettingsToolChipState extends State<_SettingsToolChip> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+    final motion = Theme.of(context).extension<AppMotion>()!;
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final radius = Theme.of(context).extension<AppRadius>()!;
+
+    return AnimatedScale(
+      scale: _pressed ? 0.985 : 1,
+      duration: motion.instant,
+      curve: motion.easeOut,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: _backgroundColor(colors),
+          borderRadius: BorderRadius.circular(radius.pill),
+        ),
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: spacing.sm,
+            top: spacing.xxs + 2,
+            bottom: spacing.xxs + 2,
+            right: spacing.xxs + 2,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                widget.label,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: _foregroundColor(colors),
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              SizedBox(width: spacing.xxs),
+              InkWell(
+                key: widget.removeKey,
+                borderRadius: BorderRadius.circular(radius.pill),
+                onTap: widget.onRemove,
+                onHighlightChanged: (value) {
+                  if (_pressed != value) {
+                    setState(() {
+                      _pressed = value;
+                    });
+                  }
+                },
+                child: Padding(
+                  padding: EdgeInsets.all(spacing.xxs + 2),
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 16,
+                    color: _foregroundColor(colors),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _backgroundColor(AppThemeSpec colors) {
+    switch (widget.tone) {
+      case SettingsValueBadgeTone.neutral:
+        return colors.assistantSurface.withValues(alpha: 0.92);
+      case SettingsValueBadgeTone.active:
+        return colors.workflowRunning.withValues(alpha: 0.12);
+      case SettingsValueBadgeTone.success:
+        return colors.workflowSuccess.withValues(alpha: 0.12);
+      case SettingsValueBadgeTone.warning:
+        return colors.workflowWarning.withValues(alpha: 0.14);
+    }
+  }
+
+  Color _foregroundColor(AppThemeSpec colors) {
+    switch (widget.tone) {
+      case SettingsValueBadgeTone.neutral:
+        return colors.primaryText;
+      case SettingsValueBadgeTone.active:
+        return colors.workflowRunning;
+      case SettingsValueBadgeTone.success:
+        return colors.workflowSuccess;
+      case SettingsValueBadgeTone.warning:
+        return colors.workflowWarning;
+    }
+  }
+}
+
+class _ThemeSelectorBlock extends StatelessWidget {
+  const _ThemeSelectorBlock({
+    required this.activeThemeId,
+    required this.onThemeSelected,
+  });
+
+  final String activeThemeId;
+  final ValueChanged<String> onThemeSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final activeTheme =
+        AppThemeSpec.resolveById(activeThemeId) ?? AppThemeSpec.light();
+    final themes = AppThemeSpec.builtInThemes();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(spacing.xs, 0, spacing.xs, spacing.sm),
+          child: Row(
+            children: [
+              Text(
+                '主题',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const Spacer(),
+              Text(
+                activeTheme.displayName,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: Theme.of(context)
+                          .extension<AppThemeSpec>()!
+                          .secondaryText,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ],
+          ),
+        ),
+        Row(
+          children: [
+            for (final theme in themes) ...[
+              Expanded(
+                child: _ThemeOptionCard(
+                  themeId: theme.id,
+                  title: theme.displayName,
+                  selected: theme.id == activeThemeId,
+                  onTap: () => onThemeSelected(theme.id),
+                ),
+              ),
+              if (theme != themes.last) SizedBox(width: spacing.sm),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ThemeOptionCard extends StatefulWidget {
+  const _ThemeOptionCard({
+    required this.themeId,
+    required this.title,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String themeId;
+  final String title;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  State<_ThemeOptionCard> createState() => _ThemeOptionCardState();
+}
+
+class _ThemeOptionCardState extends State<_ThemeOptionCard> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+    final motion = Theme.of(context).extension<AppMotion>()!;
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final radius = Theme.of(context).extension<AppRadius>()!;
+
+    return AnimatedScale(
+      scale: _pressed ? 0.985 : 1,
+      duration: motion.instant,
+      curve: motion.easeOut,
+      child: InkWell(
+        key: ValueKey('theme-option-${widget.themeId}'),
+        onTap: widget.onTap,
+        borderRadius: BorderRadius.circular(radius.lg),
+        onHighlightChanged: (value) {
+          if (_pressed != value) {
+            setState(() {
+              _pressed = value;
+            });
+          }
+        },
+        child: AnimatedContainer(
+          duration: motion.quick,
+          curve: motion.easeOut,
+          constraints: const BoxConstraints(minHeight: 152),
+          padding: EdgeInsets.fromLTRB(
+            spacing.sm,
+            spacing.sm,
+            spacing.sm,
+            spacing.md,
+          ),
+          decoration: BoxDecoration(
+            color: widget.selected
+                ? colors.assistantSurface
+                : colors.chatBackground
+                    .withValues(alpha: _pressed ? 0.98 : 0.92),
+            borderRadius: BorderRadius.circular(radius.lg),
+            border: Border.all(
+              color: widget.selected ? colors.workflowRunning : colors.divider,
+              width: widget.selected ? 1.4 : 1,
+            ),
+            boxShadow: widget.selected
+                ? [
+                    BoxShadow(
+                      color: colors.core.elevation.shadowColor
+                          .withValues(alpha: 0.06),
+                      blurRadius: 16,
+                      spreadRadius: -8,
+                      offset: const Offset(0, 8),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AspectRatio(
+                aspectRatio: 1.3,
+                child: _ThemePreviewSwatch(selected: widget.selected),
+              ),
+              SizedBox(height: spacing.sm),
+              Text(
+                widget.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: widget.selected
+                          ? colors.workflowRunning
+                          : colors.primaryText,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ThemePreviewSwatch extends StatelessWidget {
+  const _ThemePreviewSwatch({
+    required this.selected,
+  });
+
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final radius = Theme.of(context).extension<AppRadius>()!;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: selected
+            ? colors.chatBackground.withValues(alpha: 0.98)
+            : colors.assistantSurface.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(radius.md),
+        border: Border.all(
+          color: colors.divider.withValues(alpha: 0.56),
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(spacing.sm),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 34,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: colors.secondaryText.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  SizedBox(height: spacing.xs),
+                  Container(
+                    width: 26,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: colors.secondaryText.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              width: 14,
+              height: 14,
+              decoration: BoxDecoration(
+                color: colors.workflowWarning.withValues(alpha: 0.86),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -760,7 +1230,8 @@ class _SkillQuickManageSheet extends StatelessWidget {
   final DuplicateSkillInvocationMode duplicateMode;
   final String? latestInstallUrl;
   final ValueChanged<bool> onReloadModeChanged;
-  final Future<void> Function(SkillDescriptor skill, bool enabled) onSkillToggled;
+  final Future<void> Function(SkillDescriptor skill, bool enabled)
+      onSkillToggled;
 
   @override
   Widget build(BuildContext context) {
@@ -776,7 +1247,9 @@ class _SkillQuickManageSheet extends StatelessWidget {
             title: '最近安装来源',
             subtitle: latestInstallUrl ?? '尚未记录安装来源',
             trailing: SettingsValueBadge(
-              label: isInstalling ? '安装中' : (latestInstallUrl == null ? '无' : '已记录'),
+              label: isInstalling
+                  ? '安装中'
+                  : (latestInstallUrl == null ? '无' : '已记录'),
             ),
           ),
         ),
