@@ -30,6 +30,8 @@ void main() {
       );
       await rootService.ensureReady();
       sessionGuard = FileToolSessionGuard();
+      _DeleteTestRoot.currentRootService = rootService;
+      _DeleteTestRoot.currentSessionGuard = sessionGuard;
       handler = DeleteToolHandler();
     });
 
@@ -217,5 +219,92 @@ void main() {
       expect(result.data['deletedFileCount'], 3);
       expect(result.data['deletedDirectoryCount'], 2);
     });
+
+    test('execute allows deleting a memory topic file outside workspace',
+        () async {
+      final memoryFile = File('${rootService.rootPath}/memories/user/style.md');
+      await memoryFile.create(recursive: true);
+      await memoryFile.writeAsString('memory');
+
+      final result = await handler.execute(
+        _contextForDelete('/memories/user/style.md'),
+      );
+
+      expect(result.status, ToolExecutionStatus.success);
+      expect(result.summary, '已删除路径：/memories/user/style.md');
+      expect(memoryFile.existsSync(), isFalse);
+    });
+
+    test('execute rejects deleting the memory root', () async {
+      final result = await handler.execute(
+        _contextForDelete('/memories'),
+      );
+
+      expect(result.status, ToolExecutionStatus.failure);
+      expect(result.errorMessage, 'cannot_delete_memory_root');
+    });
+
+    test('execute rejects deleting the memory root with trailing slash',
+        () async {
+      final result = await handler.execute(
+        _contextForDelete('/memories/'),
+      );
+
+      expect(result.status, ToolExecutionStatus.failure);
+      expect(result.errorMessage, 'cannot_delete_memory_root');
+    });
+
+    test('execute rejects deleting the memory index file', () async {
+      final indexFile = File('${rootService.rootPath}/memories/MEMORY.md');
+      await indexFile.create(recursive: true);
+
+      final result = await handler.execute(
+        _contextForDelete('/memories/MEMORY.md'),
+      );
+
+      expect(result.status, ToolExecutionStatus.failure);
+      expect(result.errorMessage, 'cannot_delete_memory_index');
+      expect(indexFile.existsSync(), isTrue);
+    });
   });
+}
+
+ToolExecutionContext _contextForDelete(String filePath) {
+  final rootService = _DeleteTestRoot.currentRootService;
+  final sessionGuard = _DeleteTestRoot.currentSessionGuard;
+  return ToolExecutionContext(
+    groupId: 1,
+    toolName: 'Delete',
+    arguments: {'file_path': filePath},
+    history: const <ChatMessage>[],
+    now: DateTime(2026, 6, 19),
+    cwd: '/workspaces/ws_current',
+    workspace: const ResolvedWorkspace(
+      workspaceId: 'ws_current',
+      isDefault: false,
+      fileRoot: '/workspaces/ws_current',
+    ),
+    hostAdapters: ToolHostAdapters(
+      fileTools: FileToolHostAdapters(
+        rootService: rootService,
+        pathPolicy: FileToolPathPolicy(rootService: rootService),
+        sessionGuard: sessionGuard,
+        budgetService: const FileToolBudgetService(),
+        readFormatter: const FileToolReadFormatter(),
+        discoveryService: FileToolDiscoveryService(
+          rootService: rootService,
+          pathPolicy: FileToolPathPolicy(rootService: rootService),
+        ),
+        writeService: FileToolWriteService(
+          rootService: rootService,
+          sessionGuard: sessionGuard,
+        ),
+      ),
+    ),
+  );
+}
+
+class _DeleteTestRoot {
+  static late FileToolRootService currentRootService;
+  static late FileToolSessionGuard currentSessionGuard;
 }

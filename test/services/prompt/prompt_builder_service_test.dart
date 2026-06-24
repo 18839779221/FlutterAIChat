@@ -43,6 +43,19 @@ void main() {
       );
     });
 
+    test('planner prompt includes long-term memory storage guidance', () {
+      final result = service.buildSystemPrompt(
+        stage: PromptStage.planner,
+      );
+
+      expect(result, contains('/memories'));
+      expect(result, contains('MEMORY.md'));
+      expect(result, contains('type: {{user, feedback, project, reference}}'));
+      expect(result, contains('What NOT to save in memory'));
+      expect(result, contains('AGENTS.md'));
+      expect(result, contains('MEMORY.md is always loaded'));
+    });
+
     test('summary prompt stays lightweight and omits the main base block', () {
       final result = service.buildSystemPrompt(
         stage: PromptStage.summary,
@@ -53,6 +66,8 @@ void main() {
       expect(result, isNot(contains("solve the user's problem")));
       expect(result, isNot(contains('Report outcomes faithfully')));
       expect(result, isNot(contains('To edit existing files use Edit')));
+      expect(result, isNot(contains('/memories')));
+      expect(result, isNot(contains('MEMORY.md')));
     });
 
     test('final answer prompt keeps faithful reporting constraints', () {

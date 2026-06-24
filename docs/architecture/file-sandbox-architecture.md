@@ -94,7 +94,7 @@ agent/
 - `artifacts` 存放可编辑的可视化产物
 - `skills` 存放已安装的技能
 - `attachments` 存放导入后的持久化附件与缩略图
-- `memories` 存放内部记忆或辅助内容
+- `memories` 存放长期记忆存储层内容，是全局 agent 资产，不属于当前 workspace
 - `tmp` 存放临时中间文件
 
 ## 统一解析规则
@@ -137,6 +137,10 @@ agent/
 ### 文件工具
 
 `ls`、`glob`、`grep`、`read`、`write`、`edit` 都只接受 agent 路径语义。
+
+`/memories` 可由通用文件工具维护，但它不是 workspace-scoped 路径。删除长期记忆时必须保护 `/memories` 根目录和 `/memories/MEMORY.md`，只允许删除具体 topic file 或明确的子内容。
+
+长期记忆的运行时使用不通过专用 tool 暴露，而是作为 `runtime user context` 的一部分进入模型上下文。
 
 要求：
 
@@ -193,4 +197,3 @@ artifact 只使用沙盒内 `/artifacts/...` 路径。
 - 沙盒越界拒绝
 - tool result 是否只回写 agent 路径
 - skill / artifact / attachment 是否仍保持路径隔离
-

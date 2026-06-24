@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:ai_chat/models/chat_message.dart';
 import 'package:ai_chat/models/tool/tool_result.dart';
+import 'package:ai_chat/models/workspace/resolved_workspace.dart';
 import 'package:ai_chat/services/file_tools/file_tool_budget_service.dart';
 import 'package:ai_chat/services/file_tools/file_tool_discovery_service.dart';
 import 'package:ai_chat/services/file_tools/file_tool_host_adapters.dart';
@@ -10,6 +11,8 @@ import 'package:ai_chat/services/file_tools/file_tool_read_formatter.dart';
 import 'package:ai_chat/services/file_tools/file_tool_root_service.dart';
 import 'package:ai_chat/services/file_tools/file_tool_session_guard.dart';
 import 'package:ai_chat/services/file_tools/file_tool_write_service.dart';
+import 'package:ai_chat/services/workspace/workspace_binding_service.dart';
+import 'package:ai_chat/services/workspace/workspace_tool_host_adapters.dart';
 import 'package:ai_chat/tools/adapters/tool_host_adapters.dart';
 import 'package:ai_chat/tools/core/tool_execution_context.dart';
 import 'package:ai_chat/tools/handlers/write_tool_handler.dart';
@@ -74,5 +77,96 @@ void main() {
 
       await tempDirectory.delete(recursive: true);
     });
+
+    test('writes memory files without promoting default workspace', () async {
+      final tempDirectory = await Directory.systemTemp.createTemp(
+        'write-handler-memory-',
+      );
+      final rootService = FileToolRootService(
+        rootDirectory: Directory('${tempDirectory.path}/agent'),
+      );
+      await rootService.ensureReady();
+      final sessionGuard = FileToolSessionGuard();
+      var workspacePromotionCalled = false;
+
+      final handler = WriteToolHandler();
+      final result = await handler.execute(
+        ToolExecutionContext(
+          groupId: 1,
+          toolName: 'Write',
+          arguments: const {
+            'file_path': '/memories/user/collaboration-style.md',
+            'content': 'memory',
+          },
+          history: const <ChatMessage>[],
+          now: DateTime(2026, 6, 19),
+          cwd: '/',
+          workspace: const ResolvedWorkspace(
+            workspaceId: '.default',
+            isDefault: true,
+            fileRoot: '/workspaces/.default',
+          ),
+          hostAdapters: ToolHostAdapters(
+            fileTools: _buildFileToolAdapters(
+              rootService: rootService,
+              sessionGuard: sessionGuard,
+            ),
+            workspace: WorkspaceToolHostAdapters(
+              resolveWorkspaceForGroup: (_) async => const ResolvedWorkspace(
+                workspaceId: '.default',
+                isDefault: true,
+                fileRoot: '/workspaces/.default',
+              ),
+              ensureWorkspaceForLongLivedOutput: (_) async {
+                workspacePromotionCalled = true;
+                return const WorkspaceTransitionResult(
+                  workspace: ResolvedWorkspace(
+                    workspaceId: 'ws_promoted',
+                    isDefault: false,
+                    fileRoot: '/workspaces/ws_promoted',
+                  ),
+                  workspaceChanged: true,
+                  reminderMessage: 'promoted',
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      expect(result.status, ToolExecutionStatus.success);
+      expect(workspacePromotionCalled, isFalse);
+      expect(result.data['filePath'], '/memories/user/collaboration-style.md');
+      expect(result.data.containsKey('workspaceChangeReminder'), isFalse);
+      expect(
+        File(
+          '${rootService.rootPath}/memories/user/collaboration-style.md',
+        ).existsSync(),
+        isTrue,
+      );
+
+      await tempDirectory.delete(recursive: true);
+    });
   });
+}
+
+FileToolHostAdapters _buildFileToolAdapters({
+  required FileToolRootService rootService,
+  required FileToolSessionGuard sessionGuard,
+}) {
+  return FileToolHostAdapters(
+    rootService: rootService,
+    pathPolicy: FileToolPathPolicy(rootService: rootService),
+    sessionGuard: sessionGuard,
+    budgetService: const FileToolBudgetService(),
+    readFormatter: const FileToolReadFormatter(),
+    discoveryService: FileToolDiscoveryService(
+      rootService: rootService,
+      pathPolicy: FileToolPathPolicy(rootService: rootService),
+    ),
+    writeService: FileToolWriteService(
+      rootService: rootService,
+      sessionGuard: sessionGuard,
+    ),
+  );
 }

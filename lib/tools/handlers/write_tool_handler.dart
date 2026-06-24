@@ -107,7 +107,8 @@ class WriteToolHandler extends ToolHandler {
       var effectiveResolution = resolution;
       var workspaceReminder = '';
       var workspaceId = context.workspace?.workspaceId;
-      if (context.workspace?.isDefault == true) {
+      final isMemoryPath = _isMemoryPath(effectiveResolution.agentPath ?? '');
+      if (context.workspace?.isDefault == true && !isMemoryPath) {
         final existingFile = fileTools.rootService
             .resolveFile(effectiveResolution.relativePath!)
             .existsSync();
@@ -157,4 +158,16 @@ class WriteToolHandler extends ToolHandler {
     }
   }
 
+  bool _isMemoryPath(String agentPath) {
+    final normalized = _normalizeAgentPath(agentPath);
+    return normalized == '/memories' || normalized.startsWith('/memories/');
+  }
+
+  String _normalizeAgentPath(String pathValue) {
+    final trimmed = pathValue.trim().replaceAll('\\', '/');
+    if (trimmed.isEmpty) {
+      return '/';
+    }
+    return trimmed.startsWith('/') ? trimmed : '/$trimmed';
+  }
 }

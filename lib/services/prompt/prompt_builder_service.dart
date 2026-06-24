@@ -27,6 +27,7 @@ class PromptBuilderService {
       sections.add(_catalog.identityAndCoreRules(locale));
       sections.add(_catalog.doingTasks(locale));
       sections.add(_catalog.usingTools(locale));
+      sections.add(_catalog.longTermMemoryStorage(locale));
       sections.add(_catalog.faithfulReporting(locale));
       sections.add(_catalog.communication(locale));
       sections.add(_catalog.stageDelta(stage, locale));

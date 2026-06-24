@@ -244,6 +244,11 @@ To add or extend provider support:
 - Workspace-scoped files live under `/workspaces/<workspaceId>/...`; file tools should default to the resolved workspace root.
 - `Delete` may remove a single file or recursively delete a directory, but it must only operate inside the current resolved workspace.
 - `Delete` must never delete the current workspace root directory itself.
+- Long-term memory uses `/memories/MEMORY.md` plus topic Markdown files; runtime memory usage belongs in `runtime user context`, with `side`-based recall for a small number of clearly relevant topics.
+- `/memories` is the global long-term memory directory, not part of the current workspace; `Write /memories/...` must not trigger workspace auto-promotion.
+- `Delete` may delete a concrete memory topic file, but must never delete `/memories` itself or `/memories/MEMORY.md`.
+- If a user asks to ignore memory, runtime must proceed as if `/memories/MEMORY.md` were empty for that turn.
+- Recalled memory records are context clues, not current truth; if a memory names a file path, function, flag, or repo state, verify the current state before acting on it.
 - Workspace is a file container only; do not make it a new session context, transcript, or summary ownership boundary.
 - Agent-visible file paths use a file-native `/` root and may include `/workspaces`, `/skills`, `/memories`; host filesystem paths must remain internal-only.
 - On each platform, the physical app-private storage root may differ, but it is always mapped behind the same agent path semantics.

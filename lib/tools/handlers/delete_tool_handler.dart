@@ -89,28 +89,48 @@ class DeleteToolHandler extends ToolHandler {
       );
     }
 
-    final workspace = context.workspace;
-    if (workspace == null ||
-        !_isWithinWorkspace(
-          agentPath: resolution.agentPath!,
-          workspace: workspace,
-        )) {
-      return ToolResult(
-        toolName: 'Delete',
-        status: ToolExecutionStatus.failure,
-        summary: 'Delete failed: path outside current workspace',
-        errorMessage: 'path_outside_workspace',
-      );
-    }
-
-    if (_normalizeAgentPath(resolution.agentPath!) ==
-        _normalizeAgentPath(workspace.fileRoot)) {
+    final agentPath = resolution.agentPath!;
+    if (_isMemoryRoot(agentPath)) {
       return const ToolResult(
         toolName: 'Delete',
         status: ToolExecutionStatus.failure,
-        summary: 'Delete failed: cannot delete current workspace root',
-        errorMessage: 'cannot_delete_workspace_root',
+        summary: 'Delete failed: cannot delete memory root',
+        errorMessage: 'cannot_delete_memory_root',
       );
+    }
+    if (_isMemoryIndex(agentPath)) {
+      return const ToolResult(
+        toolName: 'Delete',
+        status: ToolExecutionStatus.failure,
+        summary: 'Delete failed: cannot delete memory index',
+        errorMessage: 'cannot_delete_memory_index',
+      );
+    }
+
+    if (!_isMemoryPath(agentPath)) {
+      final workspace = context.workspace;
+      if (workspace == null ||
+          !_isWithinWorkspace(
+            agentPath: agentPath,
+            workspace: workspace,
+          )) {
+        return const ToolResult(
+          toolName: 'Delete',
+          status: ToolExecutionStatus.failure,
+          summary: 'Delete failed: path outside current workspace',
+          errorMessage: 'path_outside_workspace',
+        );
+      }
+
+      if (_normalizeAgentPath(agentPath) ==
+          _normalizeAgentPath(workspace.fileRoot)) {
+        return const ToolResult(
+          toolName: 'Delete',
+          status: ToolExecutionStatus.failure,
+          summary: 'Delete failed: cannot delete current workspace root',
+          errorMessage: 'cannot_delete_workspace_root',
+        );
+      }
     }
 
     try {
@@ -120,10 +140,10 @@ class DeleteToolHandler extends ToolHandler {
       return ToolResult(
         toolName: 'Delete',
         status: ToolExecutionStatus.success,
-        summary: '已删除路径：${resolution.agentPath}',
+        summary: '已删除路径：$agentPath',
         data: {
-          'filePath': resolution.agentPath,
-          'message': '已删除路径：${resolution.agentPath}',
+          'filePath': agentPath,
+          'message': '已删除路径：$agentPath',
           ...outcome.toJson(),
         },
       );
@@ -160,6 +180,22 @@ class DeleteToolHandler extends ToolHandler {
     if (trimmed.isEmpty) {
       return '/';
     }
-    return trimmed.startsWith('/') ? trimmed : '/$trimmed';
+    final withRoot = trimmed.startsWith('/') ? trimmed : '/$trimmed';
+    return withRoot.length > 1 && withRoot.endsWith('/')
+        ? withRoot.substring(0, withRoot.length - 1)
+        : withRoot;
+  }
+
+  bool _isMemoryPath(String agentPath) {
+    final normalized = _normalizeAgentPath(agentPath);
+    return normalized == '/memories' || normalized.startsWith('/memories/');
+  }
+
+  bool _isMemoryRoot(String agentPath) {
+    return _normalizeAgentPath(agentPath) == '/memories';
+  }
+
+  bool _isMemoryIndex(String agentPath) {
+    return _normalizeAgentPath(agentPath) == '/memories/MEMORY.md';
   }
 }

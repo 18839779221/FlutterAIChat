@@ -26,6 +26,7 @@
 - 图片上传 V1：支持在输入区选择本地图片、随用户消息持久化，并以直连 provider 的多模态图片输入发送
 - 流式回复体验：支持流式生成、手动中断、生成中自动跟随与历史回看
 - 长对话上下文管理：不是简单拼接全部历史，而是按上下文预算保留近期内容并压缩较早历史
+- 长期记忆：`/memories` 作为全局 file-based memory 目录，已完成存储层；运行时会自动加载 `MEMORY.md` 索引，并通过 `side` 辅助选择少量相关 topic files 注入 runtime user context，后台自动抽取作为后续环节补齐
 - 工具调用工作流：支持搜索、网页读取、文件类工具和结果展示，并可在执行前确认高风险操作
 - 结构化追问与恢复：当模型需要补充信息时，可以在同一轮对话中发起问题卡片，等待用户回答后继续执行
 - 可视化回答：支持生成 inline artifact，在回答中插入 HTML / SVG 形式的图表、表格或交互式说明；解释增强型 artifact 会先读取配套 guideline，再按项目级 design token 渲染
@@ -90,6 +91,7 @@ flowchart TD
 
 - Agent 看到的是以 `/` 为根的 file-native 沙盒路径
 - 常用根目录包括 `/artifacts`、`/skills`、`/attachments`、`/memories`、`/tmp`
+- `/memories` 是全局长期记忆存储目录，不属于当前 workspace；索引与 topic files 通过通用文件工具维护，运行时会按需注入 runtime user context
 - 宿主真实路径只在内部使用，不会暴露给 Agent
 - 多端物理存储位置不同，但 Agent 路径语义保持一致
 - 详细约束见 [docs/architecture/file-sandbox-architecture.md](./docs/architecture/file-sandbox-architecture.md)

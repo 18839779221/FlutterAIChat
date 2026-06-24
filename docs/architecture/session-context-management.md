@@ -33,6 +33,12 @@ Session 代表“同一个会话容器下的完整连续上下文对话”。
 
 任何新逻辑都不应再把 UI `messages` 直接当成模型输入，也不应把压缩摘要伪装成 UI 消息。
 
+补充说明：
+
+- 长期记忆属于 `runtime user context` 的一部分，和当前 `group` 的 session summary、recent working set、current turn transcript 分离。
+- 记忆的 runtime 注入会先加载 `/memories/MEMORY.md` 索引，再通过 `side` 辅助选择少量 topic files。
+- 记忆内容只作为线索使用；如果记忆提到文件、函数、flag 或 repo 状态，必须先验证当前观察。
+
 ## 组件
 
 ### SessionContextService
