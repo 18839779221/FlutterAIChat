@@ -7,6 +7,7 @@ import '../repositories/app_settings_repository.dart';
 import '../services/llm_model_discovery_service.dart';
 import '../services/llm_model_test_service.dart';
 import '../widgets/settings/settings_group_section.dart';
+import '../widgets/settings/immersive_settings_scaffold.dart';
 import '../widgets/settings/settings_row.dart';
 import '../widgets/settings/settings_value_badge.dart';
 import '../theme/app_radius.dart';
@@ -170,14 +171,25 @@ class _ModelManagementPageState extends State<ModelManagementPage> {
     final currentProvider = _currentProvider;
     final currentModel = _currentModel;
 
-    return Scaffold(
-      appBar: _buildTintedHeader(context, '模型配置'),
+    return ImmersiveSettingsScaffold(
+      title: '模型配置',
+      headerStyle: SettingsHeaderStyle.nested,
+      bodyPadding: EdgeInsets.zero,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: EdgeInsets.all(spacing.lg),
-              children: [
-                SettingsGroupSection(
+          : SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                spacing.lg,
+                ImmersiveSettingsScaffold.contentStartPadding(
+                  context,
+                  headerStyle: SettingsHeaderStyle.nested,
+                ),
+                spacing.lg,
+                spacing.lg,
+              ),
+              child: Column(
+                children: [
+                  SettingsGroupSection(
                   title: '当前接入',
                   summary: '一级设置页负责总览，这里只保留当前连接状态与管理动作。',
                   child: Column(
@@ -234,11 +246,11 @@ class _ModelManagementPageState extends State<ModelManagementPage> {
                     ],
                   ),
                 ),
-                SizedBox(height: spacing.lg),
-                if (_providers.isEmpty)
-                  _EmptyProviderState(onCreateProvider: _openProviderForm),
-                if (_providers.isNotEmpty) ...[
-                  SettingsGroupSection(
+                  SizedBox(height: spacing.lg),
+                  if (_providers.isEmpty)
+                    _EmptyProviderState(onCreateProvider: _openProviderForm),
+                  if (_providers.isNotEmpty)
+                    SettingsGroupSection(
                     title: 'Provider 列表',
                     summary: '按 Provider 管理连接与模型。先维护连接，再在对象内探测或补充模型。',
                     child: Column(
@@ -262,7 +274,7 @@ class _ModelManagementPageState extends State<ModelManagementPage> {
                     ),
                   ),
                 ],
-              ],
+              ),
             ),
     );
   }
@@ -505,24 +517,6 @@ class _ProviderListTile extends StatelessWidget {
       ),
     );
   }
-}
-
-PreferredSizeWidget _buildTintedHeader(BuildContext context, String title) {
-  final colors = Theme.of(context).extension<AppThemeSpec>()!;
-
-  return AppBar(
-    backgroundColor: colors.workflowRunning.withValues(alpha: 0.12),
-    surfaceTintColor: Colors.transparent,
-    elevation: 0,
-    titleSpacing: 12,
-    title: Text(
-      title,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: colors.primaryText,
-          ),
-    ),
-  );
 }
 
 class _MetaTag extends StatelessWidget {

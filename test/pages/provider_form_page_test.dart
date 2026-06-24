@@ -14,6 +14,30 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  testWidgets('provider form page uses immersive editor header', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = await _createRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ProviderFormPage(
+          repository: repository,
+          discoveryService: _FakeDiscoveryService(),
+          testService: _FakeModelTestService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('settings-floating-header')),
+      findsOneWidget,
+    );
+    expect(find.text('新增 Provider'), findsWidgets);
+  });
+
   testWidgets(
       'provider form shows speed test in connection section and model actions',
       (tester) async {
@@ -107,6 +131,7 @@ void main() {
       'test-key',
     );
 
+    await tester.ensureVisible(find.text('保存'));
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
@@ -160,6 +185,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('保存'));
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
@@ -198,6 +224,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('测速'));
     await tester.tap(find.text('测速'));
     await tester.pump();
 
@@ -237,12 +264,14 @@ void main() {
     expect(find.text('abcd*****wxyz'), findsOneWidget);
     expect(find.text('abcd1234wxyz'), findsNothing);
 
+    await tester.ensureVisible(find.widgetWithText(TextFormField, 'API Key'));
     await tester.tap(find.widgetWithText(TextFormField, 'API Key'));
     await tester.pumpAndSettle();
 
     expect(find.text('abcd1234wxyz'), findsOneWidget);
     expect(find.text('abcd*****wxyz'), findsNothing);
 
+    await tester.ensureVisible(find.widgetWithText(TextFormField, 'Provider 名称'));
     await tester.tap(find.widgetWithText(TextFormField, 'Provider 名称'));
     await tester.pumpAndSettle();
 
@@ -267,6 +296,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('手动新增模型'));
     await tester.tap(find.text('手动新增模型'));
     await tester.pumpAndSettle();
     await tester.enterText(
@@ -311,14 +341,17 @@ void main() {
       find.widgetWithText(TextFormField, 'API Key'),
       'image-key',
     );
+    await tester.ensureVisible(find.text('手动新增模型'));
     await tester.tap(find.text('手动新增模型'));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.widgetWithText(TextFormField, '模型 ID'),
       'gpt-image-2',
     );
+    await tester.ensureVisible(find.text('支持生图'));
     await tester.tap(find.text('支持生图'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('保存'));
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
@@ -355,20 +388,25 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('测试生图'));
     await tester.tap(find.text('测试生图'));
     await tester.pumpAndSettle();
     expect(find.textContaining('可能较慢且产生费用'), findsOneWidget);
 
+    await tester.ensureVisible(find.text('取消'));
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
     expect(testService.imageGenerationTestCallCount, 0);
 
+    await tester.ensureVisible(find.text('测试生图'));
     await tester.tap(find.text('测试生图'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('确认测试'));
     await tester.tap(find.text('确认测试'));
     await tester.pump();
     expect(testService.imageGenerationTestCallCount, 1);
 
+    await tester.ensureVisible(find.text('测试中'));
     await tester.tap(find.text('测试中'));
     await tester.pump();
     expect(testService.imageGenerationTestCallCount, 1);
@@ -421,6 +459,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('设为全局生图模型'));
     await tester.tap(find.text('设为全局生图模型'));
     await tester.pumpAndSettle();
 
@@ -495,6 +534,7 @@ void main() {
     expect(find.text('API Style'), findsOneWidget);
     expect(find.text('如果粘贴了完整 endpoint，会自动识别；也可以手动切换。'), findsNothing);
 
+    await tester.ensureVisible(find.text('OpenAI Responses'));
     await tester.tap(find.text('OpenAI Responses'));
     await tester.pumpAndSettle();
 
@@ -542,10 +582,13 @@ void main() {
       'test-key',
     );
 
+    await tester.ensureVisible(find.text('Anthropic Messages'));
     await tester.tap(find.text('Anthropic Messages'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('OpenAI Responses').last);
     await tester.tap(find.text('OpenAI Responses').last);
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('保存'));
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 

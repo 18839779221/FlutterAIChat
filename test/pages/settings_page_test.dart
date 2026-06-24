@@ -17,6 +17,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  testWidgets('settings page uses immersive floating header shell',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final repository = await _buildRepository();
+
+    await _pumpSettingsPage(tester, repository: repository);
+
+    expect(
+      find.byKey(const ValueKey('settings-top-overlay-veil')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('settings-floating-header')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('settings page renders grouped overview with current values', (
     tester,
   ) async {
@@ -41,6 +60,23 @@ void main() {
     expect(groupTitle.style?.fontFamily, 'SourceSerif4');
     expect(groupTitle.style?.fontWeight, FontWeight.w500);
     expect(groupTitle.style?.fontSize, 13);
+  });
+
+  testWidgets('settings page leaves initial breathing room below header',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(430, 932));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final repository = await _buildRepository();
+
+    await _pumpSettingsPage(tester, repository: repository);
+
+    final headerBottom = tester
+        .getRect(find.byKey(const ValueKey('settings-floating-header')))
+        .bottom;
+    final firstSectionTop = tester.getTopLeft(find.text('模型与运行时')).dy;
+
+    expect(firstSectionTop, greaterThan(headerBottom + 12));
   });
 
   testWidgets('settings page keeps decorative hero copy removed',
@@ -100,6 +136,7 @@ void main() {
     expect(find.text('Olive Paper'), findsWidgets);
     expect(find.byKey(const ValueKey('theme-picker-sheet')), findsNothing);
 
+    await tester.ensureVisible(find.text('执行模式').first);
     await tester.tap(find.text('执行模式').first);
     await _settle(tester);
 
@@ -421,11 +458,14 @@ void main() {
     await _pumpSettingsPage(tester, repository: repository);
 
     await tester
+        .ensureVisible(find.byKey(const ValueKey('remove-trusted-create_reminder')));
+    await tester
         .tap(find.byKey(const ValueKey('remove-trusted-create_reminder')));
     await _settle(tester);
 
     expect(find.text('create_reminder'), findsNothing);
 
+    await tester.ensureVisible(find.byKey(const ValueKey('remove-blocked-delete')));
     await tester.tap(find.byKey(const ValueKey('remove-blocked-delete')));
     await _settle(tester);
 

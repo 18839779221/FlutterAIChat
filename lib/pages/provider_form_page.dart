@@ -9,6 +9,7 @@ import '../services/llm_model_test_service.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_theme_spec.dart';
+import '../widgets/settings/immersive_settings_scaffold.dart';
 import '../widgets/settings/settings_group_section.dart';
 import '../widgets/settings/settings_row.dart';
 import '../widgets/settings/settings_value_badge.dart';
@@ -601,15 +602,26 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final hasModels = _models.isNotEmpty;
 
-    return Scaffold(
-      appBar:
-          _buildTintedHeader(context, _isEdit ? '编辑 Provider' : '新增 Provider'),
+    return ImmersiveSettingsScaffold(
+      title: _isEdit ? '编辑 Provider' : '新增 Provider',
+      headerStyle: SettingsHeaderStyle.editor,
+      bodyPadding: EdgeInsets.zero,
       body: Form(
         key: _formKey,
-        child: ListView(
-          padding: EdgeInsets.all(spacing.lg),
-          children: [
-            SettingsGroupSection(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            spacing.lg,
+            ImmersiveSettingsScaffold.contentStartPadding(
+              context,
+              headerStyle: SettingsHeaderStyle.editor,
+            ),
+            spacing.lg,
+            spacing.lg,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SettingsGroupSection(
               title: '连接与鉴权',
               summary: '这里只编辑单个 Provider 对象。先完成连接信息，再决定是否探测模型。',
               child: Column(
@@ -696,8 +708,8 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
                 ],
               ),
             ),
-            SizedBox(height: spacing.lg),
-            SettingsGroupSection(
+              SizedBox(height: spacing.lg),
+              SettingsGroupSection(
               title: '模型目录',
               summary: hasModels
                   ? '优先通过探测更新模型目录，也可按需手动补充。测速会基于当前第一个模型执行。'
@@ -765,9 +777,9 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
                 ],
               ),
             ),
-            if (hasModels) ...[
-              SizedBox(height: spacing.lg),
-              SettingsGroupSection(
+              if (hasModels) ...[
+                SizedBox(height: spacing.lg),
+                SettingsGroupSection(
                 title: '高级运行时',
                 summary: '仅在需要主模型之外的辅助模型时单独指定。默认留空，随主模型变化。',
                 child: DropdownButtonFormField<String>(
@@ -796,31 +808,14 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
                     });
                   },
                 ),
-              ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
   }
-}
-
-PreferredSizeWidget _buildTintedHeader(BuildContext context, String title) {
-  final colors = Theme.of(context).extension<AppThemeSpec>()!;
-
-  return AppBar(
-    backgroundColor: colors.workflowRunning.withValues(alpha: 0.12),
-    surfaceTintColor: Colors.transparent,
-    elevation: 0,
-    titleSpacing: 12,
-    title: Text(
-      title,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: colors.primaryText,
-          ),
-    ),
-  );
 }
 
 class _EmptyModelState extends StatelessWidget {

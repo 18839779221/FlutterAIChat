@@ -6,11 +6,38 @@ import 'package:ai_chat/repositories/app_settings_repository.dart';
 import 'package:ai_chat/services/llm_model_discovery_service.dart';
 import 'package:ai_chat/services/llm_model_test_service.dart';
 import 'package:ai_chat/theme/app_theme.dart';
+import 'package:ai_chat/widgets/settings/immersive_settings_scaffold.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  testWidgets('model management page uses immersive nested header', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    SharedPreferences.setMockInitialValues({});
+    final repository = AppSettingsRepository(
+      await SharedPreferences.getInstance(),
+      localDefaultsLoader: () async => null,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ModelManagementPage(repository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('settings-floating-header')),
+      findsOneWidget,
+    );
+    expect(find.text('模型配置'), findsOneWidget);
+    expect(find.byKey(settingsFloatingHeaderSurfaceKey), findsNothing);
+  });
+
   testWidgets(
       'model management renders provider-first list with management sections',
       (tester) async {
@@ -122,6 +149,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('编辑').first);
     await tester.tap(find.text('编辑').first);
     await tester.pumpAndSettle();
 
@@ -169,15 +197,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('编辑').first);
     await tester.tap(find.text('编辑').first);
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('探测模型'));
     await tester.tap(find.text('探测模型'));
     await tester.pumpAndSettle();
 
     expect(find.text('gpt-4o-mini'), findsWidgets);
     expect(find.text('gpt-4.1'), findsWidgets);
 
+    await tester.ensureVisible(find.text('用于当前会话').first);
     await tester.tap(find.text('用于当前会话').first);
     await tester.pumpAndSettle();
 

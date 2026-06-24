@@ -13,6 +13,7 @@ import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_theme_controller.dart';
 import '../theme/app_theme_spec.dart';
+import '../widgets/settings/immersive_settings_scaffold.dart';
 import '../widgets/settings/settings_row.dart';
 import '../widgets/settings/settings_summary_group.dart';
 import '../widgets/settings/settings_value_badge.dart';
@@ -370,24 +371,25 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       Future<void>.microtask(_loadSettings);
     }
 
-    return Scaffold(
-      appBar: _buildTintedHeader(context, '设置'),
+    return ImmersiveSettingsScaffold(
+      title: '设置',
+      headerStyle: SettingsHeaderStyle.root,
+      bodyPadding: EdgeInsets.zero,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
+          : SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(
                 spacing.lg,
-                spacing.lg,
+                ImmersiveSettingsScaffold.contentStartPadding(
+                  context,
+                  headerStyle: SettingsHeaderStyle.root,
+                ),
                 spacing.lg,
                 spacing.xl,
               ),
-              children: [
-                Align(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 760),
-                    child: Column(
-                      children: [
-                        SettingsSummaryGroup(
+              child: Column(
+                children: [
+                  SettingsSummaryGroup(
                           title: '模型与运行时',
                           children: [
                             SettingsRow(
@@ -429,8 +431,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             ),
                           ],
                         ),
-                        SizedBox(height: spacing.xl),
-                        SettingsSummaryGroup(
+                  SizedBox(height: spacing.xl),
+                  SettingsSummaryGroup(
                           title: '工具与安全',
                           children: [
                             SettingsRow(
@@ -453,8 +455,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             ),
                           ],
                         ),
-                        SizedBox(height: spacing.xl),
-                        SettingsSummaryGroup(
+                  SizedBox(height: spacing.xl),
+                  SettingsSummaryGroup(
                           title: '扩展能力',
                           children: [
                             SettingsRow(
@@ -495,8 +497,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             ),
                           ],
                         ),
-                        SizedBox(height: spacing.xl),
-                        SettingsSummaryGroup(
+                  SizedBox(height: spacing.xl),
+                  SettingsSummaryGroup(
                           title: '外观与兼容',
                           children: [
                             Padding(
@@ -525,39 +527,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                               ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
     );
   }
-}
-
-PreferredSizeWidget _buildTintedHeader(BuildContext context, String title) {
-  final colors = Theme.of(context).extension<AppThemeSpec>()!;
-
-  return AppBar(
-    centerTitle: true,
-    backgroundColor: colors.chatBackground,
-    surfaceTintColor: Colors.transparent,
-    elevation: 0,
-    scrolledUnderElevation: 0,
-    shadowColor: Colors.transparent,
-    shape: Border(
-      bottom: BorderSide(
-        color: colors.divider.withValues(alpha: 0.18),
-      ),
-    ),
-    title: Text(
-      title,
-      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: colors.primaryText,
-          ),
-    ),
-  );
 }
 
 class _QuickActionButton extends StatefulWidget {
