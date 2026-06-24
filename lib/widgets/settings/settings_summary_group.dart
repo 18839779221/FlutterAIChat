@@ -28,16 +28,19 @@ class SettingsSummaryGroup extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(spacing.sm, 0, spacing.sm, spacing.sm),
+          padding: EdgeInsets.fromLTRB(spacing.md, 0, spacing.md, spacing.sm),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
                 child: Text(
                   title,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontFamily: 'SourceSerif4',
                         color: colors.secondaryText,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 13,
+                        letterSpacing: 0.15,
                       ),
                 ),
               ),
@@ -47,33 +50,33 @@ class SettingsSummaryGroup extends StatelessWidget {
         ),
         DecoratedBox(
           decoration: BoxDecoration(
-            color: colors.settingsPanelBackground.withValues(alpha: 0.58),
-            borderRadius: BorderRadius.circular(radius.lg + 6),
+            color: colors.settingsPanelBackground.withValues(alpha: 0.54),
+            borderRadius: BorderRadius.circular(radius.lg + 4),
             border: Border.all(
-              color: colors.divider.withValues(alpha: 0.28),
+              color: colors.divider.withValues(alpha: 0.2),
             ),
             boxShadow: [
               BoxShadow(
                 color:
                     colors.core.elevation.shadowColor.withValues(alpha: 0.04),
-                blurRadius: 24,
+                blurRadius: 18,
                 spreadRadius: -10,
-                offset: const Offset(0, 10),
+                offset: const Offset(0, 8),
               ),
             ],
           ),
           child: Padding(
-            padding: EdgeInsets.symmetric(vertical: spacing.xs),
+            padding: EdgeInsets.symmetric(vertical: spacing.xxs + 2),
             child: Column(
               children: [
                 for (var i = 0; i < children.length; i++) ...[
                   if (i > 0)
                     Padding(
-                      padding: EdgeInsets.symmetric(horizontal: spacing.sm),
+                      padding: EdgeInsets.symmetric(horizontal: spacing.md),
                       child: Divider(
                         height: 1,
                         thickness: 1,
-                        color: colors.divider.withValues(alpha: 0.42),
+                        color: colors.divider.withValues(alpha: 0.34),
                       ),
                     ),
                   children[i],

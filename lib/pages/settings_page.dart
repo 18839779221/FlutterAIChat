@@ -40,7 +40,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   List<SkillDescriptor> _skills = const [];
   String? _latestSkillInstallUrl;
   String? _chatCompletionsAdapterType;
-  String? _imageGenerationModelId;
   LlmProviderConfig? _currentProvider;
   LlmProviderModel? _currentModel;
 
@@ -59,7 +58,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final trustedToolNames = await repository.getTrustedToolNames();
     final blockedToolNames = await repository.getBlockedToolNames();
     final latestSkillInstallUrl = await repository.getLatestSkillInstallUrl();
-    final additionalConfig = await repository.getAdditionalConfig();
     final chatCompletionsAdapterType =
         await repository.getChatCompletionsAdapterType();
 
@@ -103,8 +101,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       _blockedToolNames = blockedToolNames.toList()..sort();
       _latestSkillInstallUrl = latestSkillInstallUrl;
       _chatCompletionsAdapterType = chatCompletionsAdapterType;
-      _imageGenerationModelId =
-          additionalConfig['image_generation.default_model_id']?.toString();
       _isLoading = false;
     });
   }
@@ -346,36 +342,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     await _saveToolExecutionMode(selected);
   }
 
-  Future<void> _openDuplicateInvocationModePicker() async {
-    final selected = await showAppBottomSheet<DuplicateSkillInvocationMode>(
-      context: context,
-      mode: AppBottomSheetMode.adaptive,
-      title: '重复调用策略',
-      subtitle: '简单切换即可，复杂技能管理仍留在扩展能力分组。',
-      bodyPadding: const EdgeInsets.fromLTRB(0, 8, 0, 16),
-      body: _SelectionListSheet<DuplicateSkillInvocationMode>(
-        items: DuplicateSkillInvocationMode.values
-            .map(
-              (mode) => _SelectionListItem<DuplicateSkillInvocationMode>(
-                value: mode,
-                title: mode == DuplicateSkillInvocationMode.reload
-                    ? '重复调用时重载'
-                    : '重复调用时复用',
-                subtitle: mode == DuplicateSkillInvocationMode.reload
-                    ? '重复调用会重新读取并加载一次 skill 内容。'
-                    : '重复调用直接复用已加载结果。',
-              ),
-            )
-            .toList(growable: false),
-        selectedValue: _duplicateSkillInvocationMode,
-      ),
-    );
-    if (selected == null) {
-      return;
-    }
-    await _saveDuplicateSkillInvocationMode(selected);
-  }
-
   String _toolExecutionModeTitle(ToolExecutionMode mode) {
     switch (mode) {
       case ToolExecutionMode.conservative:
@@ -395,6 +361,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final activeTheme = ref.watch(appThemeControllerProvider);
     final provider = _currentProvider;
     final model = _currentModel;
+    final enabledSkillCount = _skills.where((skill) => skill.isEnabled).length;
+    final showCompatibilityAdapter =
+        (_chatCompletionsAdapterType ?? 'sdk').toLowerCase() != 'sdk';
 
     if (isBootstrapReady && !_didScheduleBootstrapReadyLoad) {
       _didScheduleBootstrapReadyLoad = true;
@@ -406,201 +375,159 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: EdgeInsets.all(spacing.lg),
+              padding: EdgeInsets.fromLTRB(
+                spacing.lg,
+                spacing.lg,
+                spacing.lg,
+                spacing.xl,
+              ),
               children: [
-                SettingsSummaryGroup(
-                  title: '模型与运行时',
-                  children: [
-                    SettingsRow(
-                      title: '当前 Provider',
-                      leading: const Icon(Icons.hub_outlined),
-                      trailing: _StaticValuePill(
-                        label: provider?.name ?? '未配置',
-                        emphasize: provider == null,
-                      ),
+                Align(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 760),
+                    child: Column(
+                      children: [
+                        SettingsSummaryGroup(
+                          title: '模型与运行时',
+                          children: [
+                            SettingsRow(
+                              title: '当前 Provider',
+                              leading: const Icon(Icons.hub_outlined),
+                              trailing: _StaticValuePill(
+                                label: provider?.name ?? '未配置',
+                                emphasize: provider == null,
+                              ),
+                            ),
+                            SettingsRow(
+                              title: '当前 Model',
+                              leading:
+                                  const Icon(Icons.chat_bubble_outline_rounded),
+                              trailing: _StaticValuePill(
+                                label: model?.displayName ?? '未配置',
+                                emphasize: model == null,
+                              ),
+                            ),
+                            SettingsRow(
+                              title: '连通测试',
+                              leading: const Icon(Icons.wifi_tethering_rounded),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: spacing.lg,
+                                vertical: spacing.xxs + 2,
+                              ),
+                              trailing: _QuickActionButton(
+                                key: const ValueKey('connectivity-test-button'),
+                                label: _isTestingModel ? '测试中' : '测试',
+                                onPressed:
+                                    _isTestingModel ? null : _testCurrentModel,
+                              ),
+                            ),
+                            SettingsRow(
+                              title: '模型管理',
+                              leading: const Icon(Icons.tune_rounded),
+                              onTap: _openModelManagement,
+                              trailing: const SizedBox.shrink(),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: spacing.xl),
+                        SettingsSummaryGroup(
+                          title: '工具与安全',
+                          children: [
+                            SettingsRow(
+                              title: '执行模式',
+                              leading: const Icon(Icons.bolt_outlined),
+                              onTap: _openToolExecutionModePicker,
+                              trailing: _TrailingTextValue(
+                                label: _toolExecutionModeTitle(
+                                  _toolExecutionMode,
+                                ),
+                                emphasize: _toolExecutionMode ==
+                                    ToolExecutionMode.aggressive,
+                              ),
+                            ),
+                            _PermissionOverviewBlock(
+                              trustedToolNames: _trustedToolNames,
+                              blockedToolNames: _blockedToolNames,
+                              onRemoveTrusted: _removeTrustedTool,
+                              onRemoveBlocked: _removeBlockedTool,
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: spacing.xl),
+                        SettingsSummaryGroup(
+                          title: '扩展能力',
+                          children: [
+                            SettingsRow(
+                              title: '已安装 Skills',
+                              leading: const Icon(Icons.extension_outlined),
+                              trailing: _TrailingTextValue(
+                                label: '$enabledSkillCount/${_skills.length}',
+                                emphasize: enabledSkillCount > 0,
+                              ),
+                            ),
+                            SettingsRow(
+                              title: '管理 Skills',
+                              leading: const Icon(Icons.folder_open_outlined),
+                              onTap: _openSkillManagement,
+                              trailing: const SizedBox.shrink(),
+                            ),
+                            SettingsRow(
+                              title: '重复调用时重载',
+                              leading: const Icon(Icons.refresh_rounded),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: spacing.lg,
+                                vertical: spacing.xs,
+                              ),
+                              trailing: _CompactSettingsToggle(
+                                key: const ValueKey(
+                                  'duplicate-invocation-toggle',
+                                ),
+                                value: _duplicateSkillInvocationMode ==
+                                    DuplicateSkillInvocationMode.reload,
+                                onChanged: (value) {
+                                  _saveDuplicateSkillInvocationMode(
+                                    value
+                                        ? DuplicateSkillInvocationMode.reload
+                                        : DuplicateSkillInvocationMode.reuse,
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: spacing.xl),
+                        SettingsSummaryGroup(
+                          title: '外观与兼容',
+                          children: [
+                            Padding(
+                              padding: EdgeInsets.fromLTRB(
+                                spacing.md,
+                                spacing.md,
+                                spacing.md,
+                                spacing.xs,
+                              ),
+                              child: _ThemeSelectorBlock(
+                                activeThemeId: activeTheme.id,
+                                onThemeSelected: (themeId) => ref
+                                    .read(appThemeControllerProvider.notifier)
+                                    .setTheme(themeId),
+                              ),
+                            ),
+                            if (showCompatibilityAdapter)
+                              SettingsRow(
+                                title: '兼容适配器',
+                                leading: const Icon(Icons.sync_alt_rounded),
+                                trailing: _TrailingTextValue(
+                                  label: (_chatCompletionsAdapterType ?? 'sdk')
+                                      .toUpperCase(),
+                                  emphasize: true,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
                     ),
-                    SettingsRow(
-                      title: '当前 Model',
-                      leading: const Icon(Icons.chat_bubble_outline_rounded),
-                      trailing: _StaticValuePill(
-                        label: model?.displayName ?? '未配置',
-                        emphasize: model == null,
-                      ),
-                    ),
-                    SettingsRow(
-                      title: '当前 Side Model',
-                      leading: const Icon(Icons.layers_outlined),
-                      trailing: _StaticValuePill(
-                        label: provider?.sideModelId?.trim().isNotEmpty == true
-                            ? provider!.sideModelId!.trim()
-                            : '跟随主模型',
-                      ),
-                    ),
-                    SettingsRow(
-                      title: '当前生图模型',
-                      leading: const Icon(Icons.image_outlined),
-                      trailing: _StaticValuePill(
-                        label:
-                            _imageGenerationModelId?.trim().isNotEmpty == true
-                                ? _imageGenerationModelId!.trim()
-                                : '未配置',
-                        emphasize:
-                            _imageGenerationModelId?.trim().isNotEmpty != true,
-                      ),
-                    ),
-                    SettingsRow(
-                      title: '连通状态',
-                      leading: const Icon(Icons.wifi_tethering_rounded),
-                      trailing: _QuickActionButton(
-                        label: _isTestingModel ? '测试中...' : '测试当前模型',
-                        onPressed: _isTestingModel ? null : _testCurrentModel,
-                      ),
-                    ),
-                    SettingsRow(
-                      title: '模型管理',
-                      leading: const Icon(Icons.tune_rounded),
-                      onTap: _openModelManagement,
-                      trailing: const _TrailingTextValue(
-                        label: 'Provider 与模型',
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: spacing.lg),
-                SettingsSummaryGroup(
-                  title: '工具与安全',
-                  children: [
-                    SettingsRow(
-                      title: '执行模式',
-                      leading: const Icon(Icons.bolt_outlined),
-                      onTap: _openToolExecutionModePicker,
-                      trailing: _TrailingTextValue(
-                        label: _toolExecutionModeTitle(_toolExecutionMode),
-                        emphasize:
-                            _toolExecutionMode == ToolExecutionMode.aggressive,
-                      ),
-                    ),
-                    SettingsRow(
-                      title: '长期授权工具',
-                      leading: const Icon(Icons.verified_outlined),
-                      trailing: _TrailingTextValue(
-                        label: '${_trustedToolNames.length} 项',
-                        emphasize: _trustedToolNames.isNotEmpty,
-                      ),
-                    ),
-                    if (_trustedToolNames.isEmpty)
-                      const _InlinePermissionHint(
-                        label: '当前没有长期授权项',
-                      )
-                    else
-                      _InlinePermissionPreview(
-                        toolNames: _trustedToolNames,
-                        tone: SettingsValueBadgeTone.active,
-                        removeKeyBuilder: (toolName) =>
-                            ValueKey('remove-trusted-$toolName'),
-                        onRemove: _removeTrustedTool,
-                      ),
-                    SettingsRow(
-                      title: '已阻止工具',
-                      leading: const Icon(Icons.block_outlined),
-                      trailing: _TrailingTextValue(
-                        label: '${_blockedToolNames.length} 项',
-                        emphasize: _blockedToolNames.isNotEmpty,
-                      ),
-                    ),
-                    if (_blockedToolNames.isEmpty)
-                      const _InlinePermissionHint(
-                        label: '当前没有阻止项',
-                      )
-                    else
-                      _InlinePermissionPreview(
-                        toolNames: _blockedToolNames,
-                        tone: SettingsValueBadgeTone.warning,
-                        removeKeyBuilder: (toolName) =>
-                            ValueKey('remove-blocked-$toolName'),
-                        onRemove: _removeBlockedTool,
-                      ),
-                  ],
-                ),
-                SizedBox(height: spacing.lg),
-                SettingsSummaryGroup(
-                  title: '扩展能力',
-                  children: [
-                    SettingsRow(
-                      title: '已安装 Skills',
-                      leading: const Icon(Icons.extension_outlined),
-                      trailing: _TrailingTextValue(
-                        label: '${_skills.length} 项',
-                      ),
-                    ),
-                    SettingsRow(
-                      title: '启用状态',
-                      leading: const Icon(Icons.toggle_on_outlined),
-                      trailing: _TrailingTextValue(
-                        label:
-                            '${_skills.where((skill) => skill.isEnabled).length} 项启用',
-                        emphasize: _skills
-                            .where((skill) => skill.isEnabled)
-                            .isNotEmpty,
-                      ),
-                    ),
-                    SettingsRow(
-                      title: '最近安装来源',
-                      leading: const Icon(Icons.link_outlined),
-                      trailing: _TrailingTextValue(
-                        label: _latestSkillInstallUrl == null ? '未记录' : '已记录',
-                      ),
-                    ),
-                    SettingsRow(
-                      title: '管理 Skills',
-                      leading: const Icon(Icons.folder_open_outlined),
-                      onTap: _openSkillManagement,
-                      trailing: const _TrailingTextValue(
-                        label: '安装与启用',
-                      ),
-                    ),
-                    SettingsRow(
-                      title: '重复调用策略',
-                      leading: const Icon(Icons.refresh_rounded),
-                      trailing: _QuickActionButton(
-                        label: _duplicateSkillInvocationMode ==
-                                DuplicateSkillInvocationMode.reload
-                            ? '重载'
-                            : '复用',
-                        onPressed: _openDuplicateInvocationModePicker,
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: spacing.lg),
-                SettingsSummaryGroup(
-                  title: '外观与兼容',
-                  children: [
-                    Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        spacing.sm,
-                        spacing.sm,
-                        spacing.sm,
-                        spacing.xs,
-                      ),
-                      child: _ThemeSelectorBlock(
-                        activeThemeId: activeTheme.id,
-                        onThemeSelected: (themeId) => ref
-                            .read(appThemeControllerProvider.notifier)
-                            .setTheme(themeId),
-                      ),
-                    ),
-                    SettingsRow(
-                      title: '兼容适配器',
-                      leading: const Icon(Icons.sync_alt_rounded),
-                      trailing: _TrailingTextValue(
-                        label: (_chatCompletionsAdapterType ?? 'sdk')
-                            .toUpperCase(),
-                        emphasize:
-                            (_chatCompletionsAdapterType ?? 'sdk') != 'sdk',
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),
@@ -620,13 +547,13 @@ PreferredSizeWidget _buildTintedHeader(BuildContext context, String title) {
     shadowColor: Colors.transparent,
     shape: Border(
       bottom: BorderSide(
-        color: colors.divider.withValues(alpha: 0.28),
+        color: colors.divider.withValues(alpha: 0.18),
       ),
     ),
     title: Text(
       title,
       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
             color: colors.primaryText,
           ),
     ),
@@ -635,6 +562,7 @@ PreferredSizeWidget _buildTintedHeader(BuildContext context, String title) {
 
 class _QuickActionButton extends StatefulWidget {
   const _QuickActionButton({
+    super.key,
     required this.label,
     required this.onPressed,
   });
@@ -675,25 +603,31 @@ class _QuickActionButtonState extends State<_QuickActionButton> {
           child: AnimatedContainer(
             duration: motion.quick,
             curve: motion.easeOut,
-            constraints: const BoxConstraints(minWidth: 88, minHeight: 36),
+            constraints: const BoxConstraints(minWidth: 52, minHeight: 24),
             padding: EdgeInsets.symmetric(
-              horizontal: spacing.sm,
-              vertical: spacing.xs,
+              horizontal: spacing.xs + 2,
+              vertical: spacing.xxs - 1,
             ),
             decoration: BoxDecoration(
               color: colors.assistantSurface.withValues(
-                alpha: widget.onPressed == null ? 0.6 : (_pressed ? 0.98 : 0.9),
+                alpha:
+                    widget.onPressed == null ? 0.58 : (_pressed ? 0.96 : 0.84),
               ),
               borderRadius: BorderRadius.circular(radius.pill),
             ),
-            child: Text(
-              widget.label,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: widget.onPressed == null
-                        ? colors.secondaryText
-                        : colors.primaryText,
-                    fontWeight: FontWeight.w700,
-                  ),
+            child: Center(
+              child: Text(
+                widget.label,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: widget.onPressed == null
+                          ? colors.secondaryText
+                          : colors.primaryText,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 12,
+                      height: 1,
+                    ),
+              ),
             ),
           ),
         ),
@@ -716,13 +650,15 @@ class _StaticValuePill extends StatelessWidget {
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
     return Text(
       label,
-      maxLines: 2,
+      maxLines: 1,
       overflow: TextOverflow.ellipsis,
       textAlign: TextAlign.right,
-      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-            color: emphasize ? colors.workflowWarning : colors.primaryText,
-            fontWeight: FontWeight.w500,
-            height: 1.25,
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: emphasize
+                ? colors.workflowWarning.withValues(alpha: 0.9)
+                : colors.secondaryText.withValues(alpha: 0.9),
+            fontWeight: FontWeight.w400,
+            height: 1.15,
           ),
     );
   }
@@ -745,82 +681,253 @@ class _TrailingTextValue extends StatelessWidget {
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       textAlign: TextAlign.right,
-      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            color: emphasize ? colors.workflowWarning : colors.secondaryText,
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: emphasize
+                ? colors.workflowWarning.withValues(alpha: 0.9)
+                : colors.secondaryText.withValues(alpha: 0.86),
             fontWeight: FontWeight.w600,
+            height: 1.15,
           ),
     );
   }
 }
 
-class _InlinePermissionHint extends StatelessWidget {
-  const _InlinePermissionHint({
-    required this.label,
+class _CompactSettingsToggle extends StatefulWidget {
+  const _CompactSettingsToggle({
+    super.key,
+    required this.value,
+    required this.onChanged,
   });
 
-  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  State<_CompactSettingsToggle> createState() => _CompactSettingsToggleState();
+}
+
+class _CompactSettingsToggleState extends State<_CompactSettingsToggle> {
+  bool _pressed = false;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<AppThemeSpec>()!;
-    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final motion = Theme.of(context).extension<AppMotion>()!;
+    final radius = Theme.of(context).extension<AppRadius>()!;
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        spacing.lg,
-        0,
-        spacing.lg,
-        spacing.sm,
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: colors.secondaryText,
+    return Semantics(
+      button: true,
+      toggled: widget.value,
+      child: AnimatedScale(
+        scale: _pressed ? 0.97 : 1,
+        duration: motion.instant,
+        curve: motion.easeOut,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => widget.onChanged(!widget.value),
+            borderRadius: BorderRadius.circular(radius.pill),
+            onHighlightChanged: (value) {
+              if (_pressed != value) {
+                setState(() {
+                  _pressed = value;
+                });
+              }
+            },
+            child: AnimatedContainer(
+              duration: motion.quick,
+              curve: motion.easeOut,
+              width: 34,
+              height: 20,
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: widget.value
+                    ? colors.workflowRunning.withValues(
+                        alpha: _pressed ? 0.8 : 0.92,
+                      )
+                    : colors.assistantSurface.withValues(
+                        alpha: _pressed ? 0.98 : 0.9,
+                      ),
+                borderRadius: BorderRadius.circular(radius.pill),
+                border: Border.all(
+                  color: widget.value
+                      ? colors.workflowRunning.withValues(alpha: 0.2)
+                      : colors.divider.withValues(alpha: 0.5),
+                ),
+              ),
+              child: Align(
+                alignment: widget.value
+                    ? Alignment.centerRight
+                    : Alignment.centerLeft,
+                child: Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color:
+                        widget.value ? Colors.white : colors.secondaryText,
+                    borderRadius: BorderRadius.circular(radius.pill),
+                  ),
+                ),
+              ),
             ),
+          ),
+        ),
       ),
     );
   }
 }
 
-class _InlinePermissionPreview extends StatelessWidget {
-  const _InlinePermissionPreview({
-    required this.tone,
+class _PermissionOverviewBlock extends StatelessWidget {
+  const _PermissionOverviewBlock({
+    required this.trustedToolNames,
+    required this.blockedToolNames,
+    required this.onRemoveTrusted,
+    required this.onRemoveBlocked,
+  });
+
+  final List<String> trustedToolNames;
+  final List<String> blockedToolNames;
+  final Future<void> Function(String toolName) onRemoveTrusted;
+  final Future<void> Function(String toolName) onRemoveBlocked;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        spacing.md,
+        spacing.xs,
+        spacing.md,
+        spacing.sm,
+      ),
+      child: Column(
+        children: [
+          _PermissionBucket(
+            title: '长期授权工具',
+            emptyLabel: '当前没有长期授权项',
+            toolNames: trustedToolNames,
+            tone: SettingsValueBadgeTone.active,
+            removeKeyBuilder: (toolName) =>
+                ValueKey('remove-trusted-$toolName'),
+            onRemove: onRemoveTrusted,
+          ),
+          SizedBox(height: spacing.sm),
+          _PermissionBucket(
+            title: '已阻止工具',
+            emptyLabel: '当前没有阻止项',
+            toolNames: blockedToolNames,
+            tone: SettingsValueBadgeTone.warning,
+            removeKeyBuilder: (toolName) =>
+                ValueKey('remove-blocked-$toolName'),
+            onRemove: onRemoveBlocked,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PermissionBucket extends StatelessWidget {
+  const _PermissionBucket({
+    required this.title,
+    required this.emptyLabel,
     required this.toolNames,
+    required this.tone,
     required this.removeKeyBuilder,
     required this.onRemove,
   });
 
-  final SettingsValueBadgeTone tone;
+  final String title;
+  final String emptyLabel;
   final List<String> toolNames;
+  final SettingsValueBadgeTone tone;
   final Key Function(String toolName) removeKeyBuilder;
   final Future<void> Function(String toolName) onRemove;
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final radius = Theme.of(context).extension<AppRadius>()!;
     final previewNames = toolNames.take(3).toList(growable: false);
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        spacing.lg,
-        spacing.xs,
-        spacing.lg,
-        spacing.sm,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.assistantSurface.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(radius.md),
       ),
-      child: Wrap(
-        spacing: spacing.sm,
-        runSpacing: spacing.sm,
-        children: previewNames
-            .map(
-              (toolName) => _SettingsToolChip(
-                label: toolName,
-                tone: tone,
-                removeKey: removeKeyBuilder(toolName),
-                onRemove: () => onRemove(toolName),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          spacing.md,
+          spacing.sm,
+          spacing.md,
+          spacing.sm,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: colors.primaryText,
+                          fontWeight: FontWeight.w400,
+                          fontSize: 14,
+                        ),
+                  ),
+                ),
+                _PermissionCountBadge(
+                  count: toolNames.length,
+                  tone: tone,
+                ),
+              ],
+            ),
+            if (previewNames.isNotEmpty) ...[
+              SizedBox(height: spacing.sm),
+              Wrap(
+                spacing: spacing.sm,
+                runSpacing: spacing.sm,
+                children: previewNames
+                    .map(
+                      (toolName) => _SettingsToolChip(
+                        label: toolName,
+                        tone: tone,
+                        removeKey: removeKeyBuilder(toolName),
+                        onRemove: () => onRemove(toolName),
+                      ),
+                    )
+                    .toList(growable: false),
               ),
-            )
-            .toList(growable: false),
+            ],
+          ],
+        ),
       ),
+    );
+  }
+}
+
+class _PermissionCountBadge extends StatelessWidget {
+  const _PermissionCountBadge({
+    required this.count,
+    required this.tone,
+  });
+
+  final int count;
+  final SettingsValueBadgeTone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+    return Text(
+      '$count 项',
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: colors.secondaryText.withValues(alpha: 0.86),
+            fontWeight: FontWeight.w400,
+            height: 1.15,
+          ),
     );
   }
 }
@@ -864,9 +971,9 @@ class _SettingsToolChipState extends State<_SettingsToolChip> {
         child: Padding(
           padding: EdgeInsets.only(
             left: spacing.sm,
-            top: spacing.xxs + 2,
-            bottom: spacing.xxs + 2,
-            right: spacing.xxs + 2,
+            top: spacing.xxs + 1,
+            bottom: spacing.xxs + 1,
+            right: spacing.xxs + 1,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -891,10 +998,10 @@ class _SettingsToolChipState extends State<_SettingsToolChip> {
                   }
                 },
                 child: Padding(
-                  padding: EdgeInsets.all(spacing.xxs + 2),
+                  padding: EdgeInsets.all(spacing.xxs + 1),
                   child: Icon(
                     Icons.close_rounded,
-                    size: 16,
+                    size: 14,
                     color: _foregroundColor(colors),
                   ),
                 ),
@@ -953,19 +1060,19 @@ class _ThemeSelectorBlock extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(spacing.xs, 0, spacing.xs, spacing.sm),
+          padding: EdgeInsets.fromLTRB(0, 0, 0, spacing.sm),
           child: Row(
             children: [
               Text(
                 '主题',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
               ),
               const Spacer(),
               Text(
                 activeTheme.displayName,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: Theme.of(context)
                           .extension<AppThemeSpec>()!
                           .secondaryText,
@@ -982,6 +1089,7 @@ class _ThemeSelectorBlock extends StatelessWidget {
                 child: _ThemeOptionCard(
                   themeId: theme.id,
                   title: theme.displayName,
+                  previewTheme: theme,
                   selected: theme.id == activeThemeId,
                   onTap: () => onThemeSelected(theme.id),
                 ),
@@ -999,12 +1107,14 @@ class _ThemeOptionCard extends StatefulWidget {
   const _ThemeOptionCard({
     required this.themeId,
     required this.title,
+    required this.previewTheme,
     required this.selected,
     required this.onTap,
   });
 
   final String themeId;
   final String title;
+  final AppThemeSpec previewTheme;
   final bool selected;
   final VoidCallback onTap;
 
@@ -1040,12 +1150,12 @@ class _ThemeOptionCardState extends State<_ThemeOptionCard> {
         child: AnimatedContainer(
           duration: motion.quick,
           curve: motion.easeOut,
-          constraints: const BoxConstraints(minHeight: 152),
+          constraints: const BoxConstraints(minHeight: 124),
           padding: EdgeInsets.fromLTRB(
             spacing.sm,
             spacing.sm,
             spacing.sm,
-            spacing.md,
+            spacing.xs,
           ),
           decoration: BoxDecoration(
             color: widget.selected
@@ -1054,17 +1164,19 @@ class _ThemeOptionCardState extends State<_ThemeOptionCard> {
                     .withValues(alpha: _pressed ? 0.98 : 0.92),
             borderRadius: BorderRadius.circular(radius.lg),
             border: Border.all(
-              color: widget.selected ? colors.workflowRunning : colors.divider,
-              width: widget.selected ? 1.4 : 1,
+              color: widget.selected
+                  ? colors.workflowRunning.withValues(alpha: 0.76)
+                  : colors.divider.withValues(alpha: 0.7),
+              width: widget.selected ? 1.2 : 1,
             ),
             boxShadow: widget.selected
                 ? [
                     BoxShadow(
                       color: colors.core.elevation.shadowColor
                           .withValues(alpha: 0.06),
-                      blurRadius: 16,
+                      blurRadius: 12,
                       spreadRadius: -8,
-                      offset: const Offset(0, 8),
+                      offset: const Offset(0, 6),
                     ),
                   ]
                 : null,
@@ -1073,20 +1185,35 @@ class _ThemeOptionCardState extends State<_ThemeOptionCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               AspectRatio(
-                aspectRatio: 1.3,
-                child: _ThemePreviewSwatch(selected: widget.selected),
+                aspectRatio: 1.45,
+                child: _ThemePreviewSwatch(
+                  selected: widget.selected,
+                  previewTheme: widget.previewTheme,
+                ),
               ),
-              SizedBox(height: spacing.sm),
-              Text(
-                widget.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: widget.selected
-                          ? colors.workflowRunning
-                          : colors.primaryText,
-                      fontWeight: FontWeight.w700,
+              SizedBox(height: spacing.xs),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: widget.selected
+                                ? colors.workflowRunning
+                                : colors.primaryText,
+                            fontWeight: FontWeight.w700,
+                          ),
                     ),
+                  ),
+                  if (widget.selected)
+                    Icon(
+                      Icons.check_rounded,
+                      size: 14,
+                      color: colors.workflowRunning,
+                    ),
+                ],
               ),
             ],
           ),
@@ -1099,15 +1226,18 @@ class _ThemeOptionCardState extends State<_ThemeOptionCard> {
 class _ThemePreviewSwatch extends StatelessWidget {
   const _ThemePreviewSwatch({
     required this.selected,
+    required this.previewTheme,
   });
 
   final bool selected;
+  final AppThemeSpec previewTheme;
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+    final colors = previewTheme;
     final spacing = Theme.of(context).extension<AppSpacing>()!;
     final radius = Theme.of(context).extension<AppRadius>()!;
+    final isOlivePaper = previewTheme.id == 'olive-paper';
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -1116,45 +1246,86 @@ class _ThemePreviewSwatch extends StatelessWidget {
             : colors.assistantSurface.withValues(alpha: 0.88),
         borderRadius: BorderRadius.circular(radius.md),
         border: Border.all(
-          color: colors.divider.withValues(alpha: 0.56),
+          color: colors.divider.withValues(alpha: 0.46),
         ),
       ),
       child: Padding(
-        padding: EdgeInsets.all(spacing.sm),
-        child: Row(
+        padding: EdgeInsets.all(spacing.xs + 1),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 34,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: colors.secondaryText.withValues(alpha: 0.7),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: isOlivePaper ? 24 : 28,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: colors.secondaryText.withValues(
+                            alpha: isOlivePaper ? 0.55 : 0.72,
+                          ),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                      SizedBox(height: spacing.xxs + 2),
+                      Container(
+                        width: isOlivePaper ? 30 : 22,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: colors.secondaryText.withValues(
+                            alpha: isOlivePaper ? 0.32 : 0.45,
+                          ),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                    ],
                   ),
-                  SizedBox(height: spacing.xs),
-                  Container(
-                    width: 26,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: colors.secondaryText.withValues(alpha: 0.45),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
+                ),
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: isOlivePaper
+                        ? colors.workflowRunning.withValues(alpha: 0.82)
+                        : colors.workflowWarning.withValues(alpha: 0.86),
+                    borderRadius: BorderRadius.circular(999),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            Container(
-              width: 14,
-              height: 14,
-              decoration: BoxDecoration(
-                color: colors.workflowWarning.withValues(alpha: 0.86),
-                borderRadius: BorderRadius.circular(999),
-              ),
+            SizedBox(height: spacing.xs),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Container(
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: (isOlivePaper
+                              ? colors.toolWorkflowSurface
+                              : colors.structuredSurface)
+                          .withValues(alpha: isOlivePaper ? 0.78 : 0.72),
+                      borderRadius: BorderRadius.circular(radius.sm),
+                    ),
+                  ),
+                ),
+                SizedBox(width: spacing.xxs + 2),
+                Container(
+                  width: 24,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: (isOlivePaper
+                            ? colors.structuredSurface
+                            : colors.toolWorkflowSurface)
+                        .withValues(alpha: isOlivePaper ? 0.72 : 0.8),
+                    borderRadius: BorderRadius.circular(radius.sm),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

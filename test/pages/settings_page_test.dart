@@ -35,6 +35,12 @@ void main() {
     expect(find.text('主题'), findsOneWidget);
     expect(find.text('模型管理'), findsOneWidget);
     expect(find.text('管理 Skills'), findsOneWidget);
+    expect(find.text('测试'), findsOneWidget);
+
+    final groupTitle = tester.widget<Text>(find.text('模型与运行时'));
+    expect(groupTitle.style?.fontFamily, 'SourceSerif4');
+    expect(groupTitle.style?.fontWeight, FontWeight.w500);
+    expect(groupTitle.style?.fontSize, 13);
   });
 
   testWidgets('settings page keeps decorative hero copy removed',
@@ -168,6 +174,38 @@ void main() {
       ),
       findsNothing,
     );
+
+    final providerText = tester.widget<Text>(find.text('AIGoCode').first);
+    final modelText = tester.widget<Text>(find.text('gpt-5.4').first);
+    final skillText = tester.widget<Text>(find.text('1/2').first);
+    final executionModeText = tester.widget<Text>(find.text('平衡').first);
+    expect(providerText.style?.fontSize, 12);
+    expect(modelText.style?.fontSize, 12);
+    expect(skillText.style?.fontSize, 12);
+    expect(executionModeText.style?.fontSize, 12);
+  });
+
+  testWidgets('settings page keeps connectivity test row at standard height',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final repository = await _buildRepository();
+
+    await _pumpSettingsPage(tester, repository: repository);
+
+    final providerRowHeight = tester
+        .getSize(find.byKey(const ValueKey('settings-row-display-当前 Provider')))
+        .height;
+    final connectivityRowHeight = tester
+        .getSize(find.byKey(const ValueKey('settings-row-display-连通测试')))
+        .height;
+    final connectivityButtonHeight =
+        tester.getSize(find.byKey(const ValueKey('connectivity-test-button')))
+            .height;
+
+    expect(connectivityButtonHeight, lessThanOrEqualTo(24));
+    expect(connectivityRowHeight, lessThanOrEqualTo(providerRowHeight));
   });
 
   testWidgets(
@@ -207,6 +245,32 @@ void main() {
     expect(find.text('当前模型可用'), findsNothing);
     expect(find.text('读取类工具自动执行，副作用工具默认先确认。'), findsNothing);
     expect(find.text('共享首页语法，兼容项作为高阶配置收口。'), findsNothing);
+    expect(find.text('当前没有长期授权项'), findsNothing);
+    expect(find.text('当前没有阻止项'), findsNothing);
+  });
+
+  testWidgets('settings page aligns permission overview typography with rows',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final repository = await _buildRepository();
+
+    await _pumpSettingsPage(tester, repository: repository);
+
+    final trustedTitle = tester.widget<Text>(find.text('长期授权工具'));
+    final blockedTitle = tester.widget<Text>(find.text('已阻止工具'));
+    final countTexts = tester.widgetList<Text>(find.text('0 项')).toList();
+
+    expect(trustedTitle.style?.fontWeight, FontWeight.w400);
+    expect(blockedTitle.style?.fontWeight, FontWeight.w400);
+    expect(trustedTitle.style?.fontSize, 14);
+    expect(blockedTitle.style?.fontSize, 14);
+    expect(countTexts, isNotEmpty);
+    for (final countText in countTexts) {
+      expect(countText.style?.fontWeight, FontWeight.w400);
+      expect(countText.style?.fontSize, 12);
+    }
   });
 
   testWidgets(
@@ -234,6 +298,114 @@ void main() {
 
     expect(
         find.byKey(const ValueKey('settings-row-shell-模型管理')), findsOneWidget);
+  });
+
+  testWidgets(
+      'settings page removes low-signal overview rows from level-1 groups',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final repository = await _buildRepository();
+
+    await _pumpSettingsPage(tester, repository: repository);
+
+    expect(find.text('当前 Side Model'), findsNothing);
+    expect(find.text('当前生图模型'), findsNothing);
+    expect(find.text('启用状态'), findsNothing);
+    expect(find.text('最近安装来源'), findsNothing);
+  });
+
+  testWidgets('settings page merges skill status into one compact overview row',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final repository = await _buildRepository();
+
+    await _pumpSettingsPage(tester, repository: repository);
+
+    expect(find.text('已安装 Skills'), findsOneWidget);
+    expect(find.text('1/2'), findsOneWidget);
+  });
+
+  testWidgets(
+      'settings page hides compatibility adapter row when using default sdk mode',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final repository = await _buildRepository();
+
+    await _pumpSettingsPage(tester, repository: repository);
+
+    expect(find.text('兼容适配器'), findsNothing);
+    expect(find.text('SDK'), findsNothing);
+  });
+
+  testWidgets(
+      'settings page renders duplicate invocation mode as a compact switch row',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final repository = await _buildRepository();
+
+    await _pumpSettingsPage(tester, repository: repository);
+
+    expect(find.text('重复调用时重载'), findsOneWidget);
+    expect(find.byKey(const ValueKey('duplicate-invocation-toggle')),
+        findsOneWidget);
+    expect(find.byType(Switch), findsNothing);
+    expect(find.text('复用'), findsNothing);
+    expect(find.text('重载'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('settings-row-shell-重复调用时重载')),
+      findsNothing,
+    );
+
+    final overviewRowHeight = tester
+        .getSize(find.byKey(const ValueKey('settings-row-display-已安装 Skills')))
+        .height;
+    final toggleRowHeight = tester
+        .getSize(find.byKey(const ValueKey('settings-row-display-重复调用时重载')))
+        .height;
+    final toggleHeight =
+        tester.getSize(find.byKey(const ValueKey('duplicate-invocation-toggle')))
+            .height;
+
+    expect(toggleHeight, lessThanOrEqualTo(22));
+    expect(toggleRowHeight, lessThanOrEqualTo(overviewRowHeight));
+  });
+
+  testWidgets('settings rows use lighter item title weight', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final repository = await _buildRepository();
+
+    await _pumpSettingsPage(tester, repository: repository);
+
+    final providerTitle = tester.widget<Text>(find.text('当前 Provider'));
+    final modelTitle = tester.widget<Text>(find.text('当前 Model'));
+    expect(providerTitle.style?.fontWeight, FontWeight.w400);
+    expect(modelTitle.style?.fontWeight, FontWeight.w400);
+    expect(providerTitle.style?.fontSize, 14);
+    expect(modelTitle.style?.fontSize, 14);
+  });
+
+  testWidgets('settings page removes redundant trailing copy from action rows',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final repository = await _buildRepository();
+
+    await _pumpSettingsPage(tester, repository: repository);
+
+    expect(find.text('Provider 与模型'), findsNothing);
+    expect(find.text('安装与启用'), findsNothing);
+    expect(find.text('测试当前模型'), findsNothing);
   });
 
   testWidgets('settings page removes trusted and blocked tools inline', (
