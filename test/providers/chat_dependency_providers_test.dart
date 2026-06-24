@@ -22,7 +22,9 @@ import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/speech/aliyun_realtime_asr_client.dart';
 import 'package:ai_chat/services/skills/skill_runtime_service.dart';
 import 'package:ai_chat/services/skills/skill_storage_service.dart';
+import 'package:ai_chat/services/file_tools/file_tool_root_service.dart';
 import 'package:ai_chat/storage/chat_storage.dart';
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -155,6 +157,37 @@ void main() {
       plannerMessages[1].text,
       contains('- edge-to-edge: Improve Android edge-to-edge handling.'),
     );
+  });
+
+  test(
+      'runtimeUserContextServiceProvider wires memory runtime builder from file root',
+      () async {
+    final tempDir = Directory.systemTemp.createTempSync('memory-provider-test');
+    addTearDown(() async {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+    final rootService = FileToolRootService(rootDirectory: tempDir);
+    await rootService.ensureReady();
+    final memoriesDir = rootService.resolveDirectory('memories');
+    await memoriesDir.create(recursive: true);
+    await rootService
+        .resolveFile('memories/MEMORY.md')
+        .writeAsString('- [A](feedback/a.md) — hook');
+
+    final container = ProviderContainer(
+      overrides: [
+        fileToolRootServiceProvider.overrideWithValue(rootService),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final service = container.read(memoryRuntimeContextServiceProvider);
+    final section =
+        await service.buildContextSection(userInput: 'please use memory');
+
+    expect(section, contains('# memoryIndex'));
   });
 
   test('speechInputConfigProvider resolves config from app settings repository',

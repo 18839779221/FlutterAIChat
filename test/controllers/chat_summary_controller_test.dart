@@ -191,6 +191,16 @@ class _CapturingSummaryBaseLlm implements BaseLLM, RuntimeConfigurableBaseLlm {
     capturedConfig = config;
     return 'session-summary';
   }
+
+  @override
+  Future<String> runSideTextTaskWithConfig(
+    List<ChatMessage> messages, {
+    required ChatConfig config,
+    required String requestLabel,
+    Duration? timeout,
+  }) async {
+    return 'side-task';
+  }
 }
 
 class _SummaryTestChatStorage extends Fake implements ChatStorage {

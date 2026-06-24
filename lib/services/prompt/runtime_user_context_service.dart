@@ -2,9 +2,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../models/skill/skill_catalog_entry.dart';
+import '../../models/llm/llm_config.dart';
 import '../../models/prompt/runtime_user_context_snapshot.dart';
 import '../workspace/workspace_binding_service.dart';
 import '../skills/skill_context_formatter.dart';
+import '../memory/memory_runtime_context_service.dart';
 
 typedef RuntimeNowProvider = DateTime Function();
 typedef AgentsMdProvider = Future<String> Function();
@@ -12,6 +14,11 @@ typedef RuntimePlatformContextProvider = List<String> Function();
 typedef RuntimeSkillCatalogProvider = Future<List<SkillCatalogEntry>>
     Function();
 typedef RuntimeWorkspaceIdResolver = Future<String?> Function(int? groupId);
+typedef RuntimeMemoryContextBuilder = Future<String> Function({
+  String? userInput,
+  LLMConfig? sideRuntimeConfigOverride,
+  MemorySideTaskRunner? sideTaskRunner,
+});
 
 class RuntimeUserContextService {
   RuntimeUserContextService({
@@ -20,6 +27,7 @@ class RuntimeUserContextService {
     RuntimePlatformContextProvider? platformContextProvider,
     RuntimeSkillCatalogProvider? skillCatalogProvider,
     RuntimeWorkspaceIdResolver? workspaceIdResolver,
+    RuntimeMemoryContextBuilder? memoryContextBuilder,
     WorkspaceBindingService? workspaceBindingService,
     SkillContextFormatter skillContextFormatter = const SkillContextFormatter(),
   })  : _nowProvider = nowProvider ?? DateTime.now,
@@ -30,6 +38,8 @@ class RuntimeUserContextService {
             skillCatalogProvider ?? _defaultSkillCatalogProvider,
         _workspaceIdResolver =
             workspaceIdResolver ?? _defaultWorkspaceIdResolver,
+        _memoryContextBuilder =
+            memoryContextBuilder ?? _defaultMemoryContextBuilder,
         _workspaceBindingService =
             workspaceBindingService ?? WorkspaceBindingService(),
         _skillContextFormatter = skillContextFormatter;
@@ -39,16 +49,28 @@ class RuntimeUserContextService {
   final RuntimePlatformContextProvider _platformContextProvider;
   final RuntimeSkillCatalogProvider _skillCatalogProvider;
   final RuntimeWorkspaceIdResolver _workspaceIdResolver;
+  final RuntimeMemoryContextBuilder _memoryContextBuilder;
   final WorkspaceBindingService _workspaceBindingService;
   final SkillContextFormatter _skillContextFormatter;
 
-  Future<RuntimeUserContextSnapshot> buildSnapshot({int? groupId}) async {
+  Future<RuntimeUserContextSnapshot> buildSnapshot({
+    int? groupId,
+    String? userInput,
+    LLMConfig? sideRuntimeConfigOverride,
+    MemorySideTaskRunner? sideTaskRunner,
+  }) async {
     final now = _nowProvider();
     final platformSections = _platformContextProvider();
     final skillCatalog = await _skillCatalogProvider();
     final workspaceId = await _workspaceIdResolver(groupId);
     final resolvedWorkspace =
         _workspaceBindingService.resolveWorkspaceId(workspaceId);
+    final memorySection = (await _memoryContextBuilder(
+      userInput: userInput,
+      sideRuntimeConfigOverride: sideRuntimeConfigOverride,
+      sideTaskRunner: sideTaskRunner,
+    ))
+        .trim();
     return RuntimeUserContextSnapshot(
       currentDateText: "Today's date is ${_formatIsoDate(now)}.",
       agentsMdText: (await _agentsMdProvider()).trim(),
@@ -61,6 +83,7 @@ class RuntimeUserContextService {
             'File root: ${resolvedWorkspace.fileRoot}',
         if (platformSections.isNotEmpty)
           '# runtimePlatform\n${platformSections.join('\n')}',
+        if (memorySection.isNotEmpty) memorySection,
       ],
     );
   }
@@ -80,6 +103,14 @@ class RuntimeUserContextService {
 
   static Future<String?> _defaultWorkspaceIdResolver(int? groupId) async {
     return null;
+  }
+
+  static Future<String> _defaultMemoryContextBuilder({
+    String? userInput,
+    LLMConfig? sideRuntimeConfigOverride,
+    MemorySideTaskRunner? sideTaskRunner,
+  }) async {
+    return '';
   }
 
   static List<String> _defaultPlatformContextProvider() {

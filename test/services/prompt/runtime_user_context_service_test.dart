@@ -68,5 +68,46 @@ void main() {
 
       expect(service.buildCurrentMonthYearLabel(), 'April 2026');
     });
+
+    test('injects memory runtime section when available', () async {
+      final service = RuntimeUserContextService(
+        nowProvider: () => DateTime(2026, 4, 24, 9, 30),
+        agentsMdProvider: () async => '',
+        platformContextProvider: () => const [],
+        skillCatalogProvider: () async => const [],
+        memoryContextBuilder:
+            ({userInput, sideRuntimeConfigOverride, sideTaskRunner}) async => '''
+# memoryIndex
+MEMORY.md is always loaded into your conversation context. Use it as an index, not as complete memory content.
+
+- [Android debug](feedback/android-debug.md) — debug install preference
+''',
+      );
+
+      final snapshot = await service.buildSnapshot(
+        userInput: 'Need Android debug install help',
+      );
+
+      expect(snapshot.additionalSections.join('\n'), contains('# memoryIndex'));
+      expect(snapshot.additionalSections.join('\n'), contains('Android debug'));
+    });
+
+    test('passes user input into memory runtime context builder', () async {
+      String? observedUserInput;
+      final service = RuntimeUserContextService(
+        agentsMdProvider: () async => '',
+        platformContextProvider: () => const [],
+        skillCatalogProvider: () async => const [],
+        memoryContextBuilder:
+            ({userInput, sideRuntimeConfigOverride, sideTaskRunner}) async {
+          observedUserInput = userInput;
+          return '';
+        },
+      );
+
+      await service.buildSnapshot(userInput: 'Please use memory');
+
+      expect(observedUserInput, 'Please use memory');
+    });
   });
 }

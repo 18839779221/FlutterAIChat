@@ -548,6 +548,16 @@ class _CapturingRuntimeConfigurableLlm
   }
 
   @override
+  Future<String> runSideTextTaskWithConfig(
+    List<ChatMessage> messages, {
+    required ChatConfig config,
+    required String requestLabel,
+    Duration? timeout,
+  }) async {
+    return 'side-task';
+  }
+
+  @override
   Future<ModelTurnDecision?> planTurnDecision({
     required List<PlannerContextCarrier> carriers,
     required ChatTurnProviderStyle activeApiStyle,

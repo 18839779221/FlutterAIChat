@@ -17,6 +17,7 @@ import 'package:ai_chat/repositories/chat_turn_repository.dart';
 import 'package:ai_chat/repositories/session_context_snapshot_repository.dart';
 import 'package:ai_chat/services/chat_service.dart';
 import 'package:ai_chat/services/model_budget_registry.dart';
+import 'package:ai_chat/services/prompt/runtime_user_context_service.dart';
 import 'package:ai_chat/services/session_context_projector.dart';
 import 'package:ai_chat/services/session_context_service.dart';
 import 'package:ai_chat/services/session_summary_service.dart';
@@ -1850,6 +1851,65 @@ void main() {
         ),
         isTrue,
       );
+
+      await storage.deleteGroup(groupId);
+    });
+
+    test('passes current turn user input into runtime memory context',
+        () async {
+      final storage = DatabaseHelper(
+        databaseName: 'session_context_service_memory_input_test.db',
+      );
+      final groupId = await storage.insertGroup(
+        ChatGroup(title: 'Session Context Memory Input'),
+      );
+      final turnRepository = ChatTurnRepository(storage);
+      final eventRepository = ChatEventRepository(storage);
+      final snapshotRepository = SessionContextSnapshotRepository(storage);
+      final currentTurnId = await turnRepository.createTurn(
+        ChatTurn(
+          groupId: groupId,
+          status: ChatTurnStatus.running,
+          userInput: '请结合记忆判断下一步',
+        ),
+      );
+
+      String? observedUserInput;
+      final service = SessionContextService(
+        chatTurnRepository: turnRepository,
+        chatEventRepository: eventRepository,
+        snapshotRepository: snapshotRepository,
+        chatStorage: storage,
+        contextProjector: SessionContextProjector(),
+        tokenBudgetService: _testTokenBudgetService(
+          maxContextTokens: 10000,
+          reservedOutputTokens: 1000,
+          safetyMarginTokens: 500,
+        ),
+        summaryService: SessionSummaryService(
+          summaryGenerator: (_) async => throw UnimplementedError(),
+        ),
+        chatService: ChatService(llm: _FakeBaseLlm()),
+        runtimeUserContextService: RuntimeUserContextService(
+          agentsMdProvider: () async => '',
+          platformContextProvider: () => const [],
+          skillCatalogProvider: () async => const [],
+          memoryContextBuilder:
+              ({userInput, sideRuntimeConfigOverride, sideTaskRunner}) async {
+            observedUserInput = userInput;
+            return '';
+          },
+        ),
+      );
+
+      await service.buildPlannerContextState(
+        groupId: groupId,
+        currentTurnId: currentTurnId,
+        currentTurnTranscript: const [],
+        config: ChatConfig(systemPrompt: '你是一个助手'),
+      );
+
+      expect(observedUserInput, '请结合记忆判断下一步');
 
       await storage.deleteGroup(groupId);
     });

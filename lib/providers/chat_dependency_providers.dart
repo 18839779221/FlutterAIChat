@@ -23,6 +23,7 @@ import 'package:ai_chat/services/chat_timeline_order_anchor_store.dart';
 import 'package:ai_chat/services/chat_trace_recorder.dart';
 import 'package:ai_chat/services/follow_up_dispatch_queue.dart';
 import 'package:ai_chat/services/latest_message_running_status_resolver.dart';
+import 'package:ai_chat/services/memory/memory_runtime_context_service.dart';
 import 'package:ai_chat/services/model_budget_registry.dart';
 import 'package:ai_chat/services/model_capability_resolver.dart';
 import 'package:ai_chat/services/model_capability_sources/anthropic_model_capability_source.dart';
@@ -372,6 +373,32 @@ final workspaceBindingServiceProvider = Provider<WorkspaceBindingService>(
   (ref) => WorkspaceBindingService(),
 );
 
+final memoryRuntimeContextServiceProvider =
+    Provider<MemoryRuntimeContextService>((ref) {
+  final rootService = ref.watch(fileToolRootServiceProvider);
+  if (rootService == null) {
+    return MemoryRuntimeContextService(
+      readFile: (_) async => null,
+    );
+  }
+  return MemoryRuntimeContextService(
+    readFile: (agentPath) async {
+      final normalized = agentPath.trim();
+      if (normalized.isEmpty) {
+        return null;
+      }
+      final relativePath = normalized.startsWith('/')
+          ? normalized.replaceFirst(RegExp(r'^/+'), '')
+          : normalized;
+      final file = rootService.resolveFile(relativePath);
+      if (!await file.exists()) {
+        return null;
+      }
+      return file.readAsString();
+    },
+  );
+});
+
 final runtimeUserContextServiceProvider = Provider<RuntimeUserContextService>(
   (ref) => RuntimeUserContextService(
     skillCatalogProvider: () async {
@@ -383,6 +410,14 @@ final runtimeUserContextServiceProvider = Provider<RuntimeUserContextService>(
       }
       return (await ref.read(databaseProvider).getGroupById(groupId))
           ?.workspaceId;
+    },
+    memoryContextBuilder:
+        ({userInput, sideRuntimeConfigOverride, sideTaskRunner}) async {
+      return ref.read(memoryRuntimeContextServiceProvider).buildContextSection(
+            userInput: userInput,
+            sideRuntimeConfigOverride: sideRuntimeConfigOverride,
+            sideTaskRunner: sideTaskRunner,
+          );
     },
     workspaceBindingService: ref.watch(workspaceBindingServiceProvider),
   ),

@@ -222,14 +222,11 @@ class ConfigurableHttpLLM
   }) async {
     try {
       Logger.i(_tag, '开始生成对话摘要，消息数量: ${messages.length}');
-      final runtimeConfig = await _resolveSideRuntimeConfigFor(config);
-      _validateRuntimeConfig(runtimeConfig);
       final summaryPrompt = _normalizeSummaryMessages(messages);
 
-      final summary = await _runSideModelTextTask(
-        runtimeConfig,
+      final summary = await runSideTextTaskWithConfig(
+        summaryPrompt,
         config: config,
-        messages: summaryPrompt,
         requestLabel: 'side_summary',
       );
       final trimmedSummary = summary.trim();
@@ -304,8 +301,6 @@ class ConfigurableHttpLLM
     required ChatConfig config,
   }) async {
     try {
-      final runtimeConfig = await _resolveSideRuntimeConfigFor(config);
-      _validateRuntimeConfig(runtimeConfig);
       final promptMessages = [
         ChatMessage(
           text:
@@ -322,10 +317,9 @@ class ConfigurableHttpLLM
           role: MessageRole.user,
         ),
       ];
-      return (await _runSideModelTextTask(
-        runtimeConfig,
+      return (await runSideTextTaskWithConfig(
+        promptMessages,
         config: config,
-        messages: promptMessages,
         requestLabel: 'side_webpage',
       ))
           .trim();
@@ -489,6 +483,24 @@ class ConfigurableHttpLLM
       Logger.e(_tag, 'native planner stack trace', stackTrace);
       rethrow;
     }
+  }
+
+  @override
+  Future<String> runSideTextTaskWithConfig(
+    List<ChatMessage> messages, {
+    required ChatConfig config,
+    required String requestLabel,
+    Duration? timeout,
+  }) async {
+    final runtimeConfig = await _resolveSideRuntimeConfigFor(config);
+    _validateRuntimeConfig(runtimeConfig);
+    return _runSideModelTextTask(
+      runtimeConfig,
+      config: config,
+      messages: messages,
+      requestLabel: requestLabel,
+      timeout: timeout,
+    );
   }
 
   Future<_StreamingPlannerAttemptResult> _planTurnDecisionStreaming({

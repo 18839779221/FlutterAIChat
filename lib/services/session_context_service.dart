@@ -4,7 +4,9 @@ import '../models/chat_message.dart';
 import '../models/chat_turn.dart';
 import '../models/context/model_context_item.dart';
 import '../models/context/planner_context_carrier.dart';
+import '../models/llm/base_llm.dart';
 import '../models/llm/llm_config.dart';
+import '../models/session/session_runtime_config.dart';
 import '../models/llm/resolved_model_budget.dart';
 import '../models/response/message_content_type.dart';
 import '../models/session/context_compaction_config.dart';
@@ -20,6 +22,7 @@ import '../utils/logger.dart';
 import 'chat_service.dart';
 import 'prompt/runtime_user_context_service.dart';
 import 'prompt/user_context_message_builder.dart';
+import 'memory/memory_runtime_context_service.dart';
 import 'session_runtime_marker_service.dart';
 import 'session_context_projector.dart';
 import 'session_llm_config_resolver.dart';
@@ -480,8 +483,15 @@ class SessionContextService {
       groupedEvents: groupedHistoryEvents,
     );
     final userContextMessages = _userContextMessageBuilder.buildMessages(
-      snapshot:
-          await _runtimeUserContextService.buildSnapshot(groupId: groupId),
+      snapshot: await _runtimeUserContextService.buildSnapshot(
+        groupId: groupId,
+        userInput: currentTurn?.userInput,
+        sideRuntimeConfigOverride: await _resolveRuntimeConfigForSlot(
+          groupId,
+          SessionRuntimeSlot.side,
+        ),
+        sideTaskRunner: _buildSideTaskRunner(),
+      ),
     );
     final filteredCurrentTurnTranscript = _filterCurrentTurnTranscript(
       snapshot: snapshot,
@@ -890,6 +900,45 @@ class SessionContextService {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<LLMConfig?> _resolveRuntimeConfigForSlot(
+    int groupId,
+    SessionRuntimeSlot slot,
+  ) async {
+    final runtimeConfigRepository = _runtimeConfigRepository;
+    final runtimeConfigResolver = _runtimeConfigResolver;
+    if (runtimeConfigRepository != null && runtimeConfigResolver != null) {
+      try {
+        final runtime = await runtimeConfigRepository.getByGroup(groupId);
+        if (runtime != null) {
+          return await runtimeConfigResolver.resolve(runtime, slot: slot);
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  MemorySideTaskRunner? _buildSideTaskRunner() {
+    final llm = _chatService.llm;
+    if (llm is! RuntimeConfigurableBaseLlm) {
+      return null;
+    }
+    final RuntimeConfigurableBaseLlm runtimeLlm =
+        llm as RuntimeConfigurableBaseLlm;
+    return (
+      List<ChatMessage> messages, {
+      required ChatConfig config,
+      required String requestLabel,
+      Duration? timeout,
+    }) {
+      return runtimeLlm.runSideTextTaskWithConfig(
+        messages,
+        config: config,
+        requestLabel: requestLabel,
+        timeout: timeout,
+      );
+    };
   }
 
   Future<SessionContextSnapshot?> _rollSummaryForward({

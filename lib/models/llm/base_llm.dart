@@ -85,6 +85,13 @@ abstract class RuntimeConfigurableBaseLlm {
     required ChatConfig config,
   });
 
+  Future<String> runSideTextTaskWithConfig(
+    List<ChatMessage> messages, {
+    required ChatConfig config,
+    required String requestLabel,
+    Duration? timeout,
+  });
+
   Future<String> processWebpageContentWithConfig({
     required String webpageContent,
     required String prompt,
