@@ -29,6 +29,27 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
+  <style>
+    /*
+     * Flutter Web uses hidden/native DOM inputs for text editing.
+     * Reset browser default borders/outlines so custom Flutter field shells
+     * remain the only visible input chrome.
+     */
+    flt-glass-pane input,
+    flt-glass-pane textarea,
+    flt-text-editing-host input,
+    flt-text-editing-host textarea {
+      appearance: none !important;
+      -webkit-appearance: none !important;
+      background: transparent !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+      outline: none !important;
+      padding: 0 !important;
+    }
+  </style>
+
   <title>ai_chat</title>
   <link rel="manifest" href="manifest.json">
 </head>
