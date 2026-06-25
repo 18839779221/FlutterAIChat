@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -7,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/chat_group.dart';
 import '../theme/app_theme_spec.dart';
-import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../providers/chat_providers.dart';
 import '../widgets/chat_blocks/unified_turn_status_bar.dart';
@@ -15,6 +13,9 @@ import '../widgets/chat_message_list.dart';
 import '../widgets/chat_message_list_skeleton.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/chat_drawer.dart';
+import '../widgets/chat_header_button.dart';
+import '../widgets/chat_top_bar_button.dart';
+import '../widgets/chat_top_chrome_motion.dart';
 import '../widgets/debug/debug_test_case_sheet.dart';
 import '../widgets/debug/streaming_trace_overlay_card.dart';
 import '../widgets/debug/debug_turn_inspector_sheet.dart';
@@ -281,8 +282,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                                                     key: const ValueKey(
                                                       'floating-turn-status-bar',
                                                     ),
-                                                    child:
-                                                        UnifiedTurnStatusBar(
+                                                    child: UnifiedTurnStatusBar(
                                                       status: activeTurnStatus,
                                                       variant:
                                                           UnifiedTurnStatusBarVariant
@@ -313,8 +313,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                                                 return;
                                               }
                                               scrollController.jumpTo(
-                                                scrollController.position
-                                                    .maxScrollExtent,
+                                                scrollController
+                                                    .position.maxScrollExtent,
                                               );
                                             });
                                           },
@@ -345,6 +345,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 child: SafeArea(
                   bottom: false,
                   child: _GhostHeader(
+                    scrollController: scrollController,
                     isSendInFlight: isSendInFlight,
                     onMenuPressed: () =>
                         _scaffoldKey.currentState?.openDrawer(),
@@ -489,7 +490,7 @@ class _TopOverlayVeil extends StatelessWidget {
   const _TopOverlayVeil();
 
   // header 视觉区域高度（不含状态栏），用于决定遮罩淡出位置
-  static const double _headerRegionHeight = 96;
+  static const double _headerRegionHeight = 76;
 
   @override
   Widget build(BuildContext context) {
@@ -510,14 +511,14 @@ class _TopOverlayVeil extends StatelessWidget {
             end: Alignment.bottomCenter,
             colors: [
               colors.chatBackground.withValues(alpha: 0.96),
-              colors.chatBackground.withValues(alpha: 0.9),
-              colors.chatBackground.withValues(alpha: 0.62),
+              colors.chatBackground.withValues(alpha: 0.88),
+              colors.chatBackground.withValues(alpha: 0.18),
               colors.chatBackground.withValues(alpha: 0),
             ],
             stops: [
               0,
-              headerBottomFraction * 0.55,
-              headerBottomFraction,
+              headerBottomFraction * 0.6,
+              headerBottomFraction * 0.98,
               1,
             ],
           ),
@@ -555,7 +556,8 @@ class _BottomOverlayVeil extends StatelessWidget {
   }
 }
 
-class _GhostHeader extends StatelessWidget {
+class _GhostHeader extends StatefulWidget {
+  final ScrollController scrollController;
   final bool isSendInFlight;
   final VoidCallback onMenuPressed;
   final VoidCallback onNewChatPressed;
@@ -566,6 +568,7 @@ class _GhostHeader extends StatelessWidget {
   final VoidCallback? onDebugInspectorLongPressed;
 
   const _GhostHeader({
+    required this.scrollController,
     required this.isSendInFlight,
     required this.onMenuPressed,
     required this.onNewChatPressed,
@@ -577,106 +580,204 @@ class _GhostHeader extends StatelessWidget {
   });
 
   @override
+  State<_GhostHeader> createState() => _GhostHeaderState();
+}
+
+class _GhostHeaderState extends State<_GhostHeader> {
+  @override
   Widget build(BuildContext context) {
     final spacing = Theme.of(context).extension<AppSpacing>()!;
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        spacing.lg,
-        spacing.xxs,
-        spacing.lg,
-        0,
-      ),
-      child: SizedBox(
-        key: const ValueKey('ghost-header'),
-        height: 56,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            const iconButtonSize = 46.0;
-            final rightButtonCount = 1 +
-                (onDebugCasesPressed != null ? 1 : 0) +
-                (onDebugInspectorPressed != null ? 1 : 0);
-            final rightClusterWidth = rightButtonCount * iconButtonSize +
-                (rightButtonCount - 1) * (spacing.xxs + 2);
-            final leftGap = workspaceLabel != null ? spacing.xs : 0.0;
-            final workspaceButtonMaxWidth = workspaceLabel == null
-                ? 0.0
-                : (constraints.maxWidth -
-                        iconButtonSize -
-                        rightClusterWidth -
-                        leftGap -
-                        spacing.sm)
-                    .clamp(64.0, 132.0);
+    return AnimatedBuilder(
+      animation: widget.scrollController,
+      builder: (context, child) {
+        final motion = ChatTopChromeMotion.fromScrollOffset(
+          offset: (widget.scrollController.hasClients
+                  ? widget.scrollController.offset
+                  : 0)
+              .toDouble(),
+          transitionDistance: 40,
+        );
 
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                _HeaderButton(
-                  shellKey: const ValueKey('header-menu-button-shell'),
-                  buttonKey: const ValueKey('header-menu-button'),
-                  icon: Icons.menu,
-                  tooltip: '会话列表',
-                  onPressed: onMenuPressed,
-                  filled: true,
-                ),
-                if (workspaceLabel != null) ...[
-                  SizedBox(width: spacing.xs),
-                  ConstrainedBox(
-                    constraints:
-                        BoxConstraints(maxWidth: workspaceButtonMaxWidth),
-                    child: _HeaderButton(
-                      shellKey: const ValueKey('header-workspace-button-shell'),
-                      buttonKey: const ValueKey('header-workspace-button'),
-                      tooltip: workspaceLabel!,
-                      onPressed: onWorkspacePressed,
-                      label: workspaceLabel,
-                      maxLabelWidth: workspaceButtonMaxWidth,
-                    ),
-                  ),
-                ],
-                const Spacer(),
-                SizedBox(width: spacing.sm),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            spacing.lg,
+            spacing.xxs,
+            spacing.lg,
+            0,
+          ),
+          child: SizedBox(
+            key: const ValueKey('ghost-header'),
+            height: 56,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                const iconButtonSize = 46.0;
+                final rightButtonCount = 1 +
+                    (widget.onDebugCasesPressed != null ? 1 : 0) +
+                    (widget.onDebugInspectorPressed != null ? 1 : 0);
+                final rightClusterWidth = rightButtonCount * iconButtonSize +
+                    (rightButtonCount - 1) * (spacing.xxs + 2);
+                final leftGap =
+                    widget.workspaceLabel != null ? spacing.xs : 0.0;
+                final workspaceButtonMaxWidth = widget.workspaceLabel == null
+                    ? 0.0
+                    : (constraints.maxWidth -
+                            iconButtonSize -
+                            rightClusterWidth -
+                            leftGap -
+                            spacing.sm)
+                        .clamp(64.0, 132.0);
+                final gatherInsetDx = 6 * motion.groupInsetProgress;
+                final delayedWorkspaceDx = 3 * motion.centerSettleProgress;
+
+                return Row(
+                  key: const ValueKey('ghost-header-motion-host'),
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    _HeaderButton(
-                      shellKey: const ValueKey('header-new-chat-button-shell'),
-                      icon: Icons.add,
-                      tooltip: '新建对话',
-                      onPressed: isSendInFlight ? null : onNewChatPressed,
+                    Padding(
+                      key: const ValueKey('ghost-header-left-cluster'),
+                      padding: EdgeInsets.only(left: gatherInsetDx),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ChatTopBarButton(
+                            shellKey:
+                                const ValueKey('header-menu-button-shell'),
+                            buttonKey: const ValueKey('header-menu-button'),
+                            icon: Icons.menu,
+                            tooltip: '会话列表',
+                            onPressed: widget.onMenuPressed,
+                            motion: motion,
+                            shadowSpec: const ChatHeaderButtonShadowSpec(
+                              nearShadowAlpha: 0.13,
+                              nearShadowBlur: 26,
+                              nearShadowOffsetY: 10,
+                              farShadowAlpha: 0.1,
+                              farShadowBlur: 12,
+                              farShadowOffsetY: 5,
+                              highlightAlpha: 0.26,
+                            ),
+                          ),
+                          if (widget.workspaceLabel != null) ...[
+                            SizedBox(width: spacing.xs),
+                            Transform.translate(
+                              offset: Offset(-delayedWorkspaceDx, 0),
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: workspaceButtonMaxWidth,
+                                ),
+                                child: ChatTopBarButton(
+                                  shellKey: const ValueKey(
+                                    'header-workspace-button-shell',
+                                  ),
+                                  buttonKey:
+                                      const ValueKey('header-workspace-button'),
+                                  tooltip: widget.workspaceLabel!,
+                                  onPressed: widget.onWorkspacePressed,
+                                  label: widget.workspaceLabel,
+                                  width: workspaceButtonMaxWidth,
+                                  motion: motion,
+                                  shadowSpec: const ChatHeaderButtonShadowSpec(
+                                    nearShadowAlpha: 0.09,
+                                    nearShadowBlur: 20,
+                                    nearShadowOffsetY: 7,
+                                    farShadowAlpha: 0.06,
+                                    farShadowBlur: 8,
+                                    farShadowOffsetY: 3,
+                                    highlightAlpha: 0.21,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                    if (onDebugCasesPressed != null) ...[
-                      SizedBox(width: spacing.xxs + 2),
-                      _HeaderButton(
-                        shellKey:
-                            const ValueKey('header-debug-cases-button-shell'),
-                        buttonKey: const ValueKey('debug-test-cases-button'),
-                        icon: Icons.science_outlined,
-                        tooltip: '测试案例',
-                        onPressed: onDebugCasesPressed,
+                    const Spacer(),
+                    SizedBox(width: spacing.sm),
+                    Padding(
+                      key: const ValueKey('ghost-header-right-cluster'),
+                      padding: EdgeInsets.only(right: gatherInsetDx),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ChatTopBarButton(
+                            shellKey:
+                                const ValueKey('header-new-chat-button-shell'),
+                            buttonKey: const ValueKey('header-new-chat-button'),
+                            icon: Icons.add,
+                            tooltip: '新建对话',
+                            onPressed: widget.isSendInFlight
+                                ? null
+                                : widget.onNewChatPressed,
+                            motion: motion,
+                            shadowSpec: const ChatHeaderButtonShadowSpec(
+                              nearShadowAlpha: 0.11,
+                              nearShadowBlur: 22,
+                              nearShadowOffsetY: 8,
+                              farShadowAlpha: 0.08,
+                              farShadowBlur: 9,
+                              farShadowOffsetY: 4,
+                              highlightAlpha: 0.24,
+                            ),
+                          ),
+                          if (widget.onDebugCasesPressed != null) ...[
+                            SizedBox(width: spacing.xxs + 2),
+                            ChatTopBarButton(
+                              shellKey: const ValueKey(
+                                'header-debug-cases-button-shell',
+                              ),
+                              buttonKey:
+                                  const ValueKey('debug-test-cases-button'),
+                              icon: Icons.science_outlined,
+                              tooltip: '测试案例',
+                              onPressed: widget.onDebugCasesPressed,
+                              motion: motion,
+                              shadowSpec: const ChatHeaderButtonShadowSpec(
+                                nearShadowAlpha: 0.1,
+                                nearShadowBlur: 21,
+                                nearShadowOffsetY: 8,
+                                farShadowAlpha: 0.07,
+                                farShadowBlur: 9,
+                                farShadowOffsetY: 4,
+                                highlightAlpha: 0.23,
+                              ),
+                            ),
+                          ],
+                          if (widget.onDebugInspectorPressed != null) ...[
+                            SizedBox(width: spacing.xxs + 2),
+                            ChatTopBarButton(
+                              shellKey: const ValueKey(
+                                'header-debug-inspector-button-shell',
+                              ),
+                              buttonKey:
+                                  const ValueKey('debug-turn-inspector-button'),
+                              icon: Icons.bug_report_outlined,
+                              tooltip: '调试检查器',
+                              onPressed: widget.onDebugInspectorPressed,
+                              onLongPress: widget.onDebugInspectorLongPressed,
+                              motion: motion,
+                              shadowSpec: const ChatHeaderButtonShadowSpec(
+                                nearShadowAlpha: 0.1,
+                                nearShadowBlur: 21,
+                                nearShadowOffsetY: 8,
+                                farShadowAlpha: 0.07,
+                                farShadowBlur: 9,
+                                farShadowOffsetY: 4,
+                                highlightAlpha: 0.23,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
-                    ],
-                    if (onDebugInspectorPressed != null) ...[
-                      SizedBox(width: spacing.xxs + 2),
-                      _HeaderButton(
-                        shellKey: const ValueKey(
-                          'header-debug-inspector-button-shell',
-                        ),
-                        buttonKey:
-                            const ValueKey('debug-turn-inspector-button'),
-                        icon: Icons.bug_report_outlined,
-                        tooltip: '调试检查器',
-                        onPressed: onDebugInspectorPressed,
-                        onLongPress: onDebugInspectorLongPressed,
-                      ),
-                    ],
+                    ),
                   ],
-                ),
-              ],
-            );
-          },
-        ),
-      ),
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -755,216 +856,12 @@ class _ScrollToBottomButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _HeaderButton(
+    return ChatTopBarButton(
       shellKey: const ValueKey('scroll-to-bottom-button-shell'),
       buttonKey: const ValueKey('scroll-to-bottom-button'),
       tooltip: '滑动到底部',
       onPressed: onPressed,
-      icon: Icons.arrow_downward_rounded,
-    );
-  }
-}
-
-class _HeaderButton extends StatefulWidget {
-  final Key? shellKey;
-  final Key? buttonKey;
-  final String tooltip;
-  final VoidCallback? onPressed;
-  final VoidCallback? onLongPress;
-  final bool filled;
-  final IconData? icon;
-  final String? label;
-  final double? maxLabelWidth;
-
-  const _HeaderButton({
-    this.shellKey,
-    this.buttonKey,
-    required this.tooltip,
-    required this.onPressed,
-    this.onLongPress,
-    this.filled = false,
-    this.icon,
-    this.label,
-    this.maxLabelWidth,
-  }) : assert(icon != null || label != null);
-
-  bool get _isLabelButton => label != null;
-
-  @override
-  State<_HeaderButton> createState() => _HeaderButtonState();
-}
-
-class _HeaderButtonState extends State<_HeaderButton> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppThemeSpec>()!;
-    final radius = Theme.of(context).extension<AppRadius>()!;
-    final spacing = Theme.of(context).extension<AppSpacing>()!;
-    final isLabelButton = widget._isLabelButton;
-    const iconButtonSize = 46.0;
-    const labelButtonHeight = 46.0;
-    final labelHorizontalPadding = spacing.sm + 1;
-    final maxButtonWidth = widget.maxLabelWidth;
-    final maxTextWidth = maxButtonWidth == null
-        ? null
-        : (maxButtonWidth - labelHorizontalPadding * 2 - 4).clamp(24.0, 240.0);
-
-    final isActivePressed = _pressed && widget.onPressed != null;
-
-    return AnimatedScale(
-      scale: isActivePressed ? 0.92 : 1,
-      duration: Duration(milliseconds: isActivePressed ? 90 : 240),
-      curve: isActivePressed ? Curves.easeOutCubic : Curves.easeOutBack,
-      child: Material(
-        key: widget.shellKey,
-        color: Colors.transparent,
-        child: Tooltip(
-          message: widget.tooltip,
-          child: InkWell(
-            key: widget.buttonKey,
-            customBorder: isLabelButton
-                ? RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(radius.pill),
-                  )
-                : const CircleBorder(),
-            onTap: widget.onPressed,
-            onLongPress: widget.onPressed == null ? null : widget.onLongPress,
-            onHighlightChanged: (value) {
-              if (_pressed != value) {
-                setState(() {
-                  _pressed = value;
-                });
-              }
-            },
-            child: AnimatedContainer(
-              // 阴影承载层：位于 ClipRRect 之外，避免被裁剪，营造悬浮感。
-              // 按下时阴影收缩下沉，与缩放联动形成"按入"体感。
-              duration: Duration(milliseconds: isActivePressed ? 90 : 240),
-              curve: Curves.easeOutCubic,
-              decoration: BoxDecoration(
-                shape: isLabelButton ? BoxShape.rectangle : BoxShape.circle,
-                borderRadius:
-                    isLabelButton ? BorderRadius.circular(radius.pill) : null,
-                boxShadow: [
-                  // 远环境阴影：营造漂浮高度
-                  BoxShadow(
-                    color: colors.core.elevation.shadowColor
-                        .withValues(alpha: isActivePressed ? 0.07 : 0.12),
-                    blurRadius: isActivePressed ? 12 : 24,
-                    spreadRadius: -2,
-                    offset: Offset(0, isActivePressed ? 4 : 9),
-                  ),
-                  // 近接触阴影：定义边界
-                  BoxShadow(
-                    color: colors.core.elevation.shadowColor
-                        .withValues(alpha: isActivePressed ? 0.06 : 0.09),
-                    blurRadius: isActivePressed ? 6 : 10,
-                    spreadRadius: -1,
-                    offset: Offset(0, isActivePressed ? 2 : 4),
-                  ),
-                  // 顶部内白光高亮
-                  BoxShadow(
-                    color: colors.semantic.text.inverse.withValues(alpha: 0.24),
-                    blurRadius: 6,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(radius.pill),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      shape:
-                          isLabelButton ? BoxShape.rectangle : BoxShape.circle,
-                      borderRadius: isLabelButton
-                          ? BorderRadius.circular(radius.pill)
-                          : null,
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          colors.assistantSurface
-                              .withValues(alpha: widget.filled ? 0.28 : 0.24),
-                          colors.assistantSurface
-                              .withValues(alpha: widget.filled ? 0.52 : 0.46),
-                          colors.assistantSurface
-                              .withValues(alpha: widget.filled ? 0.72 : 0.66),
-                        ],
-                        stops: const [0, 0.42, 1],
-                      ),
-                      border: Border.all(
-                        // 边缘用内容同色系（暖白）而非纯白，营造内容色在边缘
-                        // 折射聚集的连续感；纯白在浅暖背景上会割裂、显突兀。
-                        color: colors.assistantSurface.withValues(
-                          alpha: widget.filled ? 0.95 : 0.85,
-                        ),
-                        width: 1.5,
-                      ),
-                    ),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 110),
-                      curve: Curves.easeOutCubic,
-                      width: isLabelButton ? null : iconButtonSize,
-                      height:
-                          isLabelButton ? labelButtonHeight : iconButtonSize,
-                      constraints: isLabelButton && maxButtonWidth != null
-                          ? BoxConstraints(maxWidth: maxButtonWidth)
-                          : null,
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isLabelButton ? labelHorizontalPadding : 0,
-                        vertical: 0,
-                      ),
-                      alignment: Alignment.center,
-                      child: isLabelButton
-                          ? Row(
-                              mainAxisSize: MainAxisSize.min,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Flexible(
-                                  child: ConstrainedBox(
-                                    constraints: BoxConstraints(
-                                      maxWidth: maxTextWidth ?? 120,
-                                    ),
-                                    child: Text(
-                                      widget.label!,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      softWrap: false,
-                                      style: TextStyle(
-                                        color: widget.onPressed == null
-                                            ? colors.secondaryText
-                                                .withValues(alpha: 0.45)
-                                            : colors.primaryText
-                                                .withValues(alpha: 0.94),
-                                        fontSize: 12.2,
-                                        fontWeight: FontWeight.w600,
-                                        height: 1.1,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            )
-                          : Icon(
-                              widget.icon,
-                              size: 17.5,
-                              color: widget.onPressed == null
-                                  ? colors.secondaryText.withValues(alpha: 0.45)
-                                  : colors.primaryText.withValues(alpha: 0.9),
-                            ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+      icon: Icons.keyboard_arrow_down_rounded,
     );
   }
 }

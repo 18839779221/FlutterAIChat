@@ -15,6 +15,7 @@ import 'package:ai_chat/services/debug_test_case_loader.dart';
 import 'package:ai_chat/theme/app_spacing.dart';
 import 'package:ai_chat/theme/app_theme.dart';
 import 'package:ai_chat/theme/app_theme_spec.dart';
+import 'package:ai_chat/widgets/chat_top_bar_button.dart';
 import 'package:ai_chat/widgets/chat_message_list.dart';
 import 'package:ai_chat/widgets/chat_message_list_skeleton.dart';
 import 'package:ai_chat/widgets/interaction/ask_user_question_card.dart';
@@ -113,6 +114,155 @@ void main() {
         findsOneWidget);
     expect(find.byKey(const ValueKey('debug-turn-inspector-button')),
         findsOneWidget);
+  });
+
+  testWidgets('chat page header uses shared top bar buttons', (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(ChatTopBarButton), findsWidgets);
+    expect(
+      find.byKey(const ValueKey('header-menu-button-shell')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('header-new-chat-button-shell')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('chat page top overlay veil stays shallow and light', (
+    tester,
+  ) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final veilBox = find.ancestor(
+      of: find.byKey(const ValueKey('chat-top-overlay-veil')),
+      matching: find.byType(SizedBox),
+    );
+    final veilSize = tester.getSize(veilBox.first);
+    final veilDecoration = tester.widget<DecoratedBox>(
+      find.byKey(const ValueKey('chat-top-overlay-veil')),
+    );
+    final veilGradient = veilDecoration.decoration as BoxDecoration;
+    final colors = veilGradient.gradient! as LinearGradient;
+
+    expect(veilSize.height, 76);
+    expect(colors.colors[2].a, lessThan(0.25));
+  });
+
+  testWidgets('chat page header motion tightens as the timeline scrolls',
+      (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        chatSessionCoordinatorProvider
+            .overrideWith((ref) => _StubSessionCoordinator()),
+        chatSendCoordinatorProvider
+            .overrideWith((ref) => _StubSendCoordinator()),
+        chatSummaryControllerProvider.overrideWith(
+          (ref) => _StubSummaryController(),
+        ),
+        chatPreferencesControllerProvider.overrideWith(
+          (ref) => _StubPreferencesController(),
+        ),
+        hasMoreMessagesProvider.overrideWith((ref) => false),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.read(messagesProvider.notifier).setMessages([
+      for (var i = 0; i < 24; i++)
+        ChatMessage(
+          id: i + 1,
+          text: i.isEven ? 'User message $i' : 'Assistant message $i',
+          role: i.isEven ? MessageRole.user : MessageRole.assistant,
+          status: MessageStatus.completed,
+        ),
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ChatPage(title: 'AI Chat'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final scrollController = container.read(scrollControllerProvider);
+    scrollController.jumpTo(0);
+    await tester.pumpAndSettle();
+
+    final headerMenuButton = find.byWidgetPredicate(
+      (widget) =>
+          widget is ChatTopBarButton &&
+          widget.buttonKey == const ValueKey('header-menu-button'),
+    );
+
+    final relaxedButton = tester.widget<ChatTopBarButton>(headerMenuButton);
+    final relaxedProgress = relaxedButton.motion!.chromeGatherProgress;
+
+    scrollController.jumpTo(220);
+    await tester.pumpAndSettle();
+
+    final gatheredButton = tester.widget<ChatTopBarButton>(headerMenuButton);
+    final gatheredProgress = gatheredButton.motion!.chromeGatherProgress;
+
+    expect(relaxedProgress, 0);
+    expect(gatheredProgress, greaterThan(relaxedProgress));
   });
 
   testWidgets('chat page shows current workspace badge', (tester) async {
