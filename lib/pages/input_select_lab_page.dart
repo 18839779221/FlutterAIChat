@@ -15,8 +15,6 @@ class InputSelectLabPage extends StatefulWidget {
 class _InputSelectLabPageState extends State<InputSelectLabPage> {
   final TextEditingController _referencePromptController =
       TextEditingController();
-  final TextEditingController _referenceValueController =
-      TextEditingController(text: 'https://api.example.com/v1');
   final TextEditingController _themedProviderController =
       TextEditingController(text: 'Minimax');
   final TextEditingController _themedBaseUrlController =
@@ -42,7 +40,6 @@ class _InputSelectLabPageState extends State<InputSelectLabPage> {
   @override
   void dispose() {
     _referencePromptController.dispose();
-    _referenceValueController.dispose();
     _themedProviderController.dispose();
     _themedBaseUrlController.dispose();
     super.dispose();
@@ -118,9 +115,9 @@ class _InputSelectLabPageState extends State<InputSelectLabPage> {
                               title: 'With Value',
                               caption:
                                   'Value should stay readable and centered',
-                              child: _LabInputField(
+                              child: _LabStaticInputField(
                                 tone: _LabFieldTone.reference,
-                                controller: _referenceValueController,
+                                value: 'https://api.example.com/v1',
                               ),
                             ),
                           ),
@@ -133,15 +130,15 @@ class _InputSelectLabPageState extends State<InputSelectLabPage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const _LabInputField(
+                                  const _LabStaticInputField(
                                     tone: _LabFieldTone.reference,
                                     placeholder: 'Disabled',
                                     enabled: false,
                                   ),
                                   SizedBox(height: spacing.sm),
-                                  const _LabInputField(
+                                  const _LabStaticInputField(
                                     tone: _LabFieldTone.reference,
-                                    placeholder: 'https://api.example.com',
+                                    value: 'https://api.example.com',
                                     errorText: '请输入有效的 URL',
                                   ),
                                 ],
@@ -273,20 +270,18 @@ class _InputSelectLabPageState extends State<InputSelectLabPage> {
                                 _FieldDemoItem(
                                   title: 'Provider 名称',
                                   tone: _LabFieldTone.themed,
-                                  child: _LabInputField(
+                                  child: _LabStaticInputField(
                                     tone: _LabFieldTone.themed,
-                                    controller: _themedProviderController,
-                                    placeholder: '例如：OpenAI',
+                                    value: _themedProviderController.text,
                                   ),
                                 ),
                                 SizedBox(height: spacing.md),
                                 _FieldDemoItem(
                                   title: 'Base URL',
                                   tone: _LabFieldTone.themed,
-                                  child: _LabInputField(
+                                  child: _LabStaticInputField(
                                     tone: _LabFieldTone.themed,
-                                    controller: _themedBaseUrlController,
-                                    placeholder: 'https://api.example.com/v1',
+                                    value: _themedBaseUrlController.text,
                                   ),
                                 ),
                                 SizedBox(height: spacing.md),
@@ -520,13 +515,13 @@ class _FieldDemoItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+    final colors = Theme.of(context).extension<AppThemeSpec>();
     final labelColor = tone == _LabFieldTone.reference
         ? const Color(0xFF111827)
-        : colors.primaryText;
+        : (colors?.primaryText ?? const Color(0xFF111827));
     final captionColor = tone == _LabFieldTone.reference
         ? const Color(0xFF6B7280)
-        : colors.secondaryText;
+        : (colors?.secondaryText ?? const Color(0xFF6B7280));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -638,20 +633,90 @@ class _LabFieldPalette {
   }
 }
 
-class _LabInputField extends StatefulWidget {
-  const _LabInputField({
+class _LabStaticInputField extends StatelessWidget {
+  const _LabStaticInputField({
     required this.tone,
     this.placeholder,
-    this.controller,
+    this.value,
     this.enabled = true,
     this.errorText,
   });
 
   final _LabFieldTone tone;
   final String? placeholder;
-  final TextEditingController? controller;
+  final String? value;
   final bool enabled;
   final String? errorText;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _LabFieldPalette.resolve(context, tone);
+    final colors = Theme.of(context).extension<AppThemeSpec>();
+    final hasError = (errorText ?? '').trim().isNotEmpty;
+    final borderColor = hasError ? palette.error : palette.border;
+    final fillColor = enabled ? palette.fill : palette.disabledFill;
+    final textColor = enabled ? palette.text : palette.disabledText;
+    final shadowColor =
+        colors?.primaryText.withValues(alpha: 0.02) ?? const Color(0x05111827);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: fillColor,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: borderColor),
+            boxShadow: [
+              BoxShadow(
+                color: shadowColor,
+                blurRadius: 10,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value ?? placeholder ?? '',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.uiStyle(
+              color: textColor,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              height: 1.2,
+            ),
+          ),
+        ),
+        if (hasError) ...[
+          const SizedBox(height: 7),
+          Text(
+            errorText!,
+            style: AppTypography.uiStyle(
+              color: palette.error,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              height: 1.3,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _LabInputField extends StatefulWidget {
+  const _LabInputField({
+    required this.tone,
+    this.placeholder,
+    this.controller,
+  });
+
+  final _LabFieldTone tone;
+  final String? placeholder;
+  final TextEditingController? controller;
 
   @override
   State<_LabInputField> createState() => _LabInputFieldState();
@@ -687,13 +752,12 @@ class _LabInputFieldState extends State<_LabInputField> {
   @override
   Widget build(BuildContext context) {
     final palette = _LabFieldPalette.resolve(context, widget.tone);
-    final colors = Theme.of(context).extension<AppThemeSpec>()!;
-    final hasError = (widget.errorText ?? '').trim().isNotEmpty;
-    final borderColor = hasError
-        ? palette.error
-        : _focusNode.hasFocus
-            ? palette.focusBorder
-            : (_hovered ? palette.hoverBorder : palette.border);
+    final colors = Theme.of(context).extension<AppThemeSpec>();
+    final borderColor = _focusNode.hasFocus
+        ? palette.focusBorder
+        : (_hovered ? palette.hoverBorder : palette.border);
+    final shadowColor =
+        colors?.primaryText.withValues(alpha: 0.02) ?? const Color(0x05111827);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -701,60 +765,48 @@ class _LabInputFieldState extends State<_LabInputField> {
         MouseRegion(
           onEnter: (_) => setState(() => _hovered = true),
           onExit: (_) => setState(() => _hovered = false),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 140),
-            curve: Curves.easeOutCubic,
-            height: 40,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: widget.enabled ? palette.fill : palette.disabledFill,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: borderColor),
-              boxShadow: [
-                if (_focusNode.hasFocus || hasError)
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _focusNode.requestFocus(),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 140),
+              curve: Curves.easeOutCubic,
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: palette.fill,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: borderColor),
+                boxShadow: [
+                  if (_focusNode.hasFocus)
+                    BoxShadow(
+                      color: palette.ring,
+                      blurRadius: 0,
+                      spreadRadius: 3,
+                    ),
                   BoxShadow(
-                    color: hasError
-                        ? palette.error.withValues(alpha: 0.14)
-                        : palette.ring,
-                    blurRadius: 0,
-                    spreadRadius: 3,
+                    color: shadowColor,
+                    blurRadius: 10,
+                    offset: const Offset(0, 1),
                   ),
-                BoxShadow(
-                  color: colors.primaryText.withValues(alpha: 0.02),
-                  blurRadius: 10,
-                  offset: const Offset(0, 1),
-                ),
-              ],
-            ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: SizedBox.expand(
-                child: _LabEditableInputCore(
-                  controller: _controller,
-                  focusNode: _focusNode,
-                  enabled: widget.enabled,
-                  placeholder: widget.placeholder,
-                  textColor:
-                      widget.enabled ? palette.text : palette.disabledText,
-                  placeholderColor: palette.placeholder,
-                  cursorColor: palette.focusBorder,
+                ],
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: SizedBox.expand(
+                  child: _LabEditableInputCore(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    placeholder: widget.placeholder,
+                    textColor: palette.text,
+                    placeholderColor: palette.placeholder,
+                    cursorColor: palette.focusBorder,
+                  ),
                 ),
               ),
             ),
           ),
         ),
-        if (hasError) ...[
-          const SizedBox(height: 7),
-          Text(
-            widget.errorText!,
-            style: AppTypography.uiStyle(
-              color: palette.error,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              height: 1.3,
-            ),
-          ),
-        ],
       ],
     );
   }
@@ -764,7 +816,6 @@ class _LabEditableInputCore extends StatelessWidget {
   const _LabEditableInputCore({
     required this.controller,
     required this.focusNode,
-    required this.enabled,
     required this.textColor,
     required this.placeholderColor,
     required this.cursorColor,
@@ -773,7 +824,6 @@ class _LabEditableInputCore extends StatelessWidget {
 
   final TextEditingController controller;
   final FocusNode focusNode;
-  final bool enabled;
   final String? placeholder;
   final Color textColor;
   final Color placeholderColor;
@@ -810,6 +860,7 @@ class _LabEditableInputCore extends StatelessWidget {
     return ValueListenableBuilder<TextEditingValue>(
       valueListenable: controller,
       builder: (context, value, _) {
+        final showEditable = focusNode.hasFocus || value.text.isNotEmpty;
         return Theme(
           data: transparentTheme,
           child: DefaultSelectionStyle(
@@ -828,21 +879,22 @@ class _LabEditableInputCore extends StatelessWidget {
                         style: placeholderStyle,
                       ),
                     ),
-                  EditableText(
-                    controller: controller,
-                    focusNode: focusNode,
-                    style: textStyle,
-                    cursorColor: cursorColor,
-                    backgroundCursorColor: Colors.transparent,
-                    keyboardType: TextInputType.text,
-                    textInputAction: TextInputAction.done,
-                    maxLines: 1,
-                    minLines: 1,
-                    expands: false,
-                    selectionColor: cursorColor.withValues(alpha: 0.18),
-                    rendererIgnoresPointer: false,
-                    readOnly: !enabled,
-                  ),
+                  if (showEditable)
+                    EditableText(
+                      controller: controller,
+                      focusNode: focusNode,
+                      style: textStyle,
+                      cursorColor: cursorColor,
+                      backgroundCursorColor: Colors.transparent,
+                      keyboardType: TextInputType.text,
+                      textInputAction: TextInputAction.done,
+                      maxLines: 1,
+                      minLines: 1,
+                      expands: false,
+                      selectionColor: cursorColor.withValues(alpha: 0.18),
+                      rendererIgnoresPointer: false,
+                      readOnly: false,
+                    ),
                 ],
               ),
             ),

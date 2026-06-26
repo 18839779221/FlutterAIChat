@@ -11,10 +11,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+final _providerNameInput = find.byKey(
+  const ValueKey('provider-form-name-input'),
+);
+final _providerBaseUrlInput = find.byKey(
+  const ValueKey('provider-form-base-url-input'),
+);
+final _providerApiKeyInput = find.byKey(
+  const ValueKey('provider-form-api-key-input'),
+);
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('provider form page uses immersive editor header', (tester) async {
+  testWidgets('provider form page uses immersive editor header',
+      (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final repository = await _createRepository();
@@ -93,6 +104,48 @@ void main() {
     expect(find.text('高级运行时'), findsNothing);
   });
 
+  testWidgets('provider form uses custom field shells for primary controls',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = await _createRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ProviderFormPage(
+          initialProvider: const LlmProviderConfig(
+            id: 'openai',
+            name: 'OpenAI',
+            apiKey: 'test-key',
+            baseUrl: 'https://api.openai.com/v1/responses',
+            models: [
+              LlmProviderModel(id: 'gpt-4o-mini', name: 'GPT-4o mini'),
+            ],
+            sideModelId: 'gpt-4o-mini',
+          ),
+          repository: repository,
+          discoveryService: _FakeDiscoveryService(),
+          testService: _FakeModelTestService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+        find.byKey(const ValueKey('provider-form-name-field')), findsOneWidget);
+    expect(find.byKey(const ValueKey('provider-form-base-url-field')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('provider-form-api-key-field')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('provider-form-api-style-select')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('provider-form-side-model-select')),
+        findsOneWidget);
+    expect(find.text('OpenAI Responses'), findsOneWidget);
+    expect(find.text('GPT-4o mini'), findsWidgets);
+  });
+
   testWidgets('saving with empty model list auto-discovers and runs speed test',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 1200));
@@ -119,15 +172,15 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Provider 名称'),
+      _providerNameInput,
       'OpenAI',
     );
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Base URL'),
+      _providerBaseUrlInput,
       'https://api.openai.com/v1',
     );
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'API Key'),
+      _providerApiKeyInput,
       'test-key',
     );
 
@@ -264,15 +317,15 @@ void main() {
     expect(find.text('abcd*****wxyz'), findsOneWidget);
     expect(find.text('abcd1234wxyz'), findsNothing);
 
-    await tester.ensureVisible(find.widgetWithText(TextFormField, 'API Key'));
-    await tester.tap(find.widgetWithText(TextFormField, 'API Key'));
+    await tester.ensureVisible(_providerApiKeyInput);
+    await tester.tap(_providerApiKeyInput);
     await tester.pumpAndSettle();
 
     expect(find.text('abcd1234wxyz'), findsOneWidget);
     expect(find.text('abcd*****wxyz'), findsNothing);
 
-    await tester.ensureVisible(find.widgetWithText(TextFormField, 'Provider 名称'));
-    await tester.tap(find.widgetWithText(TextFormField, 'Provider 名称'));
+    await tester.ensureVisible(_providerNameInput);
+    await tester.tap(_providerNameInput);
     await tester.pumpAndSettle();
 
     expect(find.text('abcd*****wxyz'), findsOneWidget);
@@ -330,15 +383,15 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Provider 名称'),
+      _providerNameInput,
       'Beehears',
     );
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Base URL'),
+      _providerBaseUrlInput,
       'https://ai.beehears.com/v1',
     );
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'API Key'),
+      _providerApiKeyInput,
       'image-key',
     );
     await tester.ensureVisible(find.text('手动新增模型'));
@@ -432,7 +485,8 @@ void main() {
     );
   });
 
-  testWidgets('set as global image generation model persists independent config',
+  testWidgets(
+      'set as global image generation model persists independent config',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -495,7 +549,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Base URL'),
+      _providerBaseUrlInput,
       'https://api.example.com/v1/messages',
     );
     await tester.pumpAndSettle();
@@ -570,15 +624,15 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Provider 名称'),
+      _providerNameInput,
       'Example',
     );
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Base URL'),
+      _providerBaseUrlInput,
       'https://api.example.com/v1/messages',
     );
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'API Key'),
+      _providerApiKeyInput,
       'test-key',
     );
 

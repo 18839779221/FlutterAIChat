@@ -10,6 +10,7 @@ import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_theme_spec.dart';
 import '../widgets/settings/immersive_settings_scaffold.dart';
+import '../widgets/settings/settings_form_controls.dart';
 import '../widgets/settings/settings_group_section.dart';
 import '../widgets/settings/settings_row.dart';
 import '../widgets/settings/settings_value_badge.dart';
@@ -205,6 +206,34 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
     });
   }
 
+  Future<void> _selectSideModel() async {
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final models = _buildProvider().models;
+    final selected = await showAppBottomSheet<String>(
+      context: context,
+      mode: AppBottomSheetMode.adaptive,
+      title: '选择 Side Model',
+      subtitle: '默认留空时，辅助模型会跟随当前主模型。',
+      bodyPadding: EdgeInsets.fromLTRB(
+        spacing.lg,
+        spacing.sm,
+        spacing.lg,
+        spacing.lg,
+      ),
+      body: _SideModelSelectionSheet(
+        models: models,
+        selectedModelId: _resolveValidSideModelId(models),
+      ),
+    );
+    if (selected == null) {
+      return;
+    }
+    setState(() {
+      final trimmed = selected.trim();
+      _selectedSideModelId = trimmed.isEmpty ? null : trimmed;
+    });
+  }
+
   String? _normalizedBaseUrlFor(ApiStyle style) {
     final input = _baseUrlController.text.trim();
     final uri = Uri.tryParse(input);
@@ -258,6 +287,19 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
     for (final model in models) {
       if (model.id == candidate) {
         return candidate;
+      }
+    }
+    return null;
+  }
+
+  String? _resolveValidSideModelDisplayName(List<LlmProviderModel> models) {
+    final sideModelId = _resolveValidSideModelId(models);
+    if (sideModelId == null) {
+      return null;
+    }
+    for (final model in models) {
+      if (model.id == sideModelId) {
+        return model.displayName;
       }
     }
     return null;
@@ -531,13 +573,13 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
       final additionalConfig = await widget.repository.getAdditionalConfig();
       final hasExplicitImageGenerationDefault =
           (additionalConfig['image_generation.default_provider_id'] as String?)
-                  ?.trim()
-                  .isNotEmpty ==
-              true &&
-          (additionalConfig['image_generation.default_model_id'] as String?)
-                  ?.trim()
-                  .isNotEmpty ==
-              true;
+                      ?.trim()
+                      .isNotEmpty ==
+                  true &&
+              (additionalConfig['image_generation.default_model_id'] as String?)
+                      ?.trim()
+                      .isNotEmpty ==
+                  true;
       if (!hasExplicitImageGenerationDefault) {
         await widget.repository.saveImageGenerationSelection(
           providerId: provider.id,
@@ -622,192 +664,180 @@ class _ProviderFormPageState extends State<ProviderFormPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SettingsGroupSection(
-              title: '连接与鉴权',
-              summary: '这里只编辑单个 Provider 对象。先完成连接信息，再决定是否探测模型。',
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SettingsRow(
-                    title: '编辑对象',
-                    subtitle: _isEdit ? '当前正在修改已有 Provider' : '当前正在创建新的 Provider',
-                    trailing: SettingsValueBadge(
-                      label: _isEdit ? '编辑中' : '新对象',
-                      tone: SettingsValueBadgeTone.active,
+                title: '连接与鉴权',
+                summary: '这里只编辑单个 Provider 对象。先完成连接信息，再决定是否探测模型。',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SettingsRow(
+                      title: '编辑对象',
+                      subtitle:
+                          _isEdit ? '当前正在修改已有 Provider' : '当前正在创建新的 Provider',
+                      trailing: SettingsValueBadge(
+                        label: _isEdit ? '编辑中' : '新对象',
+                        tone: SettingsValueBadgeTone.active,
+                      ),
                     ),
-                  ),
-                  SizedBox(height: spacing.md),
-                  TextFormField(
-                    controller: _nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Provider 名称',
+                    SizedBox(height: spacing.md),
+                    SettingsTextInputField(
+                      key: const ValueKey('provider-form-name-field'),
+                      inputKey: const ValueKey('provider-form-name-input'),
+                      label: 'Provider 名称',
+                      controller: _nameController,
                       hintText: '用于展示（例如：OpenAI）',
+                      validator: (value) => (value?.trim().isEmpty ?? true)
+                          ? '请输入 Provider 名称'
+                          : null,
+                      onChanged: (_) => setState(() {}),
                     ),
-                    validator: (value) => (value?.trim().isEmpty ?? true)
-                        ? '请输入 Provider 名称'
-                        : null,
-                    onChanged: (_) => setState(() {}),
-                  ),
-                  SizedBox(height: spacing.md),
-                  TextFormField(
-                    controller: _baseUrlController,
-                    decoration: const InputDecoration(
-                      labelText: 'Base URL',
+                    SizedBox(height: spacing.md),
+                    SettingsTextInputField(
+                      key: const ValueKey('provider-form-base-url-field'),
+                      inputKey: const ValueKey('provider-form-base-url-input'),
+                      label: 'Base URL',
+                      controller: _baseUrlController,
                       hintText: 'https://api.example.com/v1',
+                      validator: _validateBaseUrl,
+                      keyboardType: TextInputType.url,
                     ),
-                    validator: _validateBaseUrl,
-                  ),
-                  SizedBox(height: spacing.sm),
-                  _ApiStyleRow(
-                    selectedStyle: _selectedApiStyle,
-                    onPressed: _selectApiStyle,
-                  ),
-                  SizedBox(height: spacing.md),
-                  TextFormField(
-                    controller: _apiKeyController,
-                    focusNode: _apiKeyFocusNode,
-                    decoration: const InputDecoration(
-                      labelText: 'API Key',
+                    SizedBox(height: spacing.sm),
+                    SettingsSelectField(
+                      key: const ValueKey('provider-form-api-style-select'),
+                      label: 'API Style',
+                      placeholder: '请选择 API Style',
+                      valueText: _selectedApiStyle.displayTitle,
+                      onTap: _selectApiStyle,
+                    ),
+                    SizedBox(height: spacing.md),
+                    SettingsTextInputField(
+                      key: const ValueKey('provider-form-api-key-field'),
+                      inputKey: const ValueKey('provider-form-api-key-input'),
+                      label: 'API Key',
+                      controller: _apiKeyController,
+                      focusNode: _apiKeyFocusNode,
                       hintText: 'sk-...',
                     ),
-                  ),
-                  SizedBox(height: spacing.lg),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: _isSaving ? null : _save,
-                          child: _isSaving
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text('保存'),
+                    SizedBox(height: spacing.lg),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: _isSaving ? null : _save,
+                            child: _isSaving
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text('保存'),
+                          ),
                         ),
-                      ),
-                      SizedBox(width: spacing.sm),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _isSpeedTesting ? null : _speedTest,
-                          icon: const Icon(Icons.bolt_rounded),
-                          label: _isSpeedTesting
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text('测速'),
+                        SizedBox(width: spacing.sm),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _isSpeedTesting ? null : _speedTest,
+                            icon: const Icon(Icons.bolt_rounded),
+                            label: _isSpeedTesting
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text('测速'),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
               SizedBox(height: spacing.lg),
               SettingsGroupSection(
-              title: '模型目录',
-              summary: hasModels
-                  ? '优先通过探测更新模型目录，也可按需手动补充。测速会基于当前第一个模型执行。'
-                  : '可先探测模型，再按需手动新增；测速会基于当前第一个模型执行。',
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Wrap(
-                    spacing: spacing.xs,
-                    runSpacing: spacing.xs,
-                    children: [
-                      TextButton(
-                        onPressed: _isDiscovering ? null : _discoverModels,
-                        child: _isDiscovering
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Text('探测模型'),
-                      ),
-                      if (hasModels)
+                title: '模型目录',
+                summary: hasModels
+                    ? '优先通过探测更新模型目录，也可按需手动补充。测速会基于当前第一个模型执行。'
+                    : '可先探测模型，再按需手动新增；测速会基于当前第一个模型执行。',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: spacing.xs,
+                      runSpacing: spacing.xs,
+                      children: [
                         TextButton(
-                          onPressed: _addModelRow,
-                          child: const Text('手动新增模型'),
+                          onPressed: _isDiscovering ? null : _discoverModels,
+                          child: _isDiscovering
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Text('探测模型'),
                         ),
-                    ],
-                  ),
-                  SizedBox(height: spacing.md),
-                  if (hasModels)
-                    Column(
-                      children: _models.asMap().entries.map((entry) {
-                        final index = entry.key;
-                        final row = entry.value;
-                        return Padding(
-                          padding: EdgeInsets.only(
-                            bottom:
-                                index == _models.length - 1 ? 0 : spacing.md,
+                        if (hasModels)
+                          TextButton(
+                            onPressed: _addModelRow,
+                            child: const Text('手动新增模型'),
                           ),
-                          child: _ModelEditorCard(
-                            index: index,
-                            row: row,
-                            onUseModelNow: () => _useModelNow(row),
-                            onDelete: () => _removeModelRow(index),
-                            onSetAsGlobalImageGenerationModel: () =>
-                                _setAsGlobalImageGenerationModel(row),
-                            onImageGenerationChanged: (value) {
-                              setState(() {
-                                row.supportsImageGeneration = value;
-                              });
-                            },
-                            onTestImageGeneration: () =>
-                                _testImageGenerationModel(index, row),
-                            isImageGenerationTesting:
-                                _imageGenerationTestingIndex == index,
-                            isAnyImageGenerationTesting:
-                                _imageGenerationTestingIndex != null,
-                          ),
-                        );
-                      }).toList(growable: false),
-                    )
-                  else
-                    _EmptyModelState(onAddModel: _addModelRow),
-                ],
+                      ],
+                    ),
+                    SizedBox(height: spacing.md),
+                    if (hasModels)
+                      Column(
+                        children: _models.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final row = entry.value;
+                          return Padding(
+                            padding: EdgeInsets.only(
+                              bottom:
+                                  index == _models.length - 1 ? 0 : spacing.md,
+                            ),
+                            child: _ModelEditorCard(
+                              index: index,
+                              row: row,
+                              onUseModelNow: () => _useModelNow(row),
+                              onDelete: () => _removeModelRow(index),
+                              onSetAsGlobalImageGenerationModel: () =>
+                                  _setAsGlobalImageGenerationModel(row),
+                              onImageGenerationChanged: (value) {
+                                setState(() {
+                                  row.supportsImageGeneration = value;
+                                });
+                              },
+                              onTestImageGeneration: () =>
+                                  _testImageGenerationModel(index, row),
+                              isImageGenerationTesting:
+                                  _imageGenerationTestingIndex == index,
+                              isAnyImageGenerationTesting:
+                                  _imageGenerationTestingIndex != null,
+                            ),
+                          );
+                        }).toList(growable: false),
+                      )
+                    else
+                      _EmptyModelState(onAddModel: _addModelRow),
+                  ],
+                ),
               ),
-            ),
               if (hasModels) ...[
                 SizedBox(height: spacing.lg),
                 SettingsGroupSection(
-                title: '高级运行时',
-                summary: '仅在需要主模型之外的辅助模型时单独指定。默认留空，随主模型变化。',
-                child: DropdownButtonFormField<String>(
-                  initialValue:
-                      _resolveValidSideModelId(_buildProvider().models) ?? '',
-                  decoration: const InputDecoration(
-                    labelText: '当前 Provider 的 Side Model',
+                  title: '高级运行时',
+                  summary: '仅在需要主模型之外的辅助模型时单独指定。默认留空，随主模型变化。',
+                  child: SettingsSelectField(
+                    key: const ValueKey('provider-form-side-model-select'),
+                    label: '当前 Provider 的 Side Model',
+                    placeholder: '与主模型一致',
+                    valueText: _resolveValidSideModelDisplayName(
+                      _buildProvider().models,
+                    ),
+                    onTap: _selectSideModel,
                   ),
-                  items: [
-                    const DropdownMenuItem<String>(
-                      value: '',
-                      child: Text('与主模型一致'),
-                    ),
-                    ..._buildProvider().models.map(
-                      (model) => DropdownMenuItem<String>(
-                        value: model.id,
-                        child: Text(model.displayName),
-                      ),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    setState(() {
-                      final trimmed = value?.trim();
-                      _selectedSideModelId =
-                          (trimmed == null || trimmed.isEmpty) ? null : trimmed;
-                    });
-                  },
-                ),
                 ),
               ],
             ],
@@ -1030,56 +1060,6 @@ extension on ApiStyle {
   }
 }
 
-class _ApiStyleRow extends StatelessWidget {
-  const _ApiStyleRow({
-    required this.selectedStyle,
-    required this.onPressed,
-  });
-
-  final ApiStyle selectedStyle;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final spacing = Theme.of(context).extension<AppSpacing>()!;
-    final radius = Theme.of(context).extension<AppRadius>()!;
-    final colors = Theme.of(context).extension<AppThemeSpec>()!;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.chatBackground.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(radius.md),
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(spacing.md),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'API Style',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(width: spacing.sm),
-            OutlinedButton.icon(
-              onPressed: onPressed,
-              icon: const Icon(Icons.alt_route_rounded),
-              label: Text(selectedStyle.displayTitle),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _ApiStyleSelectionSheet extends StatelessWidget {
   const _ApiStyleSelectionSheet({required this.selectedStyle});
 
@@ -1117,6 +1097,61 @@ class _ApiStyleSelectionSheet extends StatelessWidget {
           onTap: () => Navigator.of(context).pop(style),
         );
       },
+    );
+  }
+}
+
+class _SideModelSelectionSheet extends StatelessWidget {
+  const _SideModelSelectionSheet({
+    required this.models,
+    required this.selectedModelId,
+  });
+
+  final List<LlmProviderModel> models;
+  final String? selectedModelId;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppThemeSpec>()!;
+    return ListView(
+      shrinkWrap: true,
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: (selectedModelId == null || selectedModelId!.isEmpty)
+              ? Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: colors.workflowRunning,
+                    shape: BoxShape.circle,
+                  ),
+                )
+              : const SizedBox(width: 8, height: 8),
+          title: const Text('与主模型一致'),
+          subtitle: const Text('默认缺省'),
+          onTap: () => Navigator.of(context).pop(''),
+        ),
+        ...models.map((model) {
+          final selected = model.id == selectedModelId;
+          return ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: selected
+                ? Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: colors.workflowRunning,
+                      shape: BoxShape.circle,
+                    ),
+                  )
+                : const SizedBox(width: 8, height: 8),
+            title: Text(model.displayName),
+            subtitle: Text(model.id),
+            onTap: () => Navigator.of(context).pop(model.id),
+          );
+        }),
+      ],
     );
   }
 }
